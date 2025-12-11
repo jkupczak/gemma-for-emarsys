@@ -1,0 +1,19 @@
+Add a quick copy button for the campaign title.
+
+get the body menu visible in expanded mode
+
+Add image thumbnails to the editor, and also to the media selection popup
+
+Add zebra stiping to the media selection popup
+
+Sync for the mobile preview is not updating when a mobile image is added
+
+add text highlighting to the subject line, preview text, and conditional text editors
+
+in the media popup, move the + to the left side of the table row, increase click area
+
+if the email is pending a save, add a red emoji to the page title so it can be seen in the tab
+
+update the page title to be more relevant, the campaign name
+
+Add dark mode toggle

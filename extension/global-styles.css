@@ -1,0 +1,10 @@
+/* GLobal Styles */
+
+ul.e-navigation__menu_list {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+#gem-nav-settings-item .e-icon-wrapper {
+    display: none !important;
+}

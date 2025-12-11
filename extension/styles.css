@@ -1,0 +1,260 @@
+body.gem-expanded .e-layout.e-layout-without_navigation.e-layout-fullheight.e-layout-with_steps {
+    padding: 0 !important;
+}
+
+
+body.gem-expanded cb-header.e-layout__header {
+    padding: 0 15px 0 15px !important;
+    margin-bottom: 0 !important
+}
+
+cb-header.e-layout__header h1 {
+    font-size: 18px !important
+}
+
+body.gem-expanded .e-layout__section.e-contentblocks-preview_section {
+    border-radius: 5px !important;
+    margin: 0 !important;
+}
+
+body.gem-expanded main.e-layout__content > .e-layout__section.e-contentblocks-navigation_section {
+    margin: 0 !important;
+}
+
+.gem-iframe-wrapper {
+    border: 1px solid var(--token-box-default-border);
+    margin: 0 12px;
+    border-radius: 8px;
+}
+body.gem-expanded .gem-iframe-wrapper {
+    margin: 0 !important;
+}
+
+.e-contentblocks-dragview {
+    visibility: hidden
+}
+
+body.gem-expanded cb-version-selector .e-select {
+    background: transparent;
+    color: #fff;
+    font-weight: bold;
+    border: 2px solid var(--jcolor-primary);
+    border-radius: 5px;
+    padding: 0 12px !important;
+}
+
+body.gem-expanded main.e-layout__content {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 99;
+    padding: 54px 15px 15px 25px !important;
+    margin: 0 !important;
+    gap: 6px
+}
+
+body.gem-expanded e-shellbar {
+    display: none !important;
+}
+
+body.gem-expanded e-navigation {
+    z-index: 999999;
+    display: block !important;
+    left: -60px;
+    margin: 0 !important;
+    box-shadow: none !important;
+    height: calc(100vh - 69px) !important;
+    top: 54px !important;
+    transition: left 0.05s ease-out;
+}
+body.gem-expanded e-navigation:hover {
+    left: 0 !important;
+    transition: left 0.05s ease-out;
+}
+
+body.gem-expanded .e-steps {
+    display: none !important;
+}
+
+body.gem-expanded cb-header .e-steps__progress {
+    display: flex !important;
+    padding:1px 2px !important;
+    background: none !important;
+    height:36px;
+    border-color: rgba(255, 255, 255, 0.3);
+    padding: 0 !important;
+    gap: 0;
+    border-radius:5px !important;
+}
+body.gem-expanded cb-header .e-steps__item:after {
+    display: none !important;
+}
+body.gem-expanded cb-header .e-steps__progress button {
+    font-size: 13px !important;
+    margin: 0 !important;
+    background: none !important;
+    color: #fff !important;
+    padding: 0 10px !important;
+    border-radius: 5px !important;
+    opacity: 0.3 !important;
+}
+
+body.gem-expanded .e-layout__section-sidebar_with_verticalnav {
+    border-radius: 5px !important;
+}
+
+body.gem-expanded cb-header .e-steps__progress button[disabled] {
+    background-color: transparent !important;
+    color: rgb(155 139 255) !important;
+    opacity: 1 !important;
+}
+
+body.gem-expanded cb-header .e-steps__progress button:hover {
+    background-color: #523ae6 !important;
+    color: #fff !important;
+    opacity: 1 !important;
+}
+
+body.gem-expanded cb-header .e-steps__progress .e-steps__item:before {
+    display: none !important;
+}
+
+/*
+body.gem-expanded .e-navigation__menu {
+    background: #3350f7 !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+}
+body.gem-expanded .e-navigation__menu * {
+    opacity: 0 !important;
+    transition: opacity 1s ease-out;
+}
+body.gem-expanded .e-navigation__menu:hover {
+    background: #fff !important;
+    box-shadow: 1px 1px 10px 0 rgba(0, 0, 0, 0.33) !important;
+}
+body.gem-expanded .e-navigation__menu:hover * {
+    opacity: 1 !important;
+}
+
+
+*/
+
+/* cb-header */
+body.gem-expanded cb-header {
+    z-index: 500;
+    position: fixed;
+    left: 0;
+    width: 100%;
+    background: none;
+    color: #fff;
+    padding-left: 20px !important;
+    padding-right: 10px !important;
+    height: 54px;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    top: 0 !important;
+    margin: 0 !important;
+    align-items: anchor-center;
+}
+
+body.gem-expanded cb-header vce-languages-selector {
+    margin:0 !important;
+}
+
+body.gem-expanded cb-header vce-languages-selector div[role="button"] e-icon.e-selectnew__icon {
+    right: 4px !important;
+}
+body.gem-expanded cb-header vce-languages-selector div[role="button"] {
+    background: transparent;
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 5px !important;
+    outline: 2px solid var(--token-input-default-borderActive);
+    font-weight:bold !important;
+    padding-right:22px !important;
+}
+
+body.gem-expanded cb-header vce-languages-selector .e-icon.e-icon-small {
+    color: #fff !important;
+}
+
+body.gem-expanded cb-header cb-top-menu-dropdown {
+    display: none !important;
+}
+
+body.gem-expanded cb-header cb-draft-save-button {
+    margin: 0 !important;
+    order: 3;
+}
+
+body.gem-expanded cb-header cb-draft-save-button button.e-btn {
+    border-radius:5px !important;
+}
+
+body.gem-expanded cb-header cb-draft-save-button e-tooltip[disabled="false"] button.e-btn {
+    color: rgba(255, 255, 255, 0.5) !important;
+    background: rgb(72 70 108) !important;
+    border: 1px solid transparent !important;
+}
+
+body.gem-expanded cb-header .e-layout__actions {
+    gap: 10px;
+    padding-left:10px !important;
+}
+
+body.gem-expanded cb-header cb-draft-save-button e-tooltip[disabled="true"] button.e-btn {
+    color: #fff !important;
+    background: #523ae6 !important;
+    border: 1px solid #523ae6;
+}
+
+body.gem-expanded cb-header cb-save-button {
+    margin: 0 !important;
+}
+
+body.gem-expanded cb-header cb-save-button button {
+    border: 1px solid rgba(255, 255, 255, .3) !important;
+    background: transparent !important;
+    font-weight: normal !important;
+    border-radius: 5px !important;
+}
+
+body.gem-expanded cb-header cb-save-button button[disabled] {
+    display: none !important;
+}
+
+body.gem-expanded cb-header a.e-layout__back {
+    display: none !important;
+}
+
+.gem-enhanced-blocks-panel {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 4px;
+    width: 100%;
+    max-width: 100%;
+
+    & .e-card__lead {
+        padding: 6px 8px !important;
+    }
+    & .e-card__title {
+        line-height:16px !important;
+    }
+    & .e-card__action {
+        display: flex !important;
+    }
+    & .e-card__action .e-btn.e-btn-primary {
+        width: auto !important;
+        align-self: flex-start !important;
+        font-size: 9px !important;
+        padding: 0 6px !important;
+        margin: 0 auto auto !important;
+        justify-self: flex-start !important;
+    }
+    & cb-available-block .e-card {
+        margin-bottom: 0 !important;
+    }
+}

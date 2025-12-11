@@ -1,0 +1,83 @@
+cb-campaign-links [data-e-version="2"].e-table [data-link-id^="link-tracking-"] td {
+    padding: 10px 5px 0 5px !important;
+    font-size:12px !important;
+}
+
+cb-campaign-links [data-e-version="2"].e-table {
+    padding: 10px
+}
+
+cb-campaign-links [data-link-id^="link-tracking-"] td:nth-child(4),
+cb-campaign-links [data-link-id^="link-tracking-"] td:nth-child(5) {
+    max-width: 100px;
+}
+
+cb-campaign-links [data-e-version="2"].e-table [data-link-id^="link-url-"] td {
+    padding: 0 5px 10px 5px !important;
+    font-size:12px !important;
+}
+
+cb-campaign-links .e-selectnew,
+cb-campaign-links .e-table__row input.e-input {
+    font-size:10px !important;
+}
+
+cb-campaign-links cb-link-tracking-category-select div.e-selectnew,
+cb-campaign-links .e-table__row input.e-input {
+    padding: 0 6px !important;
+    height:30px !important;
+}
+
+cb-campaign-links cb-link-tracking-category-select e-icon { 
+    display: none !important;
+}
+cb-campaign-links [placeholder="Name in analysis"],
+cb-campaign-links cb-link-tracking-category-select {
+    max-width: 100px;
+}
+
+cb-campaign-links th {
+    font-size:10px !important;
+    line-height:12px !important;
+}
+cb-campaign-links th:nth-child(2) {
+    width: 100% !important;
+}
+cb-campaign-links th:nth-child(4),
+cb-campaign-links th:nth-child(5) {
+    min-width: 100px !important;
+}
+
+cb-campaign-links cb-link-name {
+    word-break: break-word;
+    line-height: 14px !important;
+    font-size:11px !important;
+}
+
+cb-campaign-links .cdk-virtual-scroll-spacer {
+    height: auto !important;
+}
+
+cb-campaign-links [data-e-version="2"].e-table tbody tr:first-child:not(.e-datagrid__row) td:first-child,
+cb-campaign-links [data-e-version="2"].e-table tbody tr:first-child:not(.e-datagrid__row) td:last-child,
+cb-campaign-links [data-e-version="2"].e-table tbody tr:last-child:not(.e-datagrid__row) td:last-child {
+    border-radius: 0 !important;
+}
+
+cb-campaign-links [data-e-version="2"].e-table td:first-child, 
+cb-campaign-links [data-e-version="2"].e-table th:first-child {
+    padding-left: 15px !important;
+}
+
+cb-campaign-links [data-e-version="2"].e-table td:last-child,
+cb-campaign-links [data-e-version="2"].e-table th:last-child {
+    padding-right: 15px !important;
+}
+
+cb-campaign-links button.e-select__clear {
+    right:5px !important;
+}
+
+cb-campaign-links .e-checkbox-onlycheckbox+label {
+  padding-left:14px !important;
+}

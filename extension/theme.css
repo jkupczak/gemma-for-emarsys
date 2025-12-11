@@ -1,0 +1,77 @@
+/* Scrollbar overrides */
+@media (prefers-color-scheme: dark) {
+  .select2-drop .select2-results,
+  .gem-scrollable, .scrollable,
+  .e-scrollable,
+  .e-scrollable__content,
+  cb-variables .e-section__content.e-padding-none.cb-flex,
+  cb-block-template-list-panel .e-section__content.cb-flex,
+  e-datagrid-wrapper .e-datagrid__table_wrapper,
+  cdk-virtual-scroll-viewport,
+  cb-campaign-latest-media .e-section__content,
+  .e-verticalnav__content .e-fullheight__body,
+  cb-campaign-variables .e-section__content.cb-flex.variables,
+  cb-available-block-list .e-section__content,
+  tactics-app .e-section__content.e-padding-none {
+    scrollbar-color: var(--token-border-default) var(--token-background-dark);
+  }
+
+  .select2-drop .select2-results::-webkit-scrollbar-thumb,
+  .gem-scrollable::-webkit-scrollbar-thumb, .scrollable::-webkit-scrollbar-thumb,
+  .e-scrollable::-webkit-scrollbar-thumb,
+  .e-scrollable__content::-webkit-scrollbar-thumb,
+  cb-variables .e-section__content.e-padding-none.cb-flex::-webkit-scrollbar-thumb,
+  cb-block-template-list-panel .e-section__content.cb-flex::-webkit-scrollbar-thumb,
+  e-datagrid-wrapper .e-datagrid__table_wrapper::-webkit-scrollbar-thumb,
+  cdk-virtual-scroll-viewport::-webkit-scrollbar-thumb,
+  cb-campaign-latest-media .e-section__content::-webkit-scrollbar-thumb,
+  .e-verticalnav__content .e-fullheight__body::-webkit-scrollbar-thumb,
+  cb-campaign-variables .e-section__content.cb-flex.variables::-webkit-scrollbar-thumb,
+  cb-available-block-list .e-section__content::-webkit-scrollbar-thumb,
+  tactics-app .e-section__content.e-padding-none::-webkit-scrollbar-thumb {
+    background: var(--token-border-default);
+  }
+
+  .select2-drop .select2-results::-webkit-scrollbar-track,
+  .gem-scrollable::-webkit-scrollbar-track, .scrollable::-webkit-scrollbar-track,
+  .e-scrollable::-webkit-scrollbar-track,
+  .e-scrollable__content::-webkit-scrollbar-track,
+  cb-variables .e-section__content.e-padding-none.cb-flex::-webkit-scrollbar-track,
+  cb-block-template-list-panel .e-section__content.cb-flex::-webkit-scrollbar-track,
+  e-datagrid-wrapper .e-datagrid__table_wrapper::-webkit-scrollbar-track,
+  cdk-virtual-scroll-viewport::-webkit-scrollbar-track,
+  cb-campaign-latest-media .e-section__content::-webkit-scrollbar-track,
+  .e-verticalnav__content .e-fullheight__body::-webkit-scrollbar-track,
+  cb-campaign-variables .e-section__content.cb-flex.variables::-webkit-scrollbar-track,
+  cb-available-block-list .e-section__content::-webkit-scrollbar-track {
+    background: var(--token-background-dark);
+  }
+}
+
+/* retheme the UI to the gem color scheme */
+:root body.gem-expanded {
+  /* purple 900 */
+  --jcolor-primary: rgb(82, 58, 230) !important;
+  --token-button-default-text: rgb(143, 125, 255) !important;
+  --token-tab-selected-text: rgb(82, 58, 230) !important;
+  --token-button-default-textActive: rgb(143, 125, 255) !important;
+  --token-button-default-borderActive: rgb(82, 58, 230) !important;
+  --token-input-default-borderActive: rgb(82, 58, 230) !important;
+  --token-button-highlight-background: rgb(82, 58, 230) !important;
+  --token-button-toolbar-text: rgb(82, 58, 230) !important;
+  --token-text-highlight: rgb(82, 58, 230) !important;
+  --token-info-default: rgb(82, 58, 230) !important;
+  --token-tab-selected-marker: rgb(82, 58, 230) !important;
+  --token-radio-default-marker: rgb(82, 58, 230) !important;
+  --token-button-toolbar-textActive: rgb(82, 58, 230) !important;
+  --token-button-toolbar-borderActive: rgb(82, 58, 230) !important;
+  --token-button-highlight-backgroundHover: rgb(82, 58, 230) !important;
+  --token-action-selected-text: rgb(82, 58, 230) !important;
+
+  /* purple 200 */
+  --token-action-selected-backgroundHover: rgb(186, 176, 255) !important;
+
+  /* purple 100 */
+  --token-action-selected-background: rgb(217, 211, 255) !important;
+  --token-button-default-backgroundActiveHover: rgb(217, 211, 255) !important;
+}

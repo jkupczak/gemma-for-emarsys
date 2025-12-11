@@ -1,0 +1,2 @@
+.e-verticalnav { overflow: hidden !important; }
+body.gem-expanded .e-verticalnav .e-section__header { display: none !important; }
