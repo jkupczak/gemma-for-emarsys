@@ -1,89 +1,57 @@
-# Emarsys Mobile Previewer
+# Gemma for Emarsys
 
-A Chrome extension that enhances the Emarsys email campaign builder with mobile preview capabilities and advanced text highlighting features.
+A Chrome extension that enhances the Emarsys email campaign builder with mobile preview, advanced text highlighting, custom color swatches, and a built-in settings experience.
 
 ## Features
 
-### 🖥️ **Mobile Preview**
-- Automatically creates mobile-sized previews of email campaigns
-- Side-by-side desktop and mobile views
-- Toggle mobile preview visibility with persistent state
-
-### 🎨 **Advanced Text Highlighting**
-- Highlight specific text patterns in email content
-- User-configurable highlight terms and colors
-- Real-time highlighting as content changes
-
-### 🎨 **Color Swatch Management**
-- User-defined color palette for TinyMCE editor
-- First row in color picker dedicated to custom colors
-- Up to 8 user-selectable colors with persistence
-
-### ⚙️ **Settings Panel**
-- Comprehensive settings for all features
-- Accessible via gear icon in navigation
-- Persistent preferences across sessions
-
-### 🔄 **Persistent State**
-- All settings and states saved across page loads
-- Cross-tab synchronization
-- Seamless user experience
+- **Mobile Preview**: Auto-cloned mobile view with toggle and persisted visibility.
+- **Text Highlighting**: User-configurable terms/colors with real-time updates.
+- **Color Swatches**: Up to 8 custom colors injected into the TinyMCE picker.
+- **Settings Entry in Nav**: “Gemma Settings” menu item injected into `ul.e-navigation__menu_list` to open the settings panel.
+- **Condensed Blocks Panel**: Optional compact view for block templates.
+- **Persistent State**: Uses `chrome.storage.sync` to keep preferences across sessions/tabs.
 
 ## Installation
 
-1. Clone this repository
-2. Open Chrome and go to `chrome://extensions/`
-3. Enable "Developer mode" in the top right
-4. Click "Load unpacked" and select this folder
-5. The extension will be loaded and active
+1) Clone this repo.  
+2) In Chrome, open `chrome://extensions/`.  
+3) Enable “Developer mode”.  
+4) Click “Load unpacked” and select the `extension/` folder.  
 
 ## Usage
 
-### Navigation Icons
-- **⚙️ Gear**: Opens settings panel
-- **⛶ Expand**: Toggles fullscreen mode
-- **📱 Mobile**: Shows/hides mobile preview pane
+- Click the **Gemma Settings** nav item to open the settings panel.  
+- Configure highlighting terms/colors, mobile preview defaults, condensed blocks panel, and color swatches.  
+- Mobile preview toggle and condensed panel state persist via `chrome.storage.sync`.
 
-### Settings Panel
-- **Text Highlighting**: Enable/disable text highlighting and manage highlight terms
-- **Mobile Preview**: Control mobile preview pane behavior
-- **Color Swatches**: Manage your custom color palette
-
-### Color Picker Integration
-- First row shows your custom colors
-- Bottom rows show recently used colors
-- Custom colors persist across all content blocks
-
-## Development
-
-### File Structure
+## Structure (extension/)
 ```
-├── manifest.json          # Extension manifest
-├── background.js          # Background service worker
-├── settings-panel.js      # Settings panel UI and logic
-├── verticalnav-enhancer.js # Navigation icons and controls
-├── mobile-view.js         # Mobile preview functionality
-├── text-highlighting.js   # Text highlighting system
-├── color-swatch-manager.js # Color picker integration
-├── styles.css            # Extension styles
-└── *.css                 # Additional CSS files
+manifest.json           # Extension manifest (MV3)
+background.js           # Service worker for messaging/settings
+settings-panel.js       # Settings UI and storage wiring
+nav-menu-inject.js      # Injects Gemma Settings nav item
+verticalnav-enhancer.js # Nav enhancers (expand/mobile controls)
+mobile-view.js          # Mobile preview logic
+text-highlighting.js    # Highlight terms/regex
+color-swatch-manager.js # TinyMCE color swatch integration
+condensed-blocks-panel.js # Condensed blocks feature
+theme.css / styles.css  # Styling
+global-styles.css       # Global tweaks
+iframe-theme-injector.js # Theme injection for iframes
 ```
 
-### Key Features Implementation
+## Development Notes
 
-- **Settings Persistence**: Uses `chrome.storage.sync` for cross-device sync
-- **DOM Manipulation**: Safe element detection with mutation observers
-- **TinyMCE Integration**: Hooks into existing color picker modals
-- **Real-time Updates**: Immediate UI updates without page refresh
+- Messaging: settings panel listens for `{ action: "openSettings" }` from nav-menu-inject or other scripts.  
+- Storage: `chrome.storage.sync` for settings/state; defaults in `background.js`.  
+- DOM readiness: mutation observers ensure late-loading nav/iframes receive injections.
 
 ## Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly in Chrome
-5. Submit a pull request
+1. Fork → branch → commit.  
+2. Test in Chrome via “Load unpacked” on `extension/`.  
+3. Submit a PR.  
 
 ## License
 
-This project is part of the Emarsys email platform enhancement suite.
+Provided as-is for enhancing Emarsys workflows.***
