@@ -15,7 +15,9 @@ const DEFAULT_SETTINGS = {
   enableCondensedBlocksPanel: true,
   colorSwatches: ["#FE4D01", "", "", "", "", "", "", ""], // 8 color swatches, first one is default
   customColors: ["#FE4D01"], // Default custom color (for backward compatibility)
-  mobileViewVisible: true // Mobile view visible by default
+  mobileViewVisible: true, // Mobile view visible by default
+  mobilePreviewWidth: 414,
+  mobilePreviewScale: 0.5
 };
 
 function loadSettings() {
