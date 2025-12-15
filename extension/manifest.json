@@ -1,12 +1,9 @@
 {
   "name": "Gemma for Emarsys",
-  "version": "1.1",
+  "version": "1.3",
   "manifest_version": 3,
   "description": "Enhances the Emarsys email editor with a settings panel and more!",
-  "permissions": ["scripting", "storage"],
-  "host_permissions": [
-    "https://suite8.emarsys.net/*"
-  ],
+  "permissions": ["storage"],
   "background": {
     "service_worker": "background.js"
   },
@@ -32,7 +29,7 @@
     },
     {
       "matches": ["https://suite8.emarsys.net/bootstrap.php?r=contentBlocks/campaign&session_id=*&id=*"], 
-      "js": ["verticalnav-enhancer.js", "mobile-view.js", "textarea-expand.js", "text-highlighting.js", "color-swatch-manager.js", "keyboard-shortcuts.js", "toggle-page-elements.js", "progress-cloner.js", "page-title-updater.js", "inject-script-for-sharing-context.js", "condensed-blocks-panel.js"],
+      "js": ["verticalnav-enhancer.js", "mobile-view.js", "textarea-expand.js", "text-highlighting.js", "color-swatch-manager.js", "keyboard-shortcuts.js", "toggle-page-elements.js", "progress-cloner.js", "page-title-updater.js", "condensed-blocks-panel.js"],
       "css": ["styles.css", "e-panel--links.css", "e-panels.css"]
     }
   ]
