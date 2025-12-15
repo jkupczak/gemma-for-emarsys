@@ -24,12 +24,12 @@ chrome.storage.sync.get({ mobileViewVisible: true }, (settings) => {
   console.log("[Gem] Mobile view check - mobileViewVisible:", settings.mobileViewVisible);
 
   if (!settings.mobileViewVisible) {
-    console.log("[Gem] Mobile view was hidden, waiting for iframe wrapper...");
+    console.log("[Gem] Mobile view was hidden, waiting for mobile frame...");
 
-    // Wait for the iframe wrapper to be available before hiding it
-    waitForElement(".gem-iframe-wrapper", (iframeWrapper) => {
-      console.log("[Gem] Iframe wrapper found, hiding mobile view...");
-      iframeWrapper.style.display = "none";
+    // Wait for the mobile frame to be available before hiding it
+    waitForElement("#gem-mobile-frame", (mobileFrame) => {
+      console.log("[Gem] Mobile frame found, hiding mobile view...");
+      mobileFrame.style.display = "none";
     });
   } else {
     console.log("[Gem] Mobile view was visible, keeping default state");
@@ -139,16 +139,16 @@ function createIconBar() {
   mobile.addEventListener("click", () => {
     console.log("[Gem] Mobile button clicked");
 
-    const iframeWrapper = document.querySelector(".gem-iframe-wrapper");
-    console.log("[Gem] Mobile click - Iframe wrapper found:", iframeWrapper);
+    const mobileFrame = document.getElementById("gem-mobile-frame");
+    console.log("[Gem] Mobile click - Mobile frame found:", mobileFrame);
 
-    if (iframeWrapper) {
-      const isVisible = iframeWrapper.style.display !== "none";
+    if (mobileFrame) {
+      const isVisible = mobileFrame.style.display !== "none";
       console.log("[Gem] Mobile click - Was visible:", isVisible);
 
-      iframeWrapper.style.display = isVisible ? "none" : "block";
+      mobileFrame.style.display = isVisible ? "none" : "block";
 
-      const isNowVisible = iframeWrapper.style.display !== "none";
+      const isNowVisible = mobileFrame.style.display !== "none";
       console.log("[Gem] Mobile click - Now visible:", isNowVisible);
 
       // Store the mobile view visibility state
@@ -156,7 +156,7 @@ function createIconBar() {
         console.log("[Gem] Mobile click - State saved to storage:", isNowVisible);
       });
     } else {
-      console.log("[Gem] Mobile click - ERROR: Could not find .gem-iframe-wrapper element");
+      console.log("[Gem] Mobile click - ERROR: Could not find #gem-mobile-frame element");
     }
   });
 

@@ -1,21 +1,278 @@
 console.log("mobile-view.js loaded");
 
-// Check if mobile preview is enabled and initialize accordingly
-chrome.storage.sync.get({ enableMobilePreview: true }, (settings) => {
-  if (settings.enableMobilePreview) {
+const DEFAULT_MOBILE_WIDTH = 414;
+const DEFAULT_MOBILE_SCALE = 0.5;
+const MIN_BASE_WIDTH = 200;
+const MAX_BASE_WIDTH = 800;
+let mobilePreviewWidth = DEFAULT_MOBILE_WIDTH;
+let mobilePreviewScale = DEFAULT_MOBILE_SCALE;
+let mobilePreviewVisible = true;
+let bodyClassObserver = null;
+
+function applyMobilePreviewStyles(containerEl, iframeEl) {
+  const container = containerEl || document.querySelector(".gem-iframe-wrapper");
+  const clone = iframeEl || document.querySelector(".iframe-duplicate");
+  if (!container || !clone) return;
+
+  const handle = document.querySelector("#gem-frame-handle");
+
+  if (mobilePreviewScale === 1) {
+    const widthPx = `${mobilePreviewWidth}px`;
+    container.style.width = widthPx;
+    container.style.maxWidth = widthPx;
+    container.style.minWidth = widthPx;
+
+    clone.style.width = widthPx;
+    clone.style.height = "100%";
+    clone.style.transformOrigin = "";
+    clone.style.transform = "";
+  } else {
+    const half = Math.round(mobilePreviewWidth / 2);
+    const halfPx = `${half}px`;
+    container.style.width = halfPx;
+    container.style.maxWidth = halfPx;
+    container.style.minWidth = halfPx;
+
+    clone.style.width = `${mobilePreviewWidth}px`;
+    clone.style.height = "200%";
+    clone.style.transformOrigin = "top left";
+    clone.style.transform = "scale(0.5)";
+    clone.style.borderRadius = "8px";
+  }
+
+  if (handle) {
+    const expanded = document.body.classList.contains("gem-expanded");
+    handle.style.left = expanded ? "-12px" : "-24px";
+    handle.style.width = expanded ? "12px" : "24px";
+  }
+}
+
+function ensureBodyClassObserver() {
+  if (bodyClassObserver || !document.body) return;
+  bodyClassObserver = new MutationObserver(() => {
+    applyMobilePreviewStyles();
+  });
+  bodyClassObserver.observe(document.body, {
+    attributes: true,
+    attributeFilter: ["class"],
+  });
+}
+
+function addResizeHandle(container, styleTarget, clone, originalIframe) {
+  if (!container || container.querySelector("#gem-frame-handle")) return;
+
+  const handle = document.createElement("div");
+  handle.id = "gem-frame-handle";
+  Object.assign(handle.style, {
+    margin: "auto",
+    position: "absolute",
+    top: "0",
+    bottom: "0",
+    left: "-26px",
+    width: "26px",
+    height: "100%",
+    cursor: "col-resize"
+  });
+
+  let dragging = false;
+  let startX = 0;
+  let startBaseWidth = mobilePreviewWidth;
+  let prevCursor = "";
+
+  const onMouseMove = (e) => {
+    if (!dragging) return;
+    const deltaX = e.clientX - startX;
+    const factor = mobilePreviewScale === 0.5 ? 2 : 1;
+    let nextBaseWidth = startBaseWidth - deltaX * factor;
+
+    console.log("[Gem] Mouse move - startX:", startX, "e.clientX:", e.clientX, "deltaX:", deltaX, "factor:", factor, "startBaseWidth:", startBaseWidth, "nextBaseWidth before clamp:", nextBaseWidth);
+
+    nextBaseWidth = Math.min(Math.max(nextBaseWidth, MIN_BASE_WIDTH), MAX_BASE_WIDTH);
+    mobilePreviewWidth = nextBaseWidth;
+
+    console.log("[Gem] Final mobilePreviewWidth:", mobilePreviewWidth);
+
+    // Update size details width display
+    const sizeDetails = container.querySelector(".gem-frame-size-details");
+    if (sizeDetails) {
+      console.log("[Gem] Updating size details width to:", mobilePreviewWidth, "px");
+      const widthDiv = sizeDetails.children[0];
+      if (widthDiv) {
+        widthDiv.innerHTML = `
+          <label>Width</label>
+          ${mobilePreviewWidth}px
+        `;
+        console.log("[Gem] Size details HTML updated to:", widthDiv.innerHTML);
+      } else {
+        console.log("[Gem] Width div not found in size details");
+      }
+    } else {
+      console.log("[Gem] Size details element not found for width update, container:", container, "selector result:", container.querySelector(".gem-frame-size-details"));
+    }
+
+    applyMobilePreviewStyles(styleTarget, clone);
+    console.log("[Gem] Applied styles to styleTarget:", styleTarget, "width:", styleTarget.style.width);
+  };
+
+  const onMouseUp = () => {
+    if (!dragging) return;
+    dragging = false;
+    document.body.style.cursor = prevCursor;
+    handle.classList.remove("gem-frame-handle--active");
+
+    // Remove the overlay immediately
+    const overlay = document.getElementById("gem-resize-overlay");
+    if (overlay) {
+      overlay.remove();
+    }
+
+    // Hide size details after a delay with fade transition
+    const sizeDetails = container.querySelector(".gem-frame-size-details");
+    if (sizeDetails) {
+      setTimeout(() => {
+        if (sizeDetails.parentNode) {
+          // Start fade out transition
+          sizeDetails.classList.add("gem-frame-size-details--fade-out");
+          // Remove element after transition completes
+          setTimeout(() => {
+            if (sizeDetails.parentNode) {
+              sizeDetails.remove();
+            }
+          }, 500); // Match CSS transition duration
+        }
+      }, 3000); // 3 seconds delay before starting fade
+    }
+
+    chrome.storage.sync.set({ mobilePreviewWidth });
+  };
+
+  handle.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    startX = e.clientX;
+    startBaseWidth = mobilePreviewWidth;
+    prevCursor = document.body.style.cursor;
+    document.body.style.cursor = "col-resize";
+    handle.classList.add("gem-frame-handle--active");
+
+    // Create size details element
+    const sizeDetails = document.createElement("div");
+    sizeDetails.className = "gem-frame-size-details";
+    const initialWidth = mobilePreviewWidth;
+    const initialScale = mobilePreviewScale === 1 ? '100%' : '50%';
+    sizeDetails.innerHTML = `
+      <div class="gem-frame-size-details-item">
+        <label>Width</label>
+        ${initialWidth}px
+      </div>
+      <div class="gem-frame-size-details-item">
+        <label>Zoom</label>
+        ${initialScale}
+      </div>
+    `;
+    console.log("[Gem] Creating size details element with initial width:", initialWidth, "px and scale:", initialScale);
+    Object.assign(sizeDetails.style, {
+      position: "absolute",
+      zIndex: "9999",
+      left: "0",
+      right: "0",
+      bottom: "-8px",
+      margin: "auto",
+      display: "inline-block",
+      minWidth: "120px",
+      width: "fit-content",
+      maxWidth: "100%",
+      padding: "6px 3px",
+      background: "var(--token-highlight-600)",
+      color: "var(--token-button-highlight-text)",
+      borderRadius: "999px",
+      fontWeight: "bold",
+      display: "flex",
+      gap: "10px",
+      opacity: "1",
+      alignItems: "anchor-center",
+      fontSize: "18px",
+      justifyContent: "center",
+
+    });
+    container.appendChild(sizeDetails);
+    console.log("[Gem] Size details element created and appended:", sizeDetails);
+
+    // Create invisible overlay to capture all mouse events during dragging
+    const overlay = document.createElement("div");
+    overlay.id = "gem-resize-overlay";
+    Object.assign(overlay.style, {
+      position: "fixed",
+      top: "0",
+      left: "0",
+      width: "100vw",
+      height: "100vh",
+      background: "transparent",
+      zIndex: "999999",
+      cursor: "col-resize"
+    });
+    document.body.appendChild(overlay);
+
+    dragging = true;
+    overlay.addEventListener("mousemove", onMouseMove);
+    overlay.addEventListener("mouseup", onMouseUp);
+  });
+
+  container.appendChild(handle);
+}
+
+function setMobileVisibility(show) {
+  mobilePreviewVisible = !!show;
+
+  const wrapper = document.getElementById("gem-mobile-frame");
+  if (!wrapper && show) {
     initializeMobileView();
   }
+
+  const targetWrapper = wrapper || document.getElementById("gem-mobile-frame");
+  if (targetWrapper) {
+    targetWrapper.style.display = show ? "block" : "none";
+  }
+
+  chrome.storage.sync.set({ mobileViewVisible: mobilePreviewVisible });
+}
+
+// Check if mobile preview is enabled and initialize accordingly
+chrome.storage.sync.get({
+  enableMobilePreview: true,
+  mobileViewVisible: true,
+  mobilePreviewWidth: DEFAULT_MOBILE_WIDTH,
+  mobilePreviewScale: DEFAULT_MOBILE_SCALE
+}, (settings) => {
+  mobilePreviewWidth = Number(settings.mobilePreviewWidth) || DEFAULT_MOBILE_WIDTH;
+  mobilePreviewScale = Number(settings.mobilePreviewScale) === 1 ? 1 : DEFAULT_MOBILE_SCALE;
+  mobilePreviewVisible = settings.mobileViewVisible !== false;
+  if (settings.enableMobilePreview) {
+    initializeMobileView();
+    setMobileVisibility(mobilePreviewVisible);
+  }
+  ensureBodyClassObserver();
 });
 
 // Listen for setting changes
 chrome.storage.onChanged.addListener((changes, namespace) => {
   if (namespace === 'sync' && changes.enableMobilePreview) {
-    if (changes.enableMobilePreview.newValue) {
-      initializeMobileView();
-    } else {
-      disableMobileView();
-    }
+    const show = changes.enableMobilePreview.newValue;
+    setMobileVisibility(show);
   }
+
+  if (namespace === 'sync' && (changes.mobilePreviewWidth || changes.mobilePreviewScale)) {
+    if (changes.mobilePreviewWidth) {
+      mobilePreviewWidth = Number(changes.mobilePreviewWidth.newValue) || DEFAULT_MOBILE_WIDTH;
+    }
+    if (changes.mobilePreviewScale) {
+      mobilePreviewScale = Number(changes.mobilePreviewScale.newValue) === 1 ? 1 : DEFAULT_MOBILE_SCALE;
+    }
+    applyMobilePreviewStyles();
+  }
+
+   if (namespace === 'sync' && changes.mobileViewVisible) {
+     setMobileVisibility(changes.mobileViewVisible.newValue);
+   }
 });
 
 //----------------------------------------------------------
@@ -58,19 +315,16 @@ function setupClonedIframe(originalIframe) {
   const LONG_WORD_THRESHOLD = 20;
 
   //----------------------------------------------------------
-  // Create container & clone
-  //----------------------------------------------------------
+// Create wrapper, container & clone
+//----------------------------------------------------------
+  const wrapperDiv = document.createElement("div");
+  wrapperDiv.id = "gem-mobile-frame";
+
   const containerDiv = document.createElement("div");
   containerDiv.className = "gem-iframe-wrapper";
 
   Object.assign(containerDiv.style, {
-    width: "207px",
-    maxWidth: "207px",
-    minWidth: "207px",
-    position: "relative",
-    background: "#d5dadd",
-    borderRadius: "5px",
-    overflow: "hidden",
+
     zIndex: "9"
   });
 
@@ -79,24 +333,26 @@ function setupClonedIframe(originalIframe) {
 
   Object.assign(cloneIframe.style, {
     maxWidth: "unset",
-    height: "200%",
-    transformOrigin: "top left",
-    transform: "scale(0.5)",
-    width: "414px",
     position: "absolute",
+    overflow: "hidden",
     top: "0",
-    left: "0",
-    boxShadow: "2px 2px 10px rgba(0, 0, 0, 0.125)"
+    left: "0"
   });
 
   containerDiv.appendChild(cloneIframe);
+  addResizeHandle(wrapperDiv, containerDiv, cloneIframe, originalIframe);
+  applyMobilePreviewStyles(containerDiv, cloneIframe);
+  setMobileVisibility(mobilePreviewVisible);
+
+  // Add both handle and container to the wrapper
+  wrapperDiv.appendChild(containerDiv);
 
   Object.assign(originalIframe.style, {
     position: "static",
   });
 
 
-  document.querySelector("section.e-layout__section.e-contentblocks-preview_section").insertAdjacentElement("afterend", containerDiv);
+  document.querySelector("section.e-layout__section.e-contentblocks-preview_section").insertAdjacentElement("afterend", wrapperDiv);
 
   containerDiv.insertAdjacentHTML(
     "afterend",
@@ -108,6 +364,11 @@ function setupClonedIframe(originalIframe) {
     cb-campaign-preview { width: 100% }
     .e-contentblocks-preview { position:static; height:100%; z-index: unset; top: unset; }
     cb-device-preview > .e-section > .e-section__content { overflow: hidden }
+    #gem-frame-handle:before { content: ""; display: block; background: var(--token-box-default-border); position:absolute; top: 0; bottom: 0; left: 0; right: 0; width: 25%; height: 66%; border-radius: 999px; margin: auto; }
+    #gem-frame-handle:hover:before { background: var(--token-ai-500); }
+    #gem-frame-handle.gem-frame-handle--active:before { background: var(--token-ai-800); }
+    .gem-frame-size-details-item { width: auto; font-size:16px; line-height:20px }
+    .gem-frame-size-details-item label { display:block; font-size: 10px; line-height: 14px; text-transform: uppercase; }
     </style>`
   );
 
@@ -192,6 +453,26 @@ function setupClonedIframe(originalIframe) {
       cloneDoc.open();
       cloneDoc.write(tempDoc.documentElement.outerHTML);
       cloneDoc.close();
+
+      // Inject CSS to hide scrollbars while maintaining scrollability
+      const scrollbarStyle = cloneDoc.createElement('style');
+      scrollbarStyle.textContent = `
+        html, body {
+          margin: 0 !important;
+          padding: 0 !important;
+        }
+        /* Hide scrollbars in Webkit browsers (Chrome, Safari, Edge) */
+        ::-webkit-scrollbar:vertical {
+          display: none !important;
+        }
+        /* Hide scrollbars in Firefox */
+        * {
+          scrollbar-width: none !important;
+        }
+      `;
+      if (cloneDoc.head) {
+        cloneDoc.head.appendChild(scrollbarStyle);
+      }
 
       breakLongWords(cloneDoc.body);
 
@@ -426,10 +707,9 @@ function disableMobileView() {
     currentRemovalObserver = null;
   }
 
-  // Delete existing clone + container
-  const oldClone = document.querySelector(".iframe-duplicate");
-  const oldContainer = oldClone?.parentElement;
-  if (oldContainer) oldContainer.remove();
+  // Delete existing wrapper (contains both handle and container)
+  const oldWrapper = document.getElementById("gem-mobile-frame");
+  if (oldWrapper) oldWrapper.remove();
 
   // Remove injected styles
   const styles = document.getElementById("gem-styles");

@@ -6,6 +6,30 @@ console.log("[gem] settings-panel.js LOADED in frame:", window.location.href);
 // Slide-out settings panel for your Chrome extension UI
 // ------------------------------------------------------------
 
+// Default highlight terms - globally available for text-highlighting.js
+window.DEFAULT_HIGHLIGHT_TERMS = {
+  "(price)": { color: "rgba(245, 46, 132, 0.40)", isRegex: false },
+  "\{\{.+?\}\}": { color: "rgba(255, 230, 0, 0.40)", isRegex: true },
+  "((\$|£)( |\xA0)?\d+|\d+( |\xA0)?€)": { color: "rgba(255, 230, 0, 0.40)", isRegex: true },
+  "(name)": { color: "rgba(0, 180, 255, 0.40)", isRegex: false },
+  "(LearnLangAll)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
+  "(learnlang_a_ENG)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
+  "(learnlang_ALL)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
+  "(learnlang_l_ALL)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
+  "(learnlang_d_ALL)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
+  "(learnlang_d_l_ALL)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
+  "(Lernsprache_a_FRA)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
+  "(Lernsprache_fem_FRA)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
+  "(learnlang_d_l_ITA)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
+  "(LearnLangAll)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
+  "(learnlang_for_SWE)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
+  "(learnlang_nominative)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
+  "(learnlang_locative)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
+  "(learnlang_genitive)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
+  "(learnlang_adjective)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
+  "(learnlang_locative_po)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false }
+};
+
 (function () {
   let panelEl = null;
   let isOpen = false;
@@ -35,8 +59,11 @@ console.log("[gem] settings-panel.js LOADED in frame:", window.location.href);
         border-radius: 8px 0 0 8px;
       }
 
-      #gem-settings-panel input {
+      #gem-settings-panel input, #gem-settings-panel select {
         background: var(--token-input-default-background);
+        border: 2px solid var(--token-box-default-border);
+        padding: 8px 12px;
+        border-radius:6px;
       }
 
       #gem-settings-header {
@@ -346,17 +373,12 @@ console.log("[gem] settings-panel.js LOADED in frame:", window.location.href);
 
 
       .gem-info {
-        margin: 0 20px 20px;
-        padding: 12px;
-        background: #f0f9ff;
-        border: 1px solid #bae6fd;
-        border-radius: 6px;
-        color: #0369a1;
+      padding-bottom:0;
       }
 
       .gem-info small {
         font-size: 12px;
-        line-height: 1.4;
+        line-height: 1.2;
       }
     `;
     document.head.appendChild(style);
@@ -386,27 +408,34 @@ console.log("[gem] settings-panel.js LOADED in frame:", window.location.href);
           </label>
         </div>
 
-        <div class="gem-setting">
-          <label>
-            <input type="checkbox" id="opt-enable-highlighting" />
-            Enable text highlighting overlays
-          </label>
-        </div>
-
-        <div class="gem-setting">
-          <label>
+        <div class="gem-setting-section">
+          <h3>Mobile Preview Frame</h3>
+          <div class="gem-setting">
+            <label>
             <input type="checkbox" id="opt-enable-mobile-preview" />
-            Enable mobile preview pane by default
-          </label>
+            Toggle mobile preview pane
+            </label>
+          </div>
+          <div class="gem-setting" style="display: flex; gap: 12px; align-items: center;">
+            <label for="opt-mobile-preview-width" style="flex: 1;">Width (px)</label>
+            <input type="number" id="opt-mobile-preview-width" min="200" max="800" step="1" style="width: 120px;" />
+          </div>
+          <div class="gem-setting" style="display: flex; gap: 12px; align-items: center;">
+            <label for="opt-mobile-preview-scale" style="flex: 1;">Scale</label>
+            <select id="opt-mobile-preview-scale" style="width: 120px;">
+              <option value="1">100%</option>
+              <option value="0.5">50%</option>
+            </select>
+          </div>
         </div>
 
         <div class="gem-setting-section">
           <h3>Color Swatch Management</h3>
-          <div id="color-swatches-list">
-            <!-- Color swatches will be dynamically added here -->
-          </div>
           <div class="gem-info">
             <small>These colors will appear as the first row in the color picker. Add or remove any color you want (up to 8 total).</small>
+          </div>
+          <div id="color-swatches-list">
+            <!-- Color swatches will be dynamically added here -->
           </div>
         </div>
 
@@ -422,6 +451,12 @@ console.log("[gem] settings-panel.js LOADED in frame:", window.location.href);
 
         <div class="gem-setting-section">
           <h3>Text Highlighting Configuration</h3>
+        <div class="gem-setting">
+          <label>
+            <input type="checkbox" id="opt-enable-highlighting" />
+            Enable text highlighting overlays
+          </label>
+        </div>
           <div id="highlight-terms-list">
             <!-- Terms will be dynamically added here -->
           </div>
@@ -453,31 +488,9 @@ console.log("[gem] settings-panel.js LOADED in frame:", window.location.href);
       let highlightTerms;
 
       if (result.highlightTerms === undefined) {
-        // First-time user: use defaults
+        // First-time user: use defaults from text-highlighting.js
         console.log("[gem] Settings panel: First-time user, using default highlight terms");
-        highlightTerms = {
-          "(price)": { color: "rgba(245, 46, 132, 0.40)", isRegex: false },
-          "\{\{.+?\}\}": { color: "rgba(255, 230, 0, 0.40)", isRegex: true },
-          "((\$|£)( |\xA0)?\d+|\d+( |\xA0)?€)": { color: "rgba(255, 230, 0, 0.40)", isRegex: true },
-          "(name)": { color: "rgba(0, 180, 255, 0.40)", isRegex: false },
-          "(LearnLangAll)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
-          "(learnlang_a_ENG)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
-          "(learnlang_ALL)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
-          "(learnlang_l_ALL)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
-          "(learnlang_d_ALL)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
-          "(learnlang_d_l_ALL)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
-          "(Lernsprache_a_FRA)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
-          "(Lernsprache_fem_FRA)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
-          "(learnlang_d_l_ITA)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
-          "(LearnLangAll)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
-          "(learnlang_for_SWE)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
-          "(learnlang_nominative)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
-          "(learnlang_locative)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
-          "(learnlang_genitive)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
-          "(learnlang_adjective)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
-          "(learnlang_locative_po)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
-          "(wow)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false }
-        };
+        highlightTerms = window.DEFAULT_HIGHLIGHT_TERMS || {};
       } else {
         // Existing user: use their stored terms
         console.log("[gem] Settings panel: Using existing user highlight terms");
@@ -490,7 +503,10 @@ console.log("[gem] settings-panel.js LOADED in frame:", window.location.href);
         enableMobilePreview: true,
         showFinishEditingBtn: true,
         colorSwatches: ["#FE4D01", "#151515", "", "", "", "", "", ""],
-        enableCondensedBlocksPanel: true
+        enableCondensedBlocksPanel: true,
+        mobilePreviewWidth: 414,
+        mobilePreviewScale: 0.5,
+        mobileViewVisible: true
       }, (settings) => {
         document.getElementById("opt-enable-condensed-blocks").checked =
           settings.enableCondensedBlocksPanel;
@@ -498,7 +514,15 @@ console.log("[gem] settings-panel.js LOADED in frame:", window.location.href);
           settings.enableHighlighting;
 
         document.getElementById("opt-enable-mobile-preview").checked =
-          settings.enableMobilePreview;
+          settings.mobileViewVisible !== undefined
+            ? settings.mobileViewVisible
+            : settings.enableMobilePreview;
+
+        const widthInput = document.getElementById("opt-mobile-preview-width");
+        if (widthInput) widthInput.value = settings.mobilePreviewWidth || 414;
+
+        const scaleSelect = document.getElementById("opt-mobile-preview-scale");
+        if (scaleSelect) scaleSelect.value = String(settings.mobilePreviewScale || 0.5);
 
         document.getElementById("opt-show-finish-editing-btn").checked =
           settings.showFinishEditingBtn;
@@ -520,7 +544,9 @@ console.log("[gem] settings-panel.js LOADED in frame:", window.location.href);
       "opt-enable-condensed-blocks",
       "opt-enable-highlighting",
       "opt-enable-mobile-preview",
-      "opt-show-finish-editing-btn"
+      "opt-show-finish-editing-btn",
+      "opt-mobile-preview-width",
+      "opt-mobile-preview-scale"
     ];
 
     ids.forEach((id) => {
@@ -528,15 +554,26 @@ console.log("[gem] settings-panel.js LOADED in frame:", window.location.href);
       if (!el) return;
 
       el.addEventListener("change", () => {
+        const widthVal = parseInt(document.getElementById("opt-mobile-preview-width")?.value, 10);
+        const safeWidth = Number.isFinite(widthVal) && widthVal > 0 ? widthVal : 414;
+
+        const scaleVal = parseFloat(document.getElementById("opt-mobile-preview-scale")?.value);
+        const safeScale = scaleVal === 1 ? 1 : 0.5;
+
+        const mobileVisible =
+          document.getElementById("opt-enable-mobile-preview")?.checked ?? true;
+
         const settingsToSave = {
           enableCondensedBlocksPanel:
             document.getElementById("opt-enable-condensed-blocks")?.checked ?? true,
           enableHighlighting:
             document.getElementById("opt-enable-highlighting")?.checked ?? true,
-          enableMobilePreview:
-            document.getElementById("opt-enable-mobile-preview")?.checked ?? true,
+          enableMobilePreview: mobileVisible,
+          mobileViewVisible: mobileVisible,
           showFinishEditingBtn:
-            document.getElementById("opt-show-finish-editing-btn")?.checked ?? true
+            document.getElementById("opt-show-finish-editing-btn")?.checked ?? true,
+          mobilePreviewWidth: safeWidth,
+          mobilePreviewScale: safeScale
         };
 
         chrome.storage.sync.set(settingsToSave);
@@ -815,6 +852,27 @@ console.log("[gem] settings-panel.js LOADED in frame:", window.location.href);
       const condensedToggle = document.getElementById("opt-enable-condensed-blocks");
       if (condensedToggle) {
         condensedToggle.checked = changes.enableCondensedBlocksPanel.newValue;
+      }
+    }
+
+    if (changes.mobilePreviewWidth) {
+      const widthInput = document.getElementById("opt-mobile-preview-width");
+      if (widthInput) {
+        widthInput.value = changes.mobilePreviewWidth.newValue;
+      }
+    }
+
+    if (changes.mobilePreviewScale) {
+      const scaleSelect = document.getElementById("opt-mobile-preview-scale");
+      if (scaleSelect) {
+        scaleSelect.value = String(changes.mobilePreviewScale.newValue);
+      }
+    }
+
+    if (changes.mobileViewVisible) {
+      const mobileToggle = document.getElementById("opt-enable-mobile-preview");
+      if (mobileToggle) {
+        mobileToggle.checked = changes.mobileViewVisible.newValue;
       }
     }
   });

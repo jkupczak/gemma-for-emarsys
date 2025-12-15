@@ -19,26 +19,6 @@ const TARGET_IFRAME_SELECTOR =
   ".e-contentblocks-preview__iframe.e-contentblocks-preview__iframe-desktop";
 
 // Default highlight terms for first-time users
-const DEFAULT_HIGHLIGHT_TERMS = {
-  "(price)": { color: "rgba(255, 230, 0, 0.40)", isRegex: false },
-  "(name)": { color: "rgba(0, 180, 255, 0.40)", isRegex: false },
-  "(LearnLangAll)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
-  "(learnlang_a_ENG)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
-  "(learnlang_ALL)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
-  "(learnlang_l_ALL)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
-  "(learnlang_d_ALL)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
-  "(learnlang_d_l_ALL)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
-  "(Lernsprache_a_FRA)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
-  "(Lernsprache_fem_FRA)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
-  "(learnlang_d_l_ITA)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
-  "(LearnLangAll})": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
-  "(learnlang_for_SWE)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
-  "(learnlang_nominative)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
-  "(learnlang_locative)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
-  "(learnlang_genitive)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
-  "(learnlang_adjective)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
-  "(learnlang_locative_po)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false }
-};
 
 // Load highlight configuration from storage
 function loadHighlightConfig() {
@@ -49,7 +29,7 @@ function loadHighlightConfig() {
     if (result.highlightTerms === undefined) {
       // First-time user: use defaults and save them
       console.log("[Gem] First-time user detected, initializing with default highlight terms");
-      highlightTerms = DEFAULT_HIGHLIGHT_TERMS;
+      highlightTerms = window.DEFAULT_HIGHLIGHT_TERMS || {};
       chrome.storage.sync.set({ highlightTerms: highlightTerms });
     } else {
       // Existing user: use their stored terms (even if empty)

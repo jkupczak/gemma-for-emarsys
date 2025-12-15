@@ -13,7 +13,7 @@ cb-header.e-layout__header h1 {
 }
 
 body.gem-expanded .e-layout__section.e-contentblocks-preview_section {
-    border-radius: 5px !important;
+    border-radius: 8px !important;
     margin: 0 !important;
 }
 
@@ -21,22 +21,30 @@ body.gem-expanded main.e-layout__content > .e-layout__section.e-contentblocks-na
     margin: 0 !important;
 }
 
-.gem-iframe-wrapper {
-    border: 1px solid var(--token-box-default-border);
+#gem-mobile-frame {
     margin: 0 12px;
-    border-radius: 8px;
-}
-body.gem-expanded .gem-iframe-wrapper {
-    margin: 0 !important;
+    position: relative;
 }
 
+.gem-iframe-wrapper {
+    border: 1px solid var(--token-box-default-border);
+    box-shadow: none;
+    border-radius: 8px;
+    overflow: hidden;
+    position: relative;
+    box-sizing: content-box;
+    height: calc(100% - 2px); /* we take away 2px for the border */
+}
+body.gem-expanded #gem-mobile-frame {
+    margin: 0 !important;
+}
 .e-contentblocks-dragview {
     visibility: hidden
 }
 
 body.gem-expanded cb-version-selector .e-select {
     background: transparent;
-    color: #fff;
+    
     font-weight: bold;
     border: 2px solid var(--jcolor-primary);
     border-radius: 5px;
@@ -52,7 +60,7 @@ body.gem-expanded main.e-layout__content {
     z-index: 99;
     padding: 54px 15px 15px 25px !important;
     margin: 0 !important;
-    gap: 6px
+    gap: 12px
 }
 
 body.gem-expanded e-shellbar {
@@ -65,7 +73,6 @@ body.gem-expanded e-navigation {
     left: -60px;
     margin: 0 !important;
     box-shadow: none !important;
-    height: calc(100vh - 69px) !important;
     top: 54px !important;
     transition: left 0.05s ease-out;
 }
@@ -83,10 +90,11 @@ body.gem-expanded cb-header .e-steps__progress {
     padding:1px 2px !important;
     background: none !important;
     height:36px;
-    border-color: rgba(255, 255, 255, 0.3);
+    border: 1px solid var(--token-box-default-border);
     padding: 0 !important;
     gap: 0;
     border-radius:5px !important;
+    box-shadow: none !important;
 }
 body.gem-expanded cb-header .e-steps__item:after {
     display: none !important;
@@ -95,7 +103,8 @@ body.gem-expanded cb-header .e-steps__progress button {
     font-size: 13px !important;
     margin: 0 !important;
     background: none !important;
-    color: #fff !important;
+    
+    color: var(--token-text-default);
     padding: 0 10px !important;
     border-radius: 5px !important;
     opacity: 0.3 !important;
@@ -105,9 +114,12 @@ body.gem-expanded .e-layout__section-sidebar_with_verticalnav {
     border-radius: 5px !important;
 }
 
+body.gem-expanded .e-layout__action {
+    margin: 0 !important;
+}
 body.gem-expanded cb-header .e-steps__progress button[disabled] {
     background-color: transparent !important;
-    color: rgb(155 139 255) !important;
+    color: var(--token-button-highlight-background) !important;
     opacity: 1 !important;
 }
 
@@ -119,6 +131,10 @@ body.gem-expanded cb-header .e-steps__progress button:hover {
 
 body.gem-expanded cb-header .e-steps__progress .e-steps__item:before {
     display: none !important;
+}
+
+body.gem-expanded .e-navigation__menu {
+    height: calc(100vh - 69px) !important;
 }
 
 /*
@@ -169,7 +185,7 @@ body.gem-expanded cb-header vce-languages-selector div[role="button"] e-icon.e-s
 }
 body.gem-expanded cb-header vce-languages-selector div[role="button"] {
     background: transparent;
-    color: #fff;
+
     border: 1px solid rgba(255, 255, 255, 0.3);
     border-radius: 5px !important;
     outline: 2px solid var(--token-input-default-borderActive);
@@ -178,7 +194,7 @@ body.gem-expanded cb-header vce-languages-selector div[role="button"] {
 }
 
 body.gem-expanded cb-header vce-languages-selector .e-icon.e-icon-small {
-    color: #fff !important;
+    /* color: #fff !important; */
 }
 
 body.gem-expanded cb-header cb-top-menu-dropdown {
@@ -216,8 +232,6 @@ body.gem-expanded cb-header cb-save-button {
 }
 
 body.gem-expanded cb-header cb-save-button button {
-    border: 1px solid rgba(255, 255, 255, .3) !important;
-    background: transparent !important;
     font-weight: normal !important;
     border-radius: 5px !important;
 }
@@ -257,4 +271,13 @@ body.gem-expanded cb-header a.e-layout__back {
     & cb-available-block .e-card {
         margin-bottom: 0 !important;
     }
+}
+
+/* Size details fade transition */
+.gem-frame-size-details {
+    transition: opacity 0.5s ease-out;
+}
+
+.gem-frame-size-details.gem-frame-size-details--fade-out {
+    opacity: 0;
 }
