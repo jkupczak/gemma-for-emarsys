@@ -24,10 +24,19 @@ function buildItem() {
   if (btn) {
     btn.addEventListener("click", () => {
       console.log("[gem] Nav item clicked → opening settings");
-      // Try direct content-script listener first
-      chrome.runtime.sendMessage({ action: "openSettings" }, () => {});
-      // Fallback: ask background to broadcast (handles frames that didn't get the listener)
-      chrome.runtime.sendMessage({ action: "openSettingsRequest" }, () => {});
+
+      try {
+        // Send message to background script to handle settings panel toggle
+        console.log("[gem] Sending openSettings message to background...");
+        chrome.runtime.sendMessage({ action: "openSettings" }, (response) => {
+          console.log("[gem] openSettings response:", response);
+          if (chrome.runtime.lastError) {
+            console.log("[gem] openSettings error:", chrome.runtime.lastError);
+          }
+        });
+      } catch (error) {
+        console.log("[gem] Error sending openSettings:", error);
+      }
     });
   }
 

@@ -1,11 +1,14 @@
 {
   "name": "Gemma for Emarsys",
-  "version": "1.3.5",
+  "version": "1.4.0",
   "manifest_version": 3,
   "description": "Enhances the Emarsys email editor with a settings panel and more!",
-  "permissions": ["storage"],
+  "permissions": ["storage", "tabs", "activeTab"],
   "background": {
     "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Gemma for Emarsys"
   },
   "icons": {
     "512": "icons/icon-512x512.png"
@@ -27,10 +30,10 @@
       "js": ["settings-panel.js", "nav-menu-inject.js"],
       "run_at": "document_start"
     },
-    {
-      "matches": ["https://suite8.emarsys.net/bootstrap.php?r=contentBlocks/campaign&session_id=*&id=*"], 
-      "js": ["verticalnav-enhancer.js", "mobile-view.js", "textarea-expand.js", "text-highlighting.js", "color-swatch-manager.js", "keyboard-shortcuts.js", "toggle-page-elements.js", "progress-cloner.js", "page-title-updater.js", "condensed-blocks-panel.js"],
-      "css": ["styles.css", "e-panel--links.css", "e-panels.css"]
-    }
+      {
+        "matches": ["https://suite8.emarsys.net/bootstrap.php?r=contentBlocks/campaign&session_id=*&id=*"],
+        "js": ["welcome-modal.js", "verticalnav-enhancer.js", "mobile-view.js", "textarea-expand.js", "text-highlighting.js", "color-swatch-manager.js", "keyboard-shortcuts.js", "toggle-page-elements.js", "progress-cloner.js", "page-title-updater.js", "condensed-blocks-panel.js"],
+        "css": ["styles.css", "e-panel--links.css", "e-panels.css"]
+      }
   ]
 } 

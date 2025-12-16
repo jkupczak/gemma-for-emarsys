@@ -843,52 +843,6 @@ function setupCustomScrollbars(iframe, container) {
 }
 
 //----------------------------------------------------------
-// Inject keyboard shortcuts into cloned iframe
-//----------------------------------------------------------
-function injectKeyboardShortcutsIntoClone(cloneDoc) {
-  try {
-    // Check if keyboard shortcuts are already injected
-    if (cloneDoc._gemKeyboardHandler) {
-      return;
-    }
-
-    // Function to find and click the save button
-    function triggerSave() {
-      const saveButton = document.querySelector('cb-draft-save-button button.e-btn');
-      if (saveButton) {
-        console.log("[Gem] Save button found from cloned iframe, triggering click...");
-        saveButton.click();
-      } else {
-        console.log("[Gem] Save button not found from cloned iframe");
-      }
-    }
-
-    // Keyboard event handler for cloned iframe
-    function handleKeyDown(event) {
-      // Check for CMD+S (Mac) or CTRL+S (Windows/Linux)
-      const isSaveShortcut = (event.metaKey || event.ctrlKey) && event.key === 's';
-
-      if (isSaveShortcut) {
-        console.log("[Gem] Save shortcut detected in cloned iframe:", event.metaKey ? 'CMD+S' : 'CTRL+S');
-
-        // Let the main window handler take care of prevention, just trigger save here
-        triggerSave();
-
-        return false;
-      }
-    }
-
-    // Add the keyboard shortcut handler to the cloned iframe document
-    cloneDoc.addEventListener('keydown', handleKeyDown, true);
-    cloneDoc._gemKeyboardHandler = true;
-
-    console.log("[Gem] Injected keyboard shortcuts into cloned iframe");
-  } catch (error) {
-    console.log("[Gem] Could not inject keyboard shortcuts into cloned iframe:", error);
-  }
-}
-
-//----------------------------------------------------------
 // Sync clone with original
 //----------------------------------------------------------
   function syncIframe() {
@@ -945,9 +899,6 @@ function injectKeyboardShortcutsIntoClone(cloneDoc) {
 
       // Set up custom overlay scrollbars
       setupCustomScrollbars(cloneIframe, wrapperDiv);
-
-      // Inject keyboard shortcuts into the cloned iframe
-      injectKeyboardShortcutsIntoClone(cloneDoc);
 
       console.log("Succesfully duplicated iframe");
 

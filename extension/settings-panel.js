@@ -51,7 +51,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         height: 100vh;
         background: #ffffff;
         box-shadow: -4px 0 20px rgba(0,0,0,0.15);
-        z-index: 9999999999;
+        z-index: 9999;
         transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
         display: flex;
@@ -400,12 +400,20 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         <div id="gem-settings-close">✕</div>
       </div>
       <div id="gem-settings-body" class="gem-scrollable">
-        
+
+        <div class="gem-setting gem-welcome-link" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-align: center; cursor: pointer; border: none;">
+          <div style="font-size: 16px; font-weight: 600; margin-bottom: 4px;">🎉 See what's new in Gemma!</div>
+          <div style="font-size: 14px; opacity: 0.9;">Click here to view all features and updates</div>
+        </div>
+
         <div class="gem-setting">
           <label>
             <input type="checkbox" id="opt-enable-condensed-blocks" checked />
             Enable Condensed Blocks Panel
           </label>
+          <div style="
+    margin-left: 30px;
+">Your default blocks will be laid out in rows of 2 instead of 1 making it so that you scroll less to find what you need.</div>
         </div>
 
         <div class="gem-setting-section">
@@ -475,6 +483,16 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
     // Close button
     panelEl.querySelector("#gem-settings-close")
       .addEventListener("click", closePanel);
+
+    // Welcome modal link
+    const welcomeLink = panelEl.querySelector(".gem-welcome-link");
+    if (welcomeLink) {
+      welcomeLink.addEventListener("click", () => {
+        if (window.showWelcomeModal) {
+          window.showWelcomeModal();
+        }
+      });
+    }
 
     return panelEl;
   }
@@ -826,6 +844,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
   // Panel open/close logic
   // ------------------------------------------------------------
   function openPanel() {
+    console.log("[gem] openPanel called, isOpen was:", isOpen);
     createPanel();
     loadSettings();
     attachListeners();
@@ -833,13 +852,16 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
     requestAnimationFrame(() => {
       panelEl.style.right = "0";
       isOpen = true;
+      console.log("[gem] Panel opened, isOpen now:", isOpen);
     });
   }
 
   function closePanel() {
+    console.log("[gem] closePanel called, isOpen was:", isOpen);
     if (!panelEl) return;
     panelEl.style.right = "-500px";
     isOpen = false;
+    console.log("[gem] Panel closed, isOpen now:", isOpen);
   }
 
   // ------------------------------------------------------------
@@ -877,14 +899,17 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
     }
   });
 
-  // ------------------------------------------------------------
-  // Listen for openSettings command from gear icon
-  // ------------------------------------------------------------
-  chrome.runtime.onMessage.addListener((msg) => {
-    console.log("[gem] settings-panel.js: received message:", msg);
+// ------------------------------------------------------------
+// Listen for messages from background script or gear icon
+// ------------------------------------------------------------
+console.log("[gem] settings-panel.js: setting up message listener");
+  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  console.log("[gem] settings-panel.js: RECEIVED MESSAGE:", msg, "from:", sender);
+  console.log("[gem] Current isOpen state:", isOpen);
 
     if (msg.action === "openSettings") {
-      // Toggle the panel: close if open, open if closed
+      // Toggle the panel: close if open, open if closed (from gear icon)
+      console.log("[gem] Processing openSettings toggle from gear icon");
       if (isOpen) {
         console.log("[gem] Panel is open, closing it");
         closePanel();
@@ -892,6 +917,17 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         console.log("[gem] Panel is closed, opening it");
         openPanel();
       }
+    } else if (msg.action === "toggleSettingsPanel") {
+      // Toggle the panel: close if open, open if closed (from extension icon click)
+      console.log("[gem] Processing toggleSettingsPanel from extension icon");
+      if (isOpen) {
+        console.log("[gem] Panel is open, closing it");
+        closePanel();
+      } else {
+        console.log("[gem] Panel is closed, opening it");
+        openPanel();
+      }
+      sendResponse({success: true});
     }
   });
 

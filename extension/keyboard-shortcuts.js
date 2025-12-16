@@ -146,39 +146,12 @@ function initializeKeyboardShortcuts() {
     const isSaveShortcut = (event.metaKey || event.ctrlKey) && event.key === 's';
 
     if (isSaveShortcut) {
-      // Check if this event is coming from our cloned iframe
-      const isFromCloneIframe = event.target && event.target.ownerDocument &&
-        event.target.ownerDocument.defaultView &&
-        event.target.ownerDocument.defaultView.frameElement &&
-        event.target.ownerDocument.defaultView.frameElement.classList &&
-        event.target.ownerDocument.defaultView.frameElement.classList.contains('iframe-duplicate');
+      console.log("[Gem] Save shortcut detected:", event.metaKey ? 'CMD+S' : 'CTRL+S', "in context:", event.target.ownerDocument === document ? "main" : "iframe");
 
-      console.log("[Gem] Save shortcut detected:", event.metaKey ? 'CMD+S' : 'CTRL+S',
-        "in context:", isFromCloneIframe ? "cloned-iframe" : (event.target.ownerDocument === document ? "main" : "iframe"));
-
-      // Prevent default browser save behavior - be more aggressive for cloned iframe
-      if (isFromCloneIframe) {
-        event.preventDefault();
-        event.stopPropagation();
-        event.stopImmediatePropagation();
-
-        // Additional prevention for cloned iframe events
-        setTimeout(() => {
-          const preventAgain = (e) => {
-            if ((e.metaKey || e.ctrlKey) && e.key === 's') {
-              e.preventDefault();
-              e.stopPropagation();
-              e.stopImmediatePropagation();
-              window.removeEventListener('keydown', preventAgain, true);
-            }
-          };
-          window.addEventListener('keydown', preventAgain, true);
-        }, 0);
-      } else {
-        event.preventDefault();
-        event.stopPropagation();
-        event.stopImmediatePropagation();
-      }
+      // Prevent default browser save behavior
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
 
       // Trigger save
       triggerSave();

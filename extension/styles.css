@@ -360,3 +360,111 @@ body.gem-expanded cb-header a.e-layout__back {
     background: rgba(0, 0, 0, 0.8) !important;
     transform: scaleY(1.1);
 }
+
+/* Welcome Modal */
+.gem-welcome-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.gem-welcome-modal-content {
+    background: var(--token-box-default-background);
+    border-radius: 12px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    max-width: 600px;
+    max-height: 80vh;
+    margin: 20px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+}
+
+.gem-welcome-modal-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 30px 40px 25px;
+    border-radius: 12px 12px 0 0;
+    text-align: center;
+}
+
+.gem-welcome-modal-header h2 {
+    margin: 0 0 10px 0;
+    font-size: 28px;
+    font-weight: 700;
+}
+
+.gem-welcome-modal-header p {
+    margin: 0;
+    font-size: 16px;
+    opacity: 0.9;
+}
+
+.gem-welcome-modal-body {
+    padding: 30px 40px;
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0; /* Allow flex item to shrink below content size */
+}
+
+.gem-welcome-modal-body h3 {
+    margin: 0 0 20px 0;
+    color: var(--token-font-default);
+    font-size: 20px;
+    font-weight: 600;
+}
+
+.gem-welcome-modal-features {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.gem-welcome-modal-features li {
+    margin-bottom: 16px;
+    padding-left: 24px;
+    position: relative;
+    line-height: 1.5;
+    color: var(--token-font-default);
+}
+.gem-welcome-modal-features li b {
+    font-weight: 800;
+}
+.gem-welcome-modal-features li:before {
+    content: "✨";
+    position: absolute;
+    left: 0;
+    top: 0;
+    font-size: 16px;
+}
+
+.gem-welcome-modal-footer {
+    padding: 20px 40px 30px;
+    text-align: center;
+    border-top: 1px solid var(--token-box-default-border);
+}
+
+.gem-welcome-modal-button {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    padding: 12px 30px;
+    border-radius: 25px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.gem-welcome-modal-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+}
