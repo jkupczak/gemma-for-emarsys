@@ -69,11 +69,14 @@ function initializeKeyboardShortcuts() {
       try {
         const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
         if (iframeDoc) {
-          // Remove existing listener if present
-          iframeDoc.removeEventListener('keydown', handleKeyDown, true);
+          // Check if our handler is already attached to avoid duplicates
+          if (iframeDoc._gemKeyboardHandler) {
+            return; // Already injected
+          }
 
           // Add the keyboard shortcut handler to the iframe
           iframeDoc.addEventListener('keydown', handleKeyDown, true);
+          iframeDoc._gemKeyboardHandler = true;
 
           console.log("[Gem] Injected keyboard shortcuts into iframe");
         }
@@ -82,19 +85,50 @@ function initializeKeyboardShortcuts() {
       }
     }
 
+    // Function to wait for iframe to be ready and inject
+    function waitForIframeReady(iframe) {
+      if (iframe.contentDocument && iframe.contentDocument.readyState === 'complete') {
+        // Iframe is already loaded
+        injectIntoIframe(iframe);
+      } else {
+        // Wait for iframe to load
+        iframe.addEventListener('load', () => {
+          // Give it a moment for content to be ready
+          setTimeout(() => {
+            injectIntoIframe(iframe);
+          }, 100);
+        });
+
+        // Also try periodically for up to 5 seconds in case load event doesn't fire
+        let attempts = 0;
+        const checkReady = () => {
+          attempts++;
+          try {
+            if (iframe.contentDocument && iframe.contentDocument.readyState === 'complete') {
+              injectIntoIframe(iframe);
+              return;
+            }
+            if (attempts < 50) { // Check for up to 5 seconds (50 * 100ms)
+              setTimeout(checkReady, 100);
+            }
+          } catch (error) {
+            // Cross-origin, stop checking
+          }
+        };
+        setTimeout(checkReady, 100);
+      }
+    }
+
     // Inject into existing iframes
     const existingIframes = document.querySelectorAll('iframe');
-    existingIframes.forEach(injectIntoIframe);
+    existingIframes.forEach(waitForIframeReady);
 
     // Monitor for new iframes being added
     const observer = new MutationObserver((mutations) => {
       mutations.forEach((mutation) => {
         mutation.addedNodes.forEach((node) => {
           if (node.tagName === 'IFRAME') {
-            // Wait a bit for the iframe to load its content
-            setTimeout(() => {
-              injectIntoIframe(node);
-            }, 1000);
+            waitForIframeReady(node);
           }
         });
       });
@@ -104,36 +138,6 @@ function initializeKeyboardShortcuts() {
       childList: true,
       subtree: true
     });
-
-    // Also listen for iframe load events
-    document.addEventListener('load', (event) => {
-      if (event.target.tagName === 'IFRAME') {
-        setTimeout(() => {
-          injectIntoIframe(event.target);
-        }, 500);
-      }
-    }, true);
-
-    // Periodically check and reinject into iframes (for dynamic content)
-    setInterval(() => {
-      const iframes = document.querySelectorAll('iframe');
-      iframes.forEach((iframe) => {
-        try {
-          const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
-          if (iframeDoc) {
-            // Check if our handler is already attached
-            const hasHandler = iframeDoc._gemKeyboardHandler;
-            if (!hasHandler) {
-              iframeDoc.addEventListener('keydown', handleKeyDown, true);
-              iframeDoc._gemKeyboardHandler = true;
-              console.log("[Gem] Periodically injected keyboard shortcuts into iframe");
-            }
-          }
-        } catch (error) {
-          // Ignore cross-origin errors
-        }
-      });
-    }, 3000); // Check every 3 seconds
   }
 
   // Keyboard event handler

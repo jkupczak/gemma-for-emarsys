@@ -15,6 +15,7 @@ cb-header.e-layout__header h1 {
 body.gem-expanded .e-layout__section.e-contentblocks-preview_section {
     border-radius: 8px !important;
     margin: 0 !important;
+    overflow: hidden !important;
 }
 
 body.gem-expanded main.e-layout__content > .e-layout__section.e-contentblocks-navigation_section {
@@ -265,6 +266,9 @@ body.gem-expanded cb-campaign-preview > .e-section .e-section__header {
         gap: 10px;
         margin: 0;
     }
+}
+body.gem-expanded .e-contentblocks-preview__iframe {
+    border-radius: 0 !important;
 }
 
 
