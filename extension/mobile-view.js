@@ -871,12 +871,7 @@ function injectKeyboardShortcutsIntoClone(cloneDoc) {
       if (isSaveShortcut) {
         console.log("[Gem] Save shortcut detected in cloned iframe:", event.metaKey ? 'CMD+S' : 'CTRL+S');
 
-        // Prevent default browser save behavior
-        event.preventDefault();
-        event.stopPropagation();
-        event.stopImmediatePropagation();
-
-        // Trigger save
+        // Let the main window handler take care of prevention, just trigger save here
         triggerSave();
 
         return false;
