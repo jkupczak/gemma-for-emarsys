@@ -78,6 +78,7 @@ function addResizeHandle(container, styleTarget, clone, originalIframe) {
   let startX = 0;
   let startBaseWidth = mobilePreviewWidth;
   let prevCursor = "";
+  let sizeDetailsTimeout;
 
   const onMouseMove = (e) => {
     if (!dragging) return;
@@ -129,16 +130,19 @@ function addResizeHandle(container, styleTarget, clone, originalIframe) {
     // Hide size details after a delay with fade transition
     const sizeDetails = container.querySelector(".gem-frame-size-details");
     if (sizeDetails) {
-      setTimeout(() => {
-        if (sizeDetails.parentNode) {
+      sizeDetailsTimeout = setTimeout(() => {
+        if (sizeDetails.parentNode && sizeDetails.parentNode.contains(sizeDetails)) {
           // Start fade out transition
           sizeDetails.classList.add("gem-frame-size-details--fade-out");
           // Remove element after transition completes
           setTimeout(() => {
-            if (sizeDetails.parentNode) {
+            if (sizeDetails.parentNode && sizeDetails.parentNode.contains(sizeDetails)) {
               sizeDetails.remove();
             }
+            sizeDetailsTimeout = null; // Clear the timeout reference
           }, 500); // Match CSS transition duration
+        } else {
+          sizeDetailsTimeout = null; // Clear the timeout reference if element is already gone
         }
       }, 3000); // 3 seconds delay before starting fade
     }
@@ -153,6 +157,20 @@ function addResizeHandle(container, styleTarget, clone, originalIframe) {
     prevCursor = document.body.style.cursor;
     document.body.style.cursor = "col-resize";
     handle.classList.add("gem-frame-handle--active");
+
+    // Clear any existing size details timeout and remove existing elements
+    if (sizeDetailsTimeout) {
+      clearTimeout(sizeDetailsTimeout);
+      sizeDetailsTimeout = null;
+    }
+
+    // Remove any existing size details elements
+    const existingSizeDetails = container.querySelectorAll(".gem-frame-size-details");
+    existingSizeDetails.forEach(element => {
+      if (element.parentNode) {
+        element.remove();
+      }
+    });
 
     // Create size details element
     const sizeDetails = document.createElement("div");
@@ -421,9 +439,412 @@ function setupClonedIframe(originalIframe) {
     }
   }
 
-  //----------------------------------------------------------
-  // Sync clone with original
-  //----------------------------------------------------------
+//----------------------------------------------------------
+// Custom Overlay Scrollbars
+//----------------------------------------------------------
+function setupCustomScrollbars(iframe, container) {
+  if (!iframe || !container) return;
+
+  // Clean up any existing scrollbars first
+  const existingScrollbars = container.querySelectorAll('.gem-custom-scrollbar');
+  existingScrollbars.forEach(scrollbar => scrollbar.remove());
+
+  // Clean up any existing scrollbar references
+  if (iframe._gemScrollbar) {
+    console.log('[Gem] Cleaning up existing scrollbar reference');
+    if (iframe._gemScrollbar.destroy) {
+      iframe._gemScrollbar.destroy();
+    }
+    delete iframe._gemScrollbar;
+  }
+
+  let vIsDragging = false;
+  let vDragStartY = 0;
+  let vThumbStartTop = 0;
+  let hIsDragging = false;
+  let hDragStartX = 0;
+  let hThumbStartLeft = 0;
+  let scrollTimeout;
+  let iframeDoc;
+
+  // Get iframe document
+  function getIframeDoc() {
+    if (!iframeDoc) {
+      iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+    }
+    return iframeDoc;
+  }
+
+  // Update scrollbar visibility
+  function showScrollbar() {
+    const needsVertical = checkVerticalScrollNeeded();
+    const needsHorizontal = checkHorizontalScrollNeeded();
+
+    if (needsVertical) {
+      vScrollbarContainer.style.opacity = '1';
+    }
+    if (needsHorizontal) {
+      hScrollbarContainer.style.opacity = '1';
+    }
+
+    clearTimeout(scrollTimeout);
+    scrollTimeout = setTimeout(() => {
+      if (!vIsDragging && !hIsDragging &&
+          !container.matches(':hover') &&
+          !vScrollbarContainer.matches(':hover') &&
+          !hScrollbarContainer.matches(':hover')) {
+        vScrollbarContainer.style.opacity = checkVerticalScrollNeeded() ? '0' : '0';
+        hScrollbarContainer.style.opacity = checkHorizontalScrollNeeded() ? '0' : '0';
+      }
+    }, 1000);
+  }
+
+  // Check if vertical scrolling is needed
+  function checkVerticalScrollNeeded() {
+    const doc = getIframeDoc();
+    if (!doc || !doc.documentElement) return false;
+    const scrollHeight = doc.documentElement.scrollHeight || doc.body.scrollHeight;
+    const clientHeight = doc.documentElement.clientHeight || doc.body.clientHeight;
+    return scrollHeight > clientHeight;
+  }
+
+  // Check if horizontal scrolling is needed
+  function checkHorizontalScrollNeeded() {
+    const doc = getIframeDoc();
+    if (!doc || !doc.documentElement) return false;
+    const scrollWidth = doc.documentElement.scrollWidth || doc.body.scrollWidth;
+    const clientWidth = doc.documentElement.clientWidth || doc.body.clientWidth;
+    return scrollWidth > clientWidth;
+  }
+
+  // Calculate and update scrollbar positions
+  function updateScrollbar() {
+    const doc = getIframeDoc();
+    if (!doc || !doc.documentElement) return;
+
+    const needsVertical = checkVerticalScrollNeeded();
+    const needsHorizontal = checkHorizontalScrollNeeded();
+
+    // Update vertical scrollbar
+    const scrollTop = doc.documentElement.scrollTop || doc.body.scrollTop;
+    const scrollHeight = doc.documentElement.scrollHeight || doc.body.scrollHeight;
+    const clientHeight = doc.documentElement.clientHeight || doc.body.clientHeight;
+
+    if (needsVertical) {
+      vScrollbarContainer.style.display = 'block';
+
+      // Adjust track height if horizontal scrollbar is also present (leave 12px gap)
+      // The container height uses calc() and doesn't need to be overridden
+      const containerHeight = container.offsetHeight;
+      const adjustedHeight = needsHorizontal ? containerHeight - 16 : containerHeight - 8; // Account for 4px top/bottom margins
+
+      vScrollbarTrack.style.height = `${adjustedHeight}px`;
+
+      const trackHeight = vScrollbarTrack.offsetHeight;
+      const thumbHeight = Math.max(40, (clientHeight / scrollHeight) * trackHeight);
+      const thumbTop = (scrollTop / (scrollHeight - clientHeight)) * (trackHeight - thumbHeight);
+
+      vScrollbarThumb.style.height = `${thumbHeight}px`;
+      vScrollbarThumb.style.top = `${thumbTop}px`;
+    } else {
+      vScrollbarContainer.style.display = 'none';
+    }
+
+    // Update horizontal scrollbar
+    const scrollLeft = doc.documentElement.scrollLeft || doc.body.scrollLeft;
+    const scrollWidth = doc.documentElement.scrollWidth || doc.body.scrollWidth;
+    const clientWidth = doc.documentElement.clientWidth || doc.body.clientWidth;
+
+    if (needsHorizontal) {
+      hScrollbarContainer.style.display = 'block';
+
+      // Adjust track width if vertical scrollbar is also present (leave 12px gap)
+      // The container width uses calc() and doesn't need to be overridden
+      const containerWidth = container.offsetWidth;
+      const adjustedWidth = needsVertical ? containerWidth - 16 : containerWidth - 8; // Account for 4px left/right margins
+
+      hScrollbarTrack.style.width = `${adjustedWidth}px`;
+
+      const trackWidth = hScrollbarTrack.offsetWidth;
+      const thumbWidth = Math.max(40, (clientWidth / scrollWidth) * trackWidth);
+      const thumbLeft = (scrollLeft / (scrollWidth - clientWidth)) * (trackWidth - thumbWidth);
+
+      hScrollbarThumb.style.width = `${thumbWidth}px`;
+      hScrollbarThumb.style.left = `${thumbLeft}px`;
+    } else {
+      hScrollbarContainer.style.display = 'none';
+    }
+  }
+
+  // Handle iframe scroll
+  function handleIframeScroll() {
+    updateScrollbar();
+    showScrollbar();
+  }
+
+  // Handle mouse wheel on scrollbar area
+  function handleWheel(e) {
+    e.preventDefault();
+    const doc = getIframeDoc();
+    if (!doc) return;
+
+    const deltaY = e.deltaY || e.detail || (e.wheelDelta * -1);
+    const deltaX = e.deltaX || 0;
+
+    // Handle vertical scrolling
+    if (Math.abs(deltaY) > Math.abs(deltaX)) {
+      const scrollAmount = deltaY > 0 ? 100 : -100;
+      doc.documentElement.scrollTop += scrollAmount;
+      doc.body.scrollTop += scrollAmount;
+    } else {
+      // Handle horizontal scrolling
+      const scrollAmount = deltaX > 0 ? 100 : -100;
+      doc.documentElement.scrollLeft += scrollAmount;
+      doc.body.scrollLeft += scrollAmount;
+    }
+
+    updateScrollbar();
+    showScrollbar();
+  }
+
+  // Handle vertical thumb drag
+  function handleVerticalThumbMouseDown(e) {
+    e.preventDefault();
+    vIsDragging = true;
+    vDragStartY = e.clientY;
+    vThumbStartTop = parseFloat(vScrollbarThumb.style.top) || 0;
+
+    vScrollbarThumb.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+
+    function handleMouseMove(e) {
+      if (!vIsDragging) return;
+
+      const deltaY = e.clientY - vDragStartY;
+      const trackHeight = vScrollbarTrack.offsetHeight;
+      const thumbHeight = vScrollbarThumb.offsetHeight;
+      const newTop = Math.max(0, Math.min(trackHeight - thumbHeight, vThumbStartTop + deltaY));
+
+      vScrollbarThumb.style.top = `${newTop}px`;
+
+      // Update iframe scroll position
+      const doc = getIframeDoc();
+      if (doc) {
+        const scrollRatio = newTop / (trackHeight - thumbHeight);
+        const scrollHeight = doc.documentElement.scrollHeight || doc.body.scrollHeight;
+        const clientHeight = doc.documentElement.clientHeight || doc.body.clientHeight;
+        const scrollTop = scrollRatio * (scrollHeight - clientHeight);
+
+        doc.documentElement.scrollTop = scrollTop;
+        doc.body.scrollTop = scrollTop;
+      }
+    }
+
+    function handleMouseUp() {
+      vIsDragging = false;
+      vScrollbarThumb.style.backgroundColor = 'rgba(0, 0, 0, 0.3)';
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    }
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  }
+
+  // Handle horizontal thumb drag
+  function handleHorizontalThumbMouseDown(e) {
+    e.preventDefault();
+    hIsDragging = true;
+    hDragStartX = e.clientX;
+    hThumbStartLeft = parseFloat(hScrollbarThumb.style.left) || 0;
+
+    hScrollbarThumb.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+
+    function handleMouseMove(e) {
+      if (!hIsDragging) return;
+
+      const deltaX = e.clientX - hDragStartX;
+      const trackWidth = hScrollbarTrack.offsetWidth;
+      const thumbWidth = hScrollbarThumb.offsetWidth;
+      const newLeft = Math.max(0, Math.min(trackWidth - thumbWidth, hThumbStartLeft + deltaX));
+
+      hScrollbarThumb.style.left = `${newLeft}px`;
+
+      // Update iframe scroll position
+      const doc = getIframeDoc();
+      if (doc) {
+        const scrollRatio = newLeft / (trackWidth - thumbWidth);
+        const scrollWidth = doc.documentElement.scrollWidth || doc.body.scrollWidth;
+        const clientWidth = doc.documentElement.clientWidth || doc.body.clientWidth;
+        const scrollLeft = scrollRatio * (scrollWidth - clientWidth);
+
+        doc.documentElement.scrollLeft = scrollLeft;
+        doc.body.scrollLeft = scrollLeft;
+      }
+    }
+
+    function handleMouseUp() {
+      hIsDragging = false;
+      hScrollbarThumb.style.backgroundColor = 'rgba(0, 0, 0, 0.3)';
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    }
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  }
+
+  // Create vertical scrollbar
+  const vScrollbarContainer = document.createElement('div');
+  vScrollbarContainer.className = 'gem-custom-scrollbar gem-custom-scrollbar-vertical';
+  Object.assign(vScrollbarContainer.style, {
+    position: 'absolute',
+    top: '4px',
+    right: '2px',
+    width: '12px',
+    height: 'calc(100% - 8px)',
+    background: 'transparent',
+    zIndex: '1000',
+    opacity: '0',
+    transition: 'opacity 0.2s ease',
+    pointerEvents: 'auto'
+  });
+
+  const vScrollbarTrack = document.createElement('div');
+  vScrollbarTrack.className = 'gem-scrollbar-track gem-scrollbar-track-vertical';
+  Object.assign(vScrollbarTrack.style, {
+    position: 'absolute',
+    top: '0',
+    right: '2px',
+    width: '8px',
+    height: '100%',
+    background: 'rgba(0, 0, 0, 0.1)',
+    borderRadius: '4px',
+    pointerEvents: 'auto'
+  });
+
+  const vScrollbarThumb = document.createElement('div');
+  vScrollbarThumb.className = 'gem-scrollbar-thumb gem-scrollbar-thumb-vertical';
+  Object.assign(vScrollbarThumb.style, {
+    position: 'absolute',
+    top: '0',
+    right: '0',
+    width: '8px',
+    height: '40px',
+    background: 'rgba(0, 0, 0, 0.3)',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    pointerEvents: 'auto',
+    transition: 'background-color 0.2s ease'
+  });
+
+  vScrollbarTrack.appendChild(vScrollbarThumb);
+  vScrollbarContainer.appendChild(vScrollbarTrack);
+  container.appendChild(vScrollbarContainer);
+
+  // Create horizontal scrollbar
+  const hScrollbarContainer = document.createElement('div');
+  hScrollbarContainer.className = 'gem-custom-scrollbar gem-custom-scrollbar-horizontal';
+  Object.assign(hScrollbarContainer.style, {
+    position: 'absolute',
+    bottom: '2px',
+    left: '4px',
+    height: '12px',
+    width: 'calc(100% - 8px)',
+    background: 'transparent',
+    zIndex: '1000',
+    opacity: '0',
+    transition: 'opacity 0.2s ease',
+    pointerEvents: 'auto'
+  });
+
+  const hScrollbarTrack = document.createElement('div');
+  hScrollbarTrack.className = 'gem-scrollbar-track gem-scrollbar-track-horizontal';
+  Object.assign(hScrollbarTrack.style, {
+    position: 'absolute',
+    bottom: '2px',
+    left: '0',
+    height: '8px',
+    width: '100%',
+    background: 'rgba(0, 0, 0, 0.1)',
+    borderRadius: '4px',
+    pointerEvents: 'auto'
+  });
+
+  const hScrollbarThumb = document.createElement('div');
+  hScrollbarThumb.className = 'gem-scrollbar-thumb gem-scrollbar-thumb-horizontal';
+  Object.assign(hScrollbarThumb.style, {
+    position: 'absolute',
+    bottom: '0',
+    left: '0',
+    height: '8px',
+    width: '40px',
+    background: 'rgba(0, 0, 0, 0.3)',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    pointerEvents: 'auto',
+    transition: 'background-color 0.2s ease'
+  });
+
+  hScrollbarTrack.appendChild(hScrollbarThumb);
+  hScrollbarContainer.appendChild(hScrollbarTrack);
+  container.appendChild(hScrollbarContainer);
+
+  // Set up event listeners
+  const doc = getIframeDoc();
+  if (doc) {
+    doc.addEventListener('scroll', handleIframeScroll, { passive: true });
+
+    // Update scrollbar when content changes
+    const resizeObserver = new ResizeObserver(() => {
+      setTimeout(updateScrollbar, 100); // Debounce for performance
+    });
+    resizeObserver.observe(doc.documentElement);
+  }
+
+  // Add event listeners for vertical scrollbar
+  vScrollbarContainer.addEventListener('wheel', handleWheel);
+  vScrollbarThumb.addEventListener('mousedown', handleVerticalThumbMouseDown);
+
+  // Add event listeners for horizontal scrollbar
+  hScrollbarContainer.addEventListener('wheel', handleWheel);
+  hScrollbarThumb.addEventListener('mousedown', handleHorizontalThumbMouseDown);
+
+  // Add hover listeners to the container (iframe wrapper) to show scrollbars
+  container.addEventListener('mouseenter', showScrollbar);
+  container.addEventListener('mouseleave', () => {
+    if (!vIsDragging && !hIsDragging) {
+      clearTimeout(scrollTimeout);
+      scrollTimeout = setTimeout(() => {
+        if (!container.matches(':hover') &&
+            !vScrollbarContainer.matches(':hover') &&
+            !hScrollbarContainer.matches(':hover')) {
+          vScrollbarContainer.style.opacity = checkVerticalScrollNeeded() ? '0' : '0';
+          hScrollbarContainer.style.opacity = checkHorizontalScrollNeeded() ? '0' : '0';
+        }
+      }, 200);
+    }
+  });
+
+  // Initial update
+  updateScrollbar();
+
+  // Store references for cleanup if needed
+  iframe._gemScrollbar = {
+    vContainer: vScrollbarContainer,
+    hContainer: hScrollbarContainer,
+    destroy: function() {
+      if (doc) {
+        doc.removeEventListener('scroll', handleIframeScroll);
+      }
+      vScrollbarContainer.remove();
+      hScrollbarContainer.remove();
+    }
+  };
+}
+
+//----------------------------------------------------------
+// Sync clone with original
+//----------------------------------------------------------
   function syncIframe() {
     try {
       const originalDoc = originalIframe.contentDocument;
@@ -475,6 +896,9 @@ function setupClonedIframe(originalIframe) {
       }
 
       breakLongWords(cloneDoc.body);
+
+      // Set up custom overlay scrollbars
+      setupCustomScrollbars(cloneIframe, wrapperDiv);
 
       console.log("Succesfully duplicated iframe");
 

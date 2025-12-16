@@ -227,17 +227,57 @@ body.gem-expanded cb-header cb-draft-save-button e-tooltip[disabled="true"] butt
     border: 1px solid #523ae6;
 }
 
+/* campaign preview toolbar */
+body.gem-expanded cb-campaign-preview > .e-section {
+    display: flex;
+    flex-direction: row;
+}
+body.gem-expanded cb-campaign-preview > .e-section .e-section__header:before {
+    display: none !important;
+}
+body.gem-expanded cb-campaign-preview > .e-section .e-section__header {
+    display: flex;
+    flex-direction: column;
+    padding: 14px 10px;
+    border-bottom: 0;
+    border-right: 1px solid var(--token-border-default);
+
+    & > .e-cell:first-child > .e-buttongroup {
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    & > .e-cell:first-child > .e-buttongroup .e-border-right {
+        display: none !important;
+    }
+
+    & cb-undo-redo-buttons > div {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+    & .e-cell .e-section__actions {
+        padding: 0 !important;
+    }
+    & .e-buttongroup.e-section__action {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin: 0;
+    }
+}
+
+
 body.gem-expanded cb-header cb-save-button {
     margin: 0 !important;
 }
+body.gem-expanded cb-multilanguage-locale-selector:has(.e-hidden) {
+    display: none;
+  }
 
 body.gem-expanded cb-header cb-save-button button {
     font-weight: normal !important;
     border-radius: 5px !important;
-}
-
-body.gem-expanded cb-header cb-save-button button[disabled] {
-    display: none !important;
 }
 
 body.gem-expanded cb-header a.e-layout__back {
@@ -280,4 +320,39 @@ body.gem-expanded cb-header a.e-layout__back {
 
 .gem-frame-size-details.gem-frame-size-details--fade-out {
     opacity: 0;
+}
+
+/* Custom overlay scrollbars */
+.gem-custom-scrollbar {
+    pointer-events: auto !important;
+    transition: opacity 0.2s ease;
+}
+
+.gem-scrollbar-track {
+    transition: background-color 0.2s ease;
+}
+
+.gem-scrollbar-thumb {
+    transition: background-color 0.2s ease, width 0.1s ease, height 0.1s ease;
+    border: 1px solid transparent;
+}
+
+.gem-custom-scrollbar:hover .gem-scrollbar-thumb,
+.gem-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.6) !important;
+    border-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+.gem-scrollbar-track:hover {
+    background: rgba(0, 0, 0, 0.2) !important;
+}
+
+.gem-scrollbar-thumb-vertical:active {
+    background: rgba(0, 0, 0, 0.8) !important;
+    transform: scaleX(1.1);
+}
+
+.gem-scrollbar-thumb-horizontal:active {
+    background: rgba(0, 0, 0, 0.8) !important;
+    transform: scaleY(1.1);
 }
