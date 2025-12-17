@@ -26,13 +26,13 @@
       "run_at": "document_start"
     },
     {
-      "matches": ["https://suite8.emarsys.net/*"], 
-      "js": ["settings-panel.js", "nav-menu-inject.js"],
+      "matches": ["https://suite8.emarsys.net/*"],
+      "js": ["settings-panel.js", "nav-menu-inject.js", "welcome-modal.js"],
       "run_at": "document_start"
     },
       {
         "matches": ["https://suite8.emarsys.net/bootstrap.php?r=contentBlocks/campaign&session_id=*&id=*"],
-        "js": ["welcome-modal.js", "verticalnav-enhancer.js", "mobile-view.js", "textarea-expand.js", "text-highlighting.js", "color-swatch-manager.js", "keyboard-shortcuts.js", "toggle-page-elements.js", "progress-cloner.js", "page-title-updater.js", "condensed-blocks-panel.js"],
+        "js": ["verticalnav-enhancer.js", "mobile-view.js", "textarea-expand.js", "text-highlighting.js", "color-swatch-manager.js", "keyboard-shortcuts.js", "toggle-page-elements.js", "progress-cloner.js", "page-title-updater.js", "condensed-blocks-panel.js"],
         "css": ["styles.css", "e-panel--links.css", "e-panels.css"]
       }
   ]
