@@ -13,51 +13,44 @@ function initializeKeyboardShortcuts() {
     if (saveButton) {
       console.log("[Gem] Save button found, triggering click...");
       saveButton.click();
-
-      // Optional: Provide visual feedback
-      showSaveFeedback();
     } else {
       console.log("[Gem] Save button not found");
     }
   }
 
-  // Function to show brief visual feedback
-  function showSaveFeedback() {
-    // Create a temporary overlay to show save feedback
-    const overlay = document.createElement('div');
-    overlay.textContent = 'Saving...';
-    overlay.style.cssText = `
-      position: fixed;
-      top: 20px;
-      right: 20px;
-      background: #10b981;
-      color: white;
-      padding: 8px 16px;
-      border-radius: 4px;
-      font-size: 14px;
-      font-weight: 500;
-      z-index: 10000;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-      opacity: 0;
-      transition: opacity 0.3s ease;
-    `;
 
-    document.body.appendChild(overlay);
+  // Function to toggle mobile preview visibility
+  function toggleMobilePreview() {
+    // Check if chrome APIs are available (extension context not invalidated)
+    if (!chrome || !chrome.storage || !chrome.storage.sync) {
+      console.warn("[Gem] Chrome storage API not available - extension context may be invalidated");
+      return;
+    }
 
-    // Fade in
-    requestAnimationFrame(() => {
-      overlay.style.opacity = '1';
-    });
-
-    // Remove after 2 seconds
-    setTimeout(() => {
-      overlay.style.opacity = '0';
-      setTimeout(() => {
-        if (overlay.parentNode) {
-          overlay.parentNode.removeChild(overlay);
+    try {
+      // Get current mobile preview visibility state
+      chrome.storage.sync.get(['mobileViewVisible'], (result) => {
+        // Check again if chrome APIs are still available after async call
+        if (!chrome || !chrome.storage || !chrome.storage.sync) {
+          console.warn("[Gem] Chrome storage API became unavailable during async call");
+          return;
         }
-      }, 300);
-    }, 2000);
+
+        const currentState = result.mobileViewVisible !== false; // Default to true if undefined
+        const newState = !currentState;
+
+        console.log("[Gem] Toggling mobile preview:", currentState, "->", newState);
+
+        // Update the setting in storage
+        chrome.storage.sync.set({ mobileViewVisible: newState }, () => {
+          if (chrome.runtime.lastError) {
+            console.error("[Gem] Error toggling mobile preview:", chrome.runtime.lastError);
+          }
+        });
+      });
+    } catch (error) {
+      console.error("[Gem] Error in toggleMobilePreview:", error);
+    }
   }
 
   // Function to monitor iframes and inject keyboard shortcuts
@@ -85,8 +78,8 @@ function initializeKeyboardShortcuts() {
       }
     }
 
-    // Function to wait for iframe to be ready and inject
-    function waitForIframeReady(iframe) {
+  // Function to wait for iframe to be ready and inject
+  function waitForIframeReady(iframe) {
       if (iframe.contentDocument && iframe.contentDocument.readyState === 'complete') {
         // Iframe is already loaded
         injectIntoIframe(iframe);
@@ -145,6 +138,9 @@ function initializeKeyboardShortcuts() {
     // Check for CMD+S (Mac) or CTRL+S (Windows/Linux)
     const isSaveShortcut = (event.metaKey || event.ctrlKey) && event.key === 's';
 
+    // Check for CMD+/ (Mac) or CTRL+/ (Windows/Linux) - Mobile Preview Toggle
+    const isMobilePreviewShortcut = (event.metaKey || event.ctrlKey) && event.key === '/';
+
     if (isSaveShortcut) {
       console.log("[Gem] Save shortcut detected:", event.metaKey ? 'CMD+S' : 'CTRL+S', "in context:", event.target.ownerDocument === document ? "main" : "iframe");
 
@@ -155,6 +151,19 @@ function initializeKeyboardShortcuts() {
 
       // Trigger save
       triggerSave();
+
+      // Return false to ensure no further processing
+      return false;
+    } else if (isMobilePreviewShortcut) {
+      console.log("[Gem] Mobile preview toggle shortcut detected:", event.metaKey ? 'CMD+/' : 'CTRL+/');
+
+      // Prevent default browser search behavior
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+
+      // Toggle mobile preview visibility
+      toggleMobilePreview();
 
       // Return false to ensure no further processing
       return false;
@@ -170,7 +179,7 @@ function initializeKeyboardShortcuts() {
   // Monitor iframes and inject keyboard shortcuts into them
   monitorIframesForKeyboardShortcuts();
 
-  console.log("[Gem] Keyboard shortcuts initialized - CMD+S / CTRL+S will trigger save");
+  console.log("[Gem] Keyboard shortcuts initialized - CMD+S / CTRL+S will trigger save, CMD+/ / CTRL+/ will toggle mobile preview");
 }
 
 // Wait for page to be ready before initializing

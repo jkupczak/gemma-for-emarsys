@@ -1,7 +1,3 @@
-Add a quick copy button for the campaign title.
-
-get the body menu visible in expanded mode
-
 Add image thumbnails to the editor, and also to the media selection popup
 
 Add zebra stiping to the media selection popup
@@ -12,8 +8,26 @@ add text highlighting to the subject line, preview text, and conditional text ed
 
 in the media popup, move the + to the left side of the table row, increase click area
 
-if the email is pending a save, add a red emoji to the page title so it can be seen in the tab
-
-update the page title to be more relevant, the campaign name
-
 Add dark mode toggle
+
+Add a red notification dot on the links panel for bad or missing links, or untracked links
+
+Allow users to resize the Emarsys nav panel. Keep track of the size they set each panel to and 
+use that size whenever they return to that panel
+
+Add a gear icon to the content block toolbar to open the settings panel and scroll to a new section
+where they can toggle icons on or off
+
+✗ Can I open the block /variable settings panel just because the user clicked on the block? - REMOVED: block-level-variables-opener.js removed
+
+✓ Add Snippets tab to vertical navigation - DONE: Created snippets-tab.js
+
+Create a way to drag and drop custom snippets (ESL or otherwise). ESL snippets created without the <> button work after clicking on them and then clicking the <> button. But just inserting them and saving doesnn't
+
+Auto-focus to the input field when opening the link modal
+
+✓ Whnen the Block Style Settings panel is open, ESC should close it. - DONE: Created overlay-panel-controls.js
+
+When the Block Style Settings panel is empty, it should close on its own.
+
+Add favorites to the media picker

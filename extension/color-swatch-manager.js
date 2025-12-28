@@ -9,7 +9,7 @@ const DEFAULT_CUSTOM_COLOR = "#FE4D01";
 function loadCustomColors() {
   chrome.storage.sync.get({
     customColors: [DEFAULT_CUSTOM_COLOR], // Start with our default color
-    colorSwatches: ["#FE4D01", "", "", "", "", "", "", ""] // 8 user-defined color swatches
+    colorSwatches: window.DEFAULT_COLOR_SWATCHES // 8 user-defined color swatches
   }, (settings) => {
     customColors = settings.customColors;
     userColorSwatches = settings.colorSwatches;

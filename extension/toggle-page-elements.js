@@ -3,6 +3,9 @@ console.log("toggle-page-elements.js loaded");
 // Toggle page elements based on user settings
 // Currently handles: Finish Editing Button (cb-save-button)
 
+// Variable to hold the interval ID for cleanup
+let checkButtonInterval;
+
 function initializePageElementToggling() {
   console.log("[Gem] Initializing page element toggling...");
 
@@ -76,7 +79,7 @@ function monitorFinishEditingButton(shouldShow) {
   });
 
   // Also periodically check for the button (in case it gets replaced or modified)
-  setInterval(() => {
+  checkButtonInterval = setInterval(() => {
     const button = document.querySelector('cb-save-button');
     if (button) {
       const currentDisplay = button.style.display;
@@ -94,9 +97,22 @@ function monitorFinishEditingButton(shouldShow) {
   }, 2000); // Check every 2 seconds
 }
 
+// Stop checking for the button (cleanup function)
+function stopCheckingButton() {
+  if (checkButtonInterval) {
+    clearInterval(checkButtonInterval);
+    checkButtonInterval = null;
+    console.log("[Gem] Cleared button checking interval");
+  }
+}
+
 // Wait for page to be ready before initializing
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initializePageElementToggling);
 } else {
   initializePageElementToggling();
 }
+
+// Clean up intervals when the page unloads to prevent "Extension context invalidated" errors
+window.addEventListener('unload', stopCheckingButton);
+window.addEventListener('beforeunload', stopCheckingButton);

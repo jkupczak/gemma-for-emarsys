@@ -89,6 +89,11 @@ function loadHighlightConfig() {
 // Listen for setting changes
 chrome.storage.onChanged.addListener((changes, namespace) => {
   if (namespace === 'sync') {
+    // Check if chrome APIs are still available (extension context not invalidated)
+    if (!chrome || !chrome.storage || !chrome.storage.sync) {
+      console.warn("[Gem] Chrome storage API not available - extension context may be invalidated");
+      return;
+    }
     let needsReinit = false;
 
     if (changes.enableHighlighting) {

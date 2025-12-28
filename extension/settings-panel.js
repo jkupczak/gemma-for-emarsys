@@ -6,11 +6,14 @@ console.log("[gem] settings-panel.js LOADED in frame:", window.location.href);
 // Slide-out settings panel for your Chrome extension UI
 // ------------------------------------------------------------
 
+// Default color swatches - globally available
+window.DEFAULT_COLOR_SWATCHES = ["#FE4D01", "", "", "", "", "", "", ""];
+
 // Default highlight terms - globally available for text-highlighting.js
 window.DEFAULT_HIGHLIGHT_TERMS = {
-  "(price)": { color: "rgba(245, 46, 132, 0.40)", isRegex: false },
-  "\{\{.+?\}\}": { color: "rgba(255, 230, 0, 0.40)", isRegex: true },
-  "((\$|£)( |\xA0)?\d+|\d+( |\xA0)?€)": { color: "rgba(255, 230, 0, 0.40)", isRegex: true },
+  "\((price|prezzo|precio|preis|prix)\)": { color: "rgba(245, 46, 132, 0.40)", isRegex: true },
+  "{{(?!.*[“”‘’]).+?}}": { color: "rgba(255, 230, 0, 0.40)", isRegex: true },
+  "((\$|£|€)( |\\xA0)?\d+|\d+( |\\xA0)?€)": { color: "rgba(255, 230, 0, 0.40)", isRegex: true },
   "(name)": { color: "rgba(0, 180, 255, 0.40)", isRegex: false },
   "(LearnLangAll)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
   "(learnlang_a_ENG)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
@@ -406,14 +409,81 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
           <div style="font-size: 14px; opacity: 0.9;">Click here to view all features and updates</div>
         </div>
 
-        <div class="gem-setting">
-          <label>
-            <input type="checkbox" id="opt-enable-condensed-blocks" checked />
-            Enable Condensed Blocks Panel
-          </label>
-          <div style="
-    margin-left: 30px;
-">Your default blocks will be laid out in rows of 2 instead of 1 making it so that you scroll less to find what you need.</div>
+        <div class="gem-setting-section">
+          <h3>Blocks Panel</h3>
+
+          <div class="gem-setting">
+            <div style="display: flex; gap: 12px; align-items: center;">
+              <label for="opt-blocks-panel-layout" style="flex: 1;">Layout</label>
+              <select id="opt-blocks-panel-layout" style="width: 150px;">
+                <option value="1">1 per Row</option>
+                <option value="2" selected>2 per Row</option>
+                <option value="3">3 per Row</option>
+              </select>
+            </div>
+            <div style="font-size: 14px; color: var(--token-font-default); margin-top: 8px;">Choose how many blocks to display per row in the blocks panel.</div>
+          </div>
+
+          <div class="gem-setting">
+            <button id="unhide-all-blocks-btn" style="background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%); color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: 500; transition: all 0.2s ease;">
+              Unhide All Blocks
+            </button>
+            <div style="font-size: 14px; color: var(--token-font-default); margin-top: 8px;">Permanently unhide all blocks that have been hidden. This action cannot be undone.</div>
+          </div>
+        </div>
+
+        <div class="gem-setting-section">
+          <h3>Content Block Toolbar</h3>
+
+          <div class="gem-setting" style="display: flex; gap: 12px; align-items: center;">
+            <label for="opt-manage-optional-content" style="flex: 1;">Manage optional content</label>
+            <select id="opt-manage-optional-content" style="width: 150px;">
+              <option value="always-show">Always Show</option>
+              <option value="hide-if-disabled" selected>Hide if Disabled</option>
+            </select>
+          </div>
+
+          <div class="gem-setting" style="display: flex; gap: 12px; align-items: center;">
+            <label for="opt-predict-recommendation" style="flex: 1;">Predict Recommendation Settings</label>
+            <select id="opt-predict-recommendation" style="width: 150px;">
+              <option value="always-show">Always Show</option>
+              <option value="hide-if-disabled" selected>Hide if Disabled</option>
+              <option value="always-hide">Always Hide</option>
+            </select>
+          </div>
+
+          <div class="gem-setting" style="display: flex; gap: 12px; align-items: center;">
+            <label for="opt-product-finder" style="flex: 1;">Product Finder</label>
+            <select id="opt-product-finder" style="width: 150px;">
+              <option value="always-show" selected>Always Show</option>
+              <option value="always-hide">Always Hide</option>
+            </select>
+          </div>
+
+          <div class="gem-setting" style="display: flex; gap: 12px; align-items: center;">
+            <label for="opt-product-source" style="flex: 1;">Product Source</label>
+            <select id="opt-product-source" style="width: 150px;">
+              <option value="always-show">Always Show</option>
+              <option value="hide-if-disabled" selected>Hide if Disabled</option>
+              <option value="always-hide">Always Hide</option>
+            </select>
+          </div>
+
+          <div class="gem-setting" style="display: flex; gap: 12px; align-items: center;">
+            <label for="opt-save-to-reuse" style="flex: 1;">Save to reuse</label>
+            <select id="opt-save-to-reuse" style="width: 150px;">
+              <option value="always-show" selected>Always Show</option>
+              <option value="always-hide">Always Hide</option>
+            </select>
+          </div>
+
+          <div class="gem-setting" style="display: flex; gap: 12px; align-items: center;">
+            <label for="opt-reset-block" style="flex: 1;">Reset block</label>
+            <select id="opt-reset-block" style="width: 150px;">
+              <option value="always-show" selected>Always Show</option>
+              <option value="always-hide">Always Hide</option>
+            </select>
+          </div>
         </div>
 
         <div class="gem-setting-section">
@@ -473,6 +543,10 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
             <input type="color" id="new-term-color" class="color-swatch-color" value="#ffff00" />
             <button id="add-term-btn">Add</button>
           </div>
+          <div class="gem-highlight-actions" style="display: flex; gap: 10px; justify-content: center; margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--token-box-default-border, #e0e0e0);">
+            <button id="export-highlight-btn" style="padding: 8px 16px; background: #10b981; color: white; border: none; border-radius: 4px; cursor: pointer;">Export Rules</button>
+            <button id="import-highlight-btn" style="padding: 8px 16px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer;">Import Rules</button>
+          </div>
         </div>
 
       </div>
@@ -520,14 +594,35 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         enableHighlighting: true,
         enableMobilePreview: true,
         showFinishEditingBtn: true,
-        colorSwatches: ["#FE4D01", "#151515", "", "", "", "", "", ""],
-        enableCondensedBlocksPanel: true,
+        colorSwatches: window.DEFAULT_COLOR_SWATCHES,
+        blocksPanelLayout: "2",
+        manageOptionalContent: "hide-if-disabled",
+        predictRecommendationSettings: "hide-if-disabled",
+        productFinder: "always-show",
+        productSource: "hide-if-disabled",
+        saveToReuse: "always-show",
+        resetBlock: "always-show",
         mobilePreviewWidth: 414,
         mobilePreviewScale: 0.5,
         mobileViewVisible: true
       }, (settings) => {
-        document.getElementById("opt-enable-condensed-blocks").checked =
-          settings.enableCondensedBlocksPanel;
+        document.getElementById("opt-blocks-panel-layout").value =
+          settings.blocksPanelLayout;
+
+        // Content Block Toolbar settings
+        document.getElementById("opt-manage-optional-content").value =
+          settings.manageOptionalContent;
+        document.getElementById("opt-predict-recommendation").value =
+          settings.predictRecommendationSettings;
+        document.getElementById("opt-product-finder").value =
+          settings.productFinder;
+        document.getElementById("opt-product-source").value =
+          settings.productSource;
+        document.getElementById("opt-save-to-reuse").value =
+          settings.saveToReuse;
+        document.getElementById("opt-reset-block").value =
+          settings.resetBlock;
+
         document.getElementById("opt-enable-highlighting").checked =
           settings.enableHighlighting;
 
@@ -558,8 +653,62 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
   // Save settings when toggled
   // ------------------------------------------------------------
   function attachListeners() {
-    const ids = [
-      "opt-enable-condensed-blocks",
+    // Define handler functions
+    function saveSettingsHandler() {
+      const widthVal = parseInt(document.getElementById("opt-mobile-preview-width")?.value, 10);
+      const safeWidth = Number.isFinite(widthVal) && widthVal > 0 ? widthVal : 414;
+
+      const scaleVal = parseFloat(document.getElementById("opt-mobile-preview-scale")?.value);
+      const safeScale = scaleVal === 1 ? 1 : 0.5;
+
+      const mobileVisible =
+        document.getElementById("opt-enable-mobile-preview")?.checked ?? true;
+
+      const settingsToSave = {
+        blocksPanelLayout:
+          document.getElementById("opt-blocks-panel-layout")?.value ?? "2",
+        manageOptionalContent:
+          document.getElementById("opt-manage-optional-content")?.value ?? "hide-if-disabled",
+        predictRecommendationSettings:
+          document.getElementById("opt-predict-recommendation")?.value ?? "hide-if-disabled",
+        productFinder:
+          document.getElementById("opt-product-finder")?.value ?? "always-show",
+        productSource:
+          document.getElementById("opt-product-source")?.value ?? "hide-if-disabled",
+        saveToReuse:
+          document.getElementById("opt-save-to-reuse")?.value ?? "always-show",
+        resetBlock:
+          document.getElementById("opt-reset-block")?.value ?? "always-show",
+        enableHighlighting:
+          document.getElementById("opt-enable-highlighting")?.checked ?? true,
+        enableMobilePreview: mobileVisible,
+        mobileViewVisible: mobileVisible,
+        showFinishEditingBtn:
+          document.getElementById("opt-show-finish-editing-btn")?.checked ?? true,
+        mobilePreviewWidth: safeWidth,
+        mobilePreviewScale: safeScale
+      };
+
+      chrome.storage.sync.set(settingsToSave);
+    }
+
+    function exportHandler() {
+      showExportModal();
+    }
+
+    function importHandler() {
+      showImportModal();
+    }
+
+    // Settings elements that trigger save
+    const settingsIds = [
+      "opt-blocks-panel-layout",
+      "opt-manage-optional-content",
+      "opt-predict-recommendation",
+      "opt-product-finder",
+      "opt-product-source",
+      "opt-save-to-reuse",
+      "opt-reset-block",
       "opt-enable-highlighting",
       "opt-enable-mobile-preview",
       "opt-show-finish-editing-btn",
@@ -567,41 +716,51 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
       "opt-mobile-preview-scale"
     ];
 
-    ids.forEach((id) => {
+    // Remove existing listeners and add new ones
+    settingsIds.forEach((id) => {
       const el = document.getElementById(id);
-      if (!el) return;
-
-      el.addEventListener("change", () => {
-        const widthVal = parseInt(document.getElementById("opt-mobile-preview-width")?.value, 10);
-        const safeWidth = Number.isFinite(widthVal) && widthVal > 0 ? widthVal : 414;
-
-        const scaleVal = parseFloat(document.getElementById("opt-mobile-preview-scale")?.value);
-        const safeScale = scaleVal === 1 ? 1 : 0.5;
-
-        const mobileVisible =
-          document.getElementById("opt-enable-mobile-preview")?.checked ?? true;
-
-        const settingsToSave = {
-          enableCondensedBlocksPanel:
-            document.getElementById("opt-enable-condensed-blocks")?.checked ?? true,
-          enableHighlighting:
-            document.getElementById("opt-enable-highlighting")?.checked ?? true,
-          enableMobilePreview: mobileVisible,
-          mobileViewVisible: mobileVisible,
-          showFinishEditingBtn:
-            document.getElementById("opt-show-finish-editing-btn")?.checked ?? true,
-          mobilePreviewWidth: safeWidth,
-          mobilePreviewScale: safeScale
-        };
-
-        chrome.storage.sync.set(settingsToSave);
-      });
+      if (el) {
+        el.removeEventListener("change", saveSettingsHandler);
+        el.addEventListener("change", saveSettingsHandler);
+      }
     });
 
     // Add term button listener
     const addBtn = document.getElementById("add-term-btn");
     if (addBtn) {
       addBtn.addEventListener("click", addNewTerm);
+    }
+
+    // Export highlight rules button listener - remove existing first
+    const exportBtn = document.getElementById("export-highlight-btn");
+    if (exportBtn) {
+      exportBtn.removeEventListener("click", exportHandler);
+      exportBtn.addEventListener("click", exportHandler);
+    }
+
+    // Import highlight rules button listener - remove existing first
+    const importBtn = document.getElementById("import-highlight-btn");
+    if (importBtn) {
+      importBtn.removeEventListener("click", importHandler);
+      importBtn.addEventListener("click", importHandler);
+    }
+
+    // Unhide all blocks button listener
+    const unhideBtn = document.getElementById("unhide-all-blocks-btn");
+    if (unhideBtn) {
+      unhideBtn.addEventListener("click", () => {
+        if (confirm("Are you sure you want to unhide all blocks? This will permanently show all blocks that were previously hidden.")) {
+          chrome.storage.sync.set({ hiddenBlocks: [], showHiddenBlocks: false }, () => {
+            if (chrome.runtime.lastError) {
+              console.error("[Gem] Error clearing hidden blocks:", chrome.runtime.lastError);
+              alert("Failed to unhide blocks. Please try again.");
+            } else {
+              console.log("[Gem] All blocks have been unhidden");
+              alert("All blocks have been unhidden successfully!");
+            }
+          });
+        }
+      });
     }
   }
 
@@ -665,6 +824,191 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
     });
 
     return item;
+  }
+
+  // ------------------------------------------------------------
+  // Show export modal
+  // ------------------------------------------------------------
+  function showExportModal() {
+    const modal = document.createElement('div');
+    modal.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10001;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    `;
+
+    modal.innerHTML = `
+      <div style="background: var(--token-box-default-background, #ffffff); border-radius: 12px; padding: 20px; max-width: 600px; width: 90%; max-height: 80vh; display: flex; flex-direction: column;">
+        <h3 style="margin: 0 0 15px 0; color: var(--token-font-default, #333333);">Export Highlight Rules</h3>
+        <p style="margin: 0 0 15px 0; color: var(--token-font-default, #666666); font-size: 14px;">Copy the JSON below to backup or share your text highlighting rules:</p>
+        <textarea id="export-json" readonly style="width: 100%; height: 200px; padding: 10px; border: 1px solid var(--token-box-default-border, #e0e0e0); border-radius: 4px; font-family: monospace; font-size: 12px; resize: vertical; margin-bottom: 15px;"></textarea>
+        <div style="display: flex; gap: 10px; justify-content: flex-end;">
+          <button id="copy-export-btn" style="padding: 8px 16px; background: #10b981; color: white; border: none; border-radius: 4px; cursor: pointer;">Copy to Clipboard</button>
+          <button id="close-export-btn" style="padding: 8px 16px; background: #6b7280; color: white; border: none; border-radius: 4px; cursor: pointer;">Close</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    // Get current highlight terms
+    chrome.storage.sync.get(['highlightTerms'], (result) => {
+      const highlightTerms = result.highlightTerms || {};
+      const exportTextarea = modal.querySelector('#export-json');
+      exportTextarea.value = JSON.stringify(highlightTerms, null, 2);
+    });
+
+    // Copy button
+    modal.querySelector('#copy-export-btn').addEventListener('click', async () => {
+      const exportTextarea = modal.querySelector('#export-json');
+      try {
+        await navigator.clipboard.writeText(exportTextarea.value);
+        const btn = modal.querySelector('#copy-export-btn');
+        btn.textContent = 'Copied!';
+        btn.style.background = '#059669';
+        setTimeout(() => {
+          btn.textContent = 'Copy to Clipboard';
+          btn.style.background = '#10b981';
+        }, 2000);
+      } catch (err) {
+        console.error('Failed to copy:', err);
+        alert('Failed to copy to clipboard. Please select and copy manually.');
+      }
+    });
+
+    // Close button
+    modal.querySelector('#close-export-btn').addEventListener('click', () => {
+      modal.remove();
+    });
+
+    // ESC key to close
+    const handleEscape = (e) => {
+      if (e.key === 'Escape') {
+        modal.remove();
+        document.removeEventListener('keydown', handleEscape);
+      }
+    };
+    document.addEventListener('keydown', handleEscape);
+
+    // Click outside to close
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        modal.remove();
+      }
+    });
+  }
+
+  // ------------------------------------------------------------
+  // Show import modal
+  // ------------------------------------------------------------
+  function showImportModal() {
+    const modal = document.createElement('div');
+    modal.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10001;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    `;
+
+    modal.innerHTML = `
+      <div style="background: var(--token-box-default-background, #ffffff); border-radius: 12px; padding: 20px; max-width: 600px; width: 90%; max-height: 80vh; display: flex; flex-direction: column;">
+        <h3 style="margin: 0 0 15px 0; color: var(--token-font-default, #333333);">Import Highlight Rules</h3>
+        <p style="margin: 0 0 15px 0; color: var(--token-font-default, #666666); font-size: 14px;">Paste JSON from an exported rules file below. New rules will be added and duplicates will be replaced:</p>
+        <textarea id="import-json" placeholder="Paste your JSON here..." style="width: 100%; height: 200px; padding: 10px; border: 1px solid var(--token-box-default-border, #e0e0e0); border-radius: 4px; font-family: monospace; font-size: 12px; resize: vertical; margin-bottom: 15px;"></textarea>
+        <div style="display: flex; gap: 10px; justify-content: flex-end;">
+          <button id="import-rules-btn" style="padding: 8px 16px; background: #10b981; color: white; border: none; border-radius: 4px; cursor: pointer;">Import Rules</button>
+          <button id="close-import-btn" style="padding: 8px 16px; background: #6b7280; color: white; border: none; border-radius: 4px; cursor: pointer;">Cancel</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    // Import button
+    modal.querySelector('#import-rules-btn').addEventListener('click', () => {
+      const importTextarea = modal.querySelector('#import-json');
+      const jsonText = importTextarea.value.trim();
+
+      if (!jsonText) {
+        alert('Please paste some JSON to import.');
+        return;
+      }
+
+      try {
+        const importedRules = JSON.parse(jsonText);
+
+        // Validate that it's an object
+        if (typeof importedRules !== 'object' || importedRules === null) {
+          throw new Error('Invalid format: must be a JSON object');
+        }
+
+        // Get current rules and merge
+        chrome.storage.sync.get(['highlightTerms'], (result) => {
+          const currentRules = result.highlightTerms || {};
+
+          // Merge imported rules (imported rules override duplicates)
+          const mergedRules = { ...currentRules, ...importedRules };
+
+          // Save merged rules
+          chrome.storage.sync.set({ highlightTerms: mergedRules }, () => {
+            if (chrome.runtime.lastError) {
+              console.error('Error saving imported rules:', chrome.runtime.lastError);
+              alert('Error saving imported rules.');
+              return;
+            }
+
+            // Refresh the UI
+            loadSettings();
+
+            // Close modal
+            modal.remove();
+
+            // Show success message
+            alert(`Successfully imported ${Object.keys(importedRules).length} highlight rules!`);
+          });
+        });
+
+      } catch (err) {
+        console.error('Error parsing JSON:', err);
+        alert('Invalid JSON format. Please check your input and try again.');
+      }
+    });
+
+    // Cancel button
+    modal.querySelector('#close-import-btn').addEventListener('click', () => {
+      modal.remove();
+    });
+
+    // ESC key to close
+    const handleEscape = (e) => {
+      if (e.key === 'Escape') {
+        modal.remove();
+        document.removeEventListener('keydown', handleEscape);
+      }
+    };
+    document.addEventListener('keydown', handleEscape);
+
+    // Click outside to close
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        modal.remove();
+      }
+    });
   }
 
   // Add a new term
@@ -830,7 +1174,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
 
   // Update a color swatch
   function updateColorSwatch(index, color) {
-    chrome.storage.sync.get({ colorSwatches: ["#FE4D01", "", "", "", "", "", "", ""] }, (settings) => {
+    chrome.storage.sync.get({ colorSwatches: window.DEFAULT_COLOR_SWATCHES }, (settings) => {
       const updatedSwatches = [...settings.colorSwatches];
       updatedSwatches[index] = color;
       chrome.storage.sync.set({ colorSwatches: updatedSwatches }, () => {
@@ -849,6 +1193,30 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
     loadSettings();
     attachListeners();
 
+    // Check if this is the first time settings panel is opened
+    chrome.storage.sync.get(['settingsPanelOpened'], (result) => {
+      const hasBeenOpened = result.settingsPanelOpened;
+
+      if (!hasBeenOpened) {
+        // First time opening - hide welcome link
+        const welcomeLink = panelEl.querySelector(".gem-welcome-link");
+        if (welcomeLink) {
+          welcomeLink.style.display = "none";
+        }
+
+        // Mark as opened
+        chrome.storage.sync.set({ settingsPanelOpened: true });
+        console.log("[gem] First time opening settings panel - welcome link hidden");
+      } else {
+        // Subsequent opens - ensure welcome link is visible
+        const welcomeLink = panelEl.querySelector(".gem-welcome-link");
+        if (welcomeLink) {
+          welcomeLink.style.display = "";
+        }
+        console.log("[gem] Settings panel opened before - welcome link visible");
+      }
+    });
+
     requestAnimationFrame(() => {
       panelEl.style.right = "0";
       isOpen = true;
@@ -865,16 +1233,51 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
   }
 
   // ------------------------------------------------------------
+  // Expose function to open settings panel (for welcome modal)
+  // ------------------------------------------------------------
+  window.openGemmaSettings = function() {
+    if (!isOpen) {
+      openPanel();
+    }
+  };
+
+  // ------------------------------------------------------------
   // Keep dark theme in sync with storage changes
   // ------------------------------------------------------------
   chrome.storage.onChanged.addListener((changes, namespace) => {
     if (namespace !== "sync") return;
 
-    if (changes.enableCondensedBlocksPanel) {
-      const condensedToggle = document.getElementById("opt-enable-condensed-blocks");
-      if (condensedToggle) {
-        condensedToggle.checked = changes.enableCondensedBlocksPanel.newValue;
+    if (changes.blocksPanelLayout) {
+      const layoutSelect = document.getElementById("opt-blocks-panel-layout");
+      if (layoutSelect) {
+        layoutSelect.value = changes.blocksPanelLayout.newValue;
       }
+    }
+
+    // Content Block Toolbar settings
+    if (changes.manageOptionalContent) {
+      const select = document.getElementById("opt-manage-optional-content");
+      if (select) select.value = changes.manageOptionalContent.newValue;
+    }
+    if (changes.predictRecommendationSettings) {
+      const select = document.getElementById("opt-predict-recommendation");
+      if (select) select.value = changes.predictRecommendationSettings.newValue;
+    }
+    if (changes.productFinder) {
+      const select = document.getElementById("opt-product-finder");
+      if (select) select.value = changes.productFinder.newValue;
+    }
+    if (changes.productSource) {
+      const select = document.getElementById("opt-product-source");
+      if (select) select.value = changes.productSource.newValue;
+    }
+    if (changes.saveToReuse) {
+      const select = document.getElementById("opt-save-to-reuse");
+      if (select) select.value = changes.saveToReuse.newValue;
+    }
+    if (changes.resetBlock) {
+      const select = document.getElementById("opt-reset-block");
+      if (select) select.value = changes.resetBlock.newValue;
     }
 
     if (changes.mobilePreviewWidth) {
