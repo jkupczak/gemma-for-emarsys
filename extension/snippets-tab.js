@@ -2,12 +2,17 @@ console.log("[Gem] snippets-tab.js loaded");
 
 // Snippets storage and management
 const SNIPPETS_STORAGE_KEY = 'gemSnippets';
+const SNIPPET_CATEGORY_COLLAPSE_STORAGE_KEY = 'gemSnippetCategoryCollapseState';
+const UNCATEGORIZED_LABEL = 'Uncategorized';
 
 // Default snippets to initialize with
 const DEFAULT_SNIPPETS = [
   {
     id: 'sample-esl',
+    favorite: false,
+    category: '',
     name: 'ESL snippet',
+    description: '',
     content: 'This is a sample snippet!'
   }
 ];
@@ -34,9 +39,34 @@ function saveSnippets(snippets, callback) {
 
 // Function to generate the full snippet HTML
 function generateSnippetHTML(name, content) {
+  function escapeHtmlAttribute(value) {
+    // Keep the attribute HTML-safe, but use percent-encoding for the most dangerous characters
+    // inside the snippet payload (per request): <, >, ", ', space, %, {, }.
+    //
+    // NOTE: We still HTML-escape '&' so the attribute remains valid HTML; otherwise entity parsing
+    // could mutate the payload before Emarsys reads it.
+    return String(value)
+      // IMPORTANT: encode '%' first so we don't accidentally re-encode the '%' we introduce below.
+      .replace(/%/g, '%25')
+      .replace(/&/g, '&amp;')
+      .replace(/ /g, '%20')
+      .replace(/\{/g, '%7B')
+      .replace(/\|/g, '%7C')
+      .replace(/\}/g, '%7D')
+      .replace(/\\/g, '%5C')
+      .replace(/\[/g, '%5B')
+      .replace(/\]/g, '%5D')
+      .replace(/</g, '%3C')
+      .replace(/>/g, '%3E')
+      .replace(/"/g, '%22');
+  }
+
   const tokenContent = JSON.stringify({ script: content });
-  // Custom encoding that preserves ':' characters
-  const encodedTokenContent = encodeURIComponent(tokenContent).replace(/%3A/g, ':');
+  // IMPORTANT:
+  // We do NOT percent-encode the snippet code anymore. Percent-encoding changes characters like '=' and others,
+  // which can invalidate ESL. Instead, we HTML-escape the JSON so it can live safely in an HTML attribute;
+  // when parsed/inserted, the browser will decode entities back to the original characters.
+  const encodedTokenContent = escapeHtmlAttribute(tokenContent);
   // Use the exact token-template from the working sample
   const encodedTokenTemplate = '%22%3C%25=%20script%20%25%3E%22';
   // token-meta should be encoded as well
@@ -71,6 +101,10 @@ function createSnippetModalHTML(isEditing = false) {
   <div class="e-dialog__content" style="max-width: none;">
     <div>
       <div class="e-field">
+        <label class="e-field__label e-field__label-inline" for="gem-snippet-category-input">Category</label>
+        <input class="e-input" id="gem-snippet-category-input" type="text" placeholder="Optional category">
+      </div>
+      <div class="e-field">
         <label class="e-field__label e-field__label-inline" for="gem-snippet-name-input">Snippet name</label>
         <input class="e-input" id="gem-snippet-name-input" type="text" placeholder="Enter snippet name">
       </div>
@@ -78,13 +112,24 @@ function createSnippetModalHTML(isEditing = false) {
         <label class="e-field__label e-field__label-inline">Code snippet</label>
         <textarea class="e-input gem-scrollable" id="gem-snippet-code-input" placeholder="Enter your ESL code snippet" style="background:var(--token-input-default-background); font-family: var(--token-font-monospace, monospace); width: 100%; min-height: 300px; resize: vertical; padding: 10px 12px;"></textarea>
       </div>
+      <div class="e-field">
+        <label class="e-field__label e-field__label-inline" for="gem-snippet-description-input">Description</label>
+        <textarea class="e-input gem-scrollable" id="gem-snippet-description-input" placeholder="Optional description" style="background:var(--token-input-default-background); width: 100%; min-height: 100px; resize: vertical; padding: 10px 12px;"></textarea>
+      </div>
     </div>
   </div>
   <div class="e-dialog__footer">
-    <div class="e-buttongroup">
-      <button class="e-btn" id="gem-modal-cancel-btn" type="button">Cancel</button>
-      ${isEditing ? '<button class="e-btn e-btn-danger" id="gem-modal-delete-btn" type="button">Delete</button>' : ''}
-      <button class="e-btn e-btn-primary" id="gem-modal-ok-btn" type="button">OK</button>
+    <div class="e-buttongroup" style="display:flex; align-items:center; justify-content:space-between; width:100%;">
+      <div style="display:flex; align-items:center; gap:10px;">
+        <button class="e-btn e-btn-borderless e-btn-onlyicon" id="gem-modal-favorite-btn" type="button" title="Toggle favorite" aria-label="Toggle favorite" style="min-width: unset; padding: 0 8px;">
+          <span id="gem-modal-favorite-icon" style="font-size: 16px; line-height: 1;">☆</span>
+        </button>
+        ${isEditing ? '<button class="e-btn e-btn-danger" id="gem-modal-delete-btn" type="button">Delete</button>' : ''}
+      </div>
+      <div style="display:flex; align-items:center; gap:10px; margin-left:auto;">
+        <button class="e-btn" id="gem-modal-cancel-btn" type="button">Cancel</button>
+        <button class="e-btn e-btn-primary" id="gem-modal-ok-btn" type="button">Save</button>
+      </div>
     </div>
   </div>
 </div>
@@ -126,45 +171,22 @@ function initializeSnippetsTab() {
   function createSnippetsContentHTML(callback) {
     // Load snippets and generate the HTML
     getSnippets((snippets) => {
-      const snippetRows = snippets.map(snippet => {
-        const fullSnippetHTML = generateSnippetHTML(snippet.name, snippet.content);
-        return `
-<tr>
-  <td style="vertical-align:middle">
-    <div>
-      <vce-token name="${snippet.name}" data="${fullSnippetHTML.replace(/"/g, '&quot;')}">
-        <span class="e-label e-label-primary" draggable="true" style="cursor: move;">${snippet.name}</span>
-      </vce-token>
-    </div>
-  </td>
-  <td style="text-align: right; vertical-align:middle; padding: 8px">
-    <button class="e-btn e-btn-sm gem-edit-snippet-btn" type="button" data-snippet-id="${snippet.id}" title="Edit snippet" style="min-width: unset; padding: 0 2px 0 10px;">
-      <e-icon icon="edit" color="inherit">
-        <div aria-hidden="true" class="e-icon-wrapper">
-          <div class="e-icon text-color-inherit" style="margin: 0;">✏️</div>
-        </div>
-      </e-icon>
-    </button>
-  </td>
-</tr>
-        `;
-      }).join('');
+      getSnippetCategoryCollapseState((collapseState) => {
+        const tablesHTML = renderSnippetsTablesHTML(snippets, collapseState);
 
-      const tableHTML = snippets.length > 0 ? `
-      <table data-e-version="2" class="e-table e-table-hover e-table-bordered" style="margin-bottom: 15px;">
-        <tbody>
-          ${snippetRows}
-        </tbody>
-      </table>` : '';
-
-      const html = `
-<div id="gem-available-snippet-list">
+        const html = `
+<gem-snippets class="scrollable">
   <div class="e-section">
     <div class="e-section__header">
         <div class="e-section__title">Snippets</div>
     </div>
     <div class="e-section__content">
-      ${tableHTML}
+      <div class="e-margin-bottom-s">
+        <input id="gem-snippet-search-input" class="e-input e-input-search" placeholder="Search" type="search">
+      </div>
+      <div class="gem-snippets-tables">
+        ${tablesHTML}
+      </div>
       <div style="display: flex; gap: 10px; margin-bottom: 10px;">
         <button class="e-btn gem-import-snippets-btn" type="button" style="flex: 1;">
           Import
@@ -180,10 +202,308 @@ function initializeSnippetsTab() {
       </div>
     </div>
   </div>
+</gem-snippets>
+        `.trim();
+
+        callback(html);
+      });
+    });
+  }
+
+  function normalizeSnippetCategory(category) {
+    const c = (category || '').trim();
+    return c ? c : UNCATEGORIZED_LABEL;
+  }
+
+  function escapeHtmlText(value) {
+    return String(value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function renderSnippetsTablesHTML(snippets, collapseState = {}) {
+    if (!snippets || snippets.length === 0) return '';
+
+    // Group by category
+    const groups = new Map();
+    snippets.forEach((snippet) => {
+      const category = normalizeSnippetCategory(snippet.category);
+      if (!groups.has(category)) groups.set(category, []);
+      groups.get(category).push(snippet);
+    });
+
+    // Sort categories alphabetically (case-insensitive)
+    const categories = Array.from(groups.keys()).sort((a, b) => {
+      // Uncategorized should always appear last
+      if (a === UNCATEGORIZED_LABEL && b !== UNCATEGORIZED_LABEL) return 1;
+      if (b === UNCATEGORIZED_LABEL && a !== UNCATEGORIZED_LABEL) return -1;
+      return a.localeCompare(b, undefined, { sensitivity: 'base' });
+    });
+
+    return categories.map((category) => {
+      const list = groups.get(category) || [];
+
+      // Sort snippets within category:
+      // 1) favorited first
+      // 2) then name alphabetically (case-insensitive)
+      list.sort((a, b) => {
+        const af = !!a.favorite;
+        const bf = !!b.favorite;
+        if (af !== bf) return af ? -1 : 1;
+        return (a.name || '').localeCompare((b.name || ''), undefined, { sensitivity: 'base' });
+      });
+
+      const categoryKey = category.toLowerCase();
+      const isCollapsed = !!collapseState[categoryKey];
+      const toggleIcon = isCollapsed ? '▸' : '▾';
+
+      const rows = list.map((snippet) => {
+        const fullSnippetHTML = generateSnippetHTML(snippet.name, snippet.content);
+        const snippetNameLower = (snippet.name || '').toLowerCase();
+        const favoriteStar = snippet.favorite
+          ? '<span title="Favorite" aria-label="Favorite" style="margin-right: 6px; font-size: 14px; line-height: 1;">★</span>'
+          : '';
+        return `
+<tr data-snippet-name="${escapeHtmlText(snippetNameLower)}">
+  <td style="vertical-align:middle;padding:8px 2px 8px 10px">
+    <div style="display:flex; align-items:center;">
+      ${favoriteStar}
+      <vce-token name="${snippet.name}" data="${fullSnippetHTML.replace(/"/g, '&quot;')}">
+        <span class="e-label e-label-primary" draggable="true" style="cursor: move;">${snippet.name}</span>
+      </vce-token>
+    </div>
+  </td>
+  <td style="text-align: right; vertical-align:middle; padding: 6px 6px 6px 2px;">
+    <button class="e-btn e-btn-sm gem-edit-snippet-btn" type="button" data-snippet-id="${snippet.id}" title="Edit snippet" style="min-width: unset; padding: 0 2px 0 10px;">
+      <e-icon icon="edit" color="inherit">
+        <div aria-hidden="true" class="e-icon-wrapper">
+          <div class="e-icon text-color-inherit" style="margin: 0;">✏️</div>
+        </div>
+      </e-icon>
+    </button>
+  </td>
+</tr>
+        `;
+      }).join('');
+
+      return `
+<div class="gem-snippets-category-block" style="margin-bottom: 15px;">
+  <div class="gem-snippets-category-title" style="display:flex; align-items:center; justify-content:space-between; font-weight: 600; margin: 6px 0;">
+    <span>${escapeHtmlText(category)}</span>
+    <span style="display:flex; align-items:center; gap:6px;">
+      <button class="e-btn e-btn-borderless e-btn-onlyicon gem-snippets-category-rename"
+              type="button"
+              title="Rename category"
+              aria-label="Rename category"
+              data-category-key="${escapeHtmlText(categoryKey)}"
+              data-category-name="${escapeHtmlText(category)}"
+              style="min-width: unset; padding: 0 6px;">
+        <span style="font-size: 14px; line-height: 1;">✎</span>
+      </button>
+      <button class="e-btn e-btn-borderless e-btn-onlyicon gem-snippets-category-toggle"
+              type="button"
+              title="${isCollapsed ? 'Expand' : 'Collapse'}"
+              aria-label="${isCollapsed ? 'Expand category' : 'Collapse category'}"
+              data-category-key="${escapeHtmlText(categoryKey)}"
+              style="min-width: unset; padding: 0 6px;">
+        <span style="font-size: 14px; line-height: 1;">${toggleIcon}</span>
+      </button>
+    </span>
+  </div>
+  <div class="gem-snippets-category-table-wrapper" data-category-key="${escapeHtmlText(categoryKey)}" style="${isCollapsed ? 'display:none;' : ''}">
+    <table data-e-version="2" class="e-table e-table-hover e-table-bordered" style="margin-bottom: 0;">
+      <tbody>
+        ${rows}
+      </tbody>
+    </table>
+  </div>
 </div>
       `.trim();
+    }).join('\n');
+  }
 
-      callback(html);
+  function getSnippetCategoryCollapseState(callback) {
+    chrome.storage.sync.get({ [SNIPPET_CATEGORY_COLLAPSE_STORAGE_KEY]: {} }, (result) => {
+      callback(result[SNIPPET_CATEGORY_COLLAPSE_STORAGE_KEY] || {});
+    });
+  }
+
+  function setSnippetCategoryCollapsed(categoryKey, collapsed, callback) {
+    getSnippetCategoryCollapseState((state) => {
+      const next = { ...state, [categoryKey]: !!collapsed };
+      chrome.storage.sync.set({ [SNIPPET_CATEGORY_COLLAPSE_STORAGE_KEY]: next }, () => {
+        if (callback) callback(next);
+      });
+    });
+  }
+
+  function setupSnippetCategoryCollapseToggles() {
+    const root = document.querySelector('gem-snippets');
+    if (!root || root._gemCategoryToggleBound) return;
+    root._gemCategoryToggleBound = true;
+
+    root.addEventListener('click', (e) => {
+      const renameBtn = e.target.closest && e.target.closest('.gem-snippets-category-rename');
+      if (renameBtn) {
+        const categoryKey = renameBtn.getAttribute('data-category-key');
+        const categoryName = renameBtn.getAttribute('data-category-name') || '';
+        if (!categoryKey) return;
+
+        // Disallow renaming the synthetic Uncategorized bucket (it represents empty categories)
+        if (categoryName === UNCATEGORIZED_LABEL) {
+          alert(`"${UNCATEGORIZED_LABEL}" cannot be renamed.`);
+          return;
+        }
+
+        const nextName = prompt('Rename category:', categoryName);
+        if (nextName === null) return; // cancelled
+        const trimmed = nextName.trim();
+        if (!trimmed) {
+          alert('Category name cannot be empty.');
+          return;
+        }
+
+        renameSnippetCategory(categoryName, trimmed);
+        return;
+      }
+
+      const btn = e.target.closest && e.target.closest('.gem-snippets-category-toggle');
+      if (!btn) return;
+
+      const categoryKey = btn.getAttribute('data-category-key');
+      if (!categoryKey) return;
+
+      const wrapper = root.querySelector(`.gem-snippets-category-table-wrapper[data-category-key="${CSS.escape(categoryKey)}"]`);
+      if (!wrapper) return;
+
+      const willCollapse = wrapper.style.display !== 'none';
+      wrapper.style.display = willCollapse ? 'none' : '';
+
+      // Update icon + title
+      const iconSpan = btn.querySelector('span');
+      if (iconSpan) iconSpan.textContent = willCollapse ? '▸' : '▾';
+      btn.title = willCollapse ? 'Expand' : 'Collapse';
+      btn.setAttribute('aria-label', willCollapse ? 'Expand category' : 'Collapse category');
+
+      // Persist
+      setSnippetCategoryCollapsed(categoryKey, willCollapse);
+    });
+  }
+
+  function renameSnippetCategory(oldCategoryName, newCategoryName) {
+    const oldName = (oldCategoryName || '').trim();
+    const newName = (newCategoryName || '').trim();
+    if (!oldName || !newName) return;
+
+    // Normalize: prevent renaming into the synthetic label (would be confusing)
+    if (newName === UNCATEGORIZED_LABEL) {
+      alert(`"${UNCATEGORIZED_LABEL}" is reserved. Choose a different category name.`);
+      return;
+    }
+
+    getSnippets((snippets) => {
+      const updatedSnippets = snippets.map((s) => {
+        const currentCat = normalizeSnippetCategory(s.category);
+        if (currentCat.toLowerCase() === oldName.toLowerCase()) {
+          return { ...s, category: newName };
+        }
+        return s;
+      });
+
+      // Migrate collapse-state key (old -> new) so user preference persists
+      getSnippetCategoryCollapseState((state) => {
+        const nextState = { ...state };
+        const oldKey = oldName.toLowerCase();
+        const newKey = newName.toLowerCase();
+
+        if (Object.prototype.hasOwnProperty.call(nextState, oldKey)) {
+          nextState[newKey] = nextState[oldKey];
+          delete nextState[oldKey];
+        }
+
+        chrome.storage.sync.set(
+          {
+            [SNIPPETS_STORAGE_KEY]: updatedSnippets,
+            [SNIPPET_CATEGORY_COLLAPSE_STORAGE_KEY]: nextState
+          },
+          () => {
+            refreshSnippetsDisplay();
+          }
+        );
+      });
+    });
+  }
+
+  // ------------------------------------------------------------
+  // Snippet search (filters by snippet name only)
+  // ------------------------------------------------------------
+
+  function setupSnippetsSearch() {
+    const root = document.querySelector('gem-snippets');
+    if (!root) return;
+
+    const input = root.querySelector('#gem-snippet-search-input');
+    if (!input) return;
+
+    if (input._gemBound) return;
+    input._gemBound = true;
+
+    const apply = () => applySnippetSearchFilter(root, input.value || '');
+    input.addEventListener('input', apply);
+
+    // If we have a prior value stored on the root (from refresh), re-apply
+    if (root.dataset.gemSnippetSearch) {
+      input.value = root.dataset.gemSnippetSearch;
+      apply();
+    }
+  }
+
+  function applySnippetSearchFilter(root, rawQuery) {
+    const query = (rawQuery || '').trim().toLowerCase();
+    root.dataset.gemSnippetSearch = rawQuery || '';
+
+    const categoryBlocks = root.querySelectorAll('.gem-snippets-category-block');
+
+    categoryBlocks.forEach((block) => {
+      const wrapper = block.querySelector('.gem-snippets-category-table-wrapper');
+      const rows = block.querySelectorAll('tr[data-snippet-name]');
+
+      // Determine matches (even if collapsed)
+      let anyMatch = false;
+      rows.forEach((row) => {
+        const nameLower = row.getAttribute('data-snippet-name') || '';
+        const matches = !query || nameLower.includes(query);
+        row.style.display = matches ? '' : 'none';
+        if (matches) anyMatch = true;
+      });
+
+      // Hide entire category if nothing matches
+      block.style.display = anyMatch ? '' : 'none';
+
+      if (!wrapper) return;
+
+      // When searching, temporarily expand categories that have matches (don’t persist state)
+      if (query) {
+        if (wrapper.dataset.gemPrevDisplay === undefined) {
+          wrapper.dataset.gemPrevDisplay = wrapper.style.display || '';
+        }
+        if (anyMatch) {
+          wrapper.style.display = '';
+          // update icon for UX (non-persistent)
+          const btn = block.querySelector('.gem-snippets-category-toggle');
+          const iconSpan = btn && btn.querySelector('span');
+          if (iconSpan) iconSpan.textContent = '▾';
+        }
+      } else {
+        // restore collapse state visuals when query cleared
+        if (wrapper.dataset.gemPrevDisplay !== undefined) {
+          wrapper.style.display = wrapper.dataset.gemPrevDisplay;
+          delete wrapper.dataset.gemPrevDisplay;
+        }
+      }
     });
   }
 
@@ -256,8 +576,14 @@ function initializeSnippetsTab() {
 
     getSnippets((snippets) => {
       const exportTextarea = modal.querySelector('#gem-snippets-export-json');
-      // Export only the data users care about (name/content). IDs are regenerated on import.
-      const exportPayload = snippets.map(s => ({ name: s.name, content: s.content }));
+      // Export user-facing fields (IDs are regenerated on import).
+      const exportPayload = snippets.map(s => ({
+        category: s.category || '',
+        name: s.name,
+        content: s.content,
+        description: s.description || '',
+        favorite: !!s.favorite
+      }));
       exportTextarea.value = JSON.stringify(exportPayload, null, 2);
     });
 
@@ -361,8 +687,11 @@ function initializeSnippetsTab() {
         let invalid = 0;
 
         imported.forEach((item) => {
+          const category = (item && typeof item.category === 'string') ? item.category.trim() : '';
           const name = (item && typeof item.name === 'string') ? item.name.trim() : '';
           const content = (item && typeof item.content === 'string') ? item.content.trim() : '';
+          const description = (item && typeof item.description === 'string') ? item.description.trim() : '';
+          const favorite = !!(item && item.favorite);
 
           if (!name || !content) {
             invalid++;
@@ -382,8 +711,11 @@ function initializeSnippetsTab() {
 
             updated.push({
               id: `snippet-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+              favorite,
+              category: category,
               name: newName,
-              content: content
+              content: content,
+              description: description
             });
             existingNamesLower.add(newName.toLowerCase());
             added++;
@@ -392,8 +724,11 @@ function initializeSnippetsTab() {
 
           updated.push({
             id: `snippet-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            favorite,
+            category: category,
             name: name,
-            content: content
+            content: content,
+            description: description
           });
           existingNamesLower.add(name.toLowerCase());
           added++;
@@ -421,8 +756,8 @@ function initializeSnippetsTab() {
   }
 
   function setupSnippetsImportExportButtons() {
-    const importBtn = document.querySelector('#gem-available-snippet-list .gem-import-snippets-btn');
-    const exportBtn = document.querySelector('#gem-available-snippet-list .gem-export-snippets-btn');
+    const importBtn = document.querySelector('gem-snippets .gem-import-snippets-btn');
+    const exportBtn = document.querySelector('gem-snippets .gem-export-snippets-btn');
 
     if (importBtn && !importBtn._gemImportBound) {
       importBtn._gemImportBound = true;
@@ -515,6 +850,12 @@ function initializeSnippetsTab() {
 
       // Set up import/export buttons
       setupSnippetsImportExportButtons();
+
+      // Set up category collapse/expand toggles
+      setupSnippetCategoryCollapseToggles();
+
+      // Set up search box filtering
+      setupSnippetsSearch();
     });
 
     // Update active states - remove active from other tabs, add to snippets tab
@@ -576,11 +917,11 @@ function initializeSnippetsTab() {
             console.log("[Gem] Removed e-verticalnavitem-active class from snippets tab");
           }
 
-          // Remove the gem-available-snippet-list element from the DOM
-          const snippetList = document.querySelector('#gem-available-snippet-list');
+          // Remove the gem-snippets element from the DOM
+          const snippetList = document.querySelector('gem-snippets');
           if (snippetList) {
             snippetList.remove();
-            console.log("[Gem] Removed #gem-available-snippet-list from DOM");
+            console.log("[Gem] Removed gem-snippets from DOM");
           }
         }
       }
@@ -593,7 +934,7 @@ function initializeSnippetsTab() {
   function setupAddSnippetButton() {
     const addButton = document.querySelector('.gem-add-snippet-btn');
     if (addButton) {
-      addButton.addEventListener('click', () => openSnippetModal());
+      addButton.addEventListener('click', () => openSnippetEditor(null));
       console.log("[Gem] Add snippet button handler attached");
     }
   }
@@ -605,11 +946,515 @@ function initializeSnippetsTab() {
       button.addEventListener('click', (event) => {
         const snippetId = event.currentTarget.getAttribute('data-snippet-id');
         if (snippetId) {
-          openSnippetModal(snippetId);
+          openSnippetEditor(snippetId);
         }
       });
     });
     console.log("[Gem] Edit snippet button handlers attached");
+  }
+
+  // ------------------------------------------------------------
+  // Prefer Emarsys' ESL modal (if available) for Add/Edit
+  // ------------------------------------------------------------
+
+  const GEM_EMARSYS_ESL_TRIGGER_SELECTOR = '[aria-label="Insert Emarsys Scripting Language snippet"] button';
+  const GEM_EMARSYS_ESL_NAME_INPUT_ID = 'cbp-esl-token-dialog-input-name';
+  const GEM_EMARSYS_CATEGORY_INPUT_ID = 'gem-esl-category-input';
+  const GEM_EMARSYS_DESCRIPTION_INPUT_ID = 'gem-esl-description-input';
+
+  // Tracks whether a currently-opening Emarsys modal was initiated by our Snippets panel
+  let gemPendingEmarsysEslContext = null;
+  let gemEmarsysEslObserver = null;
+
+  function openSnippetEditor(snippetId = null) {
+    // Try Emarsys modal first; fallback to our modal.
+    if (snippetId) {
+      getSnippets((snippets) => {
+        const snippet = snippets.find(s => s.id === snippetId);
+        if (!snippet) return openSnippetModal(snippetId);
+
+        const opened = tryOpenEmarsysEslModal({
+          mode: 'edit',
+          snippetId,
+          favorite: !!snippet.favorite,
+          category: snippet.category || '',
+          name: snippet.name,
+          content: snippet.content,
+          description: snippet.description || ''
+        });
+        if (!opened) openSnippetModal(snippetId);
+      });
+      return;
+    }
+
+    const opened = tryOpenEmarsysEslModal({
+      mode: 'add',
+      snippetId: null,
+      favorite: false,
+      category: '',
+      name: '',
+      content: '',
+      description: ''
+    });
+    if (!opened) openSnippetModal(null);
+  }
+
+  function tryOpenEmarsysEslModal(context) {
+    const triggerBtn = document.querySelector(GEM_EMARSYS_ESL_TRIGGER_SELECTOR);
+    if (!triggerBtn) return false;
+
+    gemPendingEmarsysEslContext = {
+      ...context,
+      startedAt: Date.now()
+    };
+
+    // Watch for Emarsys dialog nodes to appear *after* our click
+    ensureEmarsysEslObserver();
+
+    // IMPORTANT:
+    // If the user currently has focus on an existing snippet/token in the editor,
+    // Emarsys may pre-populate the dialog from that focused context.
+    //
+    // However, fully "clearing" selection can sometimes cause TinyMCE to hit a null-selection path.
+    // So we keep the selection valid by focusing the iframe and collapsing the caret to the end.
+    try {
+      const iframe = getGemSnippetTargetIframe();
+      const iframeWin = iframe?.contentWindow;
+      const iframeDoc = iframe?.contentDocument || iframeWin?.document;
+
+      if (iframe) iframe.focus();
+      if (iframeWin && iframeWin.focus) iframeWin.focus();
+
+      if (iframeDoc && iframeDoc.body && iframeDoc.getSelection) {
+        const sel = iframeDoc.getSelection();
+        if (sel && typeof sel.removeAllRanges === 'function' && typeof sel.addRange === 'function') {
+          const range = iframeDoc.createRange();
+          range.selectNodeContents(iframeDoc.body);
+          range.collapse(false); // end of body
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
+      }
+    } catch (_) {}
+
+    try {
+      triggerBtn.click();
+      return true;
+    } catch (err) {
+      console.warn('[Gem] Failed to open Emarsys ESL modal, falling back to Gem modal:', err);
+      gemPendingEmarsysEslContext = null;
+      return false;
+    }
+  }
+
+  function ensureEmarsysEslObserver() {
+    if (gemEmarsysEslObserver) return;
+
+    gemEmarsysEslObserver = new MutationObserver(() => {
+      // Only act if we initiated the dialog recently
+      if (!gemPendingEmarsysEslContext) return;
+      if (Date.now() - gemPendingEmarsysEslContext.startedAt > 8000) {
+        gemPendingEmarsysEslContext = null;
+        return;
+      }
+
+      const nameInput = document.getElementById(GEM_EMARSYS_ESL_NAME_INPUT_ID);
+      if (!nameInput) return;
+
+      // Found the Emarsys ESL dialog - patch it once
+      patchEmarsysEslDialog(nameInput, gemPendingEmarsysEslContext);
+      gemPendingEmarsysEslContext = null;
+    });
+
+    gemEmarsysEslObserver.observe(document.body, { childList: true, subtree: true });
+  }
+
+  function patchEmarsysEslDialog(nameInputEl, context) {
+    // Find the dialog container scope so we only touch this specific dialog instance.
+    const dialogRoot =
+      nameInputEl.closest('.e-dialog__container') ||
+      nameInputEl.closest('.e-dialog') ||
+      nameInputEl.closest('[role="dialog"]') ||
+      document.body;
+
+    // Guard: only patch once
+    if (dialogRoot.dataset && dialogRoot.dataset.gemPatchedEslDialog === 'true') return;
+    if (dialogRoot.dataset) dialogRoot.dataset.gemPatchedEslDialog = 'true';
+
+    // Inject name (if editing)
+    if (typeof context.name === 'string') {
+      nameInputEl.value = context.name;
+      nameInputEl.dispatchEvent(new Event('input', { bubbles: true }));
+      nameInputEl.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    // Inject/ensure our extra fields (Category above Name, Description below Code)
+    ensureGemFieldsInEmarsysDialog(dialogRoot, context);
+
+    // Inject code into CodeMirror, but do it AFTER Emarsys finishes its own initialization.
+    // Otherwise the dialog can end up with "focused token code" + our injected code appended.
+    if (typeof context.content === 'string') {
+      setEmarsysDialogCode(dialogRoot, context.content);
+    }
+
+    // Replace the footer buttons ONLY for the dialog we opened via our Snippets panel.
+    // We look for the specific Emarsys footer structure and then swap its buttons.
+    const buttonGroup = Array.from(dialogRoot.querySelectorAll('.e-buttongroup')).find((bg) => {
+      const cancel = bg.querySelector('button.cancel-btn[type="reset"]');
+      const ok = bg.querySelector('button.e-btn-primary[type="submit"]');
+      return !!cancel && !!ok;
+    });
+
+    if (!buttonGroup) return;
+
+    // Remove Emarsys Cancel/OK buttons in this specific dialog instance
+    const emarsysCancel = buttonGroup.querySelector('button.cancel-btn[type="reset"]');
+    const emarsysOk = buttonGroup.querySelector('button.e-btn-primary[type="submit"]');
+    if (emarsysCancel) emarsysCancel.remove();
+    if (emarsysOk) emarsysOk.remove();
+
+    // Add our Cancel/Save (+ Delete when editing) + Favorite toggle
+    const gemCancel = document.createElement('button');
+    gemCancel.className = 'e-btn';
+    gemCancel.type = 'button';
+    gemCancel.textContent = 'Cancel';
+
+    const gemFavBtn = document.createElement('button');
+    gemFavBtn.className = 'e-btn e-btn-borderless e-btn-onlyicon';
+    gemFavBtn.type = 'button';
+    gemFavBtn.title = 'Toggle favorite';
+    gemFavBtn.setAttribute('aria-label', 'Toggle favorite');
+    gemFavBtn.style.minWidth = 'unset';
+    gemFavBtn.style.padding = '0 8px';
+
+    const favIcon = document.createElement('span');
+    favIcon.style.fontSize = '16px';
+    favIcon.style.lineHeight = '1';
+    favIcon.textContent = context?.favorite ? '★' : '☆';
+    gemFavBtn.appendChild(favIcon);
+
+    gemFavBtn.addEventListener('click', () => {
+      const isFav = dialogRoot.dataset.gemFavorite === 'true';
+      const next = !isFav;
+      dialogRoot.dataset.gemFavorite = next ? 'true' : 'false';
+      favIcon.textContent = next ? '★' : '☆';
+    });
+
+    let gemDelete = null;
+    if (context && context.mode === 'edit' && context.snippetId) {
+      gemDelete = document.createElement('button');
+      gemDelete.className = 'e-btn e-btn-danger';
+      gemDelete.type = 'button';
+      gemDelete.textContent = 'Delete';
+      gemDelete.addEventListener('click', () => {
+        handleSnippetDeleteFromEmarsysDialog(context.snippetId, dialogRoot);
+      });
+    }
+
+    const gemOk = document.createElement('button');
+    gemOk.className = 'e-btn e-btn-primary';
+    gemOk.type = 'button';
+    gemOk.textContent = 'Save';
+
+    gemCancel.addEventListener('click', () => {
+      closeEmarsysDialog(dialogRoot);
+    });
+
+    gemOk.addEventListener('click', () => {
+      const currentNameInput = dialogRoot.querySelector(`#${GEM_EMARSYS_ESL_NAME_INPUT_ID}`);
+      const name = currentNameInput ? currentNameInput.value.trim() : '';
+      const category = (dialogRoot.querySelector(`#${GEM_EMARSYS_CATEGORY_INPUT_ID}`)?.value || '').trim();
+      const description = (dialogRoot.querySelector(`#${GEM_EMARSYS_DESCRIPTION_INPUT_ID}`)?.value || '').trim();
+      const favorite = dialogRoot.dataset.gemFavorite === 'true';
+
+      // Read code from CodeMirror robustly. The hidden textarea inside CodeMirror
+      // does NOT reliably contain the editor value, so we retry and fall back.
+      gemOk.disabled = true;
+      readEmarsysDialogCode(dialogRoot)
+        .then((code) => {
+          gemOk.disabled = false;
+          handleSnippetSaveFromValues({ favorite, category, name, code: code.trim(), description }, context.snippetId, dialogRoot);
+        })
+        .catch(() => {
+          gemOk.disabled = false;
+          handleSnippetSaveFromValues({ favorite, category, name, code: '', description }, context.snippetId, dialogRoot);
+        });
+    });
+
+    // Initialize favorite state from context
+    dialogRoot.dataset.gemFavorite = context?.favorite ? 'true' : 'false';
+
+    // Layout: Favorite/Delete on the left, Cancel/Save on the right (to avoid accidental clicks)
+    buttonGroup.style.display = 'flex';
+    buttonGroup.style.alignItems = 'center';
+    buttonGroup.style.width = '100%';
+    buttonGroup.style.justifyContent = 'space-between';
+
+    const leftActions = document.createElement('div');
+    leftActions.style.display = 'flex';
+    leftActions.style.gap = '10px';
+
+    const rightActions = document.createElement('div');
+    rightActions.style.display = 'flex';
+    rightActions.style.gap = '10px';
+    rightActions.style.marginLeft = 'auto';
+
+    // Clear any remaining nodes (we already removed Emarsys buttons, but this is defensive)
+    buttonGroup.innerHTML = '';
+
+    leftActions.appendChild(gemFavBtn);
+    if (gemDelete) leftActions.appendChild(gemDelete);
+    rightActions.appendChild(gemCancel);
+    rightActions.appendChild(gemOk);
+
+    buttonGroup.appendChild(leftActions);
+    buttonGroup.appendChild(rightActions);
+  }
+
+  function ensureGemFieldsInEmarsysDialog(dialogRoot, context) {
+    // Category field (above the name input)
+    const nameInput = dialogRoot.querySelector(`#${GEM_EMARSYS_ESL_NAME_INPUT_ID}`);
+    if (nameInput && !dialogRoot.querySelector(`#${GEM_EMARSYS_CATEGORY_INPUT_ID}`)) {
+      const categoryField = document.createElement('div');
+      categoryField.className = 'e-field';
+      categoryField.innerHTML = `
+        <label class="e-field__label e-field__label-inline" for="${GEM_EMARSYS_CATEGORY_INPUT_ID}">Category</label>
+        <input class="e-input" id="${GEM_EMARSYS_CATEGORY_INPUT_ID}" type="text" placeholder="Optional category">
+      `.trim();
+
+      const nameField = nameInput.closest('.e-field') || nameInput.parentElement;
+      if (nameField && nameField.parentElement) {
+        nameField.parentElement.insertBefore(categoryField, nameField);
+      }
+    }
+
+    // Description field (below the code editor)
+    if (!dialogRoot.querySelector(`#${GEM_EMARSYS_DESCRIPTION_INPUT_ID}`)) {
+      const descriptionField = document.createElement('div');
+      descriptionField.className = 'e-field';
+      descriptionField.innerHTML = `
+        <label class="e-field__label e-field__label-inline" for="${GEM_EMARSYS_DESCRIPTION_INPUT_ID}">Description</label>
+        <textarea class="e-input gem-scrollable" id="${GEM_EMARSYS_DESCRIPTION_INPUT_ID}" placeholder="Optional description" style="background:var(--token-input-default-background); width: 100%; min-height: 100px; resize: vertical; padding: 10px 12px;"></textarea>
+      `.trim();
+
+      // Place right after the html editor / codemirror container if present
+      const editorContainer =
+        dialogRoot.querySelector('vce-html-editor') ||
+        dialogRoot.querySelector('vce-codemirror') ||
+        dialogRoot.querySelector('.CodeMirror')?.closest('.e-field') ||
+        dialogRoot.querySelector('.CodeMirror') ||
+        null;
+
+      if (editorContainer && editorContainer.parentElement) {
+        editorContainer.insertAdjacentElement('afterend', descriptionField);
+      } else {
+        // Fallback: append near end of dialog content
+        const content = dialogRoot.querySelector('.e-dialog__content') || dialogRoot;
+        content.appendChild(descriptionField);
+      }
+    }
+
+    // Populate values (for edit mode)
+    const categoryInput = dialogRoot.querySelector(`#${GEM_EMARSYS_CATEGORY_INPUT_ID}`);
+    if (categoryInput && typeof context.category === 'string') {
+      categoryInput.value = context.category;
+      categoryInput.dispatchEvent(new Event('input', { bubbles: true }));
+      categoryInput.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    const descInput = dialogRoot.querySelector(`#${GEM_EMARSYS_DESCRIPTION_INPUT_ID}`);
+    if (descInput && typeof context.description === 'string') {
+      descInput.value = context.description;
+      descInput.dispatchEvent(new Event('input', { bubbles: true }));
+      descInput.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  }
+
+  function setEmarsysDialogCode(dialogRoot, desiredCode) {
+    const maxAttempts = 12; // ~1.2s total
+    let attempt = 0;
+
+    const apply = () => {
+      attempt++;
+
+      const cmEl = dialogRoot.querySelector('.CodeMirror');
+      const cmInstance = cmEl && cmEl.CodeMirror;
+      if (cmInstance && typeof cmInstance.setValue === 'function' && typeof cmInstance.getValue === 'function') {
+        // Hard replace to guarantee no concatenation.
+        cmInstance.setValue('');
+        cmInstance.setValue(desiredCode);
+
+        // If Emarsys runs another async setValue shortly after, we may need one more pass.
+        if (cmInstance.getValue() === desiredCode) {
+          return;
+        }
+      } else {
+        // Fallback: underlying textarea (may exist before CodeMirror fully binds)
+        const cmTextarea = dialogRoot.querySelector('.CodeMirror textarea');
+        if (cmTextarea) {
+          cmTextarea.value = '';
+          cmTextarea.value = desiredCode;
+          cmTextarea.dispatchEvent(new Event('input', { bubbles: true }));
+          cmTextarea.dispatchEvent(new Event('change', { bubbles: true }));
+          return;
+        }
+      }
+
+      if (attempt < maxAttempts) {
+        setTimeout(apply, 100);
+      }
+    };
+
+    // Start shortly after patching so Emarsys has time to populate its defaults/context.
+    setTimeout(apply, 50);
+  }
+
+  function tryExtractEmarsysDialogCodeOnce(dialogRoot) {
+    // 1) Direct CodeMirror instance on wrapper
+    const cmEl = dialogRoot.querySelector('.CodeMirror');
+    const cmInstance = cmEl && cmEl.CodeMirror;
+    if (cmInstance && typeof cmInstance.getValue === 'function') {
+      return cmInstance.getValue();
+    }
+
+    // 2) vce-codemirror element sometimes stores the instance
+    const vceCm = dialogRoot.querySelector('vce-codemirror');
+    if (vceCm) {
+      const candidates = [
+        vceCm.CodeMirror,
+        vceCm.codemirror,
+        vceCm.codeMirror,
+        vceCm.editor,
+        vceCm._editor,
+        vceCm._codemirror
+      ];
+      for (const c of candidates) {
+        if (c && typeof c.getValue === 'function') {
+          return c.getValue();
+        }
+      }
+    }
+
+    // 3) DOM fallback: read rendered lines
+    if (cmEl) {
+      const pres = cmEl.querySelectorAll('pre.CodeMirror-line');
+      if (pres && pres.length) {
+        const lines = Array.from(pres).map((pre) => (pre.textContent || '').replace(/\u200B/g, ''));
+        const joined = lines.join('\n');
+        return joined;
+      }
+      const codeContainer = cmEl.querySelector('.CodeMirror-code');
+      if (codeContainer) {
+        return (codeContainer.textContent || '').replace(/\u200B/g, '');
+      }
+    }
+
+    return '';
+  }
+
+  function readEmarsysDialogCode(dialogRoot) {
+    // Emarsys can still be mid-initialization; retry briefly so we don't treat
+    // a non-empty editor as empty and throw "Please enter snippet code."
+    const maxAttempts = 10;
+    let attempt = 0;
+
+    return new Promise((resolve) => {
+      const tick = () => {
+        attempt++;
+        const code = tryExtractEmarsysDialogCodeOnce(dialogRoot);
+        if (code && code.trim().length > 0) {
+          resolve(code);
+          return;
+        }
+        if (attempt >= maxAttempts) {
+          resolve(code || '');
+          return;
+        }
+        setTimeout(tick, 75);
+      };
+      tick();
+    });
+  }
+
+  function closeEmarsysDialog(dialogRoot) {
+    // Try common close button patterns
+    const closeBtn =
+      dialogRoot.querySelector('button.e-dialog__close') ||
+      dialogRoot.querySelector('[aria-label="Close Dialog"] button') ||
+      dialogRoot.querySelector('button[aria-label="Close"]');
+
+    if (closeBtn) {
+      closeBtn.click();
+      return;
+    }
+
+    // Fallback: ESC key
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  }
+
+  function handleSnippetSaveFromValues(values, editingSnippetId = null, dialogRoot = null) {
+    const category = (values?.category || '').trim();
+    const name = (values?.name || '').trim();
+    const code = (values?.code || '').trim();
+    const description = (values?.description || '').trim();
+    const favorite = !!values?.favorite;
+
+    if (!name) {
+      alert('Please enter a snippet name.');
+      return;
+    }
+    if (!code) {
+      alert('Please enter snippet code.');
+      return;
+    }
+
+    getSnippets((snippets) => {
+      const existingSnippet = snippets.find(snippet => snippet.name.toLowerCase() === name.toLowerCase());
+
+      // When editing, allow keeping the same name as the current snippet
+      if (existingSnippet && (!editingSnippetId || existingSnippet.id !== editingSnippetId)) {
+        alert(`A snippet with the name "${name}" already exists. Please choose a different name.`);
+        return;
+      }
+
+      if (editingSnippetId) {
+        const updatedSnippets = snippets.map(snippet =>
+          snippet.id === editingSnippetId
+            ? { ...snippet, favorite, category, name: name, content: code, description }
+            : snippet
+        );
+        saveSnippets(updatedSnippets, () => {
+          refreshSnippetsDisplay();
+          if (dialogRoot) closeEmarsysDialog(dialogRoot);
+        });
+      } else {
+        const newSnippet = {
+          id: `snippet-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          favorite,
+          category,
+          name,
+          content: code,
+          description
+        };
+        saveSnippets([...snippets, newSnippet], () => {
+          refreshSnippetsDisplay();
+          if (dialogRoot) closeEmarsysDialog(dialogRoot);
+        });
+      }
+    });
+  }
+
+  function handleSnippetDeleteFromEmarsysDialog(snippetId, dialogRoot) {
+    const confirmed = confirm('Are you sure you want to delete this snippet? This action cannot be undone.');
+    if (!confirmed) return;
+
+    getSnippets((snippets) => {
+      const updatedSnippets = snippets.filter(snippet => snippet.id !== snippetId);
+      saveSnippets(updatedSnippets, () => {
+        refreshSnippetsDisplay();
+        if (dialogRoot) closeEmarsysDialog(dialogRoot);
+      });
+    });
   }
 
   // Function to open the snippet modal
@@ -631,9 +1476,13 @@ function initializeSnippetsTab() {
         const snippet = snippets.find(s => s.id === snippetId);
         if (snippet) {
           setTimeout(() => {
+            const categoryInput = document.getElementById('gem-snippet-category-input');
             const nameInput = document.getElementById('gem-snippet-name-input');
             const codeInput = document.getElementById('gem-snippet-code-input');
+            const descInput = document.getElementById('gem-snippet-description-input');
+            const favBtn = document.getElementById('gem-modal-favorite-btn');
 
+            if (categoryInput) categoryInput.value = snippet.category || '';
             if (nameInput) {
               nameInput.value = snippet.name;
               nameInput.focus();
@@ -642,6 +1491,8 @@ function initializeSnippetsTab() {
             if (codeInput) {
               codeInput.value = snippet.content;
             }
+            if (descInput) descInput.value = snippet.description || '';
+            if (favBtn) setGemModalFavoriteState(!!snippet.favorite);
           }, 100);
         }
       });
@@ -653,6 +1504,7 @@ function initializeSnippetsTab() {
           nameInput.focus();
           nameInput.select();
         }
+        setGemModalFavoriteState(false);
       }, 100);
     }
 
@@ -696,6 +1548,14 @@ function initializeSnippetsTab() {
       deleteBtn.addEventListener('click', () => handleSnippetDelete(snippetId));
     }
 
+    // Favorite button
+    const favBtn = document.getElementById('gem-modal-favorite-btn');
+    if (favBtn) {
+      favBtn.addEventListener('click', () => {
+        setGemModalFavoriteState(!getGemModalFavoriteState());
+      });
+    }
+
     // Backdrop click to close
     const backdrop = document.getElementById('gem-modal-backdrop');
     if (backdrop) {
@@ -720,18 +1580,35 @@ function initializeSnippetsTab() {
     document.addEventListener('keydown', handleEnter);
   }
 
+  function getGemModalFavoriteState() {
+    const modal = document.getElementById('gem-snippet-modal');
+    return modal?.dataset?.gemFavorite === 'true';
+  }
+
+  function setGemModalFavoriteState(isFav) {
+    const modal = document.getElementById('gem-snippet-modal');
+    const icon = document.getElementById('gem-modal-favorite-icon');
+    if (modal && modal.dataset) modal.dataset.gemFavorite = isFav ? 'true' : 'false';
+    if (icon) icon.textContent = isFav ? '★' : '☆';
+  }
+
   // Function to handle saving a snippet (create or update)
   function handleSnippetSave(editingSnippetId = null) {
+    const categoryInput = document.getElementById('gem-snippet-category-input');
     const nameInput = document.getElementById('gem-snippet-name-input');
     const codeInput = document.getElementById('gem-snippet-code-input');
+    const descInput = document.getElementById('gem-snippet-description-input');
 
     if (!nameInput || !codeInput) {
       console.log("[Gem] Modal inputs not found");
       return;
     }
 
+    const category = categoryInput ? categoryInput.value.trim() : '';
     const name = nameInput.value.trim();
     const code = codeInput.value.trim();
+    const description = descInput ? descInput.value.trim() : '';
+    const favorite = getGemModalFavoriteState();
 
     if (!name) {
       alert('Please enter a snippet name.');
@@ -761,7 +1638,7 @@ function initializeSnippetsTab() {
         // Update existing snippet
         const updatedSnippets = snippets.map(snippet =>
           snippet.id === editingSnippetId
-            ? { ...snippet, name: name, content: code }
+            ? { ...snippet, favorite, category: category, name: name, content: code, description: description }
             : snippet
         );
 
@@ -779,8 +1656,11 @@ function initializeSnippetsTab() {
         // Create new snippet
         const newSnippet = {
           id: `snippet-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          favorite,
+          category: category,
           name: name,
-          content: code
+          content: code,
+          description: description
         };
 
         // Add to existing snippets
@@ -832,67 +1712,37 @@ function initializeSnippetsTab() {
     if (!navContent) return;
 
     // Find the snippets content area
-    const snippetsContent = navContent.querySelector('#gem-available-snippet-list .e-section__content');
+    const snippetsContent = navContent.querySelector('gem-snippets .e-section__content');
     if (!snippetsContent) return;
 
-    // Re-render the snippets table
+    // Re-render the snippets tables (grouped by category)
     getSnippets((snippets) => {
-      const snippetRows = snippets.map(snippet => `
-<tr>
-  <td style="vertical-align:middle">
-    <div>
-      <vce-token name="${snippet.name}" data="${generateSnippetHTML(snippet.name, snippet.content).replace(/"/g, '&quot;')}">
-        <span class="e-label e-label-primary" draggable="true" style="cursor: move;">${snippet.name}</span>
-      </vce-token>
-    </div>
-  </td>
-  <td style="text-align: right; vertical-align:middle;padding: 8px;">
-    <button class="e-btn e-btn-sm gem-edit-snippet-btn" type="button" data-snippet-id="${snippet.id}" title="Edit snippet" style="min-width: unset; padding: 0 2px 0 10px;">
-      <e-icon icon="edit" color="inherit">
-        <div aria-hidden="true" class="e-icon-wrapper">
-          <div class="e-icon text-color-inherit" style="margin: 0;">✏️</div>
-        </div>
-      </e-icon>
-    </button>
-  </td>
-</tr>
-      `).join('');
-
-      const existingTable = snippetsContent.querySelector('table');
-
-      if (snippets.length > 0) {
-        // There are snippets - create or update the table
-        if (existingTable) {
-          // Update existing table
-          existingTable.innerHTML = `
-<tbody>
-  ${snippetRows}
-</tbody>
-          `;
-        } else {
-          // Create new table
-          const tableHTML = `
-<table data-e-version="2" class="e-table e-table-hover e-table-bordered" style="margin-bottom: 15px;">
-  <tbody>
-    ${snippetRows}
-  </tbody>
-</table>`;
-          // Insert table before the "Add a Snippet" button
-          const addButton = snippetsContent.querySelector('.gem-add-snippet-btn');
-          if (addButton) {
-            addButton.insertAdjacentHTML('beforebegin', tableHTML);
-          }
+      getSnippetCategoryCollapseState((collapseState) => {
+        const root = navContent.querySelector('gem-snippets');
+        const currentSearch = root?.querySelector('#gem-snippet-search-input')?.value || '';
+        let tablesContainer = snippetsContent.querySelector('.gem-snippets-tables');
+        if (!tablesContainer) {
+          tablesContainer = document.createElement('div');
+          tablesContainer.className = 'gem-snippets-tables';
+          // Insert at the top of the content area
+          snippetsContent.insertAdjacentElement('afterbegin', tablesContainer);
         }
+
+        tablesContainer.innerHTML = renderSnippetsTablesHTML(snippets, collapseState);
 
         // Re-setup drag and drop and edit buttons for the new snippets
         setupSnippetDragAndDrop();
         setupEditSnippetButtons();
-      } else {
-        // No snippets - remove the table if it exists
-        if (existingTable) {
-          existingTable.remove();
+        setupSnippetCategoryCollapseToggles();
+        setupSnippetsSearch();
+
+        // Re-apply current search after re-render
+        if (root && currentSearch) {
+          const input = root.querySelector('#gem-snippet-search-input');
+          if (input) input.value = currentSearch;
+          applySnippetSearchFilter(root, currentSearch);
         }
-      }
+      });
     });
   }
 
@@ -901,7 +1751,7 @@ function initializeSnippetsTab() {
     console.log("[Gem] Setting up snippet drag and drop");
 
     // Find all draggable snippet elements
-    const snippetElements = document.querySelectorAll('#gem-available-snippet-list [draggable="true"]');
+    const snippetElements = document.querySelectorAll('gem-snippets [draggable="true"]');
 
     snippetElements.forEach(snippetElement => {
       const vceToken = snippetElement.closest('vce-token');
@@ -1263,13 +2113,13 @@ window.debugSnippets = function() {
   console.log("[Gem] DEBUG: Total drop events:", dropEventCounter);
   console.log("[Gem] DEBUG: Total insertions:", insertionCounter);
   console.log("[Gem] DEBUG: Snippets tab:", document.querySelector('#gem-snippets-tab'));
-  console.log("[Gem] DEBUG: Snippets content:", document.querySelector('#gem-available-snippet-list'));
+  console.log("[Gem] DEBUG: Snippets content:", document.querySelector('gem-snippets'));
   console.log("[Gem] DEBUG: Add snippet button:", document.querySelector('.gem-add-snippet-btn'));
   console.log("[Gem] DEBUG: Modal:", document.querySelector('#gem-snippet-modal'));
   console.log("[Gem] DEBUG: Iframe:", document.querySelector('.e-contentblocks-preview__iframe-desktop'));
 
   // Count current snippets in DOM
-  const currentSnippets = document.querySelectorAll('#gem-available-snippet-list span[e-token="cust_esl"]');
+  const currentSnippets = document.querySelectorAll('gem-snippets span[e-token="cust_esl"]');
   console.log("[Gem] DEBUG: Current snippets in DOM:", currentSnippets.length);
 
   // Check stored snippets

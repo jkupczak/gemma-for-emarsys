@@ -1,3 +1,43 @@
 
 /* Media Database */
 .e-mediadb-breadcrumb { flex-direction: column !important; }
+
+.e-mediadb-breadcrumb__root {
+    display: none !important;
+}
+
+.e-table tr.parent-folder-table-row {
+    background-color: var(--token-neutral-200) !important;    
+}
+.e-table tr.folder-table-row:nth-child(odd),
+.e-table tr.file-table-row:nth-child(odd) {
+    background-color: var(--token-neutral-100) !important;
+}
+
+.e-table tr.folder-table-row:hover,
+.e-table tr.file-table-row:hover {
+    background-color: var(--token-blue-200) !important;
+}
+
+.e-mediadb-breadcrumb__item_container .e-mediadb-breadcrumb__item:first-child:before {
+    display: none !important;
+}
+
+.e-table__col.e-table__col-actions {
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    padding-left: 4px !important;
+}
+.e-table__col.e-table__col-actions a {
+    display: inline-block;
+    padding: 11px 4px 9px;
+}
+
+.e-table__col.e-table__col-actions a .e-icon.e-icon-table {
+    transform: scale(1.5);
+    transition: transform 0.2s ease-in-out;
+}
+.e-table__col.e-table__col-actions a:hover .e-icon.e-icon-table {
+    transform: scale(2);
+    transition: transform 0.2s ease-in-out;
+}

@@ -123,7 +123,7 @@ body.gem-expanded e-shellbar {
 }
 
 body.gem-expanded e-navigation {
-    z-index: 999999;
+    z-index: 610;
     display: block !important;
     left: -60px;
     margin: 0 !important;
@@ -321,6 +321,8 @@ body.gem-expanded .e-contentblocks-preview__iframe {
     border-radius: 0 !important;
 }
 
+
+
 vce-variables-editor .e-field { display: flex }
 vce-variables-editor .e-field > div:first-child { 
     min-width: 40%;
@@ -383,12 +385,25 @@ cb-personalizable-input-with-context > vce-code-editor {
     margin:0 !important;
 }
 
+.gem-enhanced-image-properties-dialog > .e-dialog__container{
+    border-radius: 0 8px 8px 0 !important;
+}
 body.gem-expanded cb-header a.e-layout__back {
     display: none !important;
 }
 
-main section.e-contentblocks-navigation_section:has(#gem-available-snippet-list) {
-    flex: 0 0 400px !important;
+main section.e-contentblocks-navigation_section:has(gem-snippets) {
+    flex: 0 0 500px !important;
+}
+
+/* Snippets: show category rename icon on hover */
+gem-snippets .gem-snippets-category-title .gem-snippets-category-rename {
+    opacity: 0;
+    pointer-events: none;
+}
+gem-snippets .gem-snippets-category-title:hover .gem-snippets-category-rename {
+    opacity: 1;
+    pointer-events: auto;
 }
 
 .gem-enhanced-blocks-panel--2:has(cb-available-block-list) {

@@ -576,7 +576,7 @@ function setupClonedIframe(originalIframe) {
     cb-campaign-preview { width: 100% }
     .e-contentblocks-preview { position:static; height:100%; z-index: unset; top: unset; }
     cb-device-preview > .e-section > .e-section__content { overflow: hidden }
-    #gem-frame-handle:before { content: ""; display: block; background: var(--token-box-default-border); position:absolute; top: 0; bottom: 0; left: 0; right: 0; width: 33%; max-width:6px; height: 66%; border-radius: 999px; margin: auto; }
+    #gem-frame-handle:before { content: ""; display: block; background: var(--token-box-default-border); position:absolute; top: 0; bottom: 0; left: 0; right: 0; width: 20%; max-width:6px; height: 66%; border-radius: 999px; margin: auto; }
     #gem-frame-handle:hover:before { background: var(--token-ai-500); }
     #gem-frame-handle.gem-frame-handle--active:before { background: var(--token-ai-800); }
     .gem-frame-size-details-item { width: auto; font-size:16px; line-height:20px }

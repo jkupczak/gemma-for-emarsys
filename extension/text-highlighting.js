@@ -21,7 +21,7 @@ const TARGET_IFRAME_SELECTOR =
 // Default highlight terms for first-time users
 const DEFAULT_HIGHLIGHT_TERMS = {
   "(price)": { color: "rgba(245, 46, 132, 0.40)", isRegex: false },
-  "\{\{.+?\}\}": { color: "rgba(255, 230, 0, 0.40)", isRegex: true },
+  "\{\{[^”“‘’}]+\}\}": { color: "rgba(255, 230, 0, 0.40)", isRegex: true },
   "((\$|£)( |\xA0)?\d+|\d+( |\xA0)?€)": { color: "rgba(255, 230, 0, 0.40)", isRegex: true },
   "(name)": { color: "rgba(0, 180, 255, 0.40)", isRegex: false },
   "(LearnLangAll)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
@@ -239,11 +239,14 @@ function highlightMatchesInIframe(iframe) {
             box.className = "gem-text-highlight";
             Object.assign(box.style, {
               position: "absolute",
-              left: rect.left + scrollX + "px",
-              top: rect.top + scrollY + "px",
+              left: (rect.left + scrollX - 1) + "px",
+              top: (rect.top + scrollY - 1) + "px",
               width: rect.width + "px",
               height: rect.height + "px",
               background: color,
+              boxShadow: "0 0 0 1px rgb(0 0 0 / 0.1), inset 0 0 0 1px rgb(0 0 0 / 0.3)",
+              borderRadius: "4px",
+              padding: "2px 1px",
               pointerEvents: "none"
             });
 
@@ -283,11 +286,14 @@ function highlightMatchesInIframe(iframe) {
             box.className = "gem-text-highlight";
             Object.assign(box.style, {
               position: "absolute",
-              left: rect.left + scrollX + "px",
-              top: rect.top + scrollY + "px",
+              left: (rect.left + scrollX - 1) + "px",
+              top: (rect.top + scrollY - 1) + "px",
               width: rect.width + "px",
               height: rect.height + "px",
               background: color,
+              boxShadow: "0 0 0 1px rgb(0 0 0 / 0.1), inset 0 0 0 1px rgb(0 0 0 / 0.3)",
+              borderRadius: "4px",
+              padding: "2px 1px",
               pointerEvents: "none"
             });
 

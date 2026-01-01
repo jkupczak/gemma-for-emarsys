@@ -1,14 +1,12 @@
-Add image thumbnails to the editor, and also to the media selection popup
+# PENDING
 
-Add zebra stiping to the media selection popup
+Can I create a way to quickly replace a string of text in a block with a snippet that has the exact same name?
 
-Sync for the mobile preview is not updating when a mobile image is added
+When the Block Style Settings panel is empty, it should close on its own.
+
+The block reset button in the toolbar should have a confirmation prompt.
 
 add text highlighting to the subject line, preview text, and conditional text editors
-
-in the media popup, move the + to the left side of the table row, increase click area
-
-Add dark mode toggle
 
 Add a red notification dot on the links panel for bad or missing links, or untracked links
 
@@ -18,16 +16,35 @@ use that size whenever they return to that panel
 Add a gear icon to the content block toolbar to open the settings panel and scroll to a new section
 where they can toggle icons on or off
 
+Use the Emarsys icon font
+
+
+# NO 
+
 ✗ Can I open the block /variable settings panel just because the user clicked on the block? - REMOVED: block-level-variables-opener.js removed
 
+
+# COMPLETE
+
 ✓ Add Snippets tab to vertical navigation - DONE: Created snippets-tab.js
-
-Create a way to drag and drop custom snippets (ESL or otherwise). ESL snippets created without the <> button work after clicking on them and then clicking the <> button. But just inserting them and saving doesnn't
-
-Auto-focus to the input field when opening the link modal
-
+✓ Auto-focus to the input field when opening the link modal
 ✓ Whnen the Block Style Settings panel is open, ESC should close it. - DONE: Created overlay-panel-controls.js
+✓ Make the Gemma purple theme global for all pages. On by default. Can be switched back to classic blue in settings.
+✓ Add image thumbnails to the editor, and also to the media selection popup
+✓ Add zebra stiping to the media selection popup
+✓ Sync for the mobile preview is not updating when a mobile image is added
+✓ in the media popup, move the + to the left side of the table row, increase click area
 
-When the Block Style Settings panel is empty, it should close on its own.
+## Media Directory
+✓ Add column toggles for the media picker.
+x Add a recently visited dropdown for folders. Values determined by watching for the user to pick an image with the + icon and then logged the folder location.
+x Add a pinned folder dropdown to the media picker.
 
-Add favorites to the media picker
+## Snippets
+✓ Snippet panel needs a scrollbar
+✓ Snippets need a Category field
+✓ Snippets need a description field
+✓ Snippets should be visually listed by category as different tables.
+✓ Category tables should be collapsible. Collapsed tables should remain collapsed on subsequent page loads.
+✓ Categories and snippets should be displayed alphabetically.
+✓ Categories and snippets should be pinnable so that they stay at the top.

@@ -1,5 +1,54 @@
 console.log("[gem] settings-panel.js LOADED in frame:", window.location.href);
 
+// ------------------------------------------------------------
+// Theme mode (Gemma vs Original) - applied as early as possible
+// ------------------------------------------------------------
+const GEM_THEME_MODE_STORAGE_KEY = "gemThemeMode";
+const GEM_THEME_MODE_LOCAL_KEY = "gemThemeMode";
+
+function normalizeGemThemeMode(value) {
+  return value === "original" ? "original" : "gemma";
+}
+
+function applyGemThemeMode(mode, { persistLocal = false } = {}) {
+  const normalized = normalizeGemThemeMode(mode);
+  const html = document.documentElement;
+  if (!html) return;
+
+  if (normalized === "original") {
+    html.classList.add("gem--retheme-inactive");
+  } else {
+    html.classList.remove("gem--retheme-inactive");
+  }
+
+  if (persistLocal) {
+    try {
+      localStorage.setItem(GEM_THEME_MODE_LOCAL_KEY, normalized);
+    } catch (e) {
+      // ignore
+    }
+  }
+}
+
+// Apply from synchronous local cache first (minimize flash)
+try {
+  const cachedMode = localStorage.getItem(GEM_THEME_MODE_LOCAL_KEY);
+  applyGemThemeMode(cachedMode, { persistLocal: false });
+} catch (e) {
+  // ignore
+}
+
+// Then reconcile with chrome.storage.sync (source of truth)
+try {
+  if (chrome?.storage?.sync) {
+    chrome.storage.sync.get({ [GEM_THEME_MODE_STORAGE_KEY]: "gemma" }, (settings) => {
+      applyGemThemeMode(settings[GEM_THEME_MODE_STORAGE_KEY], { persistLocal: true });
+    });
+  }
+} catch (e) {
+  // ignore (prevents rare "extension context invalidated" crashes)
+}
+
 
 // ------------------------------------------------------------
 // settings-panel.js
@@ -410,6 +459,22 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         </div>
 
         <div class="gem-setting-section">
+          <h3>Theme</h3>
+          <div class="gem-setting">
+            <div style="display: flex; gap: 12px; align-items: center;">
+              <label for="opt-theme-mode" style="flex: 1;">Theme</label>
+              <select id="opt-theme-mode" style="width: 220px;">
+                <option value="gemma" selected>Gemma Theme</option>
+                <option value="original">Original Emarsys Theme</option>
+              </select>
+            </div>
+            <div style="font-size: 14px; color: var(--token-font-default); margin-top: 8px;">
+              Switch between the Gemma color scheme and the original Emarsys UI.
+            </div>
+          </div>
+        </div>
+
+        <div class="gem-setting-section">
           <h3>Blocks Panel</h3>
 
           <div class="gem-setting">
@@ -549,6 +614,34 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
           </div>
         </div>
 
+        <div class="gem-setting-section">
+          <h3>Media Picker Settings</h3>
+          <div class="gem-setting">
+            <label>
+              <input type="checkbox" id="opt-show-file-icon" checked />
+              Show filetype icons in media picker
+            </label>
+          </div>
+          <div class="gem-setting">
+            <label>
+              <input type="checkbox" id="opt-show-created-column" checked />
+              Show 'Created' column in media picker
+            </label>
+          </div>
+          <div class="gem-setting">
+            <label>
+              <input type="checkbox" id="opt-show-size-column" checked />
+              Show 'Size' column in media picker
+            </label>
+          </div>
+          <div class="gem-setting">
+            <label>
+              <input type="checkbox" id="opt-show-user-column" checked />
+              Show 'User' column in media picker
+            </label>
+          </div>
+        </div>
+
       </div>
     `;
 
@@ -591,6 +684,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
 
       // Now get the other settings
       chrome.storage.sync.get({
+        [GEM_THEME_MODE_STORAGE_KEY]: "gemma",
         enableHighlighting: true,
         enableMobilePreview: true,
         showFinishEditingBtn: true,
@@ -604,8 +698,17 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         resetBlock: "always-show",
         mobilePreviewWidth: 414,
         mobilePreviewScale: 0.5,
-        mobileViewVisible: true
+        mobileViewVisible: true,
+        showFileIcon: true,
+        showCreatedColumn: true,
+        showSizeColumn: true,
+        showUserColumn: true
       }, (settings) => {
+        const themeSelect = document.getElementById("opt-theme-mode");
+        if (themeSelect) {
+          themeSelect.value = normalizeGemThemeMode(settings[GEM_THEME_MODE_STORAGE_KEY]);
+        }
+
         document.getElementById("opt-blocks-panel-layout").value =
           settings.blocksPanelLayout;
 
@@ -640,6 +743,20 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         document.getElementById("opt-show-finish-editing-btn").checked =
           settings.showFinishEditingBtn;
 
+        // Load MediaDB settings
+        chrome.storage.sync.get({ gemMediaDBColumnVisibility: {
+          showFileIcon: true,
+          showCreated: true,
+          showSize: true,
+          showUser: true
+        } }, (mediaDBResult) => {
+          const mediaDBSettings = mediaDBResult.gemMediaDBColumnVisibility;
+          document.getElementById("opt-show-file-icon").checked = mediaDBSettings.showFileIcon;
+          document.getElementById("opt-show-created-column").checked = mediaDBSettings.showCreated;
+          document.getElementById("opt-show-size-column").checked = mediaDBSettings.showSize;
+          document.getElementById("opt-show-user-column").checked = mediaDBSettings.showUser;
+        });
+
         // Load color swatches
         loadColorSwatches(settings.colorSwatches);
 
@@ -665,6 +782,8 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         document.getElementById("opt-enable-mobile-preview")?.checked ?? true;
 
       const settingsToSave = {
+        [GEM_THEME_MODE_STORAGE_KEY]:
+          normalizeGemThemeMode(document.getElementById("opt-theme-mode")?.value),
         blocksPanelLayout:
           document.getElementById("opt-blocks-panel-layout")?.value ?? "2",
         manageOptionalContent:
@@ -689,7 +808,19 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         mobilePreviewScale: safeScale
       };
 
+      // Apply immediately + cache synchronously for next page load
+      applyGemThemeMode(settingsToSave[GEM_THEME_MODE_STORAGE_KEY], { persistLocal: true });
+
       chrome.storage.sync.set(settingsToSave);
+
+      // Save MediaDB settings separately
+      const mediaDBSettings = {
+        showFileIcon: document.getElementById("opt-show-file-icon")?.checked ?? true,
+        showCreated: document.getElementById("opt-show-created-column")?.checked ?? true,
+        showSize: document.getElementById("opt-show-size-column")?.checked ?? true,
+        showUser: document.getElementById("opt-show-user-column")?.checked ?? true
+      };
+      chrome.storage.sync.set({ gemMediaDBColumnVisibility: mediaDBSettings });
     }
 
     function exportHandler() {
@@ -702,6 +833,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
 
     // Settings elements that trigger save
     const settingsIds = [
+      "opt-theme-mode",
       "opt-blocks-panel-layout",
       "opt-manage-optional-content",
       "opt-predict-recommendation",
@@ -713,7 +845,11 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
       "opt-enable-mobile-preview",
       "opt-show-finish-editing-btn",
       "opt-mobile-preview-width",
-      "opt-mobile-preview-scale"
+      "opt-mobile-preview-scale",
+      "opt-show-file-icon",
+      "opt-show-created-column",
+      "opt-show-size-column",
+      "opt-show-user-column"
     ];
 
     // Remove existing listeners and add new ones
@@ -1246,6 +1382,13 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
   // ------------------------------------------------------------
   chrome.storage.onChanged.addListener((changes, namespace) => {
     if (namespace !== "sync") return;
+
+    if (changes[GEM_THEME_MODE_STORAGE_KEY]) {
+      const themeSelect = document.getElementById("opt-theme-mode");
+      const newMode = normalizeGemThemeMode(changes[GEM_THEME_MODE_STORAGE_KEY].newValue);
+      if (themeSelect) themeSelect.value = newMode;
+      applyGemThemeMode(newMode, { persistLocal: true });
+    }
 
     if (changes.blocksPanelLayout) {
       const layoutSelect = document.getElementById("opt-blocks-panel-layout");

@@ -13,7 +13,8 @@ html.FLIPPER-theme-eveningHorizon {
   & .e-verticalnav__content .e-fullheight__body,
   & cb-campaign-variables .e-section__content.cb-flex.variables,
   & cb-available-block-list .e-section__content,
-  & tactics-app .e-section__content.e-padding-none {
+  & tactics-app .e-section__content.e-padding-none,
+  & .e-mediadb .e-mediadb-section .e-mediadb-section__content {
     scrollbar-color: var(--token-border-default) var(--token-background-dark);
   }
 
@@ -30,7 +31,8 @@ html.FLIPPER-theme-eveningHorizon {
   & .e-verticalnav__content .e-fullheight__body::-webkit-scrollbar-thumb,
   & cb-campaign-variables .e-section__content.cb-flex.variables::-webkit-scrollbar-thumb,
   & cb-available-block-list .e-section__content::-webkit-scrollbar-thumb,
-  & tactics-app .e-section__content.e-padding-none::-webkit-scrollbar-thumb {
+  & tactics-app .e-section__content.e-padding-none::-webkit-scrollbar-thumb,
+  & .e-mediadb .e-mediadb-section .e-mediadb-section__content::-webkit-scrollbar-thumb {
     background: var(--token-border-default);
   }
 
@@ -46,7 +48,8 @@ html.FLIPPER-theme-eveningHorizon {
   & cb-campaign-latest-media .e-section__content::-webkit-scrollbar-track,
   & .e-verticalnav__content .e-fullheight__body::-webkit-scrollbar-track,
   & cb-campaign-variables .e-section__content.cb-flex.variables::-webkit-scrollbar-track,
-  & cb-available-block-list .e-section__content::-webkit-scrollbar-track {
+  & cb-available-block-list .e-section__content::-webkit-scrollbar-track,
+  & .e-mediadb .e-mediadb-section .e-mediadb-section__content::-webkit-scrollbar-track {
     background: var(--token-background-dark);
   }
 }
@@ -80,7 +83,7 @@ html.FLIPPER-theme-eveningHorizon:root {
 }
 
 /* retheme the UI to the gem color scheme */
-:root body.gem-expanded {
+html:root:not(.gem--retheme-inactive) {
 
   --token-blue-100: #f0edff;
   --token-blue-200: #dcd6ff;
@@ -248,7 +251,7 @@ html.FLIPPER-theme-eveningHorizon:root {
 }
 
 /* Darkmode retheme the UI to the gem color scheme */
-html.FLIPPER-theme-eveningHorizon:root body.gem-expanded {
+html.FLIPPER-theme-eveningHorizon:root:not(.gem--retheme-inactive) {
   
   --token-blue-100: #23186b;
   --token-blue-200: #332493;

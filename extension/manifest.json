@@ -1,6 +1,6 @@
 {
   "name": "Gemma for Emarsys",
-  "version": "3.0.2",
+  "version": "3.3.3",
   "manifest_version": 3,
   "description": "Enhances the Emarsys email editor with a settings panel and more!",
   "permissions": ["storage", "tabs", "activeTab"],
@@ -27,6 +27,7 @@
     },
     {
       "matches": ["https://suite8.emarsys.net/bootstrap.php?r=MediaDB/popup*"], 
+      "js": ["media-db-popup.js"],
       "css": ["MediaDB-popup.css"],
       "run_at": "document_start"
     },
