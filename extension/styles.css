@@ -1,5 +1,14 @@
+/* Cleanup… */
+.e-layout__application:before { /* its a small square that appears in the top left corner of the application */
+    background: none !important;
+}
 body.gem-expanded .e-layout.e-layout-without_navigation.e-layout-fullheight.e-layout-with_steps {
     padding: 0 !important;
+}
+
+/* create some extra space between the block templates and the saved blocks */
+.block-templates {
+    padding-bottom: 20px;
 }
 
 /* Content Block Toolbar - CSS-only hiding based on user settings */
@@ -40,6 +49,11 @@ body.gem-toolbar-saveToReuse-always-hide e-tooltip[e-button-id="block-save-to-re
 
 /* Reset block */
 body.gem-toolbar-resetBlock-always-hide e-tooltip[e-button-id="clear-block"] {
+    display: none !important;
+}
+
+/* Convert ESL to Tokens */
+body.gem-toolbar-convertEslToTokens-always-hide e-tooltip[e-button-id="gem-convert-esl-to-tokens"] {
     display: none !important;
 }
 
@@ -538,6 +552,7 @@ cb-available-block-list .e-card-auto_height .e-card__content {
     order: -1 !important; /* Pinned blocks appear first */
 }
 
+
 .block-template:not(.gem-block-pinned):not(.gem-block-hidden):not(.gem-block-completely-hidden) {
     order: 10 !important; /* Unpinned visible blocks appear after pinned ones */
 }
@@ -545,6 +560,11 @@ cb-available-block-list .e-card-auto_height .e-card__content {
 .gem-block-hidden,
 .gem-block-completely-hidden {
     order: 20 !important; /* Hidden blocks appear last */
+}
+
+/* Hide blocks if the search function is used to make them hidden */
+.block-templates .block-template:has(cb-available-block[hidden]) {
+    display: none !important;
 }
 
 /* Block hiding */
@@ -621,12 +641,71 @@ cb-available-block-list .e-card-auto_height .e-card__content {
     filter: none !important; /* Full color on hover */
 }
 
+
+.e-contentblocks-navigation_section:has(cb-campaign-variables) {
+    flex: 0 0 500px !important;
+}
+
+
+/* 
+    Re-using Emarsys icon styles.
+    This is necessary because if we want to use the Emarsys icon font, Emarsys will overwrite the font we want to use.
+    Renaming the HTML elements and some of the classes with a `gem-` prefix allows us to use the Emarsys icon font without conflict.
+*/
 gem-e-icon {
     vertical-align: middle;
     display: inline-flex;
     position: relative;
 }
+.e-btn .gem-e-icon {
+    font-size: var(--token-icon-default-sizeSmall);
+    height: var(--token-icon-default-sizeSmall);
+    width: var(--token-icon-default-sizeSmall);
+    margin: -2px 8px 0 0;
+}
+.e-btn-onlyicon .gem-e-icon {
+    margin: -2px 0 0;
+}
+.e-btn .gem-e-icon {
+    color: var(--token-button-default-text);
+}
+.e-btn-on_overlay .gem-e-icon {
+    color: var(--token-button-overlay-text);
+}
+.e-btn .gem-e-icon {
+    transition: color .2s ease-in-out;
+}
+gem-e-icon .gem-e-icon {
+    color: var(--token-icon-default-text);
+    pointer-events: none;
+    justify-content: center;
+    align-items: center;
+    font-weight: 400;
+    display: inline-flex;
+}
+.gem-e-icon {
+    color: var(--token-icon-default-text);
+    font-family: var(--token-icon-default-fontFamily);
+    font-size: var(--token-icon-default-size);
+    vertical-align: middle;
+    width: 24px;
+    height: 24px;
+}
 
-.e-contentblocks-navigation_section:has(cb-campaign-variables) {
-    flex: 0 0 500px !important;
+/*
+    In the blocks panel, the titles for the default blocks and saved blocks scroll away by default. This makes them sticky.
+*/
+.e-contentblocks-blocktemplatelist .e-section__title {
+    position: sticky;
+    top: -25px;
+    z-index: 1;
+    box-shadow: none;
+    padding: 10px 0 10px 24px;
+    background: #fff;
+    margin: 0 0 24px -24px;
+    border-bottom: 1px solid var(--token-border-default);
+    width: calc(100% + 48px);
+}
+.e-contentblocks-blocktemplatelist .block-templates + .e-section__title {
+    z-index: 2;
 }

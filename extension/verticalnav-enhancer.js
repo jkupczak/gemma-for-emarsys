@@ -225,6 +225,124 @@ function deactivateFullscreenMode() {
 }
 
 // ------------------------------------------------------------
+// Block search monitoring
+// ------------------------------------------------------------
+function initializeBlockSearchMonitoring() {
+  console.log("[Gem] Initializing block search monitoring");
+
+  let currentSearchInput = null;
+
+  // Function to update the search class based on input value
+  function updateSearchClass(searchInput) {
+    const blockList = document.querySelector('cb-available-block-list');
+    if (!blockList) return;
+
+    const hasValue = searchInput && searchInput.value && searchInput.value.trim().length > 0;
+
+    if (hasValue) {
+      blockList.classList.add('gem-searching-block-list-active');
+      console.log("[Gem] Added gem-searching-block-list-active class");
+    } else {
+      blockList.classList.remove('gem-searching-block-list-active');
+      console.log("[Gem] Removed gem-searching-block-list-active class");
+    }
+  }
+
+  // Function to setup search input monitoring
+  function setupSearchInputMonitoring(searchInput) {
+    if (currentSearchInput === searchInput) return; // Already monitoring this input
+
+    // Clean up previous monitoring
+    if (currentSearchInput) {
+      currentSearchInput.removeEventListener('input', handleInput);
+      currentSearchInput.removeEventListener('change', handleInput);
+    }
+
+    currentSearchInput = searchInput;
+
+    // Function to handle input changes
+    function handleInput() {
+      updateSearchClass(searchInput);
+    }
+
+    // Add event listeners
+    searchInput.addEventListener('input', handleInput);
+    searchInput.addEventListener('change', handleInput);
+
+    // Check initial state
+    updateSearchClass(searchInput);
+
+    console.log("[Gem] Set up search input monitoring");
+  }
+
+  // Function to find and monitor the search input
+  function findAndMonitorSearchInput() {
+    const searchInput = document.querySelector('cb-available-block-list .e-contentblocks-blocktemplatelist .e-input');
+
+    if (searchInput) {
+      console.log("[Gem] Found block search input, setting up monitoring");
+      setupSearchInputMonitoring(searchInput);
+    } else {
+      console.log("[Gem] Block search input not found");
+    }
+  }
+
+  // Watch for the search input to appear in the DOM
+  const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      if (mutation.type === 'childList') {
+        mutation.addedNodes.forEach((node) => {
+          if (node.nodeType === Node.ELEMENT_NODE) {
+            // Check if the added node contains the search input
+            const searchInput = node.querySelector ?
+              node.querySelector('cb-available-block-list .e-contentblocks-blocktemplatelist .e-input') :
+              null;
+
+            if (searchInput) {
+              console.log("[Gem] Search input appeared in DOM");
+              setupSearchInputMonitoring(searchInput);
+            }
+
+            // Also check if the node itself is the search input
+            if (node.matches && node.matches('cb-available-block-list .e-contentblocks-blocktemplatelist .e-input')) {
+              console.log("[Gem] Search input node added directly");
+              setupSearchInputMonitoring(node);
+            }
+          }
+        });
+
+        // Check if the search input was removed
+        mutation.removedNodes.forEach((node) => {
+          if (node.nodeType === Node.ELEMENT_NODE) {
+            if (node.matches && node.matches('cb-available-block-list .e-contentblocks-blocktemplatelist .e-input')) {
+              console.log("[Gem] Search input removed from DOM");
+              if (currentSearchInput === node) {
+                currentSearchInput = null;
+                // Remove the class when search input is removed
+                const blockList = document.querySelector('cb-available-block-list');
+                if (blockList) {
+                  blockList.classList.remove('gem-searching-block-list-active');
+                }
+              }
+            }
+          }
+        });
+      }
+    });
+  });
+
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true
+  });
+
+  // Check for existing search input
+  findAndMonitorSearchInput();
+
+  console.log("[Gem] Block search monitoring initialized");
+}
+
+// ------------------------------------------------------------
 // Watch for nav menu appearing or being replaced
 // ------------------------------------------------------------
 waitForElement("e-verticalnav-menu", (menu) => {
@@ -242,4 +360,7 @@ waitForElement("e-verticalnav-menu", (menu) => {
 
   obs.observe(document.documentElement, { childList: true, subtree: true });
 });
+
+// Initialize block search monitoring
+initializeBlockSearchMonitoring();
 

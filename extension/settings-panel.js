@@ -61,7 +61,7 @@ window.DEFAULT_COLOR_SWATCHES = ["#FE4D01", "", "", "", "", "", "", ""];
 // Default highlight terms - globally available for text-highlighting.js
 window.DEFAULT_HIGHLIGHT_TERMS = {
   "\((price|prezzo|precio|preis|prix)\)": { color: "rgba(245, 46, 132, 0.40)", isRegex: true },
-  "{{(?!.*[“”‘’]).+?}}": { color: "rgba(255, 230, 0, 0.40)", isRegex: true },
+  "\{\{[^”“‘’}]+\}\}": { color: "rgba(255, 230, 0, 0.40)", isRegex: true },
   "((\$|£|€)( |\\xA0)?\d+|\d+( |\\xA0)?€)": { color: "rgba(255, 230, 0, 0.40)", isRegex: true },
   "(name)": { color: "rgba(0, 180, 255, 0.40)", isRegex: false },
   "(LearnLangAll)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
@@ -166,7 +166,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         height: 18px;
         margin-right: 12px;
         cursor: pointer;
-        accent-color: #667eea;
+        accent-color: var(--gemma-primary-default);
         border-radius: 4px;
       }
 
@@ -549,6 +549,14 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
               <option value="always-hide">Always Hide</option>
             </select>
           </div>
+
+          <div class="gem-setting" style="display: flex; gap: 12px; align-items: center;">
+            <label for="opt-convert-esl-to-tokens" style="flex: 1;">Convert ESL to Tokens</label>
+            <select id="opt-convert-esl-to-tokens" style="width: 150px;">
+              <option value="always-show" selected>Always Show</option>
+              <option value="always-hide">Always Hide</option>
+            </select>
+          </div>
         </div>
 
         <div class="gem-setting-section">
@@ -696,6 +704,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         productSource: "hide-if-disabled",
         saveToReuse: "always-show",
         resetBlock: "always-show",
+        convertEslToTokens: "always-show",
         mobilePreviewWidth: 414,
         mobilePreviewScale: 0.5,
         mobileViewVisible: true,
@@ -725,6 +734,8 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
           settings.saveToReuse;
         document.getElementById("opt-reset-block").value =
           settings.resetBlock;
+        document.getElementById("opt-convert-esl-to-tokens").value =
+          settings.convertEslToTokens;
 
         document.getElementById("opt-enable-highlighting").checked =
           settings.enableHighlighting;
@@ -798,6 +809,8 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
           document.getElementById("opt-save-to-reuse")?.value ?? "always-show",
         resetBlock:
           document.getElementById("opt-reset-block")?.value ?? "always-show",
+        convertEslToTokens:
+          document.getElementById("opt-convert-esl-to-tokens")?.value ?? "always-show",
         enableHighlighting:
           document.getElementById("opt-enable-highlighting")?.checked ?? true,
         enableMobilePreview: mobileVisible,
@@ -841,6 +854,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
       "opt-product-source",
       "opt-save-to-reuse",
       "opt-reset-block",
+      "opt-convert-esl-to-tokens",
       "opt-enable-highlighting",
       "opt-enable-mobile-preview",
       "opt-show-finish-editing-btn",
@@ -1421,6 +1435,11 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
     if (changes.resetBlock) {
       const select = document.getElementById("opt-reset-block");
       if (select) select.value = changes.resetBlock.newValue;
+    }
+
+    if (changes.convertEslToTokens) {
+      const select = document.getElementById("opt-convert-esl-to-tokens");
+      if (select) select.value = changes.convertEslToTokens.newValue;
     }
 
     if (changes.mobilePreviewWidth) {

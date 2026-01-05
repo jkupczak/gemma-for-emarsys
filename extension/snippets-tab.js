@@ -72,7 +72,7 @@ function generateSnippetHTML(name, content) {
   // token-meta should be encoded as well
   const encodedTokenMeta = '%7B%7D';
 
-  return `<span e-token="cust_esl" token-template="${encodedTokenTemplate}" token-content="${encodedTokenContent}" token-meta="${encodedTokenMeta}" style="background-color: #6597cf; border-radius: .3em; box-shadow: 0 0 0 0.2em #6597cf; color: #fff;" class="cbNonEditable" contenteditable="false">${name}</span>`;
+  return `<span e-token="cust_esl" token-template="${encodedTokenTemplate}" token-content="${encodedTokenContent}" token-meta="${encodedTokenMeta}" class="cbNonEditable" contenteditable="false">${name}</span>`;
 }
 
 // Function to create the snippet modal HTML

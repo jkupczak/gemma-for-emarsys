@@ -37,6 +37,7 @@ function createWelcomeModalHTML() {
             <li>
               <b>Other Features</b> 
               <ul class="gem-welcome-modal-features-sublist">
+                <li>Instantly <b>convert plain text ESL into ESL tokens</b> by clicking the convert icon in the content block toolbar.</li>
                 <li>Columns in the <b>Media Directory</b> can be toggled on and off in the settings panel.</li>
                 <li>The <b>Link Editor</b> now automatically applies focus to the input so you can instantly start typing your URL.</li>
                 <li>The <b>Preheader</b> text box now increases in height if your preheader is very long. Goodbye scrollbar! See the entire preheader at once for easier editing.</li>

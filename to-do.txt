@@ -1,7 +1,5 @@
 # PENDING
 
-Can I create a way to quickly replace a string of text in a block with a snippet that has the exact same name?
-
 When the Block Style Settings panel is empty, it should close on its own.
 
 The block reset button in the toolbar should have a confirmation prompt.
@@ -26,6 +24,7 @@ Use the Emarsys icon font
 
 # COMPLETE
 
+✓ Can I create a way to quickly replace a string of text in a block with a snippet that has the exact same name?
 ✓ Add Snippets tab to vertical navigation - DONE: Created snippets-tab.js
 ✓ Auto-focus to the input field when opening the link modal
 ✓ Whnen the Block Style Settings panel is open, ESC should close it. - DONE: Created overlay-panel-controls.js
