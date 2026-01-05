@@ -566,12 +566,10 @@ function initializeBlockPinning() {
     console.log("[Gem] Header element found, adding toggle buttons");
 
     const toggleButton = document.createElement('button');
-    toggleButton.className = 'gem-show-hidden-toggle';
+    toggleButton.className = 'gem-show-hidden-toggle gem-e-btn-primary';
     toggleButton.style.cssText = `
       margin-left: auto;
       padding: 4px 8px;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
       border: none;
       border-radius: 4px;
       font-size: 11px;
@@ -603,14 +601,12 @@ function initializeBlockPinning() {
 
     // Create layout toggle button
     const layoutButton = document.createElement('button');
-    layoutButton.className = 'gem-layout-toggle-button';
+    layoutButton.className = 'gem-layout-toggle-button gem-e-btn-primary';
     layoutButton.textContent = 'Toggle Grid';
     layoutButton.title = 'Toggle blocks layout (1→2→3 per row)';
     layoutButton.style.cssText = `
       margin-left: 12px;
       padding: 4px 8px;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
       border: none;
       border-radius: 4px;
       font-size: 11px;

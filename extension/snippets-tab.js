@@ -13,6 +13,8 @@ const DEFAULT_SNIPPETS = [
     category: '',
     name: 'ESL snippet',
     description: '',
+    swapKeyword: '',
+    swapMode: 'token',
     content: 'This is a sample snippet!'
   }
 ];
@@ -110,11 +112,24 @@ function createSnippetModalHTML(isEditing = false) {
       </div>
       <div class="e-field">
         <label class="e-field__label e-field__label-inline">Code snippet</label>
-        <textarea class="e-input gem-scrollable" id="gem-snippet-code-input" placeholder="Enter your ESL code snippet" style="background:var(--token-input-default-background); font-family: var(--token-font-monospace, monospace); width: 100%; min-height: 300px; resize: vertical; padding: 10px 12px;"></textarea>
+        <textarea class="e-input gem-scrollable" id="gem-snippet-code-input" placeholder="Enter your ESL code snippet" style="background:var(--token-input-default-background); font-family: var(--token-font-monospace, monospace); width: 100%; min-height: 200px; resize: vertical; padding: 10px 12px;"></textarea>
       </div>
       <div class="e-field">
         <label class="e-field__label e-field__label-inline" for="gem-snippet-description-input">Description</label>
         <textarea class="e-input gem-scrollable" id="gem-snippet-description-input" placeholder="Optional description" style="background:var(--token-input-default-background); width: 100%; min-height: 100px; resize: vertical; padding: 10px 12px;"></textarea>
+      </div>
+      <div style="display:flex; gap:10px">
+      <div class="e-field" style="width:100%">
+        <label class="e-field__label e-field__label-inline" for="gem-snippet-swap-keyword-input">Optional Keyword for Swapping</label>
+        <input class="e-input" id="gem-snippet-swap-keyword-input" type="text" placeholder="Optional keyword (must be unique)">
+      </div>
+      <div class="e-field">
+        <label class="e-field__label e-field__label-inline" for="gem-snippet-swap-mode-select">Swap Method</label>
+        <select class="e-input" id="gem-snippet-swap-mode-select">
+          <option value="token" selected>Swap as ESL Token</option>
+          <option value="plain">Swap as Plain Text</option>
+        </select>
+      </div>
       </div>
     </div>
   </div>
@@ -183,6 +198,13 @@ function initializeSnippetsTab() {
     <div class="e-section__content">
       <div class="e-margin-bottom-s">
         <input id="gem-snippet-search-input" class="e-input e-input-search" placeholder="Search" type="search">
+      </div>
+      <div class="e-margin-bottom-s">
+        <select id="gem-snippet-filter-select" class="e-input" style="width: 100%;">
+          <option value="showAll" selected>Show All</option>
+          <option value="favorites">Show Favorite Snippets Only</option>
+          <option value="swaps">Show Snippets with Keyword Swaps</option>
+        </select>
       </div>
       <div class="gem-snippets-tables">
         ${tablesHTML}
@@ -266,14 +288,20 @@ function initializeSnippetsTab() {
         const favoriteStar = snippet.favorite
           ? '<span title="Favorite" aria-label="Favorite" style="margin-right: 6px; font-size: 14px; line-height: 1;">★</span>'
           : '';
+        const isFav = !!snippet.favorite;
+        const hasSwap = !!(snippet.swapKeyword && String(snippet.swapKeyword).trim());
+        const swapGlyph = hasSwap
+          ? '<div class="e-icon" title="Has keyword swap" aria-label="Has keyword swap" style="margin-bottom: 3px; opacity: 0.3; font-size: 20px">&#xF0DE;</div>'
+          : '';
         return `
-<tr data-snippet-name="${escapeHtmlText(snippetNameLower)}">
+<tr data-snippet-name="${escapeHtmlText(snippetNameLower)}" data-gem-favorite="${isFav ? 'true' : 'false'}" data-gem-has-swap="${hasSwap ? 'true' : 'false'}">
   <td style="vertical-align:middle;padding:8px 2px 8px 10px">
     <div style="display:flex; align-items:center;">
       ${favoriteStar}
       <vce-token name="${snippet.name}" data="${fullSnippetHTML.replace(/"/g, '&quot;')}">
         <span class="e-label e-label-primary" draggable="true" style="cursor: move;">${snippet.name}</span>
       </vce-token>
+      ${swapGlyph}
     </div>
   </td>
   <td style="text-align: right; vertical-align:middle; padding: 6px 6px 6px 2px;">
@@ -461,9 +489,18 @@ function initializeSnippetsTab() {
     }
   }
 
+  function getSnippetsPanelFilterMode(root) {
+    // Source of truth is the dataset; fallback to native select.
+    const mode = root?.dataset?.gemSnippetFilterMode;
+    if (mode) return mode;
+    const select = root?.querySelector('#gem-snippet-filter-select');
+    return select?.value || 'showAll';
+  }
+
   function applySnippetSearchFilter(root, rawQuery) {
     const query = (rawQuery || '').trim().toLowerCase();
     root.dataset.gemSnippetSearch = rawQuery || '';
+    const filterMode = getSnippetsPanelFilterMode(root);
 
     const categoryBlocks = root.querySelectorAll('.gem-snippets-category-block');
 
@@ -475,7 +512,14 @@ function initializeSnippetsTab() {
       let anyMatch = false;
       rows.forEach((row) => {
         const nameLower = row.getAttribute('data-snippet-name') || '';
-        const matches = !query || nameLower.includes(query);
+        const matchesSearch = !query || nameLower.includes(query);
+        const isFav = row.getAttribute('data-gem-favorite') === 'true';
+        const hasSwap = row.getAttribute('data-gem-has-swap') === 'true';
+        const matchesFilter =
+          filterMode === 'favorites' ? isFav :
+          filterMode === 'swaps' ? hasSwap :
+          true;
+        const matches = matchesSearch && matchesFilter;
         row.style.display = matches ? '' : 'none';
         if (matches) anyMatch = true;
       });
@@ -485,8 +529,9 @@ function initializeSnippetsTab() {
 
       if (!wrapper) return;
 
-      // When searching, temporarily expand categories that have matches (don’t persist state)
-      if (query) {
+      // When filtering (search OR dropdown), temporarily expand categories that have matches (don’t persist state)
+      const isFiltering = !!query || filterMode !== 'showAll';
+      if (isFiltering) {
         if (wrapper.dataset.gemPrevDisplay === undefined) {
           wrapper.dataset.gemPrevDisplay = wrapper.style.display || '';
         }
@@ -504,6 +549,32 @@ function initializeSnippetsTab() {
           delete wrapper.dataset.gemPrevDisplay;
         }
       }
+    });
+  }
+
+  // ------------------------------------------------------------
+  // Snippets filter (native <select>)
+  // ------------------------------------------------------------
+
+  function setupSnippetsFilterSelect() {
+    const root = document.querySelector('gem-snippets');
+    if (!root) return;
+
+    const select = root.querySelector('#gem-snippet-filter-select');
+    if (!select) return;
+
+    if (select._gemBound) return;
+    select._gemBound = true;
+
+    // Restore prior mode if present
+    const mode = root.dataset.gemSnippetFilterMode || select.value || 'showAll';
+    select.value = mode;
+    root.dataset.gemSnippetFilterMode = mode;
+
+    select.addEventListener('change', () => {
+      root.dataset.gemSnippetFilterMode = select.value || 'showAll';
+      const searchVal = root.querySelector('#gem-snippet-search-input')?.value || '';
+      applySnippetSearchFilter(root, searchVal);
     });
   }
 
@@ -582,7 +653,9 @@ function initializeSnippetsTab() {
         name: s.name,
         content: s.content,
         description: s.description || '',
-        favorite: !!s.favorite
+        favorite: !!s.favorite,
+        swapKeyword: (s.swapKeyword || ''),
+        swapMode: (s.swapMode === 'plain' ? 'plain' : (s.swapKeyword ? 'token' : 'token'))
       }));
       exportTextarea.value = JSON.stringify(exportPayload, null, 2);
     });
@@ -680,11 +753,16 @@ function initializeSnippetsTab() {
       getSnippets((existingSnippets) => {
         const updated = [...existingSnippets];
         const existingNamesLower = new Set(updated.map(s => (s.name || '').toLowerCase()));
+        const existingSwapKeywordsLower = new Set(
+          updated
+            .map(s => (s.swapKeyword || '').trim().toLowerCase())
+            .filter(Boolean)
+        );
 
         let added = 0;
         let skipped = 0;
-        let renamed = 0;
         let invalid = 0;
+        let swapKeywordRemoved = 0;
 
         imported.forEach((item) => {
           const category = (item && typeof item.category === 'string') ? item.category.trim() : '';
@@ -692,34 +770,34 @@ function initializeSnippetsTab() {
           const content = (item && typeof item.content === 'string') ? item.content.trim() : '';
           const description = (item && typeof item.description === 'string') ? item.description.trim() : '';
           const favorite = !!(item && item.favorite);
+          let swapKeyword = (item && typeof item.swapKeyword === 'string') ? item.swapKeyword.trim() : '';
+          const swapMode = (item && item.swapMode === 'plain') ? 'plain' : 'token';
 
           if (!name || !content) {
             invalid++;
             return;
           }
 
-          const existingSameName = updated.find(s => (s.name || '').toLowerCase() === name.toLowerCase());
-          if (existingSameName) {
-            const existingContent = (existingSameName.content || '').trim();
-            if (existingContent === content) {
-              skipped++;
-              return;
-            }
-
-            const newName = makeUniqueSnippetName(name, existingNamesLower);
-            if (newName !== name) renamed++;
-
-            updated.push({
-              id: `snippet-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-              favorite,
-              category: category,
-              name: newName,
-              content: content,
-              description: description
-            });
-            existingNamesLower.add(newName.toLowerCase());
-            added++;
+          // Allow duplicate snippet names. Only skip if the import contains an identical entry
+          // (same name + same code) that already exists in storage.
+          const existingIdentical = updated.find(s =>
+            (s.name || '').toLowerCase() === name.toLowerCase() &&
+            ((s.content || '').trim() === content)
+          );
+          if (existingIdentical) {
+            skipped++;
             return;
+          }
+
+          // If this snippet's swap keyword conflicts with an existing snippet's keyword, remove it.
+          if (swapKeyword) {
+            const keyLower = swapKeyword.toLowerCase();
+            if (existingSwapKeywordsLower.has(keyLower)) {
+              swapKeywordRemoved++;
+              swapKeyword = '';
+            } else {
+              existingSwapKeywordsLower.add(keyLower);
+            }
           }
 
           updated.push({
@@ -728,7 +806,9 @@ function initializeSnippetsTab() {
             category: category,
             name: name,
             content: content,
-            description: description
+            description: description,
+            swapKeyword: swapKeyword,
+            swapMode: swapKeyword ? swapMode : 'token'
           });
           existingNamesLower.add(name.toLowerCase());
           added++;
@@ -737,7 +817,7 @@ function initializeSnippetsTab() {
         saveSnippets(updated, () => {
           close();
           refreshSnippetsDisplay();
-          alert(`Import complete.\n\nAdded: ${added}\nRenamed: ${renamed}\nSkipped (identical): ${skipped}\nInvalid: ${invalid}`);
+          alert(`Import complete.\n\nAdded: ${added}\nSkipped (identical): ${skipped}\nInvalid: ${invalid}\nKeyword removed (conflict): ${swapKeywordRemoved}`);
         });
       });
     });
@@ -856,6 +936,9 @@ function initializeSnippetsTab() {
 
       // Set up search box filtering
       setupSnippetsSearch();
+
+      // Set up dropdown filter
+      setupSnippetsFilterSelect();
     });
 
     // Update active states - remove active from other tabs, add to snippets tab
@@ -961,6 +1044,8 @@ function initializeSnippetsTab() {
   const GEM_EMARSYS_ESL_NAME_INPUT_ID = 'cbp-esl-token-dialog-input-name';
   const GEM_EMARSYS_CATEGORY_INPUT_ID = 'gem-esl-category-input';
   const GEM_EMARSYS_DESCRIPTION_INPUT_ID = 'gem-esl-description-input';
+  const GEM_EMARSYS_SWAP_KEYWORD_INPUT_ID = 'gem-esl-swap-keyword-input';
+  const GEM_EMARSYS_SWAP_MODE_SELECT_ID = 'gem-esl-swap-mode-select';
 
   // Tracks whether a currently-opening Emarsys modal was initiated by our Snippets panel
   let gemPendingEmarsysEslContext = null;
@@ -980,7 +1065,9 @@ function initializeSnippetsTab() {
           category: snippet.category || '',
           name: snippet.name,
           content: snippet.content,
-          description: snippet.description || ''
+          description: snippet.description || '',
+          swapKeyword: snippet.swapKeyword || '',
+          swapMode: snippet.swapMode === 'plain' ? 'plain' : 'token'
         });
         if (!opened) openSnippetModal(snippetId);
       });
@@ -994,7 +1081,9 @@ function initializeSnippetsTab() {
       category: '',
       name: '',
       content: '',
-      description: ''
+      description: '',
+      swapKeyword: '',
+      swapMode: 'token'
     });
     if (!opened) openSnippetModal(null);
   }
@@ -1166,6 +1255,8 @@ function initializeSnippetsTab() {
       const category = (dialogRoot.querySelector(`#${GEM_EMARSYS_CATEGORY_INPUT_ID}`)?.value || '').trim();
       const description = (dialogRoot.querySelector(`#${GEM_EMARSYS_DESCRIPTION_INPUT_ID}`)?.value || '').trim();
       const favorite = dialogRoot.dataset.gemFavorite === 'true';
+      const swapKeyword = (dialogRoot.querySelector(`#${GEM_EMARSYS_SWAP_KEYWORD_INPUT_ID}`)?.value || '').trim();
+      const swapMode = (dialogRoot.querySelector(`#${GEM_EMARSYS_SWAP_MODE_SELECT_ID}`)?.value === 'plain') ? 'plain' : 'token';
 
       // Read code from CodeMirror robustly. The hidden textarea inside CodeMirror
       // does NOT reliably contain the editor value, so we retry and fall back.
@@ -1173,11 +1264,11 @@ function initializeSnippetsTab() {
       readEmarsysDialogCode(dialogRoot)
         .then((code) => {
           gemOk.disabled = false;
-          handleSnippetSaveFromValues({ favorite, category, name, code: code.trim(), description }, context.snippetId, dialogRoot);
+          handleSnippetSaveFromValues({ favorite, category, name, code: code.trim(), description, swapKeyword, swapMode }, context.snippetId, dialogRoot);
         })
         .catch(() => {
           gemOk.disabled = false;
-          handleSnippetSaveFromValues({ favorite, category, name, code: '', description }, context.snippetId, dialogRoot);
+          handleSnippetSaveFromValues({ favorite, category, name, code: '', description, swapKeyword, swapMode }, context.snippetId, dialogRoot);
         });
     });
 
@@ -1254,6 +1345,44 @@ function initializeSnippetsTab() {
       }
     }
 
+    // Swap Keyword + Mode fields (below Description)
+    if (!dialogRoot.querySelector(`#${GEM_EMARSYS_SWAP_KEYWORD_INPUT_ID}`)) {
+      const swapKeywordField = document.createElement('div');
+      swapKeywordField.className = 'e-field';
+      swapKeywordField.innerHTML = `
+        <label class="e-field__label e-field__label-inline" for="${GEM_EMARSYS_SWAP_KEYWORD_INPUT_ID}">Optional Keyword for Swapping</label>
+        <input class="e-input" id="${GEM_EMARSYS_SWAP_KEYWORD_INPUT_ID}" type="text" placeholder="Optional keyword (must be unique)">
+      `.trim();
+
+      const descField = dialogRoot.querySelector(`#${GEM_EMARSYS_DESCRIPTION_INPUT_ID}`)?.closest('.e-field');
+      if (descField && descField.parentElement) {
+        descField.insertAdjacentElement('afterend', swapKeywordField);
+      } else {
+        const content = dialogRoot.querySelector('.e-dialog__content') || dialogRoot;
+        content.appendChild(swapKeywordField);
+      }
+    }
+
+    if (!dialogRoot.querySelector(`#${GEM_EMARSYS_SWAP_MODE_SELECT_ID}`)) {
+      const swapModeField = document.createElement('div');
+      swapModeField.className = 'e-field';
+      swapModeField.innerHTML = `
+        <label class="e-field__label e-field__label-inline" for="${GEM_EMARSYS_SWAP_MODE_SELECT_ID}">Swap Snippet As</label>
+        <select class="e-input" id="${GEM_EMARSYS_SWAP_MODE_SELECT_ID}">
+          <option value="token">Swap as ESL Token</option>
+          <option value="plain">Swap as Plain Text</option>
+        </select>
+      `.trim();
+
+      const swapKeywordField = dialogRoot.querySelector(`#${GEM_EMARSYS_SWAP_KEYWORD_INPUT_ID}`)?.closest('.e-field');
+      if (swapKeywordField && swapKeywordField.parentElement) {
+        swapKeywordField.insertAdjacentElement('afterend', swapModeField);
+      } else {
+        const content = dialogRoot.querySelector('.e-dialog__content') || dialogRoot;
+        content.appendChild(swapModeField);
+      }
+    }
+
     // Populate values (for edit mode)
     const categoryInput = dialogRoot.querySelector(`#${GEM_EMARSYS_CATEGORY_INPUT_ID}`);
     if (categoryInput && typeof context.category === 'string') {
@@ -1267,6 +1396,19 @@ function initializeSnippetsTab() {
       descInput.value = context.description;
       descInput.dispatchEvent(new Event('input', { bubbles: true }));
       descInput.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    const swapKeywordInput = dialogRoot.querySelector(`#${GEM_EMARSYS_SWAP_KEYWORD_INPUT_ID}`);
+    if (swapKeywordInput && typeof context.swapKeyword === 'string') {
+      swapKeywordInput.value = context.swapKeyword;
+      swapKeywordInput.dispatchEvent(new Event('input', { bubbles: true }));
+      swapKeywordInput.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    const swapModeSelect = dialogRoot.querySelector(`#${GEM_EMARSYS_SWAP_MODE_SELECT_ID}`);
+    if (swapModeSelect) {
+      swapModeSelect.value = (context.swapMode === 'plain' ? 'plain' : 'token');
+      swapModeSelect.dispatchEvent(new Event('change', { bubbles: true }));
     }
   }
 
@@ -1398,6 +1540,8 @@ function initializeSnippetsTab() {
     const code = (values?.code || '').trim();
     const description = (values?.description || '').trim();
     const favorite = !!values?.favorite;
+    const swapKeywordRaw = (values?.swapKeyword || '').trim();
+    const swapMode = (values?.swapMode === 'plain') ? 'plain' : 'token';
 
     if (!name) {
       alert('Please enter a snippet name.');
@@ -1409,18 +1553,23 @@ function initializeSnippetsTab() {
     }
 
     getSnippets((snippets) => {
-      const existingSnippet = snippets.find(snippet => snippet.name.toLowerCase() === name.toLowerCase());
-
-      // When editing, allow keeping the same name as the current snippet
-      if (existingSnippet && (!editingSnippetId || existingSnippet.id !== editingSnippetId)) {
-        alert(`A snippet with the name "${name}" already exists. Please choose a different name.`);
-        return;
+      // Enforce unique swap keyword (case-insensitive) across all snippets.
+      if (swapKeywordRaw) {
+        const keyLower = swapKeywordRaw.toLowerCase();
+        const conflict = snippets.find(s =>
+          (s.swapKeyword || '').trim().toLowerCase() === keyLower &&
+          (!editingSnippetId || s.id !== editingSnippetId)
+        );
+        if (conflict) {
+          alert(`The swap keyword "${swapKeywordRaw}" is already used by another snippet. Please choose a unique keyword.`);
+          return;
+        }
       }
 
       if (editingSnippetId) {
         const updatedSnippets = snippets.map(snippet =>
           snippet.id === editingSnippetId
-            ? { ...snippet, favorite, category, name: name, content: code, description }
+            ? { ...snippet, favorite, category, name: name, content: code, description, swapKeyword: swapKeywordRaw, swapMode: swapKeywordRaw ? swapMode : 'token' }
             : snippet
         );
         saveSnippets(updatedSnippets, () => {
@@ -1434,7 +1583,9 @@ function initializeSnippetsTab() {
           category,
           name,
           content: code,
-          description
+          description,
+          swapKeyword: swapKeywordRaw,
+          swapMode: swapKeywordRaw ? swapMode : 'token'
         };
         saveSnippets([...snippets, newSnippet], () => {
           refreshSnippetsDisplay();
@@ -1480,6 +1631,8 @@ function initializeSnippetsTab() {
             const nameInput = document.getElementById('gem-snippet-name-input');
             const codeInput = document.getElementById('gem-snippet-code-input');
             const descInput = document.getElementById('gem-snippet-description-input');
+            const swapKeywordInput = document.getElementById('gem-snippet-swap-keyword-input');
+            const swapModeSelect = document.getElementById('gem-snippet-swap-mode-select');
             const favBtn = document.getElementById('gem-modal-favorite-btn');
 
             if (categoryInput) categoryInput.value = snippet.category || '';
@@ -1492,6 +1645,8 @@ function initializeSnippetsTab() {
               codeInput.value = snippet.content;
             }
             if (descInput) descInput.value = snippet.description || '';
+            if (swapKeywordInput) swapKeywordInput.value = snippet.swapKeyword || '';
+            if (swapModeSelect) swapModeSelect.value = (snippet.swapMode === 'plain' ? 'plain' : 'token');
             if (favBtn) setGemModalFavoriteState(!!snippet.favorite);
           }, 100);
         }
@@ -1504,6 +1659,10 @@ function initializeSnippetsTab() {
           nameInput.focus();
           nameInput.select();
         }
+        const swapKeywordInput = document.getElementById('gem-snippet-swap-keyword-input');
+        const swapModeSelect = document.getElementById('gem-snippet-swap-mode-select');
+        if (swapKeywordInput) swapKeywordInput.value = '';
+        if (swapModeSelect) swapModeSelect.value = 'token';
         setGemModalFavoriteState(false);
       }, 100);
     }
@@ -1598,6 +1757,8 @@ function initializeSnippetsTab() {
     const nameInput = document.getElementById('gem-snippet-name-input');
     const codeInput = document.getElementById('gem-snippet-code-input');
     const descInput = document.getElementById('gem-snippet-description-input');
+    const swapKeywordInput = document.getElementById('gem-snippet-swap-keyword-input');
+    const swapModeSelect = document.getElementById('gem-snippet-swap-mode-select');
 
     if (!nameInput || !codeInput) {
       console.log("[Gem] Modal inputs not found");
@@ -1609,6 +1770,8 @@ function initializeSnippetsTab() {
     const code = codeInput.value.trim();
     const description = descInput ? descInput.value.trim() : '';
     const favorite = getGemModalFavoriteState();
+    const swapKeywordRaw = swapKeywordInput ? swapKeywordInput.value.trim() : '';
+    const swapMode = swapModeSelect && swapModeSelect.value === 'plain' ? 'plain' : 'token';
 
     if (!name) {
       alert('Please enter a snippet name.');
@@ -1622,23 +1785,27 @@ function initializeSnippetsTab() {
       return;
     }
 
-    // Check for duplicate names
     getSnippets((snippets) => {
-      const existingSnippet = snippets.find(snippet => snippet.name.toLowerCase() === name.toLowerCase());
-
-      // When editing, allow keeping the same name as the current snippet
-      if (existingSnippet && (!editingSnippetId || existingSnippet.id !== editingSnippetId)) {
-        alert(`A snippet with the name "${name}" already exists. Please choose a different name.`);
-        nameInput.focus();
-        nameInput.select();
-        return;
+      // Enforce unique swap keyword (case-insensitive) across all snippets.
+      if (swapKeywordRaw) {
+        const keyLower = swapKeywordRaw.toLowerCase();
+        const conflict = snippets.find(s =>
+          (s.swapKeyword || '').trim().toLowerCase() === keyLower &&
+          (!editingSnippetId || s.id !== editingSnippetId)
+        );
+        if (conflict) {
+          alert(`The swap keyword "${swapKeywordRaw}" is already used by another snippet. Please choose a unique keyword.`);
+          swapKeywordInput && swapKeywordInput.focus();
+          swapKeywordInput && swapKeywordInput.select && swapKeywordInput.select();
+          return;
+        }
       }
 
       if (editingSnippetId) {
         // Update existing snippet
         const updatedSnippets = snippets.map(snippet =>
           snippet.id === editingSnippetId
-            ? { ...snippet, favorite, category: category, name: name, content: code, description: description }
+            ? { ...snippet, favorite, category: category, name: name, content: code, description: description, swapKeyword: swapKeywordRaw, swapMode: swapKeywordRaw ? swapMode : 'token' }
             : snippet
         );
 
@@ -1660,7 +1827,9 @@ function initializeSnippetsTab() {
           category: category,
           name: name,
           content: code,
-          description: description
+          description: description,
+          swapKeyword: swapKeywordRaw,
+          swapMode: swapKeywordRaw ? swapMode : 'token'
         };
 
         // Add to existing snippets
@@ -1720,6 +1889,7 @@ function initializeSnippetsTab() {
       getSnippetCategoryCollapseState((collapseState) => {
         const root = navContent.querySelector('gem-snippets');
         const currentSearch = root?.querySelector('#gem-snippet-search-input')?.value || '';
+        const currentFilterMode = root?.dataset?.gemSnippetFilterMode || root?.querySelector('#gem-snippet-filter-select')?.value || 'showAll';
         let tablesContainer = snippetsContent.querySelector('.gem-snippets-tables');
         if (!tablesContainer) {
           tablesContainer = document.createElement('div');
@@ -1735,11 +1905,21 @@ function initializeSnippetsTab() {
         setupEditSnippetButtons();
         setupSnippetCategoryCollapseToggles();
         setupSnippetsSearch();
+        setupSnippetsFilterSelect();
 
         // Re-apply current search after re-render
         if (root && currentSearch) {
           const input = root.querySelector('#gem-snippet-search-input');
           if (input) input.value = currentSearch;
+        }
+
+        // Re-apply filter mode after re-render
+        if (root) {
+          root.dataset.gemSnippetFilterMode = currentFilterMode;
+        }
+
+        // Apply combined filters (search + dropdown)
+        if (root) {
           applySnippetSearchFilter(root, currentSearch);
         }
       });

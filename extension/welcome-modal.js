@@ -20,24 +20,33 @@ function createWelcomeModalHTML() {
           <h3>Feature List</h3>
           <ul class="gem-welcome-modal-features">
             <li><b>Drag-and-Drop Snippets</b> Drag and drop custom ESL snippets into your email editor. Create, edit, pin, categorize, and delete snippets from the Snippets tab in the vertical navigation. You can also import and export snippets as shareable JSON.</li>
+            <li>
+              <b>Convert ESL to Tokens</b> Instantly <b>convert plain text ESL into ESL tokens</b> by clicking the convert icon <span class="gem-e-icon"></span> in the content block toolbar.
+              <ul class="gem-welcome-modal-features-sublist">
+                <li>Tokens will be named after a matching snippet name if it exists. If no matching snippet name is found, Gemma will try to give it an appropriate name. If it can't, the token will be named "ESL snippet".</li>
+              </ul>
+            </li>
+
+            <li>
+              <b>Keyword Swapping</b> You can now quickly swap keywords you define in your content blocks with your own custom snippets. Simply add a keyword to one of your snippets and then use the keyword in your content block. Then click the swap icon <span class="gem-e-icon">&#xF0DE;</span> in the content block toolbar to swap the keyword with the snippet.
+            </li>
             <li><b>Text Highlighting</b> Automatically highlight important text in the email editor preview. Edit what text is highlighted and what color the highlight is in the Settings panel.</li>
             <li><b>Mobile Previews</b> See a mobile preview of your email right next to your desktop view while you make edits. This is turned on by default and can be toggled from the settings menu or the purple phone icon in the bottom left of the editor. You can also drag the mobile preview left and right to change the size. The settings panel lets you adjust the scaling too. <em>(You'll also see a mobile preview when you load a contact preview)</em></li>
             <li><b>Custom Color Swatches</b> Custom color swatches are now permanent! Emarsys doesn't remember what colors you used when editing an email. But Gemma does. You can also add default presets that will always display at the top of the color picker (up to 8) from the settings panel.</li>
             <li><b>Blocks Panel</b> Choose how many blocks to display per row in the blocks panel (1, 2, or 3 per row). More blocks per row means less scrolling to find what you need! 
             <ul class="gem-welcome-modal-features-sublist"><li>Click the pin icon (📌) on any block in the blocks panel to pin it to the top. Pinned blocks stay at the top of the grid and persist across page loads!</li><li>Click the eye icon (👁️) on any block to hide it permanently. Hidden blocks can be shown again using the toggle button in the blocks panel header.</li></ul></li>
-            <li><b>Links Panel</b> Get alerted when you have trackable links that are set to not be tracked. That's unusual, so lets make you aware of it. Also, remodaled! This thing was a visual mess and difficult to manage. New modifications make it more readable and useable.</li>
+            <li><b>Links Panel</b> Get alerted when you have trackable links that are set to not be tracked. That's unusual, so lets make you aware of it. It's also got a fresh coat of paint! This thing was a visual mess and difficult to manage. New modifications make it more readable and useable.</li>
             <li><b>Image Picker Previews</b> When adding an image to your email you'll now get a preview of it right next to the image editor. Makes adding ALT text much easier!</li>
             <li><b>Fullscreen Email Editing</b> Go fullscreen for a bigger view of your email. Use the purple expand icon in the bottom left of the email editor to modify your layout. This increases the total viewable area of your email by over 40%!</li>
-            <li><b>Keyboard Shortcuts</b> Save a draft with keyboard shortcuts! CTRL+S and CMD+S now save your email draft instantly. CMD+/ and CTRL+/ will toggle the mobile preview pane on and off. No more dragging your mouse around to save or toggle features!</li>
-            <li><b>Unsaved Draft Alerts</b> Speaking of saving, if your email has unsaved changes you'll now see an animated emoji in the Google Chrome tab until you save it!</li>
-            <li><b>Helpful Tab Titles</b> Ever have multiple emails open at once and lost track of which is which? Emarsys names each tab the same: "Email Campaigns | Channels | Emarsys Marketing Platform". That's not helpful. Gemma renames your tabs to use your email name instead!</li>
-            <li><b>Custom Block Toolbar</b> You can now customize the content block toolbar to show or hide icons based on your preferences.</li>
 
-            
+
             <li>
               <b>Other Features</b> 
               <ul class="gem-welcome-modal-features-sublist">
-                <li>Instantly <b>convert plain text ESL into ESL tokens</b> by clicking the convert icon in the content block toolbar.</li>
+                <li><b>Keyboard Shortcuts</b> Save a draft with keyboard shortcuts! CTRL+S and CMD+S now save your email draft instantly. CMD+/ and CTRL+/ will toggle the mobile preview pane on and off. No more dragging your mouse around to save or toggle features!</li>
+                <li><b>Unsaved Draft Alerts</b> Speaking of saving, if your email has unsaved changes you'll now see an animated emoji in the Google Chrome tab until you save it!</li>
+                <li><b>Helpful Tab Titles</b> Ever have multiple emails open at once and lost track of which is which? Emarsys names each tab the same: "Email Campaigns | Channels | Emarsys Marketing Platform". That's not helpful. Gemma renames your tabs to use your email name instead!</li>
+                <li><b>Customize the content block toolbar</b> to show or hide icons based on your preferences.</li>
                 <li>Columns in the <b>Media Directory</b> can be toggled on and off in the settings panel.</li>
                 <li>The <b>Link Editor</b> now automatically applies focus to the input so you can instantly start typing your URL.</li>
                 <li>The <b>Preheader</b> text box now increases in height if your preheader is very long. Goodbye scrollbar! See the entire preheader at once for easier editing.</li>

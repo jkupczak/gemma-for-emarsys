@@ -193,7 +193,7 @@ body.gem-expanded cb-header .e-steps__progress button[disabled] {
 }
 
 body.gem-expanded cb-header .e-steps__progress button:hover {
-    background-color: #523ae6 !important;
+    background-color: var(--token-blue-600) !important;
     color: #fff !important;
     opacity: 1 !important;
 }
@@ -286,11 +286,11 @@ body.gem-expanded cb-header .e-layout__actions {
     padding-left:10px !important;
 }
 
-body.gem-expanded cb-header cb-draft-save-button e-tooltip[disabled="true"] button.e-btn {
+/* body.gem-expanded cb-header cb-draft-save-button e-tooltip[disabled="true"] button.e-btn {
     color: #fff !important;
     background: #523ae6 !important;
     border: 1px solid #523ae6;
-}
+} */
 
 /* campaign preview toolbar */
 body.gem-expanded cb-campaign-preview > .e-section {
@@ -360,19 +360,6 @@ vce-variables-editor .e-field .e-cell:has([style*="hidden"]) {
 }
 vce-variables-editor .e-field .e-cell:has([style*="visible"]) {
     margin-left: 6px;
-}
-
-.e-navigation__panel > nav.e-navigation__menu {
-    background-image: linear-gradient(to top, var(--gemma-primary-600) 0%, color-mix(in srgb, var(--gemma-primary-600) 15%, transparent) 15%, transparent 30%);
-    transition: background-image 2s ease-out;
-}
-
-html.FLIPPER-theme-eveningHorizon .e-navigation__panel #gem-nav-settings-item .e-navigation__action_text {
-    text-shadow: 1px 1px 5px rgb(0 0 0 / 0.5);
-}
-
-.e-navigation__panel .e-navigation__action:not(:hover):not(:focus-visible) {
-    background: transparent !important;
 }
 
 body.gem-expanded cb-header cb-save-button {
@@ -657,6 +644,15 @@ gem-e-icon {
     display: inline-flex;
     position: relative;
 }
+.gem-e-icon {
+    color: var(--token-icon-default-text);
+    font-family: var(--token-icon-default-fontFamily);
+    font-size: var(--token-icon-default-size);
+    vertical-align: middle;
+    width: 24px;
+    height: 24px;
+}
+
 .e-btn .gem-e-icon {
     font-size: var(--token-icon-default-sizeSmall);
     height: var(--token-icon-default-sizeSmall);
@@ -683,13 +679,9 @@ gem-e-icon .gem-e-icon {
     font-weight: 400;
     display: inline-flex;
 }
-.gem-e-icon {
-    color: var(--token-icon-default-text);
-    font-family: var(--token-icon-default-fontFamily);
-    font-size: var(--token-icon-default-size);
-    vertical-align: middle;
-    width: 24px;
-    height: 24px;
+
+span.gem-e-icon {
+    font-size: inherit !important;
 }
 
 /*

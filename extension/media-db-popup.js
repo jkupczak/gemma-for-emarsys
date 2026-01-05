@@ -119,13 +119,15 @@ function initializeMediaDBColumnVisibility() {
       console.log(`[Gem] Row ${rowIndex} has ${cells.length} cells, class: ${row.className}`);
 
       // Skip rows that are headers or special rows (colspan rows, loading rows, etc.)
-      // Only process actual file data rows
-      if (!row.classList.contains('file-table-row') || cells.length !== 5) {
-        console.log(`[Gem] Skipping row ${rowIndex} - not a file data row`);
+      // Only process actual file/folder data rows
+      const isFileRow = row.classList.contains('file-table-row');
+      const isFolderRow = row.classList.contains('folder-table-row');
+      if ((!isFileRow && !isFolderRow) || cells.length !== 5) {
+        console.log(`[Gem] Skipping row ${rowIndex} - not a file/folder data row`);
         return;
       }
 
-      console.log(`[Gem] Processing file data row ${rowIndex}`);
+      console.log(`[Gem] Processing ${isFolderRow ? 'folder' : 'file'} data row ${rowIndex}`);
 
       // Column indices:
       // 0: File name (with icon) - always visible for file name, but can hide icon
@@ -139,6 +141,15 @@ function initializeMediaDBColumnVisibility() {
         const newDisplay = settings.showCreated ? '' : 'none !important';
         console.log(`[Gem] Setting Created column (cell 1) display to: ${newDisplay}`);
         cells[1].style.setProperty('display', settings.showCreated ? '' : 'none', 'important');
+      }
+      // Fallback: folder rows can sometimes still show created even when the column is hidden.
+      // Hide any cell containing <e-time> when Created is disabled.
+      if (!settings.showCreated) {
+        cells.forEach((cell) => {
+          if (cell && cell.querySelector && cell.querySelector('e-time')) {
+            cell.style.setProperty('display', 'none', 'important');
+          }
+        });
       }
 
       // Toggle Size column (index 2)
@@ -156,7 +167,7 @@ function initializeMediaDBColumnVisibility() {
       }
 
       // Toggle File Icon (within column 0)
-      if (cells[0]) {
+      if (cells[0] && isFileRow) {
         const icons = cells[0].querySelectorAll('e-icon[type="inline"]');
         console.log(`[Gem] Found ${icons.length} file icons in cell 0`);
         if (!settings.showFileIcon) {
@@ -197,13 +208,13 @@ function initializeMediaDBColumnVisibility() {
         mutation.addedNodes.forEach((node) => {
           if (node.nodeType === Node.ELEMENT_NODE) {
             // Check if this node is a file data row
-            if (node.classList && node.classList.contains('file-table-row')) {
+          if (node.classList && (node.classList.contains('file-table-row') || node.classList.contains('folder-table-row'))) {
               hasNewFileRows = true;
             }
             // Also check within subtrees for file rows
             else if (node.querySelectorAll) {
-              const fileRows = node.querySelectorAll('.file-table-row');
-              if (fileRows.length > 0) {
+              const fileOrFolderRows = node.querySelectorAll('.file-table-row, .folder-table-row');
+              if (fileOrFolderRows.length > 0) {
                 hasNewFileRows = true;
               }
             }

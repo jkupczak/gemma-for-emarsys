@@ -114,7 +114,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
       #gem-settings-panel input, #gem-settings-panel select {
         background: var(--token-input-default-background);
         border: 2px solid var(--token-box-default-border);
-        padding: 8px 12px;
+        padding: 8px 2px 8px 12px;
         border-radius:6px;
       }
 
@@ -553,7 +553,15 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
           <div class="gem-setting" style="display: flex; gap: 12px; align-items: center;">
             <label for="opt-convert-esl-to-tokens" style="flex: 1;">Convert ESL to Tokens</label>
             <select id="opt-convert-esl-to-tokens" style="width: 150px;">
-              <option value="always-show" selected>Always Show</option>
+              <option value="always-show" selected>Show if Available</option>
+              <option value="always-hide">Always Hide</option>
+            </select>
+          </div>
+
+          <div class="gem-setting" style="display: flex; gap: 12px; align-items: center;">
+            <label for="opt-swap-keywords" style="flex: 1;">Swap Keywords</label>
+            <select id="opt-swap-keywords" style="width: 150px;">
+              <option value="always-show" selected>Show if Available</option>
               <option value="always-hide">Always Hide</option>
             </select>
           </div>
@@ -705,6 +713,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         saveToReuse: "always-show",
         resetBlock: "always-show",
         convertEslToTokens: "always-show",
+        swapKeywords: "always-show",
         mobilePreviewWidth: 414,
         mobilePreviewScale: 0.5,
         mobileViewVisible: true,
@@ -736,6 +745,8 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
           settings.resetBlock;
         document.getElementById("opt-convert-esl-to-tokens").value =
           settings.convertEslToTokens;
+        const swapKeywordsSelect = document.getElementById("opt-swap-keywords");
+        if (swapKeywordsSelect) swapKeywordsSelect.value = settings.swapKeywords || "always-show";
 
         document.getElementById("opt-enable-highlighting").checked =
           settings.enableHighlighting;
@@ -811,6 +822,8 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
           document.getElementById("opt-reset-block")?.value ?? "always-show",
         convertEslToTokens:
           document.getElementById("opt-convert-esl-to-tokens")?.value ?? "always-show",
+        swapKeywords:
+          document.getElementById("opt-swap-keywords")?.value ?? "always-show",
         enableHighlighting:
           document.getElementById("opt-enable-highlighting")?.checked ?? true,
         enableMobilePreview: mobileVisible,
@@ -855,6 +868,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
       "opt-save-to-reuse",
       "opt-reset-block",
       "opt-convert-esl-to-tokens",
+      "opt-swap-keywords",
       "opt-enable-highlighting",
       "opt-enable-mobile-preview",
       "opt-show-finish-editing-btn",
@@ -1440,6 +1454,10 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
     if (changes.convertEslToTokens) {
       const select = document.getElementById("opt-convert-esl-to-tokens");
       if (select) select.value = changes.convertEslToTokens.newValue;
+    }
+    if (changes.swapKeywords) {
+      const select = document.getElementById("opt-swap-keywords");
+      if (select) select.value = changes.swapKeywords.newValue;
     }
 
     if (changes.mobilePreviewWidth) {

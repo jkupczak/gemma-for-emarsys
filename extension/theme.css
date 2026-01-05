@@ -53,10 +53,15 @@ html.FLIPPER-theme-eveningHorizon {
     background: var(--token-background-dark);
   }
 }
+
+/* Chat for color conversion
+   https://chatgpt.com/c/69487f1c-08ec-832a-9659-92c2b417d687
+*/
+
 /* global variables */
 :root { 
   --gemma: #523ae6; 
-  --gemma-primary-100: #23186b;
+  --gemma-primary-100: #282635;
   --gemma-primary-200: #332493;
   --gemma-primary-300: #4330c2;
   --gemma-primary-400: #523ae6;
@@ -70,7 +75,7 @@ html.FLIPPER-theme-eveningHorizon {
 
 html.FLIPPER-theme-eveningHorizon:root {
   --gemma: #523ae6; 
-  --gemma-primary-900: #23186b;
+  --gemma-primary-900: #282635;
   --gemma-primary-800: #332493;
   --gemma-primary-700: #4330c2;
   --gemma-primary-600: #523ae6;
@@ -93,7 +98,7 @@ html:root:not(.gem--retheme-inactive) {
   --token-blue-600: #523ae6;
   --token-blue-700: #4330c2;
   --token-blue-800: #332493;
-  --token-blue-900: #23186b;
+  --token-blue-900: #282635;
   
   --token-azure-100: #f0edff;
   --token-azure-200: #dcd6ff;
@@ -103,7 +108,7 @@ html:root:not(.gem--retheme-inactive) {
   --token-azure-600: #523ae6;
   --token-azure-700: #4330c2;
   --token-azure-800: #332493;
-  --token-azure-900: #23186b;
+  --token-azure-900: #282635;
   
   --token-chart-01-100: #f0edff;
   --token-chart-01-200: #dcd6ff;
@@ -113,7 +118,7 @@ html:root:not(.gem--retheme-inactive) {
   --token-chart-01-600: #523ae6;
   --token-chart-01-700: #4330c2;
   --token-chart-01-800: #332493;
-  --token-chart-01-900: #23186b;
+  --token-chart-01-900: #282635;
   --token-chart-01-default: #523ae6;
   
   --token-chart-09-100: #f0edff;
@@ -124,7 +129,7 @@ html:root:not(.gem--retheme-inactive) {
   --token-chart-09-600: #523ae6;
   --token-chart-09-700: #4330c2;
   --token-chart-09-800: #332493;
-  --token-chart-09-900: #23186b;
+  --token-chart-09-900: #282635;
   --token-chart-09-default: #523ae6;
   
   --token-info-100: #f0edff;
@@ -135,7 +140,7 @@ html:root:not(.gem--retheme-inactive) {
   --token-info-600: #523ae6;
   --token-info-700: #4330c2;
   --token-info-800: #332493;
-  --token-info-900: #23186b;
+  --token-info-900: #282635;
   --token-info-default: #523ae6;
   
   --token-highlight-100: #f0edff;
@@ -146,7 +151,7 @@ html:root:not(.gem--retheme-inactive) {
   --token-highlight-600: #523ae6;
   --token-highlight-700: #4330c2;
   --token-highlight-800: #332493;
-  --token-highlight-900: #23186b;
+  --token-highlight-900: #282635;
   --token-highlight-default: #523ae6;
   
   --token-primary-100: #f0edff;
@@ -157,7 +162,7 @@ html:root:not(.gem--retheme-inactive) {
   --token-primary-600: #523ae6;
   --token-primary-700: #4330c2;
   --token-primary-800: #332493;
-  --token-primary-900: #23186b;
+  --token-primary-900: #282635;
   --token-primary-default: #523ae6;
   
   --token-outline-focus: #523ae6;
@@ -230,30 +235,31 @@ html:root:not(.gem--retheme-inactive) {
   --token-tableCell-selected-background: #f0edff;
   --token-tableCell-selected-backgroundActive: #f0edff;
   --token-tableCell-selected-backgroundHover: #dcd6ff;
-  --token-tableCell-selected-backgroundActiveHover: #dcd6ff;
+  --token-tableCell-selected-backgroundActiveHover: #f0edff;
   --token-tableCell-selected-border: #523ae6;
 
   --token-button-toolbar-borderActive: #8f80ff;
   --token-button-toolbar-text: #8f80ff;
   --token-button-toolbar-textActive: #8f80ff;
   --token-input-default-borderActive: #8f80ff;
-  --token-input-default-borderHover: #332493;
+  --token-input-default-borderHover: #f0edff;
   --token-input-default-underlineHover: #8f80ff;
-  --token-button-default-backgroundActiveHover: #dcd6ff;
+  --token-button-default-backgroundActiveHover: #f0edff;
   --token-label-highlight-background: #523ae6;
   --token-label-highlight-backgroundHover: #332493;
   --token-label-highlight-border: #523ae6; 
-  --token-navigationItem-default-backgroundActive: #23186b;
-  --token-navigationItem-default-backgroundActiveHover: #332493;
-  --token-navigationItem-selected-backgroundActive: #23186b;
-  --token-navigationItem-selected-backgroundActiveHover: #332493;
+  --token-navigationItem-default-backgroundActive: #dcd6ff;
+  --token-navigationItem-default-backgroundActiveHover: #f0edff;
+  --token-navigationItem-selected-backgroundActive: #dcd6ff;
+  --token-navigationItem-selected-backgroundActiveHover: #f0edff;
 
+  --token-navigationItem-default-backgroundHover: #b9adff;
 }
 
 /* Darkmode retheme the UI to the gem color scheme */
 html.FLIPPER-theme-eveningHorizon:root:not(.gem--retheme-inactive) {
   
-  --token-blue-100: #23186b;
+  --token-blue-100: #282635;
   --token-blue-200: #332493;
   --token-blue-300: #4330c2;
   --token-blue-400: #523ae6;
@@ -263,7 +269,7 @@ html.FLIPPER-theme-eveningHorizon:root:not(.gem--retheme-inactive) {
   --token-blue-800: #dcd6ff;
   --token-blue-900: #f0edff;
   
-  --token-azure-100: #23186b;
+  --token-azure-100: #282635;
   --token-azure-200: #332493;
   --token-azure-300: #4330c2;
   --token-azure-400: #523ae6;
@@ -273,7 +279,7 @@ html.FLIPPER-theme-eveningHorizon:root:not(.gem--retheme-inactive) {
   --token-azure-800: #dcd6ff;
   --token-azure-900: #f0edff;
   
-  --token-chart-01-100: #23186b;
+  --token-chart-01-100: #282635;
   --token-chart-01-200: #332493;
   --token-chart-01-300: #4330c2;
   --token-chart-01-400: #523ae6;
@@ -284,7 +290,7 @@ html.FLIPPER-theme-eveningHorizon:root:not(.gem--retheme-inactive) {
   --token-chart-01-900: #f0edff;
   --token-chart-01-default: #8f80ff;
   
-  --token-chart-09-100: #23186b;
+  --token-chart-09-100: #282635;
   --token-chart-09-200: #332493;
   --token-chart-09-300: #4330c2;
   --token-chart-09-400: #523ae6;
@@ -295,7 +301,7 @@ html.FLIPPER-theme-eveningHorizon:root:not(.gem--retheme-inactive) {
   --token-chart-09-900: #f0edff;
   --token-chart-09-default: #8f80ff;
   
-  --token-info-100: #23186b;
+  --token-info-100: #282635;
   --token-info-200: #332493;
   --token-info-300: #4330c2;
   --token-info-400: #523ae6;
@@ -306,7 +312,7 @@ html.FLIPPER-theme-eveningHorizon:root:not(.gem--retheme-inactive) {
   --token-info-900: #f0edff;
   --token-info-default: #8f80ff;
   
-  --token-highlight-100: #23186b;
+  --token-highlight-100: #282635;
   --token-highlight-200: #332493;
   --token-highlight-300: #4330c2;
   --token-highlight-400: #523ae6;
@@ -317,7 +323,7 @@ html.FLIPPER-theme-eveningHorizon:root:not(.gem--retheme-inactive) {
   --token-highlight-900: #f0edff;
   --token-highlight-default: #8f80ff;
   
-  --token-primary-100: #23186b;
+  --token-primary-100: #282635;
   --token-primary-200: #332493;
   --token-primary-300: #4330c2;
   --token-primary-400: #523ae6;
@@ -346,11 +352,11 @@ html.FLIPPER-theme-eveningHorizon:root:not(.gem--retheme-inactive) {
   --token-switch-on-backgroundHover: #8f80ff;
   --token-switch-on-toggleBorder: #6b5aff;
   
-  --token-box-highlight-background: #23186b;
+  --token-box-highlight-background: #282635;
   --token-box-highlight-border: #8f80ff;
   --token-box-highlight-icon: #8f80ff;
   
-  --token-action-selected-background: #23186b;
+  --token-action-selected-background: #282635;
   --token-action-selected-backgroundDisabled: #332493;
   --token-action-selected-backgroundHover: #332493;
   --token-action-selected-bullet: #332493;
@@ -387,14 +393,14 @@ html.FLIPPER-theme-eveningHorizon:root:not(.gem--retheme-inactive) {
   --token-tab-selected-marker: #8f80ff;
   --token-tab-selected-text: #8f80ff;
   
-  --token-tableCell-selected-background: #23186b;
-  --token-tableCell-selected-backgroundActive: #23186b;
+  --token-tableCell-selected-background: #282635;
+  --token-tableCell-selected-backgroundActive: #282635;
   --token-tableCell-selected-backgroundHover: #332493;
   --token-tableCell-selected-backgroundActiveHover: #332493;
   --token-tableCell-selected-border: #8f80ff;
   
   --token-ruleBuilder-variant2-autoLabel: #4330c2;
-  --token-ruleBuilder-variant2-background: #23186b;
+  --token-ruleBuilder-variant2-background: #282635;
   --token-ruleBuilder-variant2-backgroundHover: #332493;
   --token-ruleBuilder-variant2-border: #523ae6;
   --token-ruleBuilder-variant2-buttonFocus: #4330c2;
@@ -412,10 +418,11 @@ html.FLIPPER-theme-eveningHorizon:root:not(.gem--retheme-inactive) {
   --token-label-highlight-background: #8f80ff;
   --token-label-highlight-backgroundHover: #332493;
   --token-label-highlight-border: #8f80ff;
-  --token-navigationItem-default-backgroundActive: #23186b;
+  --token-navigationItem-default-backgroundActive: #282635;
   --token-navigationItem-default-backgroundActiveHover: #332493;
-  --token-navigationItem-selected-backgroundActive: #23186b;
+  --token-navigationItem-selected-backgroundActive: #282635;
   --token-navigationItem-selected-backgroundActiveHover: #332493;
-  
-  
+  --token-navigationItem-default-backgroundActiveHover: #332493;
+  --token-navigationItem-default-backgroundHover: #282635;
+
 }
