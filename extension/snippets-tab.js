@@ -13,8 +13,7 @@ const DEFAULT_SNIPPETS = [
     category: '',
     name: 'ESL snippet',
     description: '',
-    swapKeyword: '',
-    swapMode: 'token',
+    swapKeywords: [],
     content: 'This is a sample snippet!'
   }
 ];
@@ -112,24 +111,20 @@ function createSnippetModalHTML(isEditing = false) {
       </div>
       <div class="e-field">
         <label class="e-field__label e-field__label-inline">Code snippet</label>
-        <textarea class="e-input gem-scrollable" id="gem-snippet-code-input" placeholder="Enter your ESL code snippet" style="background:var(--token-input-default-background); font-family: var(--token-font-monospace, monospace); width: 100%; min-height: 200px; resize: vertical; padding: 10px 12px;"></textarea>
+        <textarea class="e-input gem-scrollable" id="gem-snippet-code-input" placeholder="Enter your ESL code snippet" style="background-color:var(--token-input-default-background); font-family: var(--token-font-monospace, monospace); width: 100%; min-height: 200px; resize: vertical; padding: 10px 12px;"></textarea>
       </div>
       <div class="e-field">
         <label class="e-field__label e-field__label-inline" for="gem-snippet-description-input">Description</label>
-        <textarea class="e-input gem-scrollable" id="gem-snippet-description-input" placeholder="Optional description" style="background:var(--token-input-default-background); width: 100%; min-height: 100px; resize: vertical; padding: 10px 12px;"></textarea>
+        <textarea class="e-input gem-scrollable" id="gem-snippet-description-input" placeholder="Optional description" style="background-color:var(--token-input-default-background); width: 100%; min-height: 100px; resize: vertical; padding: 10px 12px;"></textarea>
       </div>
-      <div style="display:flex; gap:10px">
-      <div class="e-field" style="width:100%">
-        <label class="e-field__label e-field__label-inline" for="gem-snippet-swap-keyword-input">Optional Keyword for Swapping</label>
-        <input class="e-input" id="gem-snippet-swap-keyword-input" type="text" placeholder="Optional keyword (must be unique)">
-      </div>
-      <div class="e-field">
-        <label class="e-field__label e-field__label-inline" for="gem-snippet-swap-mode-select">Swap Method</label>
-        <select class="e-input" id="gem-snippet-swap-mode-select">
-          <option value="token" selected>Swap as ESL Token</option>
-          <option value="plain">Swap as Plain Text</option>
-        </select>
-      </div>
+      <div style="margin-top: 6px;">
+        <div style="display:flex; gap:10px; align-items:flex-end; margin-bottom:4px;">
+          <div style="width:100%;">Optional Keyword for Swapping</div>
+          <div style="min-width:220px;">Swap Method</div>
+          <div style="min-width:40px;"></div>
+        </div>
+        <div id="gem-swap-keywords-rows"></div>
+        <button class="e-btn" id="gem-add-swap-keyword-btn" type="button" style="width: 100%;">+ Add a Keyword for Swapping</button>
       </div>
     </div>
   </div>
@@ -156,6 +151,35 @@ function createSnippetModalHTML(isEditing = false) {
 // Add a Snippets tab to the vertical navigation
 function initializeSnippetsTab() {
   console.log("[Gem] Initializing snippets tab");
+
+  // When we open the Snippets tab, we hide the existing Emarsys panel(s) rather than removing them.
+  // Emarsys sometimes assumes those nodes still exist and won't re-create them, which can break
+  // certain tab switching sequences (Snippets -> X -> Snippets -> X).
+  function hideNonRouterOutletChildren(navContent) {
+    const children = Array.from(navContent.children);
+    children.forEach((child) => {
+      if (child.tagName === 'ROUTER-OUTLET') return;
+      if (child.tagName === 'GEM-SNIPPETS') return;
+      if (child.dataset && child.dataset.gemHiddenBySnippets === 'true') return;
+      if (child.dataset) {
+        child.dataset.gemHiddenBySnippets = 'true';
+        child.dataset.gemPrevDisplay = child.style.display || '';
+      }
+      child.style.display = 'none';
+    });
+  }
+
+  function restoreHiddenNavChildren(navContent) {
+    const hidden = navContent.querySelectorAll('[data-gem-hidden-by-snippets="true"]');
+    hidden.forEach((el) => {
+      const prev = el.dataset ? (el.dataset.gemPrevDisplay || '') : '';
+      el.style.display = prev;
+      if (el.dataset) {
+        delete el.dataset.gemHiddenBySnippets;
+        delete el.dataset.gemPrevDisplay;
+      }
+    });
+  }
 
   // Function to create the snippets tab HTML
   function createSnippetsTabHTML() {
@@ -246,6 +270,47 @@ function initializeSnippetsTab() {
       .replace(/'/g, '&#39;');
   }
 
+  // ------------------------------------------------------------
+  // Swap Keywords (multiple per snippet; backward-compatible with legacy fields)
+  // ------------------------------------------------------------
+
+  function normalizeSwapMode(mode) {
+    return mode === 'plain' ? 'plain' : 'token';
+  }
+
+  function normalizeSwapKeywordsFromSnippet(snippet) {
+    if (!snippet) return [];
+
+    // New format: [{ keyword, mode }]
+    if (Array.isArray(snippet.swapKeywords)) {
+      const cleaned = snippet.swapKeywords
+        .map((k) => ({
+          keyword: (k && typeof k.keyword === 'string') ? k.keyword.trim() : '',
+          mode: normalizeSwapMode(k && k.mode)
+        }))
+        .filter((k) => !!k.keyword);
+
+      // Deduplicate within snippet (case-sensitive)
+      const seen = new Set();
+      const unique = [];
+      cleaned.forEach((k) => {
+        if (seen.has(k.keyword)) return;
+        seen.add(k.keyword);
+        unique.push(k);
+      });
+      return unique;
+    }
+
+    // Legacy format: swapKeyword/swapMode
+    const legacyKeyword = (snippet.swapKeyword && typeof snippet.swapKeyword === 'string') ? snippet.swapKeyword.trim() : '';
+    if (!legacyKeyword) return [];
+    return [{ keyword: legacyKeyword, mode: normalizeSwapMode(snippet.swapMode) }];
+  }
+
+  function snippetHasAnySwapKeyword(snippet) {
+    return normalizeSwapKeywordsFromSnippet(snippet).length > 0;
+  }
+
   function renderSnippetsTablesHTML(snippets, collapseState = {}) {
     if (!snippets || snippets.length === 0) return '';
 
@@ -289,9 +354,17 @@ function initializeSnippetsTab() {
           ? '<span title="Favorite" aria-label="Favorite" style="margin-right: 6px; font-size: 14px; line-height: 1;">★</span>'
           : '';
         const isFav = !!snippet.favorite;
-        const hasSwap = !!(snippet.swapKeyword && String(snippet.swapKeyword).trim());
-        const swapGlyph = hasSwap
-          ? '<div class="e-icon" title="Has keyword swap" aria-label="Has keyword swap" style="margin-bottom: 3px; opacity: 0.3; font-size: 20px">&#xF0DE;</div>'
+        const hasSwap = snippetHasAnySwapKeyword(snippet);
+        const swapBtn = hasSwap
+          ? `
+    <button class="e-btn e-btn-sm gem-swap-snippet-btn" type="button" data-snippet-id="${snippet.id}" title="Swap Keywords" style="min-width: unset; padding: 0 2px 0 10px;">
+      <gem-e-icon icon="style" color="inherit">
+        <div aria-hidden="true" class="e-icon-wrapper">
+          <div class="e-icon text-color-inherit" style="/*color: var(--token-blue-600);*/">&#xF0DE;</div>
+        </div>
+      </e-icon>
+    </button>
+          `.trim()
           : '';
         return `
 <tr data-snippet-name="${escapeHtmlText(snippetNameLower)}" data-gem-favorite="${isFav ? 'true' : 'false'}" data-gem-has-swap="${hasSwap ? 'true' : 'false'}">
@@ -301,16 +374,16 @@ function initializeSnippetsTab() {
       <vce-token name="${snippet.name}" data="${fullSnippetHTML.replace(/"/g, '&quot;')}">
         <span class="e-label e-label-primary" draggable="true" style="cursor: move;">${snippet.name}</span>
       </vce-token>
-      ${swapGlyph}
     </div>
   </td>
   <td style="text-align: right; vertical-align:middle; padding: 6px 6px 6px 2px;">
+    ${swapBtn}
     <button class="e-btn e-btn-sm gem-edit-snippet-btn" type="button" data-snippet-id="${snippet.id}" title="Edit snippet" style="min-width: unset; padding: 0 2px 0 10px;">
-      <e-icon icon="edit" color="inherit">
+      <gem-e-icon icon="edit" color="inherit">
         <div aria-hidden="true" class="e-icon-wrapper">
-          <div class="e-icon text-color-inherit" style="margin: 0;">✏️</div>
+          <div class="e-icon text-color-inherit">&#xF0CE;</div>
         </div>
-      </e-icon>
+      </gem-e-icon>
     </button>
   </td>
 </tr>
@@ -320,7 +393,20 @@ function initializeSnippetsTab() {
       return `
 <div class="gem-snippets-category-block" style="margin-bottom: 15px;">
   <div class="gem-snippets-category-title" style="display:flex; align-items:center; justify-content:space-between; font-weight: 600; margin: 6px 0;">
-    <span>${escapeHtmlText(category)}</span>
+    <span style="display:flex; align-items:center; gap:6px;">
+      <span>${escapeHtmlText(category)}</span>
+      <span class="gem-snippets-category-count" style="font-size: 10px;
+    display: inline-block;
+    border-radius: 4px;
+    box-shadow: 0 0 0 1px;
+    min-width: 16px;
+    padding: 0 2px;
+    height: 16px;
+    line-height: 16px;
+    opacity: 0.3;
+    text-align: center;
+    font-weight: bold;">${list.length}</span>
+    </span>
     <span style="display:flex; align-items:center; gap:6px;">
       <button class="e-btn e-btn-borderless e-btn-onlyicon gem-snippets-category-rename"
               type="button"
@@ -654,8 +740,7 @@ function initializeSnippetsTab() {
         content: s.content,
         description: s.description || '',
         favorite: !!s.favorite,
-        swapKeyword: (s.swapKeyword || ''),
-        swapMode: (s.swapMode === 'plain' ? 'plain' : (s.swapKeyword ? 'token' : 'token'))
+          swapKeywords: normalizeSwapKeywordsFromSnippet(s)
       }));
       exportTextarea.value = JSON.stringify(exportPayload, null, 2);
     });
@@ -753,16 +838,17 @@ function initializeSnippetsTab() {
       getSnippets((existingSnippets) => {
         const updated = [...existingSnippets];
         const existingNamesLower = new Set(updated.map(s => (s.name || '').toLowerCase()));
-        const existingSwapKeywordsLower = new Set(
-          updated
-            .map(s => (s.swapKeyword || '').trim().toLowerCase())
-            .filter(Boolean)
-        );
+        const existingSwapKeywords = new Set();
+        updated.forEach((s) => {
+          normalizeSwapKeywordsFromSnippet(s).forEach((k) => {
+            if (k && k.keyword) existingSwapKeywords.add(k.keyword);
+          });
+        });
 
         let added = 0;
         let skipped = 0;
         let invalid = 0;
-        let swapKeywordRemoved = 0;
+        let swapKeywordsRemoved = 0;
 
         imported.forEach((item) => {
           const category = (item && typeof item.category === 'string') ? item.category.trim() : '';
@@ -770,8 +856,21 @@ function initializeSnippetsTab() {
           const content = (item && typeof item.content === 'string') ? item.content.trim() : '';
           const description = (item && typeof item.description === 'string') ? item.description.trim() : '';
           const favorite = !!(item && item.favorite);
-          let swapKeyword = (item && typeof item.swapKeyword === 'string') ? item.swapKeyword.trim() : '';
-          const swapMode = (item && item.swapMode === 'plain') ? 'plain' : 'token';
+          let swapKeywords = [];
+          if (item && Array.isArray(item.swapKeywords)) {
+            swapKeywords = item.swapKeywords
+              .map((k) => ({
+                keyword: (k && typeof k.keyword === 'string') ? k.keyword.trim() : '',
+                mode: normalizeSwapMode(k && k.mode)
+              }))
+              .filter((k) => !!k.keyword);
+          } else {
+            // Backward-compatible import (legacy single keyword)
+            const legacyKeyword = (item && typeof item.swapKeyword === 'string') ? item.swapKeyword.trim() : '';
+            if (legacyKeyword) {
+              swapKeywords = [{ keyword: legacyKeyword, mode: normalizeSwapMode(item && item.swapMode) }];
+            }
+          }
 
           if (!name || !content) {
             invalid++;
@@ -789,15 +888,25 @@ function initializeSnippetsTab() {
             return;
           }
 
-          // If this snippet's swap keyword conflicts with an existing snippet's keyword, remove it.
-          if (swapKeyword) {
-            const keyLower = swapKeyword.toLowerCase();
-            if (existingSwapKeywordsLower.has(keyLower)) {
-              swapKeywordRemoved++;
-              swapKeyword = '';
-            } else {
-              existingSwapKeywordsLower.add(keyLower);
-            }
+          // If this snippet's swap keywords conflict with existing snippet keywords, remove them.
+          // Uniqueness is case-sensitive (exact match after trim).
+          if (swapKeywords.length) {
+            const dedup = new Set();
+            const cleaned = [];
+            swapKeywords.forEach((k) => {
+              if (!k.keyword) return;
+              if (dedup.has(k.keyword)) return;
+              dedup.add(k.keyword);
+              cleaned.push(k);
+            });
+            swapKeywords = cleaned.filter((k) => {
+              if (existingSwapKeywords.has(k.keyword)) {
+                swapKeywordsRemoved++;
+                return false;
+              }
+              existingSwapKeywords.add(k.keyword);
+              return true;
+            });
           }
 
           updated.push({
@@ -807,8 +916,7 @@ function initializeSnippetsTab() {
             name: name,
             content: content,
             description: description,
-            swapKeyword: swapKeyword,
-            swapMode: swapKeyword ? swapMode : 'token'
+            swapKeywords
           });
           existingNamesLower.add(name.toLowerCase());
           added++;
@@ -817,7 +925,7 @@ function initializeSnippetsTab() {
         saveSnippets(updated, () => {
           close();
           refreshSnippetsDisplay();
-          alert(`Import complete.\n\nAdded: ${added}\nSkipped (identical): ${skipped}\nInvalid: ${invalid}\nKeyword removed (conflict): ${swapKeywordRemoved}`);
+          alert(`Import complete.\n\nAdded: ${added}\nSkipped (identical): ${skipped}\nInvalid: ${invalid}\nKeywords removed (conflict): ${swapKeywordsRemoved}`);
         });
       });
     });
@@ -906,13 +1014,8 @@ function initializeSnippetsTab() {
       return;
     }
 
-    // Remove all existing children except router-outlet
-    const children = Array.from(navContent.children);
-    children.forEach(child => {
-      if (child.tagName !== 'ROUTER-OUTLET') {
-        child.remove();
-      }
-    });
+    // Hide all existing children except router-outlet (keep in DOM so Emarsys can restore properly)
+    hideNonRouterOutletChildren(navContent);
 
     // Add the snippets content (async with callback)
     createSnippetsContentHTML((snippetsHTML) => {
@@ -921,6 +1024,9 @@ function initializeSnippetsTab() {
 
       // Set up drag and drop functionality after content is added
       setupSnippetDragAndDrop();
+
+      // Set up per-snippet swap keyword buttons
+      setupSwapSnippetButtons();
 
       // Set up add snippet button functionality
       setupAddSnippetButton();
@@ -942,16 +1048,16 @@ function initializeSnippetsTab() {
     });
 
     // Update active states - remove active from other tabs, add to snippets tab
-    // First, remove active state from all tabs
-    document.querySelectorAll('cb-vertical-tab').forEach(tab => {
-      const navItem = tab.querySelector('e-verticalnav-item');
-      if (navItem) {
-        const navItemDiv = navItem.querySelector('.e-verticalnavitem');
-        if (navItemDiv) {
-          navItemDiv.classList.remove('e-verticalnavitem-active');
-        }
-      }
-    });
+    // (We leave the Emarsys DOM panels intact; this is just visual state)
+    // document.querySelectorAll('cb-vertical-tab').forEach(tab => {
+    //   const navItem = tab.querySelector('e-verticalnav-item');
+    //   if (navItem) {
+    //     const navItemDiv = navItem.querySelector('.e-verticalnavitem');
+    //     if (navItemDiv) {
+    //       navItemDiv.classList.remove('e-verticalnavitem-active');
+    //     }
+    //   }
+    // });
 
     // Add active state to snippets tab
     const snippetsTab = document.querySelector('#gem-snippets-tab');
@@ -1006,6 +1112,12 @@ function initializeSnippetsTab() {
             snippetList.remove();
             console.log("[Gem] Removed gem-snippets from DOM");
           }
+
+          // Restore Emarsys' previously-hidden nav content panels
+          const navContent = document.querySelector('.e-verticalnav__content');
+          if (navContent) {
+            restoreHiddenNavChildren(navContent);
+          }
         }
       }
     });
@@ -1037,6 +1149,245 @@ function initializeSnippetsTab() {
   }
 
   // ------------------------------------------------------------
+  // Swap Keywords button (per snippet, from Snippets table)
+  // ------------------------------------------------------------
+
+  function setupSwapSnippetButtons() {
+    const buttons = document.querySelectorAll('.gem-swap-snippet-btn');
+    buttons.forEach((button) => {
+      if (button._gemSwapBound) return;
+      button._gemSwapBound = true;
+      button.addEventListener('click', (event) => {
+        const snippetId = event.currentTarget.getAttribute('data-snippet-id');
+        if (!snippetId) return;
+        runSwapForSnippetId(snippetId);
+      });
+    });
+  }
+
+  function escapeTokenContentForAttribute(value) {
+    // Must match generateSnippetHTML() encoding for token-content
+    return String(value)
+      .replace(/%/g, '%25')
+      .replace(/&/g, '&amp;')
+      .replace(/ /g, '%20')
+      .replace(/\{/g, '%7B')
+      .replace(/\|/g, '%7C')
+      .replace(/\}/g, '%7D')
+      .replace(/\\/g, '%5C')
+      .replace(/\[/g, '%5B')
+      .replace(/\]/g, '%5D')
+      .replace(/</g, '%3C')
+      .replace(/>/g, '%3E')
+      .replace(/"/g, '%22');
+  }
+
+  function createEslTokenSpan(doc, name, script) {
+    const tokenContent = JSON.stringify({ script });
+    const encodedTokenContent = escapeTokenContentForAttribute(tokenContent);
+    const encodedTokenTemplate = '%22%3C%25=%20script%20%25%3E%22';
+    const encodedTokenMeta = '%7B%7D';
+
+    const span = doc.createElement('span');
+    span.setAttribute('e-token', 'cust_esl');
+    span.setAttribute('token-template', encodedTokenTemplate);
+    span.setAttribute('token-content', encodedTokenContent);
+    span.setAttribute('token-meta', encodedTokenMeta);
+    span.setAttribute('contenteditable', 'false');
+    span.className = 'cbNonEditable';
+    // Match the toolbar token styling for consistent visibility
+    span.style.backgroundColor = '#6597cf';
+    span.style.borderRadius = '.3em';
+    span.style.boxShadow = '0 0 0 0.2em #6597cf';
+    span.style.color = '#fff';
+    span.textContent = name;
+    return span;
+  }
+
+  function markEmarsysDraftDirty(doc, editables = []) {
+    try {
+      editables.forEach((el) => {
+        try {
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+        } catch (_) {}
+      });
+
+      // Nudge common rich-text systems (TinyMCE) if present
+      const win = doc.defaultView || window;
+      const tinymce = win && win.tinymce;
+      if (tinymce && tinymce.activeEditor) {
+        try {
+          tinymce.activeEditor.undoManager && tinymce.activeEditor.undoManager.add && tinymce.activeEditor.undoManager.add();
+        } catch (_) {}
+        try {
+          tinymce.activeEditor.setDirty && tinymce.activeEditor.setDirty(true);
+        } catch (_) {}
+        try {
+          tinymce.activeEditor.fire && tinymce.activeEditor.fire('change');
+        } catch (_) {}
+      }
+    } catch (_) {}
+  }
+
+  function nudgeEmarsysDirtyDetectionViaFocus(doc, editables = []) {
+    if (!editables || editables.length === 0) return;
+    const el = editables[0];
+    try {
+      el.scrollIntoView && el.scrollIntoView({ block: 'nearest' });
+    } catch (_) {}
+
+    try {
+      // focus in
+      el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+      el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      el.focus && el.focus();
+
+      // place caret (best-effort)
+      try {
+        const sel = doc.getSelection && doc.getSelection();
+        if (sel && typeof sel.removeAllRanges === 'function' && typeof sel.addRange === 'function') {
+          const range = doc.createRange();
+          range.selectNodeContents(el);
+          range.collapse(false);
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
+      } catch (_) {}
+
+      // blur out (Emarsys detects dirty after focus + unfocus)
+      setTimeout(() => {
+        try {
+          el.blur && el.blur();
+          el.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+          el.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
+        } catch (_) {}
+      }, 0);
+    } catch (_) {}
+  }
+
+  function runSwapForSnippetId(snippetId) {
+    getSnippets((snippets) => {
+      const snippet = snippets.find((s) => s.id === snippetId);
+      if (!snippet) return;
+      applySwapForSingleSnippet(snippet);
+    });
+  }
+
+  function applySwapForSingleSnippet(snippet) {
+    const iframe = getGemSnippetTargetIframe();
+    if (!iframe) return;
+
+    let doc;
+    try {
+      doc = iframe.contentDocument || iframe.contentWindow?.document;
+    } catch (e) {
+      return;
+    }
+    if (!doc) return;
+
+    const rules = normalizeSwapKeywordsFromSnippet(snippet);
+    if (!rules.length) return;
+
+    const isInsideExistingToken = (node) => {
+      let cur = node;
+      while (cur) {
+        if (cur.nodeType === 1) {
+          const el = cur;
+          if (el.matches && (el.matches('span[e-token="cust_esl"]') || el.classList.contains('cbNonEditable'))) {
+            return true;
+          }
+        }
+        cur = cur.parentNode;
+      }
+      return false;
+    };
+
+    let didChange = false;
+    const touched = new Set();
+
+    const editables = Array.from(doc.querySelectorAll('[contenteditable="true"]'));
+    editables.forEach((editable) => {
+      const walker = doc.createTreeWalker(
+        editable,
+        NodeFilter.SHOW_TEXT,
+        {
+          acceptNode(node) {
+            if (!node.nodeValue) return NodeFilter.FILTER_REJECT;
+            if (isInsideExistingToken(node.parentNode)) return NodeFilter.FILTER_REJECT;
+            const text = node.nodeValue;
+            const hasAny = rules.some((r) => text.indexOf(r.keyword) !== -1);
+            return hasAny ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+          }
+        }
+      );
+
+      const nodes = [];
+      let n;
+      while ((n = walker.nextNode())) nodes.push(n);
+
+      nodes.forEach((textNode) => {
+        const text = textNode.nodeValue;
+        const matches = [];
+
+        rules.forEach((rule) => {
+          const needle = rule.keyword;
+          let from = 0;
+          while (true) {
+            const idx = text.indexOf(needle, from);
+            if (idx === -1) break;
+            matches.push({ start: idx, end: idx + needle.length, rule });
+            from = idx + needle.length;
+          }
+        });
+
+        if (!matches.length) return;
+        matches.sort((a, b) => (a.start - b.start) || ((b.end - b.start) - (a.end - a.start)));
+
+        const frag = doc.createDocumentFragment();
+        let cursor = 0;
+        let replacedAny = false;
+
+        matches.forEach((m) => {
+          if (m.start < cursor) return;
+          if (m.start > cursor) frag.appendChild(doc.createTextNode(text.slice(cursor, m.start)));
+
+          const mode = normalizeSwapMode(m.rule.mode);
+          if (mode === 'token') {
+            frag.appendChild(createEslTokenSpan(doc, snippet.name || 'ESL snippet', snippet.content || ''));
+          } else {
+            frag.appendChild(doc.createTextNode(snippet.content || ''));
+          }
+
+          replacedAny = true;
+          cursor = m.end;
+        });
+
+        if (cursor < text.length) frag.appendChild(doc.createTextNode(text.slice(cursor)));
+
+        if (replacedAny && textNode.parentNode) {
+          textNode.parentNode.replaceChild(frag, textNode);
+          didChange = true;
+          touched.add(editable);
+        }
+      });
+
+      if (touched.has(editable)) {
+        try {
+          editable.dispatchEvent(new Event('input', { bubbles: true }));
+          editable.dispatchEvent(new Event('change', { bubbles: true }));
+        } catch (_) {}
+      }
+    });
+
+    if (didChange) {
+      markEmarsysDraftDirty(doc, Array.from(touched));
+      nudgeEmarsysDirtyDetectionViaFocus(doc, Array.from(touched));
+    }
+  }
+
+  // ------------------------------------------------------------
   // Prefer Emarsys' ESL modal (if available) for Add/Edit
   // ------------------------------------------------------------
 
@@ -1044,8 +1395,8 @@ function initializeSnippetsTab() {
   const GEM_EMARSYS_ESL_NAME_INPUT_ID = 'cbp-esl-token-dialog-input-name';
   const GEM_EMARSYS_CATEGORY_INPUT_ID = 'gem-esl-category-input';
   const GEM_EMARSYS_DESCRIPTION_INPUT_ID = 'gem-esl-description-input';
-  const GEM_EMARSYS_SWAP_KEYWORD_INPUT_ID = 'gem-esl-swap-keyword-input';
-  const GEM_EMARSYS_SWAP_MODE_SELECT_ID = 'gem-esl-swap-mode-select';
+  const GEM_EMARSYS_SWAP_KEYWORDS_ROWS_ID = 'gem-esl-swap-keywords-rows';
+  const GEM_EMARSYS_ADD_SWAP_KEYWORD_BTN_ID = 'gem-esl-add-swap-keyword-btn';
 
   // Tracks whether a currently-opening Emarsys modal was initiated by our Snippets panel
   let gemPendingEmarsysEslContext = null;
@@ -1066,8 +1417,7 @@ function initializeSnippetsTab() {
           name: snippet.name,
           content: snippet.content,
           description: snippet.description || '',
-          swapKeyword: snippet.swapKeyword || '',
-          swapMode: snippet.swapMode === 'plain' ? 'plain' : 'token'
+          swapKeywords: normalizeSwapKeywordsFromSnippet(snippet)
         });
         if (!opened) openSnippetModal(snippetId);
       });
@@ -1082,8 +1432,7 @@ function initializeSnippetsTab() {
       name: '',
       content: '',
       description: '',
-      swapKeyword: '',
-      swapMode: 'token'
+      swapKeywords: []
     });
     if (!opened) openSnippetModal(null);
   }
@@ -1255,8 +1604,17 @@ function initializeSnippetsTab() {
       const category = (dialogRoot.querySelector(`#${GEM_EMARSYS_CATEGORY_INPUT_ID}`)?.value || '').trim();
       const description = (dialogRoot.querySelector(`#${GEM_EMARSYS_DESCRIPTION_INPUT_ID}`)?.value || '').trim();
       const favorite = dialogRoot.dataset.gemFavorite === 'true';
-      const swapKeyword = (dialogRoot.querySelector(`#${GEM_EMARSYS_SWAP_KEYWORD_INPUT_ID}`)?.value || '').trim();
-      const swapMode = (dialogRoot.querySelector(`#${GEM_EMARSYS_SWAP_MODE_SELECT_ID}`)?.value === 'plain') ? 'plain' : 'token';
+      const rowsContainer = dialogRoot.querySelector(`#${GEM_EMARSYS_SWAP_KEYWORDS_ROWS_ID}`);
+      let swapKeywords = [];
+      if (rowsContainer) {
+        const read = readSwapKeywordRowsUI(rowsContainer);
+        if (!read.ok) {
+          alert(read.error);
+          read.focusEl && read.focusEl.focus && read.focusEl.focus();
+          return;
+        }
+        swapKeywords = read.swapKeywords;
+      }
 
       // Read code from CodeMirror robustly. The hidden textarea inside CodeMirror
       // does NOT reliably contain the editor value, so we retry and fall back.
@@ -1264,11 +1622,11 @@ function initializeSnippetsTab() {
       readEmarsysDialogCode(dialogRoot)
         .then((code) => {
           gemOk.disabled = false;
-          handleSnippetSaveFromValues({ favorite, category, name, code: code.trim(), description, swapKeyword, swapMode }, context.snippetId, dialogRoot);
+          handleSnippetSaveFromValues({ favorite, category, name, code: code.trim(), description, swapKeywords }, context.snippetId, dialogRoot);
         })
         .catch(() => {
           gemOk.disabled = false;
-          handleSnippetSaveFromValues({ favorite, category, name, code: '', description, swapKeyword, swapMode }, context.snippetId, dialogRoot);
+          handleSnippetSaveFromValues({ favorite, category, name, code: '', description, swapKeywords }, context.snippetId, dialogRoot);
         });
     });
 
@@ -1325,7 +1683,7 @@ function initializeSnippetsTab() {
       descriptionField.className = 'e-field';
       descriptionField.innerHTML = `
         <label class="e-field__label e-field__label-inline" for="${GEM_EMARSYS_DESCRIPTION_INPUT_ID}">Description</label>
-        <textarea class="e-input gem-scrollable" id="${GEM_EMARSYS_DESCRIPTION_INPUT_ID}" placeholder="Optional description" style="background:var(--token-input-default-background); width: 100%; min-height: 100px; resize: vertical; padding: 10px 12px;"></textarea>
+        <textarea class="e-input gem-scrollable" id="${GEM_EMARSYS_DESCRIPTION_INPUT_ID}" placeholder="Optional description" style="background-color:var(--token-input-default-background); width: 100%; min-height: 100px; resize: vertical; padding: 10px 12px;"></textarea>
       `.trim();
 
       // Place right after the html editor / codemirror container if present
@@ -1345,41 +1703,28 @@ function initializeSnippetsTab() {
       }
     }
 
-    // Swap Keyword + Mode fields (below Description)
-    if (!dialogRoot.querySelector(`#${GEM_EMARSYS_SWAP_KEYWORD_INPUT_ID}`)) {
-      const swapKeywordField = document.createElement('div');
-      swapKeywordField.className = 'e-field';
-      swapKeywordField.innerHTML = `
-        <label class="e-field__label e-field__label-inline" for="${GEM_EMARSYS_SWAP_KEYWORD_INPUT_ID}">Optional Keyword for Swapping</label>
-        <input class="e-input" id="${GEM_EMARSYS_SWAP_KEYWORD_INPUT_ID}" type="text" placeholder="Optional keyword (must be unique)">
+    // Swap Keywords (multiple per snippet), injected below Description
+    let swapSection = dialogRoot.querySelector('#gem-esl-swap-keywords-section');
+    if (!swapSection) {
+      swapSection = document.createElement('div');
+      swapSection.id = 'gem-esl-swap-keywords-section';
+      swapSection.style.marginTop = '6px';
+      swapSection.innerHTML = `
+        <div style="display:flex; gap:10px; align-items:flex-start; margin-bottom:4px;">
+          <div style="width:100%;">Optional Keyword for Swapping</div>
+          <div style="min-width:220px;">Swap Method</div>
+          <div style="min-width:40px;"></div>
+        </div>
+        <div id="${GEM_EMARSYS_SWAP_KEYWORDS_ROWS_ID}"></div>
+        <button class="e-btn" id="${GEM_EMARSYS_ADD_SWAP_KEYWORD_BTN_ID}" type="button" style="width: 100%;">+ Add a Keyword for Swapping</button>
       `.trim();
 
       const descField = dialogRoot.querySelector(`#${GEM_EMARSYS_DESCRIPTION_INPUT_ID}`)?.closest('.e-field');
       if (descField && descField.parentElement) {
-        descField.insertAdjacentElement('afterend', swapKeywordField);
+        descField.insertAdjacentElement('afterend', swapSection);
       } else {
         const content = dialogRoot.querySelector('.e-dialog__content') || dialogRoot;
-        content.appendChild(swapKeywordField);
-      }
-    }
-
-    if (!dialogRoot.querySelector(`#${GEM_EMARSYS_SWAP_MODE_SELECT_ID}`)) {
-      const swapModeField = document.createElement('div');
-      swapModeField.className = 'e-field';
-      swapModeField.innerHTML = `
-        <label class="e-field__label e-field__label-inline" for="${GEM_EMARSYS_SWAP_MODE_SELECT_ID}">Swap Snippet As</label>
-        <select class="e-input" id="${GEM_EMARSYS_SWAP_MODE_SELECT_ID}">
-          <option value="token">Swap as ESL Token</option>
-          <option value="plain">Swap as Plain Text</option>
-        </select>
-      `.trim();
-
-      const swapKeywordField = dialogRoot.querySelector(`#${GEM_EMARSYS_SWAP_KEYWORD_INPUT_ID}`)?.closest('.e-field');
-      if (swapKeywordField && swapKeywordField.parentElement) {
-        swapKeywordField.insertAdjacentElement('afterend', swapModeField);
-      } else {
-        const content = dialogRoot.querySelector('.e-dialog__content') || dialogRoot;
-        content.appendChild(swapModeField);
+        content.appendChild(swapSection);
       }
     }
 
@@ -1398,17 +1743,11 @@ function initializeSnippetsTab() {
       descInput.dispatchEvent(new Event('change', { bubbles: true }));
     }
 
-    const swapKeywordInput = dialogRoot.querySelector(`#${GEM_EMARSYS_SWAP_KEYWORD_INPUT_ID}`);
-    if (swapKeywordInput && typeof context.swapKeyword === 'string') {
-      swapKeywordInput.value = context.swapKeyword;
-      swapKeywordInput.dispatchEvent(new Event('input', { bubbles: true }));
-      swapKeywordInput.dispatchEvent(new Event('change', { bubbles: true }));
-    }
-
-    const swapModeSelect = dialogRoot.querySelector(`#${GEM_EMARSYS_SWAP_MODE_SELECT_ID}`);
-    if (swapModeSelect) {
-      swapModeSelect.value = (context.swapMode === 'plain' ? 'plain' : 'token');
-      swapModeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    const rowsContainer = dialogRoot.querySelector(`#${GEM_EMARSYS_SWAP_KEYWORDS_ROWS_ID}`);
+    const addBtn = dialogRoot.querySelector(`#${GEM_EMARSYS_ADD_SWAP_KEYWORD_BTN_ID}`);
+    if (rowsContainer) {
+      bindSwapKeywordRowsHandlers(dialogRoot, rowsContainer, addBtn);
+      resetSwapKeywordRowsUI(rowsContainer, Array.isArray(context?.swapKeywords) ? context.swapKeywords : []);
     }
   }
 
@@ -1540,8 +1879,14 @@ function initializeSnippetsTab() {
     const code = (values?.code || '').trim();
     const description = (values?.description || '').trim();
     const favorite = !!values?.favorite;
-    const swapKeywordRaw = (values?.swapKeyword || '').trim();
-    const swapMode = (values?.swapMode === 'plain') ? 'plain' : 'token';
+    const swapKeywords = Array.isArray(values?.swapKeywords)
+      ? values.swapKeywords
+          .map((k) => ({
+            keyword: (k && typeof k.keyword === 'string') ? k.keyword.trim() : '',
+            mode: normalizeSwapMode(k && k.mode)
+          }))
+          .filter((k) => !!k.keyword)
+      : [];
 
     if (!name) {
       alert('Please enter a snippet name.');
@@ -1553,25 +1898,32 @@ function initializeSnippetsTab() {
     }
 
     getSnippets((snippets) => {
-      // Enforce unique swap keyword (case-insensitive) across all snippets.
-      if (swapKeywordRaw) {
-        const keyLower = swapKeywordRaw.toLowerCase();
-        const conflict = snippets.find(s =>
-          (s.swapKeyword || '').trim().toLowerCase() === keyLower &&
-          (!editingSnippetId || s.id !== editingSnippetId)
-        );
-        if (conflict) {
-          alert(`The swap keyword "${swapKeywordRaw}" is already used by another snippet. Please choose a unique keyword.`);
+      // Enforce unique swap keywords (case-sensitive) across other snippets.
+      if (swapKeywords.length) {
+        const used = new Set();
+        snippets.forEach((s) => {
+          if (editingSnippetId && s.id === editingSnippetId) return;
+          normalizeSwapKeywordsFromSnippet(s).forEach((k) => {
+            if (k && k.keyword) used.add(k.keyword);
+          });
+        });
+        const conflictKeyword = swapKeywords.find((k) => used.has(k.keyword))?.keyword;
+        if (conflictKeyword) {
+          alert(`The swap keyword "${conflictKeyword}" is already used by another snippet. Please choose a unique keyword.`);
           return;
         }
       }
 
       if (editingSnippetId) {
-        const updatedSnippets = snippets.map(snippet =>
-          snippet.id === editingSnippetId
-            ? { ...snippet, favorite, category, name: name, content: code, description, swapKeyword: swapKeywordRaw, swapMode: swapKeywordRaw ? swapMode : 'token' }
-            : snippet
-        );
+        const updatedSnippets = snippets.map((snippet) => {
+          if (snippet.id !== editingSnippetId) return snippet;
+          const next = { ...snippet, favorite, category, name: name, content: code, description, swapKeywords };
+          // Clean up legacy fields if present
+          delete next.swapKeyword;
+          delete next.swapMode;
+          delete next.swapCaseSensitive;
+          return next;
+        });
         saveSnippets(updatedSnippets, () => {
           refreshSnippetsDisplay();
           if (dialogRoot) closeEmarsysDialog(dialogRoot);
@@ -1584,8 +1936,7 @@ function initializeSnippetsTab() {
           name,
           content: code,
           description,
-          swapKeyword: swapKeywordRaw,
-          swapMode: swapKeywordRaw ? swapMode : 'token'
+          swapKeywords
         };
         saveSnippets([...snippets, newSnippet], () => {
           refreshSnippetsDisplay();
@@ -1605,6 +1956,127 @@ function initializeSnippetsTab() {
         refreshSnippetsDisplay();
         if (dialogRoot) closeEmarsysDialog(dialogRoot);
       });
+    });
+  }
+
+  // ------------------------------------------------------------
+  // Swap keyword rows UI (shared between Gem modal + Emarsys modal injection)
+  // ------------------------------------------------------------
+
+  function addSwapKeywordRowEl(rowsContainer, keyword = '', mode = 'token') {
+    const row = document.createElement('div');
+    row.className = 'gem-swap-keyword-row';
+    row.style.display = 'flex';
+    row.style.gap = '10px';
+    row.style.alignItems = 'flex-start';
+    row.style.marginBottom = '8px';
+
+    const keywordField = document.createElement('div');
+    keywordField.className = 'e-field';
+    keywordField.style.width = '100%';
+    keywordField.style.marginBottom = '0';
+    keywordField.innerHTML = `
+      <input class="e-input gem-swap-keyword-input" type="text" placeholder="Optional keyword (must be unique)" aria-label="Optional Keyword for Swapping">
+    `.trim();
+
+    const modeField = document.createElement('div');
+    modeField.className = 'e-field';
+    modeField.style.minWidth = '220px';
+    modeField.style.marginBottom = '0';
+    modeField.innerHTML = `
+      <select class="e-input gem-swap-mode-select" aria-label="Swap Method">
+        <option value="token">Swap as ESL Token</option>
+        <option value="plain">Swap as Plain Text</option>
+      </select>
+    `.trim();
+
+    const removeWrap = document.createElement('div');
+    removeWrap.style.paddingBottom = '4px';
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'e-btn e-btn-borderless e-btn-onlyicon gem-remove-swap-keyword-btn';
+    removeBtn.type = 'button';
+    removeBtn.title = 'Remove keyword';
+    removeBtn.setAttribute('aria-label', 'Remove keyword');
+    removeBtn.style.minWidth = 'unset';
+    removeBtn.style.padding = '0 6px';
+    removeBtn.textContent = '×';
+    removeWrap.appendChild(removeBtn);
+
+    row.appendChild(keywordField);
+    row.appendChild(modeField);
+    row.appendChild(removeWrap);
+    rowsContainer.appendChild(row);
+
+    const input = row.querySelector('.gem-swap-keyword-input');
+    const select = row.querySelector('.gem-swap-mode-select');
+    if (input) input.value = keyword || '';
+    if (select) select.value = normalizeSwapMode(mode);
+  }
+
+  function resetSwapKeywordRowsUI(rowsContainer, swapKeywords) {
+    if (!rowsContainer) return;
+    rowsContainer.innerHTML = '';
+    const list = Array.isArray(swapKeywords) ? swapKeywords : [];
+    const cleaned = list
+      .map((k) => ({
+        keyword: (k && typeof k.keyword === 'string') ? k.keyword.trim() : '',
+        mode: normalizeSwapMode(k && k.mode)
+      }))
+      .filter((k) => !!k.keyword);
+
+    if (cleaned.length === 0) {
+      addSwapKeywordRowEl(rowsContainer, '', 'token');
+    } else {
+      cleaned.forEach((k) => addSwapKeywordRowEl(rowsContainer, k.keyword, k.mode));
+    }
+  }
+
+  function readSwapKeywordRowsUI(rowsContainer) {
+    const rows = Array.from(rowsContainer?.querySelectorAll('.gem-swap-keyword-row') || []);
+    const out = [];
+    const seen = new Set();
+
+    for (const row of rows) {
+      const keyword = (row.querySelector('.gem-swap-keyword-input')?.value || '').trim();
+      if (!keyword) continue;
+      if (seen.has(keyword)) {
+        return { ok: false, error: `Duplicate keyword "${keyword}" in this snippet. Each keyword can only appear once per snippet (case-sensitive).`, focusEl: row.querySelector('.gem-swap-keyword-input') };
+      }
+      seen.add(keyword);
+      const mode = normalizeSwapMode(row.querySelector('.gem-swap-mode-select')?.value);
+      out.push({ keyword, mode });
+    }
+
+    return { ok: true, swapKeywords: out };
+  }
+
+  function bindSwapKeywordRowsHandlers(rootEl, rowsContainer, addBtn) {
+    if (!rootEl || rootEl._gemSwapKeywordsBound) return;
+    rootEl._gemSwapKeywordsBound = true;
+
+    if (addBtn) {
+      addBtn.addEventListener('click', () => {
+        addSwapKeywordRowEl(rowsContainer, '', 'token');
+      });
+    }
+
+    // Remove keyword (delegated)
+    rootEl.addEventListener('click', (e) => {
+      const btn = e.target.closest && e.target.closest('.gem-remove-swap-keyword-btn');
+      if (!btn) return;
+      const row = btn.closest('.gem-swap-keyword-row');
+      if (!row) return;
+
+      const allRows = Array.from(rowsContainer.querySelectorAll('.gem-swap-keyword-row'));
+      if (allRows.length <= 1) {
+        // Keep at least one row; just clear it
+        const input = row.querySelector('.gem-swap-keyword-input');
+        const select = row.querySelector('.gem-swap-mode-select');
+        if (input) input.value = '';
+        if (select) select.value = 'token';
+        return;
+      }
+      row.remove();
     });
   }
 
@@ -1631,8 +2103,9 @@ function initializeSnippetsTab() {
             const nameInput = document.getElementById('gem-snippet-name-input');
             const codeInput = document.getElementById('gem-snippet-code-input');
             const descInput = document.getElementById('gem-snippet-description-input');
-            const swapKeywordInput = document.getElementById('gem-snippet-swap-keyword-input');
-            const swapModeSelect = document.getElementById('gem-snippet-swap-mode-select');
+            const modalRoot = document.getElementById('gem-snippet-modal');
+            const rowsContainer = document.getElementById('gem-swap-keywords-rows');
+            const addBtn = document.getElementById('gem-add-swap-keyword-btn');
             const favBtn = document.getElementById('gem-modal-favorite-btn');
 
             if (categoryInput) categoryInput.value = snippet.category || '';
@@ -1645,8 +2118,10 @@ function initializeSnippetsTab() {
               codeInput.value = snippet.content;
             }
             if (descInput) descInput.value = snippet.description || '';
-            if (swapKeywordInput) swapKeywordInput.value = snippet.swapKeyword || '';
-            if (swapModeSelect) swapModeSelect.value = (snippet.swapMode === 'plain' ? 'plain' : 'token');
+            if (modalRoot && rowsContainer) {
+              bindSwapKeywordRowsHandlers(modalRoot, rowsContainer, addBtn);
+              resetSwapKeywordRowsUI(rowsContainer, normalizeSwapKeywordsFromSnippet(snippet));
+            }
             if (favBtn) setGemModalFavoriteState(!!snippet.favorite);
           }, 100);
         }
@@ -1659,10 +2134,13 @@ function initializeSnippetsTab() {
           nameInput.focus();
           nameInput.select();
         }
-        const swapKeywordInput = document.getElementById('gem-snippet-swap-keyword-input');
-        const swapModeSelect = document.getElementById('gem-snippet-swap-mode-select');
-        if (swapKeywordInput) swapKeywordInput.value = '';
-        if (swapModeSelect) swapModeSelect.value = 'token';
+        const modalRoot = document.getElementById('gem-snippet-modal');
+        const rowsContainer = document.getElementById('gem-swap-keywords-rows');
+        const addBtn = document.getElementById('gem-add-swap-keyword-btn');
+        if (modalRoot && rowsContainer) {
+          bindSwapKeywordRowsHandlers(modalRoot, rowsContainer, addBtn);
+          resetSwapKeywordRowsUI(rowsContainer, []);
+        }
         setGemModalFavoriteState(false);
       }, 100);
     }
@@ -1757,8 +2235,7 @@ function initializeSnippetsTab() {
     const nameInput = document.getElementById('gem-snippet-name-input');
     const codeInput = document.getElementById('gem-snippet-code-input');
     const descInput = document.getElementById('gem-snippet-description-input');
-    const swapKeywordInput = document.getElementById('gem-snippet-swap-keyword-input');
-    const swapModeSelect = document.getElementById('gem-snippet-swap-mode-select');
+    const rowsContainer = document.getElementById('gem-swap-keywords-rows');
 
     if (!nameInput || !codeInput) {
       console.log("[Gem] Modal inputs not found");
@@ -1770,8 +2247,13 @@ function initializeSnippetsTab() {
     const code = codeInput.value.trim();
     const description = descInput ? descInput.value.trim() : '';
     const favorite = getGemModalFavoriteState();
-    const swapKeywordRaw = swapKeywordInput ? swapKeywordInput.value.trim() : '';
-    const swapMode = swapModeSelect && swapModeSelect.value === 'plain' ? 'plain' : 'token';
+    const read = readSwapKeywordRowsUI(rowsContainer);
+    if (!read.ok) {
+      alert(read.error);
+      read.focusEl && read.focusEl.focus && read.focusEl.focus();
+      return;
+    }
+    const swapKeywords = read.swapKeywords;
 
     if (!name) {
       alert('Please enter a snippet name.');
@@ -1786,28 +2268,37 @@ function initializeSnippetsTab() {
     }
 
     getSnippets((snippets) => {
-      // Enforce unique swap keyword (case-insensitive) across all snippets.
-      if (swapKeywordRaw) {
-        const keyLower = swapKeywordRaw.toLowerCase();
-        const conflict = snippets.find(s =>
-          (s.swapKeyword || '').trim().toLowerCase() === keyLower &&
-          (!editingSnippetId || s.id !== editingSnippetId)
-        );
-        if (conflict) {
-          alert(`The swap keyword "${swapKeywordRaw}" is already used by another snippet. Please choose a unique keyword.`);
-          swapKeywordInput && swapKeywordInput.focus();
-          swapKeywordInput && swapKeywordInput.select && swapKeywordInput.select();
+      // Enforce unique swap keywords (case-sensitive) across other snippets.
+      if (swapKeywords.length) {
+        const used = new Set();
+        snippets.forEach((s) => {
+          if (editingSnippetId && s.id === editingSnippetId) return;
+          normalizeSwapKeywordsFromSnippet(s).forEach((k) => {
+            if (k && k.keyword) used.add(k.keyword);
+          });
+        });
+        const conflictKeyword = swapKeywords.find((k) => used.has(k.keyword))?.keyword;
+        if (conflictKeyword) {
+          alert(`The swap keyword "${conflictKeyword}" is already used by another snippet. Please choose a unique keyword.`);
+          // Focus the row that contains this keyword if possible
+          const input = rowsContainer && Array.from(rowsContainer.querySelectorAll('.gem-swap-keyword-input')).find((el) => (el.value || '').trim() === conflictKeyword);
+          input && input.focus && input.focus();
+          input && input.select && input.select();
           return;
         }
       }
 
       if (editingSnippetId) {
         // Update existing snippet
-        const updatedSnippets = snippets.map(snippet =>
-          snippet.id === editingSnippetId
-            ? { ...snippet, favorite, category: category, name: name, content: code, description: description, swapKeyword: swapKeywordRaw, swapMode: swapKeywordRaw ? swapMode : 'token' }
-            : snippet
-        );
+        const updatedSnippets = snippets.map((snippet) => {
+          if (snippet.id !== editingSnippetId) return snippet;
+          const next = { ...snippet, favorite, category: category, name: name, content: code, description: description, swapKeywords };
+          // Clean up legacy fields if present
+          delete next.swapKeyword;
+          delete next.swapMode;
+          delete next.swapCaseSensitive;
+          return next;
+        });
 
         // Save to storage
         saveSnippets(updatedSnippets, () => {
@@ -1828,8 +2319,7 @@ function initializeSnippetsTab() {
           name: name,
           content: code,
           description: description,
-          swapKeyword: swapKeywordRaw,
-          swapMode: swapKeywordRaw ? swapMode : 'token'
+          swapKeywords
         };
 
         // Add to existing snippets
@@ -1902,6 +2392,7 @@ function initializeSnippetsTab() {
 
         // Re-setup drag and drop and edit buttons for the new snippets
         setupSnippetDragAndDrop();
+        setupSwapSnippetButtons();
         setupEditSnippetButtons();
         setupSnippetCategoryCollapseToggles();
         setupSnippetsSearch();

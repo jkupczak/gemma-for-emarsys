@@ -1,5 +1,6 @@
 /* Scrollbar overrides */
 html.FLIPPER-theme-eveningHorizon {
+  & e-float-container .e-dialog__container .e-dialog__content,
   & cb-block-level-variable .e-section__content.cb-flex.variables,
   & .select2-drop .select2-results,
   & .gem-scrollable, .scrollable,
@@ -18,6 +19,7 @@ html.FLIPPER-theme-eveningHorizon {
     scrollbar-color: var(--token-border-default) var(--token-background-dark);
   }
 
+  & e-float-container .e-dialog__container .e-dialog__content::-webkit-scrollbar-thumb,
   & cb-block-level-variable .e-section__content.cb-flex.variables::-webkit-scrollbar-thumb,
   & .select2-drop .select2-results::-webkit-scrollbar-thumb,
   & .gem-scrollable::-webkit-scrollbar-thumb, & .scrollable::-webkit-scrollbar-thumb,
@@ -36,6 +38,7 @@ html.FLIPPER-theme-eveningHorizon {
     background: var(--token-border-default);
   }
 
+  & e-float-container .e-dialog__container .e-dialog__content::-webkit-scrollbar-track,
   & cb-block-level-variable .e-section__content.cb-flex.variables::-webkit-scrollbar-track,
   & .select2-drop .select2-results::-webkit-scrollbar-track,
   & .gem-scrollable::-webkit-scrollbar-track, .scrollable::-webkit-scrollbar-track,

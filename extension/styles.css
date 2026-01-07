@@ -1,9 +1,9 @@
+h5 {
+    font-size: 1em !important;
+}
 /* Cleanup… */
 .e-layout__application:before { /* its a small square that appears in the top left corner of the application */
     background: none !important;
-}
-body.gem-expanded .e-layout.e-layout-without_navigation.e-layout-fullheight.e-layout-with_steps {
-    padding: 0 !important;
 }
 
 /* create some extra space between the block templates and the saved blocks */
@@ -11,7 +11,10 @@ body.gem-expanded .e-layout.e-layout-without_navigation.e-layout-fullheight.e-la
     padding-bottom: 20px;
 }
 
-/* Content Block Toolbar - CSS-only hiding based on user settings */
+/* ------------------------------------------------------------------------------------------------ */
+/* Content Block Toolbar */
+/* ------------------------------------------------------------------------------------------------ */
+/* CSS-only hiding based on user settings */
 
 /* Manage optional content */
 body.gem-toolbar-manageOptionalContent-always-hide e-tooltip[e-button-id="optionalContent"] {
@@ -57,14 +60,43 @@ body.gem-toolbar-convertEslToTokens-always-hide e-tooltip[e-button-id="gem-conve
     display: none !important;
 }
 
+cb-header.e-layout__header h1 {
+    font-size: 16px !important
+}
+
+#gem-mobile-frame {
+    margin: 0 12px;
+    position: relative;
+}
+
+.gem-iframe-wrapper {
+    border: 1px solid var(--token-box-default-border);
+    box-shadow: none;
+    border-radius: 8px;
+    overflow: hidden;
+    position: relative;
+    box-sizing: content-box;
+    height: calc(100% - 2px); /* we take away 2px for the border */
+}
+
+.e-contentblocks-dragview {
+    visibility: hidden
+}
+
+e-float-container .e-dialog__container:has(.cp-contact_preview_section_container) {
+   max-width: 100% !important;
+}
+
+/* ------------------------------------------------------------------------------------------------ */
+/* Expanded Editor view */
+/* ------------------------------------------------------------------------------------------------ */
+body.gem-expanded .e-layout.e-layout-without_navigation.e-layout-fullheight.e-layout-with_steps {
+    padding: 0 !important;
+}
 
 body.gem-expanded cb-header.e-layout__header {
     padding: 0 10px !important;
     margin-bottom: 0 !important
-}
-
-cb-header.e-layout__header h1 {
-    font-size: 16px !important
 }
 
 body.gem-expanded .e-layout__section.e-contentblocks-preview_section {
@@ -78,21 +110,8 @@ body.gem-expanded .e-layout__application .e-layout main.e-layout__content > .e-l
     margin: 0 0 15px 0!important;
 }
 
-#gem-mobile-frame {
-    margin: 0 12px;
-    position: relative;
-}
 body.gem-expanded .gem-iframe-wrapper {
     border-radius: 8px 0 0 0 !important;
-}
-.gem-iframe-wrapper {
-    border: 1px solid var(--token-box-default-border);
-    box-shadow: none;
-    border-radius: 8px;
-    overflow: hidden;
-    position: relative;
-    box-sizing: content-box;
-    height: calc(100% - 2px); /* we take away 2px for the border */
 }
 
 body.gem-expanded .gem-iframe-wrapper {
@@ -102,13 +121,6 @@ body.gem-expanded .gem-iframe-wrapper {
 
 body.gem-expanded #gem-mobile-frame {
     margin: 0 !important;
-}
-.e-contentblocks-dragview {
-    visibility: hidden
-}
-
-e-float-container .e-dialog__container:has(.cp-contact_preview_section_container) {
-   max-width: 100% !important;
 }
 
 body.gem-expanded cb-version-selector .e-select {
@@ -206,27 +218,6 @@ body.gem-expanded .e-navigation__menu {
     height: calc(100vh - 69px) !important;
 }
 
-/*
-body.gem-expanded .e-navigation__menu {
-    background: #3350f7 !important;
-    margin: 0 !important;
-    box-shadow: none !important;
-}
-body.gem-expanded .e-navigation__menu * {
-    opacity: 0 !important;
-    transition: opacity 1s ease-out;
-}
-body.gem-expanded .e-navigation__menu:hover {
-    background: #fff !important;
-    box-shadow: 1px 1px 10px 0 rgba(0, 0, 0, 0.33) !important;
-}
-body.gem-expanded .e-navigation__menu:hover * {
-    opacity: 1 !important;
-}
-
-
-*/
-
 /* cb-header */
 body.gem-expanded cb-header {
     z-index: 500;
@@ -286,12 +277,6 @@ body.gem-expanded cb-header .e-layout__actions {
     padding-left:10px !important;
 }
 
-/* body.gem-expanded cb-header cb-draft-save-button e-tooltip[disabled="true"] button.e-btn {
-    color: #fff !important;
-    background: #523ae6 !important;
-    border: 1px solid #523ae6;
-} */
-
 /* campaign preview toolbar */
 body.gem-expanded cb-campaign-preview > .e-section {
     display: flex;
@@ -331,12 +316,42 @@ body.gem-expanded cb-campaign-preview > .e-section .e-section__header {
         margin: 0;
     }
 }
+
 body.gem-expanded .e-contentblocks-preview__iframe {
     border-radius: 0 !important;
 }
 
+body.gem-expanded .e-contentblocks-preview {
+    top:0 !important;
+    height:100% !important;
+}
 
+body.gem-expanded cb-header cb-save-button {
+    margin: 0 !important;
+}
+body.gem-expanded cb-multilanguage-locale-selector:has(.e-hidden) {
+    display: none;
+  }
 
+body.gem-expanded cb-header cb-save-button button {
+    font-weight: normal !important;
+    border-radius: 5px !important;
+}
+
+body.gem-expanded cb-header a.e-layout__back {
+    display: none !important;
+}
+
+body.gem-expanded .gem-enhanced-blocks-panel--2:has(cb-available-block-list) {
+    flex: 0 0 450px !important;
+}
+body.gem-expanded .gem-enhanced-blocks-panel--3:has(cb-available-block-list) {
+    flex: 0 0 510px !important;
+}
+
+/* ------------------------------------------------------------------------------------------------ */
+/* Variable Editor */
+/* ------------------------------------------------------------------------------------------------ */
 vce-variables-editor .e-field { display: flex }
 vce-variables-editor .e-field > div:first-child { 
     min-width: 40%;
@@ -362,18 +377,9 @@ vce-variables-editor .e-field .e-cell:has([style*="visible"]) {
     margin-left: 6px;
 }
 
-body.gem-expanded cb-header cb-save-button {
-    margin: 0 !important;
-}
-body.gem-expanded cb-multilanguage-locale-selector:has(.e-hidden) {
-    display: none;
-  }
-
-body.gem-expanded cb-header cb-save-button button {
-    font-weight: normal !important;
-    border-radius: 5px !important;
-}
-
+/* ------------------------------------------------------------------------------------------------ */
+/* Block Pinning */
+/* ------------------------------------------------------------------------------------------------ */
 .gem-block-pinned .e-card {
     border-color: var(--token-radio-info-border) !important;
 }
@@ -387,17 +393,86 @@ cb-personalizable-input-with-context > vce-code-editor {
 }
 
 .gem-enhanced-image-properties-dialog > .e-dialog__container{
-    border-radius: 0 8px 8px 0 !important;
+    border-radius: 0 !important;
+    border-right: 0 !important;
 }
-body.gem-expanded cb-header a.e-layout__back {
-    display: none !important;
+.gem-enhanced-image-properties-dialog #gem-image-properties-left-panel {
+    border-bottom: 1px solid var(--token-box-default-border);
+    border-top: 1px solid var(--token-box-default-border);
+}
+
+/* Recent Images picker (Image Properties) - zebra striping like MediaDB popup */
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-recent-images-table tbody tr:nth-child(odd) {
+    background-color: var(--token-neutral-100) !important;
+}
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-recent-images-table tbody tr:hover {
+    background-color: var(--token-blue-200) !important;
+}
+
+/* Recent Images picker - grid view */
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker {
+    /* default (small) density */
+    --gem-recent-thumb-h: 120px;
+}
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker[data-gem-recent-images-grid-density="medium"] {
+    --gem-recent-thumb-h: 160px;
+}
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker[data-gem-recent-images-grid-density="large"] {
+    --gem-recent-thumb-h: 200px;
+}
+
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-recent-images-grid {
+    display: grid;
+    /* Fill the container with a fixed number of columns per density. */
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 12px;
+}
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker[data-gem-recent-images-grid-density="medium"] .gem-recent-images-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker[data-gem-recent-images-grid-density="large"] .gem-recent-images-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-recent-image-tile {
+    position: relative;
+    border: 1px solid var(--token-box-default-border);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--token-box-default-background);
+}
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-recent-image-thumb {
+    display: block;
+    width: 100%;
+    height: var(--gem-recent-thumb-h);
+    object-fit: contain;
+}
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-recent-image-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0,0,0,0.35);
+    opacity: 0;
+    transition: opacity 120ms ease-in-out;
+}
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-recent-image-tile:hover .gem-recent-image-overlay {
+    opacity: 1;
+}
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-recent-image-meta {
+    padding: 8px 10px;
+    font-size: 12px;
+    opacity: 0.8;
 }
 
 main section.e-contentblocks-navigation_section:has(gem-snippets) {
     flex: 0 0 500px !important;
 }
 
-/* Snippets: show category rename icon on hover */
+/* ------------------------------------------------------------------------------------------------ */
+/* Snippets */
+/* ------------------------------------------------------------------------------------------------ */
+
 gem-snippets .gem-snippets-category-title .gem-snippets-category-rename {
     opacity: 0;
     pointer-events: none;
@@ -407,25 +482,27 @@ gem-snippets .gem-snippets-category-title:hover .gem-snippets-category-rename {
     pointer-events: auto;
 }
 
-.gem-enhanced-blocks-panel--2:has(cb-available-block-list) {
-    flex: 0 0 440px !important;
-}
-body.gem-expanded .gem-enhanced-blocks-panel--2:has(cb-available-block-list) {
-    flex: 0 0 450px !important;
-}
-
-
-.gem-enhanced-blocks-panel--3:has(cb-available-block-list) {
-    flex: 0 0 500px !important;
-}
-body.gem-expanded .gem-enhanced-blocks-panel--3:has(cb-available-block-list) {
-    flex: 0 0 510px !important;
-}
-
 cb-available-block-list .e-section .e-section__title {
     flex-grow: 0 !important;
 }
 
+/* ------------------------------------------------------------------------------------------------ */
+/* Vertical Nav Menu */
+/* ------------------------------------------------------------------------------------------------ */
+/* Override the default active state for the vertical nav menu because we can't control it when switching to and from the Snippets tab */
+cb-vertical-tab .e-verticalnavitem-active gem-e-icon svg {
+    fill: var(--token-tab-selected-text) !important;
+}
+e-verticalnav-menu:has(.gem-e-verticalnav-item[status="active"]) e-verticalnav-item:not(.gem-e-verticalnav-item) .e-verticalnavitem-active:after {
+    display: none !important;
+}
+e-verticalnav-menu:has(.gem-e-verticalnav-item[status="active"]) e-verticalnav-item:not(.gem-e-verticalnav-item) .e-icon {
+    color: var(--token-icon-default-text) !important;
+}
+
+/* ------------------------------------------------------------------------------------------------ */
+/* Blocks Panel */
+/* ------------------------------------------------------------------------------------------------ */
 /* hide the dropdown in the blocks panel */
 cb-available-block-list e-select {
     display: none !important;
@@ -436,6 +513,21 @@ cb-available-block-list e-select {
     display: grid;
     grid-template-columns: repeat(1, minmax(0, 1fr));
     gap: 7px;
+}
+
+
+.gem-enhanced-blocks-panel--2:has(cb-available-block-list) {
+    flex: 0 0 440px !important;
+}
+
+.gem-enhanced-blocks-panel--3:has(cb-available-block-list) {
+    flex: 0 0 500px !important;
+}
+
+/* Hide the "Saved" label when the grid is 2 or 3 columns */
+.gem-enhanced-blocks-panel--2 .saved-block .e-card__labels:has([icon="save"]),
+.gem-enhanced-blocks-panel--3 .saved-block .e-card__labels:has([icon="save"]) {
+    display: none !important;
 }
 
 .gem-enhanced-blocks-panel--2 .block-templates,
@@ -485,6 +577,13 @@ cb-available-block-list e-select {
     }
 }
 
+/* ------------------------------------------------------------------------------------------------ */
+/* Media Selection Popup */
+/* ------------------------------------------------------------------------------------------------ */
+
+.gem-enhanced-image-properties-dialog .e-field .e-grid:has([content="Personalization"]) {
+    flex-direction: column;
+}
 /* Size details fade transition */
 .gem-frame-size-details {
     transition: opacity 0.5s ease-out;
@@ -534,11 +633,9 @@ cb-available-block-list .e-card-auto_height .e-card__content {
     max-height:128px !important;
 }
 
-/* Block pinning - CSS Grid order-based */
-.gem-block-pinned {
-    order: -1 !important; /* Pinned blocks appear first */
-}
-
+/* ------------------------------------------------------------------------------------------------ */
+/* Block Pinning & Hiding */
+/* ------------------------------------------------------------------------------------------------ */
 
 .block-template:not(.gem-block-pinned):not(.gem-block-hidden):not(.gem-block-completely-hidden) {
     order: 10 !important; /* Unpinned visible blocks appear after pinned ones */
@@ -634,6 +731,16 @@ cb-available-block-list .e-card-auto_height .e-card__content {
 }
 
 
+.gem-bg-pattern {
+    background-color: var(--token-box-default-background);
+    background-image: linear-gradient(45deg, var(--token-background-strong) 25%, transparent 25%, transparent 75%, var(--token-background-strong) 75%, var(--token-background-strong)), linear-gradient(45deg, var(--token-background-strong) 25%, transparent 25%, transparent 75%, var(--token-background-strong) 75%, var(--token-background-strong));
+    background-position: 0px 0px, 10px 10px;
+    background-size: 20px 20px;
+}
+
+/* ------------------------------------------------------------------------------------------------ */
+/* Emarsys Icon Styles */
+/* ------------------------------------------------------------------------------------------------ */
 /* 
     Re-using Emarsys icon styles.
     This is necessary because if we want to use the Emarsys icon font, Emarsys will overwrite the font we want to use.
@@ -679,9 +786,29 @@ gem-e-icon .gem-e-icon {
     font-weight: 400;
     display: inline-flex;
 }
+gem-e-icon .e-icon {
+    color: var(--token-icon-default-text);
+    pointer-events: none;
+    justify-content: center;
+    align-items: center;
+    font-weight: 400;
+    display: inline-flex;
+}
 
 span.gem-e-icon {
     font-size: inherit !important;
+}
+
+
+
+#gem-image-preview-canvas {
+    display:flex;
+}
+
+
+/* Content block toolbar */
+.e-contentblocks-toolbar {
+    background: color-mix(in srgb, var(--token-overlay-dark) 80%, transparent) !important;
 }
 
 /*
@@ -693,7 +820,7 @@ span.gem-e-icon {
     z-index: 1;
     box-shadow: none;
     padding: 10px 0 10px 24px;
-    background: #fff;
+    background: var(--token-box-default-background);
     margin: 0 0 24px -24px;
     border-bottom: 1px solid var(--token-border-default);
     width: calc(100% + 48px);

@@ -128,6 +128,558 @@ function initializeOverlayPanelControls() {
   function initializeImagePropertiesModalHandler() {
     console.log("[Gem] Initializing Image Properties modal handler");
 
+    const GEM_RECENT_IMAGES_STORAGE_KEY = 'gemRecentImages';
+    const GEM_RECENT_IMAGES_MAX = 100;
+    const GEM_RECENT_IMAGES_BTN_CLASS = 'gem-recent-images-btn';
+    const GEM_RECENT_IMAGES_PICKER_PREFS_KEY = 'gemRecentImagesPickerPrefs';
+
+    function getRecentImagesPickerPrefs(callback) {
+      try {
+        chrome.storage.sync.get(
+          {
+            [GEM_RECENT_IMAGES_PICKER_PREFS_KEY]: {
+              view: 'table',
+              density: 'small'
+            }
+          },
+          (result) => {
+            const prefs = result && result[GEM_RECENT_IMAGES_PICKER_PREFS_KEY];
+            const view = prefs && (prefs.view === 'grid' ? 'grid' : 'table');
+            const density = prefs && (prefs.density === 'medium' || prefs.density === 'large' ? prefs.density : 'small');
+            callback({ view, density });
+          }
+        );
+      } catch (e) {
+        callback({ view: 'table', density: 'small' });
+      }
+    }
+
+    function saveRecentImagesPickerPrefs(prefs) {
+      try {
+        const view = prefs && (prefs.view === 'grid' ? 'grid' : 'table');
+        const density = prefs && (prefs.density === 'medium' || prefs.density === 'large' ? prefs.density : 'small');
+        chrome.storage.sync.set({
+          [GEM_RECENT_IMAGES_PICKER_PREFS_KEY]: { view, density }
+        });
+      } catch (_) {}
+    }
+
+    function normalizeRecentImageUrlCandidate(raw) {
+      let s = String(raw || '');
+      // Common zero-width fillers and their serialized forms
+      s = s
+        .replace(/&ZeroWidthSpace;/gi, '')
+        .replace(/&#8203;/g, '')
+        .replace(/&#x200B;/gi, '')
+        .replace(/[\u200B\u200C\u200D\uFEFF]/g, '');
+      s = s.trim();
+
+      // Reject obvious placeholders / non-URLs
+      if (!s) return '';
+      if (s === 'null') return '';
+      if (s === 'http://example.com/image.png') return '';
+      if (/\s/.test(s)) return ''; // URLs in this field shouldn't contain whitespace
+      if (/[<>]/.test(s)) return '';
+
+      const looksLikeUrl =
+        /^https?:\/\/.+/i.test(s) ||
+        /^\/\/.+/i.test(s) ||
+        /^data:image\/.+/i.test(s);
+
+      return looksLikeUrl ? s : '';
+    }
+
+    function formatRecentImageDate(ts) {
+      try {
+        return new Intl.DateTimeFormat('en-US', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric'
+        }).format(new Date(ts));
+      } catch (e) {
+        return new Date(ts).toDateString();
+      }
+    }
+
+    function getRecentImages(callback) {
+      try {
+        chrome.storage.sync.get({ [GEM_RECENT_IMAGES_STORAGE_KEY]: [] }, (result) => {
+          const list = result && result[GEM_RECENT_IMAGES_STORAGE_KEY];
+          const raw = Array.isArray(list) ? list : [];
+          // Prune invalid entries (e.g., ZeroWidthSpace) on read
+          const cleaned = raw
+            .map((x) => {
+              const url = normalizeRecentImageUrlCandidate(x && x.url);
+              const ts = (x && typeof x.ts === 'number') ? x.ts : 0;
+              return url ? { url, ts } : null;
+            })
+            .filter(Boolean);
+          if (cleaned.length !== raw.length) {
+            console.log('[Gem][RecentImages] Pruned invalid recent image entries:', raw.length - cleaned.length);
+            saveRecentImages(cleaned);
+          }
+          callback(cleaned);
+        });
+      } catch (e) {
+        callback([]);
+      }
+    }
+
+    function saveRecentImages(list, callback) {
+      try {
+        chrome.storage.sync.set({ [GEM_RECENT_IMAGES_STORAGE_KEY]: list }, () => {
+          callback && callback();
+        });
+      } catch (e) {
+        callback && callback();
+      }
+    }
+
+    function upsertRecentImageUrl(url) {
+      const u = normalizeRecentImageUrlCandidate(url);
+      if (!u) {
+        if (url) console.log('[Gem][RecentImages] Ignoring non-image/invalid URL candidate:', url);
+        return;
+      }
+
+      const now = Date.now();
+      getRecentImages((list) => {
+        const next = Array.isArray(list) ? [...list] : [];
+        const idx = next.findIndex((x) => x && typeof x.url === 'string' && x.url === u);
+        if (idx >= 0) {
+          console.log('[Gem][RecentImages] URL already exists, bumping timestamp:', u);
+          next[idx] = { url: u, ts: now };
+        } else {
+          console.log('[Gem][RecentImages] Adding new URL:', u);
+          next.push({ url: u, ts: now });
+        }
+
+        // Keep max size by trimming oldest
+        next.sort((a, b) => (a.ts || 0) - (b.ts || 0));
+        while (next.length > GEM_RECENT_IMAGES_MAX) next.shift();
+
+        saveRecentImages(next);
+      });
+    }
+
+    function getActiveImageUrlCodeMirror(modal) {
+      // There can be two different vce-codemirror instances, but only one is present at a time.
+      const vceCmEl = modal.querySelector('vce-codemirror');
+      const cmEl = modal.querySelector('vce-codemirror .CodeMirror');
+      if (!vceCmEl && !cmEl) return { cmEl: null, cmInstance: null, value: '' };
+
+      // If CodeMirror is present, grab its instance even if we end up reading the URL from attributes.
+      const cmInstance = cmEl ? (cmEl.CodeMirror || null) : null;
+
+      // Most reliable: Emarsys stores the URL in the `html` attribute on vce-codemirror / vce-html-editor.
+      const attrUrl =
+        (vceCmEl && typeof vceCmEl.getAttribute === 'function' ? (vceCmEl.getAttribute('html') || '').trim() : '') ||
+        ((modal.querySelector('vce-html-editor')?.getAttribute('html') || '').trim());
+      if (attrUrl) {
+        return { cmEl: cmEl || null, cmInstance, value: normalizeRecentImageUrlCandidate(attrUrl) || '' };
+      }
+
+      if (cmInstance && typeof cmInstance.getValue === 'function') {
+        return { cmEl, cmInstance, value: normalizeRecentImageUrlCandidate(cmInstance.getValue()) || '' };
+      }
+
+      // DOM fallback: rendered line content
+      let value = '';
+      if (cmEl) {
+        const pre = cmEl.querySelector('pre.CodeMirror-line');
+        if (pre && pre.textContent) value = (pre.textContent || '').trim();
+      }
+
+      if (!value) {
+        const textarea = (cmEl && cmEl.querySelector('textarea')) || modal.querySelector('vce-codemirror textarea');
+        value = textarea ? (textarea.value || '').trim() : ((cmEl && cmEl.textContent) ? cmEl.textContent.trim() : '');
+      }
+      return { cmEl, cmInstance: null, value: normalizeRecentImageUrlCandidate(value) || '' };
+    }
+
+    function setActiveImageUrlCodeMirror(modal, url) {
+      const u = (url || '').trim();
+      if (!u) return false;
+
+      console.log('[Gem][RecentImages][SetUrl] Attempting to set URL:', u);
+
+      // Prefer the Image URL field's CodeMirror specifically (avoid other codemirrors in the dialog/page).
+      const contentRoot = modal.querySelector('.e-dialog__content') || modal;
+      const allVceCm = Array.from(contentRoot.querySelectorAll('vce-codemirror'));
+      console.log('[Gem][RecentImages][SetUrl] vce-codemirror count in dialog content:', allVceCm.length);
+
+      allVceCm.slice(0, 5).forEach((el, i) => {
+        const attr = (el.getAttribute && el.getAttribute('html')) ? el.getAttribute('html') : '';
+        const hasCm = !!el.querySelector('.CodeMirror');
+        console.log(`[Gem][RecentImages][SetUrl] vce-codemirror[${i}] has .CodeMirror=${hasCm} htmlAttr="${(attr || '').slice(0, 80)}"`, el);
+      });
+
+      // Heuristic: pick vce-codemirror with placeholder containing "image" if possible
+      const bestVceCm =
+        allVceCm.find((el) => ((el.getAttribute('placeholder') || '').toLowerCase().includes('image'))) ||
+        allVceCm[0] ||
+        null;
+
+      const cmEl = bestVceCm ? bestVceCm.querySelector('.CodeMirror') : null;
+      const cmInstance = cmEl ? (cmEl.CodeMirror || null) : null;
+
+      if (!bestVceCm || !cmEl) {
+        console.warn('[Gem][RecentImages][SetUrl] No CodeMirror element found for Image URL field.');
+        return false;
+      }
+
+      const before = (() => {
+        try {
+          if (cmInstance && typeof cmInstance.getValue === 'function') return cmInstance.getValue();
+        } catch (_) {}
+        const pre = cmEl.querySelector('pre.CodeMirror-line');
+        return pre ? (pre.textContent || '') : '';
+      })();
+      console.log('[Gem][RecentImages][SetUrl] Before value:', (before || '').slice(0, 200));
+
+      if (cmInstance && typeof cmInstance.setValue === 'function') {
+        cmInstance.setValue('');
+        cmInstance.setValue(u);
+        try {
+          cmInstance.focus && cmInstance.focus();
+        } catch (_) {}
+        const after = (() => {
+          try {
+            if (typeof cmInstance.getValue === 'function') return cmInstance.getValue();
+          } catch (_) {}
+          return '';
+        })();
+        console.log('[Gem][RecentImages][SetUrl] After value (cm.getValue):', (after || '').slice(0, 200));
+
+        // Emarsys often treats these html attributes as the source of truth; keep them in sync.
+        try { bestVceCm.setAttribute('html', u); } catch (_) {}
+        try {
+          const htmlEditor = bestVceCm.closest('vce-code-editor')?.querySelector('vce-html-editor');
+          if (htmlEditor) htmlEditor.setAttribute('html', u);
+        } catch (_) {}
+
+        return (after || '').trim() === u;
+      }
+
+      const textarea = cmEl.querySelector('textarea') || modal.querySelector('vce-codemirror textarea');
+      if (textarea) {
+        textarea.value = u;
+        textarea.dispatchEvent(new Event('input', { bubbles: true }));
+        textarea.dispatchEvent(new Event('change', { bubbles: true }));
+        try { bestVceCm.setAttribute('html', u); } catch (_) {}
+        return true;
+      }
+
+      return false;
+    }
+
+    function showRecentImagesPicker(modal) {
+      const leftPanelContainer = modal.querySelector('#gem-image-properties-left-panel');
+      const previewCanvas = modal.querySelector('#gem-image-preview-canvas');
+      if (!leftPanelContainer || !previewCanvas) return;
+
+      // Create picker container once
+      let picker = leftPanelContainer.querySelector('#gem-recent-images-picker');
+      if (!picker) {
+        picker = document.createElement('div');
+        picker.id = 'gem-recent-images-picker';
+        picker.className = 'gem-scrollable';
+        picker.style.height = '100%';
+        picker.style.width = '100%';
+        picker.style.display = 'none';
+        picker.style.overflow = 'auto';
+        picker.style.background = 'var(--token-box-default-background)';
+        picker.style.padding = '16px';
+        picker.style.boxSizing = 'border-box';
+        leftPanelContainer.appendChild(picker);
+
+        // Delegate clicks for selecting
+        picker.addEventListener('click', (e) => {
+          const btn = e.target.closest && e.target.closest('.gem-recent-image-use-btn');
+          if (!btn) return;
+          const url = btn.getAttribute('data-url') || '';
+          console.log('[Gem][RecentImages][SetUrl] Use clicked for url:', url);
+          const ok = setActiveImageUrlCodeMirror(modal, url);
+          if (!ok) {
+            console.warn('[Gem][RecentImages] Failed to set image URL into active CodeMirror. Leaving picker open.');
+            return;
+          }
+          upsertRecentImageUrl(url);
+          // Close picker and restore preview
+          picker.style.display = 'none';
+          previewCanvas.style.display = '';
+        });
+
+        // Toggle view (table vs grid)
+        picker.addEventListener('click', (e) => {
+          const toggleBtn = e.target.closest && e.target.closest('.gem-recent-images-toggle-view-btn');
+          if (!toggleBtn) return;
+          picker.dataset.gemRecentImagesView = picker.dataset.gemRecentImagesView === 'grid' ? 'table' : 'grid';
+          saveRecentImagesPickerPrefs({
+            view: picker.dataset.gemRecentImagesView,
+            density: picker.dataset.gemRecentImagesGridDensity || 'small'
+          });
+          // Re-render (stay open)
+          showRecentImagesPicker(modal);
+        });
+
+        // Grid density (small/medium/large) - only affects grid view
+        picker.addEventListener('click', (e) => {
+          const densityBtn = e.target.closest && e.target.closest('.gem-recent-images-density-btn');
+          if (!densityBtn) return;
+          const cur = picker.dataset.gemRecentImagesGridDensity || 'small';
+          const next = cur === 'small' ? 'medium' : (cur === 'medium' ? 'large' : 'small');
+          picker.dataset.gemRecentImagesGridDensity = next;
+          saveRecentImagesPickerPrefs({
+            view: picker.dataset.gemRecentImagesView || 'table',
+            density: picker.dataset.gemRecentImagesGridDensity
+          });
+          showRecentImagesPicker(modal);
+        });
+
+        // Close button
+        picker.addEventListener('click', (e) => {
+          const closeBtn = e.target.closest && e.target.closest('.gem-recent-images-close-btn');
+          if (!closeBtn) return;
+          picker.style.display = 'none';
+          previewCanvas.style.display = '';
+        });
+      }
+
+      // Load persisted prefs once per picker lifetime
+      if (picker.dataset.gemRecentImagesPrefsLoaded !== 'true') {
+        picker.dataset.gemRecentImagesPrefsLoaded = 'true';
+        getRecentImagesPickerPrefs((prefs) => {
+          picker.dataset.gemRecentImagesView = prefs.view;
+          picker.dataset.gemRecentImagesGridDensity = prefs.density;
+          showRecentImagesPicker(modal);
+        });
+        // Keep preview hidden while we load prefs; render will happen in callback
+        previewCanvas.style.display = 'none';
+        picker.style.display = '';
+        return;
+      }
+
+      // Render
+      getRecentImages((list) => {
+        const rows = (Array.isArray(list) ? [...list] : [])
+          .filter((x) => x && typeof x.url === 'string' && x.url.trim())
+          .sort((a, b) => (b.ts || 0) - (a.ts || 0));
+
+        const escape = (s) =>
+          String(s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+
+        const viewMode = picker.dataset.gemRecentImagesView === 'grid' ? 'grid' : 'table';
+        const toggleLabel = viewMode === 'grid' ? 'Show Table' : 'Show Grid';
+        const density = picker.dataset.gemRecentImagesGridDensity || 'small';
+        const densityLabel =
+          density === 'large' ? 'Large' :
+          density === 'medium' ? 'Medium' :
+          'Small';
+
+        const header = `
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+            <div style="font-weight:600;">Recent Images</div>
+            <div style="display:flex; gap:10px; align-items:center;">
+              ${viewMode === 'grid' ? `<button class="e-btn e-btn-secondary gem-recent-images-density-btn" type="button">Density: ${densityLabel}</button>` : ''}
+              <button class="e-btn e-btn-secondary gem-recent-images-toggle-view-btn" type="button">${toggleLabel}</button>
+              <button class="e-btn e-btn-secondary gem-recent-images-close-btn" type="button">Back</button>
+            </div>
+          </div>
+        `.trim();
+
+        const empty = rows.length === 0
+          ? '<div style="margin-top:10px; opacity:0.7;">No recent images yet. Open an image properties dialog with an image URL to start collecting them.</div>'
+          : '';
+
+        if (viewMode === 'grid') {
+          picker.innerHTML = `
+            ${header}
+            <div class="gem-recent-images-grid">
+              ${rows.map((r) => {
+                const url = r.url || '';
+                const ts = r.ts || 0;
+                return `
+                  <div class="gem-recent-image-tile" title="${escape(url)}">
+                    <img class="gem-recent-image-thumb gem-bg-pattern" src="${escape(url)}" alt="" />
+                    <div class="gem-recent-image-overlay">
+                      <button class="e-btn e-btn-primary gem-recent-image-use-btn" type="button" data-url="${escape(url)}">
+                        <e-icon icon="plus" type="table">
+                          <div class="e-icon-wrapper">
+                            <div class="e-icon e-icon-table">&#xF155;</div>
+                          </div>
+                        </e-icon>
+                        Add To Page
+                      </button>
+                    </div>
+                    <div class="gem-recent-image-meta">
+                      <div class="gem-recent-image-date">${escape(formatRecentImageDate(ts))}</div>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+            ${empty}
+          `.trim();
+        } else {
+          picker.innerHTML = `
+            ${header}
+            <table data-e-version="2" class="e-table e-table-bordered gem-recent-images-table" style="width:100%; font-size: 14 px;">
+              <thead>
+                <tr>
+                  <th style="width:140px;">Preview</th>
+                  <th>URL</th>
+                  <th style="width:160px;">Last Used</th>
+                  <th style="width:140px; text-align:right;">Use</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows.map((r) => {
+                  const url = r.url || '';
+                  const ts = r.ts || 0;
+                  return `
+                    <tr>
+                      <td style="padding:6px; width:140px; vertical-align:middle;">
+                        <img class="gem-bg-pattern" src="${escape(url)}" style="display:block; width:128px; height:70px; object-fit:contain; border-radius:4px;" />
+                      </td>
+                      <td style="padding:6px; vertical-align:middle; word-break:break-word;">${escape(url)}</td>
+                      <td style="padding:6px; vertical-align:middle;">${escape(formatRecentImageDate(ts))}</td>
+                      <td style="padding:6px; vertical-align:middle; text-align:right;">
+                        <button class="e-btn e-btn-primary gem-recent-image-use-btn" type="button" data-url="${escape(url)}">
+                          <e-icon icon="plus" type="table">
+                            <div class="e-icon-wrapper">
+                              <div class="e-icon e-icon-table">&#xF155;</div>
+                            </div>
+                          </e-icon>
+                          Add To Page
+                        </button>
+                      </td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+            ${empty}
+          `.trim();
+        }
+      });
+
+      // Toggle display
+      previewCanvas.style.display = 'none';
+      picker.style.display = '';
+    }
+
+    function toggleRecentImagesPicker(modal) {
+      const leftPanelContainer = modal.querySelector('#gem-image-properties-left-panel');
+      const previewCanvas = modal.querySelector('#gem-image-preview-canvas');
+      const picker = leftPanelContainer && leftPanelContainer.querySelector('#gem-recent-images-picker');
+      if (!leftPanelContainer || !previewCanvas) return;
+
+      if (picker && picker.style.display !== 'none') {
+        picker.style.display = 'none';
+        previewCanvas.style.display = '';
+        return;
+      }
+
+      showRecentImagesPicker(modal);
+    }
+
+    function debugDumpDialogButtons(modal, label = '') {
+      try {
+        const content = modal.querySelector('.e-dialog__content') || modal;
+        const btns = Array.from(content.querySelectorAll('button.e-btn')).slice(0, 30);
+        console.log(`[Gem][RecentImages] Button dump ${label} (count=${btns.length}):`);
+        btns.forEach((b, i) => {
+          const text = (b.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 80);
+          console.log(`  [${i}] class="${b.className}" text="${text}"`, b);
+        });
+        const secondary = Array.from(content.querySelectorAll('button.e-btn.e-btn-secondary'));
+        console.log(`[Gem][RecentImages] Secondary buttons in content: ${secondary.length}`);
+      } catch (e) {
+        console.log('[Gem][RecentImages] Button dump failed:', e);
+      }
+    }
+
+    function findRecentImagesAnchorButton(modal, rootHint = null) {
+      // Requested path:
+      // e-float-container .e-dialog__content .e-field__label .e-cell .e-btn.e-btn-secondary
+      //
+      // In practice, Emarsys can change the DOM structure, so we search progressively.
+      const roots = [rootHint, modal, modal.querySelector('.e-dialog__content'), modal.querySelector('.e-dialog__container')]
+        .filter(Boolean);
+
+      for (const root of roots) {
+        const exact =
+          root.querySelector('.e-dialog__content .e-field__label .e-cell .e-btn.e-btn-secondary') ||
+          root.querySelector('.e-field__label .e-cell .e-btn.e-btn-secondary');
+        if (exact) return exact;
+
+        // Fallback: any secondary button inside dialog content
+        const anySecondary = root.querySelector('.e-dialog__content .e-btn.e-btn-secondary') || root.querySelector('.e-btn.e-btn-secondary');
+        if (anySecondary) return anySecondary;
+      }
+
+      return null;
+    }
+
+    function ensureRecentImagesButton(modal, container, dialogActive = null) {
+      if (modal.querySelector(`.${GEM_RECENT_IMAGES_BTN_CLASS}`)) {
+        console.log('[Gem][RecentImages] Button already exists, skipping insert.');
+        return;
+      }
+
+      const tryInsert = () => {
+        if (modal.querySelector(`.${GEM_RECENT_IMAGES_BTN_CLASS}`)) return true;
+        const anchorBtn = findRecentImagesAnchorButton(modal, dialogActive || container);
+        if (!anchorBtn) {
+          return false;
+        }
+
+        console.log('[Gem][RecentImages] Found anchor button, inserting Recent Images button after it.', anchorBtn);
+        // Ensure the button cell is flex with a 10px gap (Media DB + Recent Images)
+        const btnWrap = anchorBtn.parentElement;
+        if (btnWrap && btnWrap.style) {
+          btnWrap.style.display = 'flex';
+          btnWrap.style.gap = '10px';
+          btnWrap.style.alignItems = 'center';
+        }
+        const recentBtn = document.createElement('button');
+        recentBtn.className = `e-btn ${GEM_RECENT_IMAGES_BTN_CLASS}`;
+        recentBtn.type = 'button';
+        recentBtn.textContent = 'Recent Images';
+        recentBtn.addEventListener('click', () => toggleRecentImagesPicker(modal));
+        anchorBtn.insertAdjacentElement('afterend', recentBtn);
+        return true;
+      };
+
+      // Attempt immediately
+      if (tryInsert()) return;
+
+      debugDumpDialogButtons(modal, '(initial)');
+      console.log('[Gem][RecentImages] Anchor button not found yet; starting observer retry.');
+      if (container && !container._gemRecentImagesButtonObserver) {
+        container._gemRecentImagesButtonObserver = new MutationObserver(() => {
+          if (tryInsert()) {
+            console.log('[Gem][RecentImages] Inserted button via observer; disconnecting.');
+            try { container._gemRecentImagesButtonObserver.disconnect(); } catch (_) {}
+            container._gemRecentImagesButtonObserver = null;
+            return;
+          }
+          // Occasionally dump for debugging
+          container._gemRecentImagesBtnTries = (container._gemRecentImagesBtnTries || 0) + 1;
+          if (container._gemRecentImagesBtnTries % 25 === 0) {
+            debugDumpDialogButtons(modal, `(retry x${container._gemRecentImagesBtnTries})`);
+          }
+        });
+        container._gemRecentImagesButtonObserver.observe(modal, { childList: true, subtree: true });
+      }
+    }
+
     // Function to check if a modal is the Image Properties modal
     function isImagePropertiesModal(modal) {
       const titleSpan = modal.querySelector('span.e-dialog__title');
@@ -141,6 +693,7 @@ function initializeOverlayPanelControls() {
     // Function to modify the Image Properties modal
     function modifyImagePropertiesModal(modal) {
       console.log("[Gem] Modifying Image Properties modal, modal element:", modal);
+      console.log("[Gem][RecentImages] modifyImagePropertiesModal called");
 
       // Find the dialog active element
       const dialogActive = modal.querySelector('.e-dialog-active');
@@ -152,6 +705,7 @@ function initializeOverlayPanelControls() {
       // Apply flex styles to the dialog active element
       dialogActive.style.flexDirection = 'row';
       dialogActive.style.alignItems = 'stretch';
+      dialogActive.style.padding = '54px 0';
       dialogActive.classList.add('gem-enhanced-image-properties-dialog');
       console.log("[Gem] Applied flex styles and class to dialog-active element:", dialogActive);
 
@@ -177,18 +731,26 @@ function initializeOverlayPanelControls() {
       container.style.overflow = 'hidden';
 
       // Create and insert the new left panel div before the container
+      const leftPanelContainer = document.createElement('div');
+      leftPanelContainer.id = 'gem-image-properties-left-panel';
+      leftPanelContainer.style.height = '100%';
+      leftPanelContainer.style.width = '100%';
+      leftPanelContainer.style.zIndex = '9';
+
+      // Create and insert the new left panel div before the container
       const leftPanel = document.createElement('div');
-      leftPanel.style.height = '100%';
-      leftPanel.style.borderRadius = '8px 0 0 8px';
-      leftPanel.style.zIndex = '9';
-      leftPanel.style.width = '100%';
+      leftPanel.id = 'gem-image-preview-canvas';
       leftPanel.style.backgroundColor = 'var(--token-box-default-background)';
       leftPanel.style.backgroundImage = 'linear-gradient(45deg, var(--token-background-strong) 25%, transparent 25%, transparent 75%, var(--token-background-strong) 75%, var(--token-background-strong)), linear-gradient(45deg, var(--token-background-strong) 25%, transparent 25%, transparent 75%, var(--token-background-strong) 75%, var(--token-background-strong))';
       leftPanel.style.backgroundPosition = '0 0, 10px 10px';
       leftPanel.style.backgroundSize = '20px 20px';
+      leftPanel.style.height = '100%';
+      leftPanel.style.width = '100%';
+
+      leftPanelContainer.appendChild(leftPanel);
 
       // Insert before the container element
-      dialogActive.insertBefore(leftPanel, container);
+      dialogActive.insertBefore(leftPanelContainer, container);
 
       // Function to update or create image in left panel
       const updateImageInLeftPanel = (imageUrl) => {
@@ -239,6 +801,8 @@ function initializeOverlayPanelControls() {
       if (htmlEditor && htmlEditor.getAttribute('html') && !htmlEditor.classList.contains('e-input-disabled')) {
         const imageUrl = htmlEditor.getAttribute('html').trim();
         updateImageInLeftPanel(imageUrl);
+        // Collect recent image immediately on open
+        if (imageUrl) upsertRecentImageUrl(imageUrl);
       }
 
       // Set up observer to watch for vce-html-editor element changes
@@ -265,6 +829,8 @@ function initializeOverlayPanelControls() {
               } else if (newImageUrl) {
                 // If not disabled and has URL, update image
                 updateImageInLeftPanel(newImageUrl);
+                // Collect into recent images list
+                upsertRecentImageUrl(newImageUrl);
               }
             }
           });
@@ -279,6 +845,7 @@ function initializeOverlayPanelControls() {
         if (!htmlEditor.classList.contains('e-input-disabled')) {
           const currentImageUrl = htmlEditor.getAttribute('html')?.trim();
           updateImageInLeftPanel(currentImageUrl);
+          if (currentImageUrl) upsertRecentImageUrl(currentImageUrl);
         }
 
         console.log("[Gem] Set up attribute observer for vce-html-editor");
@@ -378,6 +945,76 @@ function initializeOverlayPanelControls() {
 
       // Mark as modified
       container._gemModified = true;
+
+      // ------------------------------------------------------------
+      // Recent Images button + CodeMirror URL tracking
+      // ------------------------------------------------------------
+
+      // Insert button after the existing secondary button in the label row (with retries)
+      ensureRecentImagesButton(modal, container, dialogActive);
+
+      // Emarsys re-renders parts of this dialog when switching Desktop/Mobile tabs,
+      // which can remove our injected button. Keep it present by re-applying on:
+      // - tab clicks
+      // - DOM changes where the button is missing
+      const scheduleEnsureRecentImagesButton = () => {
+        if (container._gemRecentImagesEnsureScheduled) return;
+        container._gemRecentImagesEnsureScheduled = true;
+        setTimeout(() => {
+          container._gemRecentImagesEnsureScheduled = false;
+          // If the button disappeared, re-insert it.
+          if (!modal.querySelector(`.${GEM_RECENT_IMAGES_BTN_CLASS}`)) {
+            console.log('[Gem][RecentImages] Button missing after re-render; re-inserting.');
+            ensureRecentImagesButton(modal, container, dialogActive);
+          }
+        }, 75);
+      };
+
+      if (!dialogActive._gemRecentImagesTabClickBound) {
+        dialogActive._gemRecentImagesTabClickBound = true;
+        dialogActive.addEventListener('click', (e) => {
+          const tab = e.target && e.target.closest && e.target.closest('.e-tabs__title');
+          if (!tab) return;
+          console.log('[Gem][RecentImages] Tab click detected:', tab.getAttribute('data-tab') || (tab.textContent || '').trim());
+          scheduleEnsureRecentImagesButton();
+        }, true);
+      }
+
+      if (!dialogActive._gemRecentImagesRerenderObserver) {
+        dialogActive._gemRecentImagesRerenderObserver = new MutationObserver(() => {
+          if (!modal.querySelector(`.${GEM_RECENT_IMAGES_BTN_CLASS}`)) {
+            scheduleEnsureRecentImagesButton();
+          }
+        });
+        dialogActive._gemRecentImagesRerenderObserver.observe(dialogActive, { childList: true, subtree: true });
+      }
+
+      // Watch for CodeMirror input field swapping in/out, and store the current URL whenever it appears.
+      if (!container._gemRecentImagesCmObserver) {
+        console.log('[Gem][RecentImages] Setting up CodeMirror observer');
+        container._gemRecentImagesCmObserver = new MutationObserver(() => {
+          const { cmEl, value } = getActiveImageUrlCodeMirror(modal);
+          if (!cmEl) return;
+          if (cmEl && container._gemLastSeenImageUrlCmEl !== cmEl) {
+            container._gemLastSeenImageUrlCmEl = cmEl;
+            if (value) upsertRecentImageUrl(value);
+          } else if (cmEl && value) {
+            // Also upsert if value changed (best-effort)
+            if (container._gemLastSeenImageUrlValue !== value) {
+              container._gemLastSeenImageUrlValue = value;
+              upsertRecentImageUrl(value);
+            }
+          }
+        });
+        container._gemRecentImagesCmObserver.observe(container, { childList: true, subtree: true });
+      }
+
+      // Initial capture on open
+      setTimeout(() => {
+        const { value } = getActiveImageUrlCodeMirror(modal);
+        console.log('[Gem][RecentImages] Initial CodeMirror URL value:', value);
+        if (value) upsertRecentImageUrl(value);
+      }, 150);
 
       console.log("[Gem] Image Properties modal modification complete");
     }

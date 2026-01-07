@@ -16,10 +16,22 @@ where they can toggle icons on or off
 
 Use the Emarsys icon font
 
+## Image Picker:
+Add an option to pin/favorite specific images files in the Media DB. Fine alternative to favoriting folders.
+Favorites should be able to be categorized. Categories should be collapsable.
+✗ Let them apply a custom name to it (like "Ends Tomorrow Talker")
+✓ Perhaps add "Recent" and Favorites" buttons in the Image Propertiers dialog next to the "Media DB" button. Clicking on either reveals
+  a scrollable list of those files. Populate the image URL field by clicking + on them.
+✓ The list should take the place of the image preview on the left.
+✓ It should default to a table list of text (with small thumbnails)
+✓ It should have a toggle to show images in a grid as larger thumbnails.
+
+Add a toggle in settings for the email preview header. Let them change it between vertical and horizontal.
 
 # NO 
 
 ✗ Can I open the block /variable settings panel just because the user clicked on the block? - REMOVED: block-level-variables-opener.js removed
+
 
 
 # COMPLETE

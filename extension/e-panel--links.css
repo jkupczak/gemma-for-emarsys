@@ -36,18 +36,6 @@ cb-campaign-links cb-link-tracking-category-select {
     max-width: 100px;
 }
 
-cb-campaign-links th {
-    font-size:10px !important;
-    line-height:12px !important;
-}
-cb-campaign-links th:nth-child(2) {
-    width: 100% !important;
-}
-cb-campaign-links th:nth-child(4),
-cb-campaign-links th:nth-child(5) {
-    min-width: 100px !important;
-}
-
 cb-campaign-links cb-link-name {
     word-break: break-word;
     line-height: 14px !important;
@@ -80,4 +68,40 @@ cb-campaign-links button.e-select__clear {
 
 cb-campaign-links .e-checkbox-onlycheckbox+label {
   padding-left:14px !important;
+}
+
+/* ------------------------------------------------------------------------------------------------ */
+/* Table Header */
+/* ------------------------------------------------------------------------------------------------ */
+
+cb-campaign-links th {
+    font-size:11px !important;
+    line-height:12px !important;
+}
+cb-campaign-links th:nth-child(2) {
+    width: 100% !important;
+}
+cb-campaign-links th:nth-child(4),
+cb-campaign-links th:nth-child(5) {
+    min-width: 100px !important;
+}
+
+/* make the table header sticky */
+/* Emarsys applies a transform when scrolling a long list of links that makes a sticky header impossible.
+/* So this only works in most cases */
+cb-campaign-links {
+    & .cdk-virtual-scroll-content-wrapper[style*="(0px)"] thead {
+        position: sticky;
+        top: 0;
+        z-index: 9;
+        background: color-mix(
+            in srgb,
+            var(--token-box-default-background) 90%,
+            transparent
+        );
+        box-shadow: 0 1px 0 0px var(--token-border-default);
+    }
+    /* & .cdk-virtual-scroll-content-wrapper:has(thead) {
+        transform: translateY(0) !important;
+    } */
 }

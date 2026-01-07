@@ -293,7 +293,30 @@ function hasAnySwapKeywordConfigured(callback) {
     chrome.storage.sync.get({ [GEM_SNIPPETS_STORAGE_KEY]: [] }, (result) => {
       const snippets = result && result[GEM_SNIPPETS_STORAGE_KEY];
       const list = Array.isArray(snippets) ? snippets : [];
-      const hasAny = list.some((s) => !!(s && typeof s.swapKeyword === 'string' && s.swapKeyword.trim()));
+      const normalizeSwapMode = (mode) => (mode === 'plain' ? 'plain' : 'token');
+      const normalizeSwapKeywordsFromSnippet = (snippet) => {
+        if (!snippet) return [];
+        if (Array.isArray(snippet.swapKeywords)) {
+          const cleaned = snippet.swapKeywords
+            .map((k) => ({
+              keyword: (k && typeof k.keyword === 'string') ? k.keyword.trim() : '',
+              mode: normalizeSwapMode(k && k.mode)
+            }))
+            .filter((k) => !!k.keyword);
+          const seen = new Set();
+          const out = [];
+          cleaned.forEach((k) => {
+            if (seen.has(k.keyword)) return;
+            seen.add(k.keyword);
+            out.push(k);
+          });
+          return out;
+        }
+        const legacyKeyword = (snippet.swapKeyword && typeof snippet.swapKeyword === 'string') ? snippet.swapKeyword.trim() : '';
+        if (!legacyKeyword) return [];
+        return [{ keyword: legacyKeyword, mode: normalizeSwapMode(snippet.swapMode) }];
+      };
+      const hasAny = list.some((s) => normalizeSwapKeywordsFromSnippet(s).length > 0);
       callback(hasAny);
     });
   } catch (e) {
@@ -302,32 +325,55 @@ function hasAnySwapKeywordConfigured(callback) {
 }
 
 function applyTextSwapForBlock(eBlockId) {
-  // Load snippets and derive swap rules from snippet.swapKeyword/swapMode.
+  // Load snippets and derive swap rules from snippet.swapKeywords (case-sensitive matching).
   getSavedSnippets((snippets) => {
     const list = Array.isArray(snippets) ? snippets : [];
 
-    // First snippet wins per keyword (keywords are supposed to be unique anyway).
-    const ruleByKeyword = new Map();
+    const normalizeSwapMode = (mode) => (mode === 'plain' ? 'plain' : 'token');
+    const normalizeSwapKeywordsFromSnippet = (snippet) => {
+      if (!snippet) return [];
+      if (Array.isArray(snippet.swapKeywords)) {
+        const cleaned = snippet.swapKeywords
+          .map((k) => ({
+            keyword: (k && typeof k.keyword === 'string') ? k.keyword.trim() : '',
+            mode: normalizeSwapMode(k && k.mode)
+          }))
+          .filter((k) => !!k.keyword);
+        const seen = new Set();
+        const out = [];
+        cleaned.forEach((k) => {
+          if (seen.has(k.keyword)) return;
+          seen.add(k.keyword);
+          out.push(k);
+        });
+        return out;
+      }
+      const legacyKeyword = (snippet.swapKeyword && typeof snippet.swapKeyword === 'string') ? snippet.swapKeyword.trim() : '';
+      if (!legacyKeyword) return [];
+      return [{ keyword: legacyKeyword, mode: normalizeSwapMode(snippet.swapMode) }];
+    };
+
+    // Build rules from all snippets/keywords. Keywords are unique across snippets (case-sensitive),
+    // but keep first defensively.
+    const rules = [];
+    const seenKeyword = new Set();
     list.forEach((s) => {
-      const keyword = (s && typeof s.swapKeyword === 'string') ? s.swapKeyword.trim() : '';
-      if (!keyword) return;
-      if (ruleByKeyword.has(keyword)) return;
-      ruleByKeyword.set(keyword, {
-        keyword,
-        mode: s.swapMode === 'plain' ? 'plain' : 'token',
-        snippet: s
+      normalizeSwapKeywordsFromSnippet(s).forEach((k) => {
+        if (!k.keyword) return;
+        if (seenKeyword.has(k.keyword)) return;
+        seenKeyword.add(k.keyword);
+        rules.push({
+          keyword: k.keyword,
+          mode: k.mode,
+          snippet: s
+        });
       });
     });
 
-    const keywords = Array.from(ruleByKeyword.keys());
-    if (keywords.length === 0) return;
+    if (rules.length === 0) return;
 
-      // Prefer longer keywords to avoid partial matches eating longer ones
-      keywords.sort((a, b) => b.length - a.length);
-
-      const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const union = keywords.map(escapeRegExp).join('|');
-      const re = new RegExp(union, 'g');
+    // Prefer longer keywords to avoid partial matches eating longer ones
+    rules.sort((a, b) => b.keyword.length - a.keyword.length);
 
       const iframe = document.querySelector(GEM_TARGET_IFRAME_SELECTOR);
       if (!iframe) return;
@@ -369,11 +415,11 @@ function applyTextSwapForBlock(eBlockId) {
             {
               acceptNode(node) {
                 if (!node.nodeValue) return NodeFilter.FILTER_REJECT;
-                // Reset lastIndex because re is global.
-                re.lastIndex = 0;
-                const has = re.test(node.nodeValue);
-                re.lastIndex = 0;
-                if (!has) return NodeFilter.FILTER_REJECT;
+                const text = node.nodeValue;
+                const hasAny = rules.some((r) => {
+                  return text.indexOf(r.keyword) !== -1;
+                });
+                if (!hasAny) return NodeFilter.FILTER_REJECT;
                 if (isInsideExistingToken(node.parentNode)) return NodeFilter.FILTER_REJECT;
                 return NodeFilter.FILTER_ACCEPT;
               }
@@ -386,44 +432,58 @@ function applyTextSwapForBlock(eBlockId) {
 
           nodes.forEach((textNode) => {
             const text = textNode.nodeValue;
-            re.lastIndex = 0;
 
             const frag = doc.createDocumentFragment();
-            let lastIdx = 0;
-            let match;
+            const matches = [];
 
-            while ((match = re.exec(text)) !== null) {
-              const start = match.index;
-              const end = start + match[0].length;
-              const keyword = match[0];
-              const rule = ruleByKeyword.get(keyword);
-              const snippet = rule && rule.snippet;
-              const mode = rule && rule.mode ? rule.mode : 'token';
+            // Collect all matches for all rules
+            rules.forEach((rule) => {
+              const hay = text;
+              const needle = rule.keyword;
+              let from = 0;
+              while (true) {
+                const idx = hay.indexOf(needle, from);
+                if (idx === -1) break;
+                matches.push({
+                  start: idx,
+                  end: idx + rule.keyword.length,
+                  rule
+                });
+                from = idx + rule.keyword.length;
+              }
+            });
+
+            if (matches.length === 0) return;
+
+            // Sort by start asc, then longest match first to resolve overlaps
+            matches.sort((a, b) => (a.start - b.start) || ((b.end - b.start) - (a.end - a.start)));
+
+            let cursor = 0;
+            matches.forEach((m) => {
+              if (m.start < cursor) return; // overlap, skip
+              const { rule } = m;
+              const snippet = rule.snippet;
+              if (!snippet || typeof snippet.content !== 'string') return;
 
               // text before
-              if (start > lastIdx) {
-                frag.appendChild(doc.createTextNode(text.slice(lastIdx, start)));
+              if (m.start > cursor) {
+                frag.appendChild(doc.createTextNode(text.slice(cursor, m.start)));
               }
 
-              if (!snippet || typeof snippet.content !== 'string') {
-                // If the rule is misconfigured (missing snippet), leave the keyword as-is.
-                frag.appendChild(doc.createTextNode(keyword));
-              } else if (mode === 'token') {
+              if (rule.mode === 'token') {
                 frag.appendChild(createEslTokenSpan(doc, snippet.name || GEM_ESL_TOKEN_NAME, snippet.content));
               } else {
                 frag.appendChild(doc.createTextNode(snippet.content));
               }
 
-              if (snippet && typeof snippet.content === 'string') {
-                didChange = true;
-                touchedEditables.add(editable);
-              }
-              lastIdx = end;
-            }
+              didChange = true;
+              touchedEditables.add(editable);
+              cursor = m.end;
+            });
 
             // trailing text
-            if (lastIdx < text.length) {
-              frag.appendChild(doc.createTextNode(text.slice(lastIdx)));
+            if (cursor < text.length) {
+              frag.appendChild(doc.createTextNode(text.slice(cursor)));
             }
 
             if (didChange && textNode.parentNode) {
