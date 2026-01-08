@@ -8,6 +8,17 @@ function initializeOverlayPanelControls() {
   function handleEscapeKey(event) {
     // Only handle Escape key
     if (event.key === 'Escape' || event.code === 'Escape' || event.keyCode === 27) {
+      // If our Favorite Image Metadata modal is open, ESC should close it (and NOT the underlying
+      // Image Properties dialog). We must suppress Emarsys' ESC handler in this case.
+      const metaModal = document.getElementById('gem-favorite-image-meta-modal');
+      if (metaModal) {
+        try { metaModal.remove(); } catch (_) {}
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+        return false;
+      }
+
       console.log("[Gem] Escape key pressed, checking for open overlay panels");
 
       // Check if there's an open overlay panel
@@ -128,8 +139,17 @@ function initializeOverlayPanelControls() {
   function initializeImagePropertiesModalHandler() {
     console.log("[Gem] Initializing Image Properties modal handler");
 
+    // Debug sequence for image preview tracing
+    let gemImagePreviewDebugSeq = 0;
+
     const GEM_RECENT_IMAGES_STORAGE_KEY = 'gemRecentImages';
     const GEM_RECENT_IMAGES_MAX = 100;
+    const GEM_RECENTLY_SEEN_IMAGES_STORAGE_KEY = 'gemRecentlySeenImages';
+    const GEM_RECENTLY_SEEN_IMAGES_MAX = 100;
+    const GEM_FAVORITE_IMAGES_STORAGE_KEY = 'gemFavoriteImages';
+    const GEM_FAVORITE_IMAGES_MAX = 200;
+    const GEM_FAVORITE_IMAGE_META_STORAGE_KEY = 'gemFavoriteImageMeta';
+    const GEM_FAVORITE_IMAGE_CATEGORY_COLLAPSE_KEY = 'gemFavoriteImageCategoryCollapse';
     const GEM_RECENT_IMAGES_BTN_CLASS = 'gem-recent-images-btn';
     const GEM_RECENT_IMAGES_PICKER_PREFS_KEY = 'gemRecentImagesPickerPrefs';
 
@@ -139,18 +159,28 @@ function initializeOverlayPanelControls() {
           {
             [GEM_RECENT_IMAGES_PICKER_PREFS_KEY]: {
               view: 'table',
-              density: 'small'
+              density: 'small',
+              source: 'recent', // recent | favorites
+              gridCols: 6, // grid columns (3-8)
+              favGroupBy: 'category' // category | language
             }
           },
           (result) => {
             const prefs = result && result[GEM_RECENT_IMAGES_PICKER_PREFS_KEY];
             const view = prefs && (prefs.view === 'grid' ? 'grid' : 'table');
             const density = prefs && (prefs.density === 'medium' || prefs.density === 'large' ? prefs.density : 'small');
-            callback({ view, density });
+            const source =
+              prefs && (prefs.source === 'favorites' ? 'favorites' : (prefs.source === 'seen' ? 'seen' : 'recent'));
+            const gridColsRaw = prefs && Number(prefs.gridCols);
+            const gridCols =
+              Number.isFinite(gridColsRaw) ? Math.min(8, Math.max(3, Math.round(gridColsRaw))) : 6;
+          const favGroupBy =
+            prefs && (prefs.favGroupBy === 'language' ? 'language' : (prefs.favGroupBy === 'translation' ? 'translation' : 'category'));
+            callback({ view, density, source, gridCols, favGroupBy });
           }
         );
       } catch (e) {
-        callback({ view: 'table', density: 'small' });
+        callback({ view: 'table', density: 'small', source: 'recent', gridCols: 6, favGroupBy: 'category' });
       }
     }
 
@@ -158,8 +188,14 @@ function initializeOverlayPanelControls() {
       try {
         const view = prefs && (prefs.view === 'grid' ? 'grid' : 'table');
         const density = prefs && (prefs.density === 'medium' || prefs.density === 'large' ? prefs.density : 'small');
+        const source =
+          prefs && (prefs.source === 'favorites' ? 'favorites' : (prefs.source === 'seen' ? 'seen' : 'recent'));
+        const gridColsRaw = prefs && Number(prefs.gridCols);
+        const gridCols = Number.isFinite(gridColsRaw) ? Math.min(8, Math.max(3, Math.round(gridColsRaw))) : 6;
+        const favGroupBy =
+          prefs && (prefs.favGroupBy === 'language' ? 'language' : (prefs.favGroupBy === 'translation' ? 'translation' : 'category'));
         chrome.storage.sync.set({
-          [GEM_RECENT_IMAGES_PICKER_PREFS_KEY]: { view, density }
+          [GEM_RECENT_IMAGES_PICKER_PREFS_KEY]: { view, density, source, gridCols, favGroupBy }
         });
       } catch (_) {}
     }
@@ -189,6 +225,20 @@ function initializeOverlayPanelControls() {
       return looksLikeUrl ? s : '';
     }
 
+    function looksLikeImageUrl(url) {
+      const s = String(url || '');
+      if (!s) return false;
+      if (/^data:image\//i.test(s)) return true;
+      // Common image extensions (allow query/hash)
+      return /\.(png|jpe?g|gif|webp|svg|avif|bmp|tiff?)(\?|#|$)/i.test(s);
+    }
+
+    // Use the same normalization rules for the preview, so we don't keep "changing" URLs
+    // due to invisible characters or formatting differences.
+    function normalizePreviewImageUrl(raw) {
+      return normalizeRecentImageUrlCandidate(raw) || '';
+    }
+
     function formatRecentImageDate(ts) {
       try {
         return new Intl.DateTimeFormat('en-US', {
@@ -211,7 +261,8 @@ function initializeOverlayPanelControls() {
             .map((x) => {
               const url = normalizeRecentImageUrlCandidate(x && x.url);
               const ts = (x && typeof x.ts === 'number') ? x.ts : 0;
-              return url ? { url, ts } : null;
+              const friendlyFilename = (x && typeof x.friendlyFilename === 'string') ? x.friendlyFilename : '';
+              return url ? { url, ts, friendlyFilename } : null;
             })
             .filter(Boolean);
           if (cleaned.length !== raw.length) {
@@ -248,10 +299,10 @@ function initializeOverlayPanelControls() {
         const idx = next.findIndex((x) => x && typeof x.url === 'string' && x.url === u);
         if (idx >= 0) {
           console.log('[Gem][RecentImages] URL already exists, bumping timestamp:', u);
-          next[idx] = { url: u, ts: now };
+          next[idx] = { url: u, ts: now, friendlyFilename: (next[idx] && next[idx].friendlyFilename) || '' };
         } else {
           console.log('[Gem][RecentImages] Adding new URL:', u);
-          next.push({ url: u, ts: now });
+          next.push({ url: u, ts: now, friendlyFilename: '' });
         }
 
         // Keep max size by trimming oldest
@@ -260,6 +311,244 @@ function initializeOverlayPanelControls() {
 
         saveRecentImages(next);
       });
+    }
+
+    // ------------------------------------------------------------
+    // Recently Seen (Media DB)
+    // ------------------------------------------------------------
+
+    function getRecentlySeenImages(callback) {
+      try {
+        // Use local storage for this high-churn list (MediaDB browsing) to avoid sync throttling.
+        chrome.storage.local.get({ [GEM_RECENTLY_SEEN_IMAGES_STORAGE_KEY]: [] }, (localRes) => {
+          const localList = localRes && localRes[GEM_RECENTLY_SEEN_IMAGES_STORAGE_KEY];
+          const rawLocal = Array.isArray(localList) ? localList : [];
+          if (rawLocal.length) {
+            const cleaned = rawLocal
+              .map((x) => {
+                const url = normalizeRecentImageUrlCandidate(x && x.url);
+                const ts = (x && typeof x.ts === 'number') ? x.ts : 0;
+                const path = (x && typeof x.path === 'string') ? x.path : '';
+                const friendlyFilename = (x && typeof x.friendlyFilename === 'string') ? x.friendlyFilename : '';
+                return (url && looksLikeImageUrl(url)) ? { url, ts, path, friendlyFilename } : null;
+              })
+              .filter(Boolean);
+            if (cleaned.length !== rawLocal.length) {
+              console.log('[Gem][RecentlySeen] Pruned invalid entries:', rawLocal.length - cleaned.length);
+              saveRecentlySeenImages(cleaned);
+            }
+            callback(cleaned);
+            return;
+          }
+
+          // One-time best-effort migration from sync → local (so users keep existing data).
+          chrome.storage.sync.get({ [GEM_RECENTLY_SEEN_IMAGES_STORAGE_KEY]: [] }, (syncRes) => {
+            const syncList = syncRes && syncRes[GEM_RECENTLY_SEEN_IMAGES_STORAGE_KEY];
+            const rawSync = Array.isArray(syncList) ? syncList : [];
+            const cleaned = rawSync
+              .map((x) => {
+                const url = normalizeRecentImageUrlCandidate(x && x.url);
+                const ts = (x && typeof x.ts === 'number') ? x.ts : 0;
+                const path = (x && typeof x.path === 'string') ? x.path : '';
+                const friendlyFilename = (x && typeof x.friendlyFilename === 'string') ? x.friendlyFilename : '';
+                return (url && looksLikeImageUrl(url)) ? { url, ts, path, friendlyFilename } : null;
+              })
+              .filter(Boolean);
+            if (cleaned.length) {
+              chrome.storage.local.set({ [GEM_RECENTLY_SEEN_IMAGES_STORAGE_KEY]: cleaned }, () => {
+                callback(cleaned);
+              });
+            } else {
+              callback([]);
+            }
+          });
+        });
+      } catch (e) {
+        callback([]);
+      }
+    }
+
+    function saveRecentlySeenImages(list, callback) {
+      try {
+        chrome.storage.local.set({ [GEM_RECENTLY_SEEN_IMAGES_STORAGE_KEY]: list }, () => {
+          callback && callback();
+        });
+      } catch (e) {
+        callback && callback();
+      }
+    }
+
+    function upsertRecentlySeenImage(url, path) {
+      const u = normalizeRecentImageUrlCandidate(url);
+      if (!u || !looksLikeImageUrl(u)) return;
+      const p = (typeof path === 'string') ? path.trim() : '';
+      const now = Date.now();
+      getRecentlySeenImages((list) => {
+        const next = Array.isArray(list) ? [...list] : [];
+        const idx = next.findIndex((x) => x && x.url === u);
+        if (idx >= 0) {
+          next[idx] = { url: u, ts: now, path: p || (next[idx] && next[idx].path) || '' };
+        } else {
+          next.push({ url: u, ts: now, path: p || '' });
+        }
+        next.sort((a, b) => (a.ts || 0) - (b.ts || 0));
+        while (next.length > GEM_RECENTLY_SEEN_IMAGES_MAX) next.shift();
+        saveRecentlySeenImages(next);
+      });
+    }
+
+    // ------------------------------------------------------------
+    // Favorite Images
+    // ------------------------------------------------------------
+
+    function getFavoriteImages(callback) {
+      try {
+        chrome.storage.sync.get({ [GEM_FAVORITE_IMAGES_STORAGE_KEY]: [] }, (result) => {
+          const list = result && result[GEM_FAVORITE_IMAGES_STORAGE_KEY];
+          const raw = Array.isArray(list) ? list : [];
+          const cleaned = raw
+            .map((x) => {
+              const url = normalizeRecentImageUrlCandidate(x && x.url);
+              const ts = (x && typeof x.ts === 'number') ? x.ts : 0;
+              return url ? { url, ts } : null;
+            })
+            .filter(Boolean);
+          if (cleaned.length !== raw.length) {
+            console.log('[Gem][FavoriteImages] Pruned invalid favorite image entries:', raw.length - cleaned.length);
+            saveFavoriteImages(cleaned);
+          }
+          callback(cleaned);
+        });
+      } catch (e) {
+        callback([]);
+      }
+    }
+
+    function saveFavoriteImages(list, callback) {
+      try {
+        chrome.storage.sync.set({ [GEM_FAVORITE_IMAGES_STORAGE_KEY]: list }, () => {
+          callback && callback();
+        });
+      } catch (e) {
+        callback && callback();
+      }
+    }
+
+    function toggleFavoriteImageUrl(url, callback) {
+      const u = normalizeRecentImageUrlCandidate(url);
+      if (!u) return callback && callback(false);
+
+      const now = Date.now();
+      getFavoriteImages((list) => {
+        const next = Array.isArray(list) ? [...list] : [];
+        const idx = next.findIndex((x) => x && typeof x.url === 'string' && x.url === u);
+        let isFav = false;
+        if (idx >= 0) {
+          next.splice(idx, 1);
+          isFav = false;
+        } else {
+          next.push({ url: u, ts: now });
+          isFav = true;
+        }
+
+        // Keep max size by trimming oldest
+        next.sort((a, b) => (a.ts || 0) - (b.ts || 0));
+        while (next.length > GEM_FAVORITE_IMAGES_MAX) next.shift();
+
+        saveFavoriteImages(next, () => callback && callback(isFav));
+      });
+    }
+
+    function ensureFavoriteImageUrl(url, callback) {
+      const u = normalizeRecentImageUrlCandidate(url);
+      if (!u) return callback && callback(false);
+      const now = Date.now();
+      getFavoriteImages((list) => {
+        const next = Array.isArray(list) ? [...list] : [];
+        const idx = next.findIndex((x) => x && typeof x.url === 'string' && x.url === u);
+        if (idx >= 0) {
+          next[idx] = { url: u, ts: now };
+        } else {
+          next.push({ url: u, ts: now });
+        }
+        next.sort((a, b) => (a.ts || 0) - (b.ts || 0));
+        while (next.length > GEM_FAVORITE_IMAGES_MAX) next.shift();
+        saveFavoriteImages(next, () => callback && callback(true));
+      });
+    }
+
+    // ------------------------------------------------------------
+    // Favorite Image Metadata (per URL)
+    // ------------------------------------------------------------
+
+    function getFavoriteImageMetaMap(callback) {
+      try {
+        chrome.storage.sync.get({ [GEM_FAVORITE_IMAGE_META_STORAGE_KEY]: {} }, (result) => {
+          const map = (result && result[GEM_FAVORITE_IMAGE_META_STORAGE_KEY]) || {};
+          callback(map && typeof map === 'object' ? map : {});
+        });
+      } catch (e) {
+        callback({});
+      }
+    }
+
+    function saveFavoriteImageMetaMap(map, callback) {
+      try {
+        chrome.storage.sync.set({ [GEM_FAVORITE_IMAGE_META_STORAGE_KEY]: map || {} }, () => {
+          callback && callback();
+        });
+      } catch (e) {
+        callback && callback();
+      }
+    }
+
+    function upsertFavoriteImageMeta(url, meta, callback) {
+      const u = normalizeRecentImageUrlCandidate(url);
+      if (!u) return callback && callback(false);
+      const normalizeWidth = (w) => {
+        const n =
+          (typeof w === 'number') ? w :
+          (typeof w === 'string' ? parseInt(w.trim(), 10) : NaN);
+        return Number.isFinite(n) && n > 0 ? Math.trunc(n) : '';
+      };
+      const clean = {
+        category: (meta && typeof meta.category === 'string') ? meta.category.trim() : '',
+        keyword: (meta && typeof meta.keyword === 'string') ? meta.keyword.trim() : '',
+        language: (meta && typeof meta.language === 'string') ? meta.language.trim() : '',
+        altText: (meta && typeof meta.altText === 'string') ? meta.altText.trim() : '',
+        translation: (meta && typeof meta.translation === 'string') ? meta.translation.trim() : '',
+        width: normalizeWidth(meta && meta.width)
+      };
+      getFavoriteImageMetaMap((map) => {
+        const next = { ...(map || {}) };
+        next[u] = clean;
+        saveFavoriteImageMetaMap(next, () => callback && callback(true));
+      });
+    }
+
+    // ------------------------------------------------------------
+    // Favorite Category collapse state
+    // ------------------------------------------------------------
+
+    function getFavoriteCategoryCollapseMap(callback) {
+      try {
+        chrome.storage.sync.get({ [GEM_FAVORITE_IMAGE_CATEGORY_COLLAPSE_KEY]: {} }, (result) => {
+          const map = (result && result[GEM_FAVORITE_IMAGE_CATEGORY_COLLAPSE_KEY]) || {};
+          callback(map && typeof map === 'object' ? map : {});
+        });
+      } catch (e) {
+        callback({});
+      }
+    }
+
+    function saveFavoriteCategoryCollapseMap(map, callback) {
+      try {
+        chrome.storage.sync.set({ [GEM_FAVORITE_IMAGE_CATEGORY_COLLAPSE_KEY]: map || {} }, () => {
+          callback && callback();
+        });
+      } catch (e) {
+        callback && callback();
+      }
     }
 
     function getActiveImageUrlCodeMirror(modal) {
@@ -373,10 +662,82 @@ function initializeOverlayPanelControls() {
       return false;
     }
 
+    function ensureMobileAlternateImageEnabled(modal) {
+      try {
+        const altRadio = modal.querySelector('#imageVisibilitySwitch_useAlternateImage');
+        if (!altRadio) return false; // not in Mobile tab / not available
+        if (altRadio.checked) return false;
+
+        // Prefer clicking the label (closer to real user action)
+        const label = modal.querySelector('label[for="imageVisibilitySwitch_useAlternateImage"]');
+        if (label) {
+          label.click();
+        } else {
+          altRadio.click();
+        }
+        return true; // changed
+      } catch (_) {
+        return false;
+      }
+    }
+
+    function setActiveImageUrlCodeMirrorWithRetry(modal, url, attempts = 10, delayMs = 80, onSuccess = null) {
+      const ok = setActiveImageUrlCodeMirror(modal, url);
+      if (ok) {
+        try { onSuccess && onSuccess(); } catch (_) {}
+        return true;
+      }
+      if (attempts <= 0) return false;
+      setTimeout(() => setActiveImageUrlCodeMirrorWithRetry(modal, url, attempts - 1, delayMs, onSuccess), delayMs);
+      return false;
+    }
+
+    function setImageAltTextInput(modal, altText) {
+      const t = (altText || '').trim();
+      if (!t) return false;
+      try {
+        const input = modal.querySelector('input.e-input[placeholder="Image alternative text"]');
+        if (!input) return false;
+        input.value = t;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+        return true;
+      } catch (_) {
+        return false;
+      }
+    }
+
+    function setImageWidthInput(modal, width) {
+      const n = (typeof width === 'number') ? width : parseInt(String(width || '').trim(), 10);
+      if (!Number.isFinite(n) || n <= 0) return false;
+      const value = String(Math.trunc(n));
+      try {
+        // Preferred selector (Chrome supports :has); fallback below if needed.
+        let input = null;
+        try {
+          input = modal.querySelector(".e-accordion .e-grid:has(option[value='px']) > .e-cell:first-child input");
+        } catch (_) {}
+        if (!input) {
+          const grids = Array.from(modal.querySelectorAll('.e-accordion .e-grid'));
+          const grid = grids.find((g) => g && g.querySelector && g.querySelector("option[value='px']"));
+          input = grid ? grid.querySelector('.e-cell:first-child input') : null;
+        }
+        if (!input) return false;
+
+        input.value = value;
+        try { input.focus(); } catch (_) {}
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+        try { input.blur(); } catch (_) {}
+        return true;
+      } catch (_) {
+        return false;
+      }
+    }
+
     function showRecentImagesPicker(modal) {
       const leftPanelContainer = modal.querySelector('#gem-image-properties-left-panel');
-      const previewCanvas = modal.querySelector('#gem-image-preview-canvas');
-      if (!leftPanelContainer || !previewCanvas) return;
+      if (!leftPanelContainer) return;
 
       // Create picker container once
       let picker = leftPanelContainer.querySelector('#gem-recent-images-picker');
@@ -386,29 +747,199 @@ function initializeOverlayPanelControls() {
         picker.className = 'gem-scrollable';
         picker.style.height = '100%';
         picker.style.width = '100%';
-        picker.style.display = 'none';
+        picker.style.display = '';
         picker.style.overflow = 'auto';
-        picker.style.background = 'var(--token-box-default-background)';
-        picker.style.padding = '16px';
+        picker.style.background = 'var(--token-box-alternate-background)';
+        picker.style.overflowY = 'scroll';
         picker.style.boxSizing = 'border-box';
         leftPanelContainer.appendChild(picker);
 
+        // Default source view
+        if (!picker.dataset.gemRecentImagesSource) {
+          picker.dataset.gemRecentImagesSource = 'recent'; // recent | favorites
+        }
+        if (!picker.dataset.gemFavoriteImagesSearch) {
+          picker.dataset.gemFavoriteImagesSearch = '';
+        }
+        if (!picker.dataset.gemFavoriteImagesGroupBy) {
+          picker.dataset.gemFavoriteImagesGroupBy = 'category'; // category | language | translation
+        }
+        if (!picker.dataset.gemRecentImagesGridCols) {
+          picker.dataset.gemRecentImagesGridCols = '6'; // 3-8
+        }
+
         // Delegate clicks for selecting
         picker.addEventListener('click', (e) => {
+          const catToggleBtn = e.target.closest && e.target.closest('.gem-fav-cat-toggle');
+          if (catToggleBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+            const groupKey = catToggleBtn.getAttribute('data-group-key') || '';
+            getFavoriteCategoryCollapseMap((map) => {
+              const next = { ...(map || {}) };
+              // Back-compat: older builds stored raw category keys (no prefix).
+              let legacyKey = null;
+              if (groupKey.startsWith('category:')) {
+                legacyKey = groupKey.slice('category:'.length);
+              }
+              const cur = (next[groupKey] != null) ? !!next[groupKey] : (legacyKey != null ? !!next[legacyKey] : false);
+              next[groupKey] = !cur;
+              if (legacyKey != null && legacyKey !== groupKey && legacyKey in next) {
+                delete next[legacyKey];
+              }
+              saveFavoriteCategoryCollapseMap(next, () => showRecentImagesPicker(modal));
+            });
+            return;
+          }
+
+          const catEditBtn = e.target.closest && e.target.closest('.gem-fav-cat-edit');
+          if (catEditBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+            const catKey = catEditBtn.getAttribute('data-cat') || '';
+            openFavoriteCategoryModal(modal, catKey);
+            return;
+          }
+
+          const addFavBtn = e.target.closest && e.target.closest('.gem-favorite-images-add-btn');
+          if (addFavBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+            openFavoriteImageMetaModal(modal, '', { mode: 'create' });
+            return;
+          }
+
+          const editBtn = e.target.closest && e.target.closest('.gem-recent-image-edit-btn');
+          if (editBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+            const url = editBtn.getAttribute('data-url') || '';
+            openFavoriteImageMetaModal(modal, url, { mode: 'edit' });
+            return;
+          }
+
+          const favBtn = e.target.closest && e.target.closest('.gem-recent-image-fav-btn');
+          if (favBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+            const url = favBtn.getAttribute('data-url') || '';
+            const beforeScroll = picker.scrollTop || 0;
+            toggleFavoriteImageUrl(url, () => {
+              // Re-render and preserve scroll position
+              showRecentImagesPicker(modal);
+              setTimeout(() => { try { picker.scrollTop = beforeScroll; } catch (_) {} }, 0);
+            });
+            return;
+          }
+
+          // Source changes are handled via the dropdown (change event)
+
           const btn = e.target.closest && e.target.closest('.gem-recent-image-use-btn');
           if (!btn) return;
           const url = btn.getAttribute('data-url') || '';
           console.log('[Gem][RecentImages][SetUrl] Use clicked for url:', url);
-          const ok = setActiveImageUrlCodeMirror(modal, url);
-          if (!ok) {
-            console.warn('[Gem][RecentImages] Failed to set image URL into active CodeMirror. Leaving picker open.');
-            return;
+          const normalizedUrl = normalizeRecentImageUrlCandidate(url);
+
+          const applyMetaSideEffects = () => {
+            if (!normalizedUrl) return;
+            getFavoriteImageMetaMap((map) => {
+              const meta = (map && typeof map === 'object') ? map[normalizedUrl] : null;
+              if (!meta) return;
+              const alt = meta && typeof meta.altText === 'string' ? meta.altText.trim() : '';
+              if (alt) setImageAltTextInput(modal, alt);
+              const w = meta && (typeof meta.width === 'number' || typeof meta.width === 'string') ? meta.width : '';
+              if (w) setImageWidthInput(modal, w);
+            });
+          };
+
+          const switchedMobileRadio = ensureMobileAlternateImageEnabled(modal);
+          if (switchedMobileRadio) {
+            // Emarsys may re-render the URL editor after switching radios; retry setting URL.
+            setActiveImageUrlCodeMirrorWithRetry(modal, url, 12, 90, applyMetaSideEffects);
+          } else {
+            const ok = setActiveImageUrlCodeMirror(modal, url);
+            if (!ok) {
+              console.warn('[Gem][RecentImages] Failed to set image URL into active CodeMirror. Leaving picker open.');
+              return;
+            }
+            applyMetaSideEffects();
           }
           upsertRecentImageUrl(url);
-          // Close picker and restore preview
-          picker.style.display = 'none';
-          previewCanvas.style.display = '';
         });
+
+        // Favorites search + grid slider (avoid focus loss by debouncing rerender)
+        picker.addEventListener('input', (e) => {
+          const searchInput = e.target && e.target.closest && e.target.closest('.gem-favorite-images-search');
+          if (searchInput) {
+            picker.dataset.gemFavoriteImagesSearch = searchInput.value || '';
+            picker._gemSearchFocus = {
+              value: searchInput.value || '',
+              start: searchInput.selectionStart ?? null,
+              end: searchInput.selectionEnd ?? null
+            };
+            clearTimeout(picker._gemSearchDebounceT);
+            picker._gemSearchDebounceT = setTimeout(() => {
+              picker._gemPreserveSearchFocus = true;
+              showRecentImagesPicker(modal);
+            }, 60);
+            return;
+          }
+
+          const slider = e.target && e.target.closest && e.target.closest('.gem-fav-grid-cols-slider');
+          if (slider) {
+            const v = Math.min(8, Math.max(3, Number(slider.value || 6)));
+            picker.dataset.gemRecentImagesGridCols = String(v);
+            picker.style.setProperty('--gem-recent-grid-cols', String(v));
+            const label = picker.querySelector('.gem-fav-grid-cols-label');
+            if (label) label.textContent = String(v);
+          }
+        }, true);
+
+        picker.addEventListener('change', (e) => {
+          const sourceSel = e.target && e.target.closest && e.target.closest('.gem-image-list-source-select');
+          if (sourceSel) {
+            const v = (sourceSel.value === 'favorites') ? 'favorites' : (sourceSel.value === 'seen' ? 'seen' : 'recent');
+            picker.dataset.gemRecentImagesSource = v;
+            saveRecentImagesPickerPrefs({
+              view: picker.dataset.gemRecentImagesView || 'table',
+              density: picker.dataset.gemRecentImagesGridDensity || 'small',
+              source: v,
+              gridCols: Number(picker.dataset.gemRecentImagesGridCols || 6),
+              favGroupBy: picker.dataset.gemFavoriteImagesGroupBy || 'category'
+            });
+            showRecentImagesPicker(modal);
+            return;
+          }
+
+          const groupSel = e.target && e.target.closest && e.target.closest('.gem-fav-groupby-select');
+          if (groupSel) {
+            const v = groupSel.value === 'language' ? 'language' : (groupSel.value === 'translation' ? 'translation' : 'category');
+            picker.dataset.gemFavoriteImagesGroupBy = v;
+            saveRecentImagesPickerPrefs({
+              view: picker.dataset.gemRecentImagesView || 'table',
+              density: picker.dataset.gemRecentImagesGridDensity || 'small',
+              source: picker.dataset.gemRecentImagesSource || 'recent',
+              gridCols: Number(picker.dataset.gemRecentImagesGridCols || 6),
+              favGroupBy: v
+            });
+            showRecentImagesPicker(modal);
+            return;
+          }
+
+          const slider = e.target && e.target.closest && e.target.closest('.gem-fav-grid-cols-slider');
+          if (slider) {
+            const v = Math.min(8, Math.max(3, Number(slider.value || 6)));
+            picker.dataset.gemRecentImagesGridCols = String(v);
+            picker.style.setProperty('--gem-recent-grid-cols', String(v));
+            saveRecentImagesPickerPrefs({
+              view: picker.dataset.gemRecentImagesView || 'table',
+              density: picker.dataset.gemRecentImagesGridDensity || 'small',
+              source: picker.dataset.gemRecentImagesSource || 'recent',
+              gridCols: v,
+              favGroupBy: picker.dataset.gemFavoriteImagesGroupBy || 'category'
+            });
+          }
+        }, true);
 
         // Toggle view (table vs grid)
         picker.addEventListener('click', (e) => {
@@ -417,32 +948,13 @@ function initializeOverlayPanelControls() {
           picker.dataset.gemRecentImagesView = picker.dataset.gemRecentImagesView === 'grid' ? 'table' : 'grid';
           saveRecentImagesPickerPrefs({
             view: picker.dataset.gemRecentImagesView,
-            density: picker.dataset.gemRecentImagesGridDensity || 'small'
+            density: picker.dataset.gemRecentImagesGridDensity || 'small',
+            source: picker.dataset.gemRecentImagesSource || 'recent',
+            gridCols: Number(picker.dataset.gemRecentImagesGridCols || 6),
+            favGroupBy: picker.dataset.gemFavoriteImagesGroupBy || 'category'
           });
           // Re-render (stay open)
           showRecentImagesPicker(modal);
-        });
-
-        // Grid density (small/medium/large) - only affects grid view
-        picker.addEventListener('click', (e) => {
-          const densityBtn = e.target.closest && e.target.closest('.gem-recent-images-density-btn');
-          if (!densityBtn) return;
-          const cur = picker.dataset.gemRecentImagesGridDensity || 'small';
-          const next = cur === 'small' ? 'medium' : (cur === 'medium' ? 'large' : 'small');
-          picker.dataset.gemRecentImagesGridDensity = next;
-          saveRecentImagesPickerPrefs({
-            view: picker.dataset.gemRecentImagesView || 'table',
-            density: picker.dataset.gemRecentImagesGridDensity
-          });
-          showRecentImagesPicker(modal);
-        });
-
-        // Close button
-        picker.addEventListener('click', (e) => {
-          const closeBtn = e.target.closest && e.target.closest('.gem-recent-images-close-btn');
-          if (!closeBtn) return;
-          picker.style.display = 'none';
-          previewCanvas.style.display = '';
         });
       }
 
@@ -452,142 +964,765 @@ function initializeOverlayPanelControls() {
         getRecentImagesPickerPrefs((prefs) => {
           picker.dataset.gemRecentImagesView = prefs.view;
           picker.dataset.gemRecentImagesGridDensity = prefs.density;
+          picker.dataset.gemRecentImagesSource = prefs.source;
+          picker.dataset.gemRecentImagesGridCols = String(prefs.gridCols || 6);
+          picker.dataset.gemFavoriteImagesGroupBy = prefs.favGroupBy || 'category';
+          picker.style.setProperty('--gem-recent-grid-cols', String(prefs.gridCols || 6));
           showRecentImagesPicker(modal);
         });
-        // Keep preview hidden while we load prefs; render will happen in callback
-        previewCanvas.style.display = 'none';
-        picker.style.display = '';
         return;
       }
 
       // Render
-      getRecentImages((list) => {
-        const rows = (Array.isArray(list) ? [...list] : [])
-          .filter((x) => x && typeof x.url === 'string' && x.url.trim())
-          .sort((a, b) => (b.ts || 0) - (a.ts || 0));
+      const source =
+        picker.dataset.gemRecentImagesSource === 'favorites' ? 'favorites' :
+        picker.dataset.gemRecentImagesSource === 'seen' ? 'seen' :
+        'recent';
 
-        const escape = (s) =>
-          String(s)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#39;');
+      const getList = (cb) => {
+        if (source === 'favorites') return getFavoriteImages(cb);
+        if (source === 'seen') return getRecentlySeenImages(cb);
+        return getRecentImages(cb);
+      };
 
-        const viewMode = picker.dataset.gemRecentImagesView === 'grid' ? 'grid' : 'table';
-        const toggleLabel = viewMode === 'grid' ? 'Show Table' : 'Show Grid';
-        const density = picker.dataset.gemRecentImagesGridDensity || 'small';
-        const densityLabel =
-          density === 'large' ? 'Large' :
-          density === 'medium' ? 'Medium' :
-          'Small';
+      // We always need favorites to render star state in the Recent list.
+      getFavoriteImages((favList) => {
+        const favSet = new Set((Array.isArray(favList) ? favList : []).map((x) => x && x.url).filter(Boolean));
 
-        const header = `
-          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
-            <div style="font-weight:600;">Recent Images</div>
-            <div style="display:flex; gap:10px; align-items:center;">
-              ${viewMode === 'grid' ? `<button class="e-btn e-btn-secondary gem-recent-images-density-btn" type="button">Density: ${densityLabel}</button>` : ''}
-              <button class="e-btn e-btn-secondary gem-recent-images-toggle-view-btn" type="button">${toggleLabel}</button>
-              <button class="e-btn e-btn-secondary gem-recent-images-close-btn" type="button">Back</button>
+        getFavoriteImageMetaMap((metaMap) => {
+          const meta = (metaMap && typeof metaMap === 'object') ? metaMap : {};
+
+          getList((list) => {
+          const render = (listForRender) => {
+          const rows = (Array.isArray(listForRender) ? [...listForRender] : [])
+            .filter((x) => x && typeof x.url === 'string' && x.url.trim())
+            .sort((a, b) => (b.ts || 0) - (a.ts || 0));
+
+          const escape = (s) =>
+            String(s)
+              .replace(/&/g, '&amp;')
+              .replace(/</g, '&lt;')
+              .replace(/>/g, '&gt;')
+              .replace(/"/g, '&quot;')
+              .replace(/'/g, '&#39;');
+
+          const viewMode = picker.dataset.gemRecentImagesView === 'grid' ? 'grid' : 'table';
+          const toggleLabel = viewMode === 'grid' ? 'Show Table' : 'Show Grid';
+          const gridCols = Math.min(8, Math.max(3, Number(picker.dataset.gemRecentImagesGridCols || 6)));
+          picker.style.setProperty('--gem-recent-grid-cols', String(gridCols));
+
+          const title =
+            source === 'favorites' ? 'Favorites' :
+            source === 'seen' ? 'Recently Seen' :
+            'Recently Used';
+          const addFavoriteBtn = source === 'favorites'
+            ? `<button class="e-btn e-btn-secondary gem-favorite-images-add-btn" type="button">Add Favorite</button>`
+            : '';
+
+          const sourceSelect = `
+            <select class="e-select gem-image-list-source-select" style="height:36px; width:auto; font-weight:600;">
+              <option value="recent" ${source === 'recent' ? 'selected' : ''}>Recently Used</option>
+              <option value="seen" ${source === 'seen' ? 'selected' : ''}>Recently Seen</option>
+              <option value="favorites" ${source === 'favorites' ? 'selected' : ''}>Favorites</option>
+            </select>
+          `.trim();
+
+          const groupBy =
+            (picker.dataset.gemFavoriteImagesGroupBy === 'language') ? 'language' :
+            (picker.dataset.gemFavoriteImagesGroupBy === 'translation') ? 'translation' :
+            'category';
+          const groupBySelect = (source === 'favorites')
+            ? `
+              <label style="font-size:12px; opacity:0.75;">Group by</label>
+              <select class="e-select gem-fav-groupby-select" style="height:36px; width:auto;">
+                <option value="category" ${groupBy === 'category' ? 'selected' : ''}>Category</option>
+                <option value="language" ${groupBy === 'language' ? 'selected' : ''}>Language</option>
+                <option value="translation" ${groupBy === 'translation' ? 'selected' : ''}>Translation</option>
+              </select>
+            `.trim()
+            : '';
+
+          const favSearch = (source === 'favorites')
+            ? `
+              <divstyle="margin-top:6px;">
+                <input class="e-input e-input-search gem-favorite-images-search" placeholder="Search favorites" type="search" value="${escape(picker.dataset.gemFavoriteImagesSearch || '')}">
+              </div>
+            `.trim()
+            : '';
+
+          const gridColsControl = (viewMode === 'grid')
+            ? `
+              <div style="display:flex; align-items:center; gap:8px;">
+                <label style="font-size:12px; opacity:0.75;">Cols</label>
+                <input class="gem-fav-grid-cols-slider" type="range" min="3" max="8" step="1" value="${escape(String(gridCols))}">
+                <span class="gem-fav-grid-cols-label" style="min-width:16px; text-align:right;">${escape(String(gridCols))}</span>
+              </div>
+            `.trim()
+            : '';
+
+          const header = `
+            <div id="gem-image-list-header" style="padding:16px; background: var(--token-box-alternate-background); position:sticky; z-index:3; top:0">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+              <div style="display:flex; gap:10px; align-items:center;">
+                ${sourceSelect}
+                ${addFavoriteBtn}
+              </div>
+              <div style="display:flex; gap:10px; align-items:center; justify-content:flex-end;">
+                ${groupBySelect}
+                ${gridColsControl}
+                <button class="e-btn e-btn-secondary gem-recent-images-toggle-view-btn" type="button">${toggleLabel}</button>
+              </div>
+            </div>
+            ${favSearch}
+            </div>
+          `.trim();
+
+          const empty = rows.length === 0
+            ? (source === 'favorites'
+              ? '<div style="margin-top:10px; opacity:0.7;">No favorites yet. Favorite an image from "Recently Used" or "Recently Seen".</div>'
+              : (source === 'seen'
+                ? '<div style="margin-top:10px; opacity:0.7;">No recently seen images yet. Browse Media DB images to start collecting them.</div>'
+                : '<div style="margin-top:10px; opacity:0.7;">No recently used images yet. Open an image properties dialog with an image URL to start collecting them.</div>'))
+            : '';
+
+          const dateLabel =
+            source === 'seen' ? 'Last Seen' :
+            'Last Used';
+
+          // Favorites view: group by category OR language, collapsible, searchable, sorted.
+          if (source === 'favorites') {
+            const q = String(picker.dataset.gemFavoriteImagesSearch || '').trim().toLowerCase();
+
+            // Build last-used map from recent images so we can sort missing-altText items by last used.
+            getRecentImages((recentList) => {
+              const lastUsedMap = new Map((Array.isArray(recentList) ? recentList : []).map((x) => [x.url, x.ts || 0]));
+
+              getFavoriteCategoryCollapseMap((collapseMap) => {
+                const collapse = collapseMap || {};
+
+                const items = rows.map((r) => {
+                  const url = r.url || '';
+                  const m = meta[url] || {};
+                  const category = (m.category || '').trim();
+                  const keyword = (m.keyword || '').trim();
+                  const language = (m.language || '').trim();
+                  const altText = (m.altText || '').trim();
+                  const translation = (m.translation || '').trim();
+                  const lastUsed = lastUsedMap.get(url) || r.ts || 0;
+                  return { url, category, keyword, language, altText, translation, lastUsed };
+                });
+
+                const matchesQuery = (it) => {
+                  if (!q) return true;
+                  const hay = `${it.altText} ${it.keyword} ${it.language} ${it.translation}`.toLowerCase();
+                  return hay.includes(q);
+                };
+                const filtered = items.filter(matchesQuery);
+
+                const groupMap = new Map();
+                filtered.forEach((it) => {
+                  const g =
+                    groupBy === 'language' ? (it.language || '') :
+                    groupBy === 'translation' ? (it.translation || '') :
+                    (it.category || '');
+                  if (!groupMap.has(g)) groupMap.set(g, []);
+                  groupMap.get(g).push(it);
+                });
+
+                const groupKeys = Array.from(groupMap.keys());
+                groupKeys.sort((a, b) => {
+                  const aa = (a || '').toLowerCase();
+                  const bb = (b || '').toLowerCase();
+                  if (!aa) return 1; // Uncategorized / No Language Set last
+                  if (!bb) return -1;
+                  return aa.localeCompare(bb);
+                });
+
+                const renderGroupHeader = (gKey, count) => {
+                  const label = gKey
+                    ? gKey
+                    : (groupBy === 'language'
+                      ? 'No Language Set'
+                      : (groupBy === 'translation' ? 'No Translation Available' : 'Uncategorized'));
+                  const storageKey = `${groupBy}:${gKey || ''}`;
+                  // Back-compat: older builds stored raw category keys (no prefix).
+                  const legacyKey = (groupBy === 'category') ? (gKey || '') : null;
+                  const isCollapsedRaw = !!collapse[storageKey] || (legacyKey != null && !!collapse[legacyKey]);
+                  // While searching, always expand groups that have matches (groups without matches aren't rendered).
+                  const isCollapsed = !q && isCollapsedRaw;
+                  const caret = isCollapsed ? '▸' : '▾';
+                  const showEdit = groupBy === 'category';
+                  return `
+                    <div class="gem-fav-cat-header" data-group-key="${escape(storageKey)}" data-cat="${escape(gKey)}">
+                      <button class="e-btn e-btn-borderless e-btn-onlyicon gem-fav-cat-toggle" type="button" data-group-key="${escape(storageKey)}" aria-label="Toggle" title="Toggle">
+                        ${caret}
+                      </button>
+                      <div class="gem-fav-cat-title">
+                        <span class="gem-fav-cat-name">${escape(label)}</span>
+                        <span class="gem-fav-cat-count">${count}</span>
+                      </div>
+                      ${showEdit ? `
+                        <button class="e-btn e-btn-borderless e-btn-onlyicon gem-fav-cat-edit" type="button" data-cat="${escape(gKey)}" aria-label="Edit category" title="Edit category">
+                          ✎
+                        </button>
+                      ` : ''}
+                    </div>
+                  `.trim();
+                };
+
+                const renderGridItem = (it) => {
+                  const editTitle = 'Edit metadata';
+                  const label =
+                    (groupBy === 'translation')
+                      ? ((it.language || '').trim())
+                      : (((it.translation || '').trim()) || ((it.altText || '').trim()));
+                  return `
+                    <div class="gem-recent-image-tile" title="${escape(it.url)}">
+                      <button class="gem-recent-image-edit-btn" type="button" data-url="${escape(it.url)}" aria-label="${editTitle}" title="${editTitle}">
+                        ✎
+                      </button>
+                      <img class="gem-recent-image-thumb gem-bg-pattern" src="${escape(it.url)}" alt="" />
+                      <div class="gem-recent-image-overlay">
+                        <button class="e-btn e-btn-primary gem-recent-image-use-btn" type="button" data-url="${escape(it.url)}">
+                          Add To Page
+                        </button>
+                      </div>
+                      <div class="gem-recent-image-meta">
+                        ${label ? `<div class="gem-recent-image-meta2" title="${escape(label)}">${escape(label)}</div>` : ''}
+                      </div>
+                    </div>
+                  `;
+                };
+
+                const renderTableRows = (catItems) => {
+                  return catItems.map((it) => {
+                    const metaText = [it.altText, it.keyword, it.language].filter(Boolean).join(' • ');
+                    return `
+                      <tr>
+                        <td style="padding:6px; width:140px; vertical-align:middle;">
+                          <img class="gem-bg-pattern" src="${escape(it.url)}" style="display:block; width:128px; height:70px; object-fit:contain; border-radius:4px;" />
+                        </td>
+                        <td style="padding:6px; vertical-align:middle; word-break:break-word;">${escape(it.url)}</td>
+                        <td style="padding:6px; vertical-align:middle;">
+                          <div>${escape(formatRecentImageDate(it.lastUsed || 0))}</div>
+                          ${metaText ? `<div class="gem-recent-image-meta2" title="${escape(metaText)}">${escape(metaText)}</div>` : ''}
+                        </td>
+                        <td style="padding:6px; vertical-align:middle; text-align:right; white-space:nowrap;">
+                          <button class="e-btn e-btn-borderless e-btn-onlyicon gem-recent-image-edit-btn gem-recent-image-edit-btn--table" type="button" data-url="${escape(it.url)}" aria-label="Edit metadata" title="Edit metadata">
+                            <span class="gem-recent-image-edit">✎</span>
+                          </button>
+                          <button class="e-btn e-btn-primary gem-recent-image-use-btn" type="button" data-url="${escape(it.url)}">
+                            Add To Page
+                          </button>
+                        </td>
+                      </tr>
+                    `;
+                  }).join('');
+                };
+
+                const buildCategorySections = () => {
+                  return groupKeys.map((gKey) => {
+                    const catItems = groupMap.get(gKey) || [];
+                    // Sort: altText present alpha; no altText last by lastUsed desc
+                    catItems.sort((a, b) => {
+                      const aa = (a.altText || '').trim();
+                      const bb = (b.altText || '').trim();
+                      const hasA = !!aa;
+                      const hasB = !!bb;
+                      if (hasA && hasB) return aa.toLowerCase().localeCompare(bb.toLowerCase());
+                      if (hasA && !hasB) return -1;
+                      if (!hasA && hasB) return 1;
+                      return (b.lastUsed || 0) - (a.lastUsed || 0);
+                    });
+
+                    const headerHtml = renderGroupHeader(gKey, catItems.length);
+                    const storageKey = `${groupBy}:${gKey || ''}`;
+                    const legacyKey = (groupBy === 'category') ? (gKey || '') : null;
+                    const isCollapsedRaw = !!collapse[storageKey] || (legacyKey != null && !!collapse[legacyKey]);
+                    const isCollapsed = !q && isCollapsedRaw;
+                    if (viewMode === 'grid') {
+                      return `
+                        <div class="gem-fav-cat-section" style="padding:0 16px 16px">
+                          ${headerHtml}
+                          ${isCollapsed ? '' : `
+                            <div class="gem-recent-images-grid">
+                              ${catItems.map(renderGridItem).join('')}
+                            </div>
+                          `}
+                        </div>
+                      `;
+                    }
+
+                    return `
+                      <div class="gem-fav-cat-section" style="padding:0 16px 16px">
+                        ${headerHtml}
+                        ${isCollapsed ? '' : `
+                          <table data-e-version="2" class="e-table e-table-bordered gem-recent-images-table" style="width:100%; font-size: 14px; margin-top:8px;">
+                            <thead>
+                              <tr>
+                                <th style="width:140px;">Preview</th>
+                                <th>URL</th>
+                                <th style="width:160px;">${dateLabel}</th>
+                                <th style="width:160px; text-align:right;">Use</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              ${renderTableRows(catItems)}
+                            </tbody>
+                          </table>
+                        `}
+                      </div>
+                    `;
+                  }).join('');
+                };
+
+                picker.innerHTML = `
+                  ${header}
+                  ${q && groupKeys.length === 0 ? '<div style="opacity:0.7;">No matches.</div>' : ''}
+                  ${buildCategorySections()}
+                  ${!q ? empty : ''}
+                `.trim();
+
+                // Restore search focus/selection after rerender (prevents focus loss each keystroke)
+                if (picker._gemPreserveSearchFocus) {
+                  picker._gemPreserveSearchFocus = false;
+                  const si = picker.querySelector('.gem-favorite-images-search');
+                  const s = picker._gemSearchFocus || {};
+                  if (si && document.activeElement !== si) {
+                    try { si.focus(); } catch (_) {}
+                  }
+                  try {
+                    if (si && s && s.value != null) {
+                      si.value = s.value;
+                      const start = typeof s.start === 'number' ? s.start : si.value.length;
+                      const end = typeof s.end === 'number' ? s.end : si.value.length;
+                      si.setSelectionRange(start, end);
+                    }
+                  } catch (_) {}
+                }
+              });
+            });
+            return;
+          }
+
+          // Existing behavior for Recent list (ungrouped)
+          if (viewMode === 'grid') {
+            picker.innerHTML = `
+              ${header}
+              <div class="gem-recent-images-grid">
+                ${rows.map((r) => {
+                  const url = r.url || '';
+                  const ts = r.ts || 0;
+                  const friendlyFilename = (r && typeof r.friendlyFilename === 'string') ? r.friendlyFilename : '';
+                  const isFav = favSet.has(url);
+                  const star = isFav ? '★' : '☆';
+                  const starTitle = isFav ? 'Unfavorite' : 'Favorite';
+                  return `
+                    <div class="gem-recent-image-tile" title="${escape(url)}">
+                      <button class="gem-recent-image-fav-btn ${isFav ? 'gem-recent-image-fav-btn--active' : ''}" type="button" data-url="${escape(url)}" aria-label="${starTitle}" title="${starTitle}">
+                        ${star}
+                      </button>
+                      <img class="gem-recent-image-thumb gem-bg-pattern" src="${escape(url)}" alt="" />
+                      <div class="gem-recent-image-overlay">
+                        <button class="e-btn e-btn-primary gem-recent-image-use-btn" type="button" data-url="${escape(url)}">
+                          Add To Page
+                        </button>
+                      </div>
+                      <div class="gem-recent-image-meta">
+                        ${source === 'seen'
+                          ? `<div class="gem-recent-image-date" title="${escape(friendlyFilename || url)}">${escape(friendlyFilename || url)}</div>`
+                          : (source === 'recent' && friendlyFilename
+                            ? `<div class="gem-recent-image-date" title="${escape(friendlyFilename)}">${escape(friendlyFilename)}</div>`
+                            : '')}
+                      </div>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+              ${empty}
+            `.trim();
+          } else {
+            picker.innerHTML = `
+              ${header}
+              <div style="padding:0 16px 16px">
+              <table data-e-version="2" class="e-table e-table-bordered gem-recent-images-table" style="width:100%; font-size: 14 px;">
+                <thead>
+                  <tr>
+                    <th style="width:140px;">Preview</th>
+                    <th>${source === 'seen' ? 'Filename' : (source === 'recent' ? 'Name' : 'URL')}</th>
+                    <th style="width:160px;">${escape(dateLabel)}</th>
+                    <th style="width:160px; text-align:right;">Use</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${rows.map((r) => {
+                    const url = r.url || '';
+                    const ts = r.ts || 0;
+                    const friendlyFilename = (r && typeof r.friendlyFilename === 'string') ? r.friendlyFilename : '';
+                    const isFav = favSet.has(url);
+                    const star = isFav ? '★' : '☆';
+                    const starTitle = isFav ? 'Unfavorite' : 'Favorite';
+                    return `
+                      <tr>
+                        <td style="padding:6px; width:140px; vertical-align:middle;">
+                          <img class="gem-bg-pattern" src="${escape(url)}" style="display:block; width:128px; height:70px; object-fit:contain; border-radius:4px;" />
+                        </td>
+                        <td style="padding:6px; vertical-align:middle; word-break:break-word;">${escape(source === 'seen' ? (friendlyFilename || url) : (source === 'recent' ? (friendlyFilename || url) : url))}</td>
+                        <td style="padding:6px; vertical-align:middle;">${escape(formatRecentImageDate(ts))}</td>
+                        <td style="padding:6px; vertical-align:middle; text-align:right; white-space:nowrap;">
+                          <button class="e-btn e-btn-borderless e-btn-onlyicon gem-recent-image-fav-btn gem-recent-image-fav-btn--table ${isFav ? 'gem-recent-image-fav-btn--active' : ''}" type="button" data-url="${escape(url)}" aria-label="${starTitle}" title="${starTitle}">
+                            <span class="gem-recent-image-star">${star}</span>
+                          </button>
+                          <button class="e-btn e-btn-primary gem-recent-image-use-btn" type="button" data-url="${escape(url)}">
+                            Add To Page
+                          </button>
+                        </td>
+                      </tr>
+                    `;
+                  }).join('')}
+                </tbody>
+              </table>
+              </div>
+              ${empty}
+            `.trim();
+          }
+          }; // render
+
+          if (source !== 'recent') {
+            render(list);
+            return;
+          }
+
+          // Before displaying Recently Used, enrich it from Recently Seen (copy friendlyFilename where available).
+          getRecentlySeenImages((seenList) => {
+            const seenMap = new Map(
+              (Array.isArray(seenList) ? seenList : [])
+                .filter((x) => x && x.url && x.friendlyFilename)
+                .map((x) => [x.url, x.friendlyFilename])
+            );
+            if (!seenMap.size) {
+              render(list);
+              return;
+            }
+
+            let changed = 0;
+            const merged = (Array.isArray(list) ? list : []).map((r) => {
+              const url = r && r.url;
+              if (!url) return r;
+              const ff = seenMap.get(url);
+              if (!ff) return r;
+              if (r.friendlyFilename === ff) return r;
+              changed += 1;
+              return { ...(r || {}), friendlyFilename: ff };
+            });
+            if (changed) saveRecentImages(merged);
+            render(merged);
+          });
+          });
+        });
+      });
+    }
+
+    function openFavoriteCategoryModal(modal, catKey) {
+      const key = (catKey || '');
+      const label = key ? key : 'Uncategorized';
+
+      const existing = document.getElementById('gem-favorite-category-modal');
+      if (existing) existing.remove();
+
+      const overlay = document.createElement('div');
+      overlay.id = 'gem-favorite-category-modal';
+      overlay.className = 'gem-favorite-image-meta-modal';
+      overlay.innerHTML = `
+        <div class="gem-favorite-image-meta-modal__backdrop"></div>
+        <div class="gem-favorite-image-meta-modal__panel" role="dialog" aria-modal="true">
+          <div class="gem-favorite-image-meta-modal__header">
+            <div style="font-weight:600;">Category</div>
+            <button class="e-btn e-btn-borderless e-btn-onlyicon gem-favorite-image-meta-modal__close" type="button" aria-label="Close">✕</button>
+          </div>
+          <div class="gem-favorite-image-meta-modal__body">
+            <div class="e-field">
+              <label class="e-field__label">Name</label>
+              <input class="e-input gem-fav-cat-name-input" type="text" value="${label.replace(/&/g, '&amp;').replace(/"/g, '&quot;')}" />
+            </div>
+            <div style="display:flex; gap:10px; margin-top:14px; flex-wrap:wrap;">
+              <button class="e-btn e-btn-secondary gem-fav-cat-export" type="button">Copy JSON</button>
+              <button class="e-btn e-btn-danger gem-fav-cat-unfav" type="button">Unfavorite All</button>
+            </div>
+          </div>
+          <div class="gem-favorite-image-meta-modal__footer">
+            <button class="e-btn e-btn-secondary gem-fav-cat-cancel" type="button">Cancel</button>
+            <button class="e-btn e-btn-primary gem-fav-cat-save" type="button">Save</button>
+          </div>
+        </div>
+      `.trim();
+
+      const host = modal || document.body;
+      host.appendChild(overlay);
+      const close = () => overlay.remove();
+      overlay.querySelector('.gem-favorite-image-meta-modal__backdrop')?.addEventListener('click', close);
+      overlay.querySelector('.gem-favorite-image-meta-modal__close')?.addEventListener('click', close);
+      overlay.querySelector('.gem-fav-cat-cancel')?.addEventListener('click', close);
+
+      const getCategoryItems = (cb) => {
+        getFavoriteImages((favList) => {
+          const favUrls = new Set((Array.isArray(favList) ? favList : []).map((x) => x && x.url).filter(Boolean));
+          getFavoriteImageMetaMap((metaMap) => {
+            const meta = metaMap || {};
+            const items = Array.from(favUrls).map((url) => {
+              const m = meta[url] || {};
+              const c = (m.category || '').trim();
+              return { url, meta: m, category: c };
+            }).filter((it) => (key ? it.category === key : !it.category));
+            cb(items);
+          });
+        });
+      };
+
+      overlay.querySelector('.gem-fav-cat-export')?.addEventListener('click', () => {
+        getCategoryItems((items) => {
+          const out = items.map((it) => ({ url: it.url, ...(it.meta || {}) }));
+          const json = JSON.stringify(out, null, 2);
+          try {
+            navigator.clipboard.writeText(json);
+          } catch (_) {}
+          alert('Copied JSON to clipboard.');
+        });
+      });
+
+      overlay.querySelector('.gem-fav-cat-unfav')?.addEventListener('click', () => {
+        if (!confirm(`Unfavorite all images in "${label}"?`)) return;
+        getCategoryItems((items) => {
+          const removeSet = new Set(items.map((x) => x.url));
+          getFavoriteImages((favList) => {
+            const next = (Array.isArray(favList) ? favList : []).filter((x) => x && x.url && !removeSet.has(x.url));
+            saveFavoriteImages(next, () => {
+              close();
+              showRecentImagesPicker(modal);
+            });
+          });
+        });
+      });
+
+      overlay.querySelector('.gem-fav-cat-save')?.addEventListener('click', () => {
+        const newNameRaw = overlay.querySelector('.gem-fav-cat-name-input')?.value || '';
+        const newName = newNameRaw.trim();
+        if (!newName) {
+          alert('Please enter a category name.');
+          return;
+        }
+        const newKey = newName;
+        getFavoriteImageMetaMap((metaMap) => {
+          const nextMeta = { ...(metaMap || {}) };
+          Object.keys(nextMeta).forEach((url) => {
+            const m = nextMeta[url];
+            const c = (m && m.category ? String(m.category).trim() : '');
+            const matches = key ? (c === key) : !c;
+            if (matches) {
+              nextMeta[url] = { ...(m || {}), category: newKey };
+            }
+          });
+          saveFavoriteImageMetaMap(nextMeta, () => {
+            // Migrate collapse state
+            getFavoriteCategoryCollapseMap((collapseMap) => {
+              const cm = { ...(collapseMap || {}) };
+              const oldPrefixed = `category:${key || ''}`;
+              const newPrefixed = `category:${newKey || ''}`;
+              // Back-compat: might exist as raw category key (older builds) OR prefixed key (newer builds).
+              const existingVal = (cm[oldPrefixed] != null) ? cm[oldPrefixed] : cm[key];
+              if (existingVal != null) {
+                cm[newPrefixed] = existingVal;
+              }
+              delete cm[key];
+              delete cm[oldPrefixed];
+              saveFavoriteCategoryCollapseMap(cm, () => {
+                close();
+                showRecentImagesPicker(modal);
+              });
+            });
+          });
+        });
+      });
+    }
+
+    function openFavoriteImageMetaModal(modal, url, opts = {}) {
+      const mode = (opts && opts.mode === 'create') ? 'create' : 'edit';
+      const u = normalizeRecentImageUrlCandidate(url);
+      if (mode !== 'create' && !u) return;
+
+      // Remove any existing modal
+      const existing = document.getElementById('gem-favorite-image-meta-modal');
+      if (existing) existing.remove();
+
+      getFavoriteImages((favList) => {
+        const favSet = new Set((Array.isArray(favList) ? favList : []).map((x) => x && x.url).filter(Boolean));
+        const isFav = mode === 'create' ? false : favSet.has(u);
+
+        getFavoriteImageMetaMap((map) => {
+          const metaKey = mode === 'create' ? '' : u;
+          const meta = (map && typeof map === 'object' && metaKey && map[metaKey]) ? map[metaKey] : {};
+          const category = (meta.category || '');
+          const keyword = (meta.keyword || '');
+          const language = (meta.language || '');
+          const altText = (meta.altText || '');
+          const translation = (meta.translation || '');
+          const width = (meta.width || '');
+          const startingUrl = mode === 'create' ? '' : u;
+
+        const overlay = document.createElement('div');
+        overlay.id = 'gem-favorite-image-meta-modal';
+        overlay.className = 'gem-favorite-image-meta-modal';
+        overlay.innerHTML = `
+          <div class="gem-favorite-image-meta-modal__backdrop"></div>
+          <div class="gem-favorite-image-meta-modal__panel" role="dialog" aria-modal="true">
+            <div class="gem-favorite-image-meta-modal__header">
+              <div style="font-weight:600;">${mode === 'create' ? 'Add Favorite Image' : 'Edit Image Metadata'}</div>
+              <button class="e-btn e-btn-borderless e-btn-onlyicon gem-favorite-image-meta-modal__close" type="button" aria-label="Close">
+                ✕
+              </button>
+            </div>
+            <div class="gem-favorite-image-meta-modal__body">
+              ${mode === 'create' ? `
+                <div class="e-field">
+                  <label class="e-field__label">Image URL</label>
+                  <input class="e-input gem-favorite-image-meta-url" type="text" value="" placeholder="https://example.com/image.png" />
+                </div>
+              ` : `
+                <div class="gem-favorite-image-meta-modal__thumbrow">
+                  <img class="gem-bg-pattern" src="${u.replace(/"/g, '&quot;')}" alt="" />
+                  <div class="gem-favorite-image-meta-modal__url">${u.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+                </div>
+              `}
+              <div class="e-field">
+                <label class="e-field__label">Category</label>
+                <input class="e-input gem-favorite-image-meta-category" type="text" value="${String(category).replace(/&/g, '&amp;').replace(/"/g, '&quot;')}" />
+              </div>
+              <div class="e-field">
+                <label class="e-field__label">Keyword</label>
+                <input class="e-input gem-favorite-image-meta-keyword" type="text" value="${String(keyword).replace(/&/g, '&amp;').replace(/"/g, '&quot;')}" />
+              </div>
+              <div class="e-field">
+                <label class="e-field__label">Language</label>
+                <input class="e-input gem-favorite-image-meta-language" type="text" value="${String(language).replace(/&/g, '&amp;').replace(/"/g, '&quot;')}" />
+              </div>
+              <div class="e-field">
+                <label class="e-field__label">Image alternative text</label>
+                <input class="e-input gem-favorite-image-meta-alttext" type="text" value="${String(altText).replace(/&/g, '&amp;').replace(/"/g, '&quot;')}" />
+              </div>
+              <div class="e-field">
+                <label class="e-field__label">Translation</label>
+                <input class="e-input gem-favorite-image-meta-translation" type="text" value="${String(translation).replace(/&/g, '&amp;').replace(/"/g, '&quot;')}" />
+              </div>
+              <div class="e-field">
+                <label class="e-field__label">Width</label>
+                <input class="e-input gem-favorite-image-meta-width" type="number" inputmode="numeric" step="1" min="1" value="${String(width).replace(/&/g, '&amp;').replace(/"/g, '&quot;')}" />
+              </div>
+            </div>
+            <div class="gem-favorite-image-meta-modal__footer" style="display:flex; align-items:center; justify-content:space-between;">
+              <div style="display:flex; align-items:center; gap:10px;">
+                ${mode === 'edit' ? `
+                  <button class="e-btn e-btn-borderless e-btn-onlyicon gem-favorite-image-meta-favtoggle" type="button" aria-label="${isFav ? 'Unfavorite' : 'Favorite'}" title="${isFav ? 'Unfavorite' : 'Favorite'}">
+                    <span class="gem-recent-image-star">${isFav ? '★' : '☆'}</span>
+                  </button>
+                ` : ''}
+              </div>
+              <div style="display:flex; align-items:center; gap:10px;">
+                <button class="e-btn e-btn-secondary gem-favorite-image-meta-cancel" type="button">Cancel</button>
+                <button class="e-btn e-btn-primary gem-favorite-image-meta-save" type="button">Save</button>
+              </div>
             </div>
           </div>
         `.trim();
 
-        const empty = rows.length === 0
-          ? '<div style="margin-top:10px; opacity:0.7;">No recent images yet. Open an image properties dialog with an image URL to start collecting them.</div>'
-          : '';
+        const host = modal || document.body;
+        host.appendChild(overlay);
 
-        if (viewMode === 'grid') {
-          picker.innerHTML = `
-            ${header}
-            <div class="gem-recent-images-grid">
-              ${rows.map((r) => {
-                const url = r.url || '';
-                const ts = r.ts || 0;
-                return `
-                  <div class="gem-recent-image-tile" title="${escape(url)}">
-                    <img class="gem-recent-image-thumb gem-bg-pattern" src="${escape(url)}" alt="" />
-                    <div class="gem-recent-image-overlay">
-                      <button class="e-btn e-btn-primary gem-recent-image-use-btn" type="button" data-url="${escape(url)}">
-                        <e-icon icon="plus" type="table">
-                          <div class="e-icon-wrapper">
-                            <div class="e-icon e-icon-table">&#xF155;</div>
-                          </div>
-                        </e-icon>
-                        Add To Page
-                      </button>
-                    </div>
-                    <div class="gem-recent-image-meta">
-                      <div class="gem-recent-image-date">${escape(formatRecentImageDate(ts))}</div>
-                    </div>
-                  </div>
-                `;
-              }).join('')}
-            </div>
-            ${empty}
-          `.trim();
-        } else {
-          picker.innerHTML = `
-            ${header}
-            <table data-e-version="2" class="e-table e-table-bordered gem-recent-images-table" style="width:100%; font-size: 14 px;">
-              <thead>
-                <tr>
-                  <th style="width:140px;">Preview</th>
-                  <th>URL</th>
-                  <th style="width:160px;">Last Used</th>
-                  <th style="width:140px; text-align:right;">Use</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${rows.map((r) => {
-                  const url = r.url || '';
-                  const ts = r.ts || 0;
-                  return `
-                    <tr>
-                      <td style="padding:6px; width:140px; vertical-align:middle;">
-                        <img class="gem-bg-pattern" src="${escape(url)}" style="display:block; width:128px; height:70px; object-fit:contain; border-radius:4px;" />
-                      </td>
-                      <td style="padding:6px; vertical-align:middle; word-break:break-word;">${escape(url)}</td>
-                      <td style="padding:6px; vertical-align:middle;">${escape(formatRecentImageDate(ts))}</td>
-                      <td style="padding:6px; vertical-align:middle; text-align:right;">
-                        <button class="e-btn e-btn-primary gem-recent-image-use-btn" type="button" data-url="${escape(url)}">
-                          <e-icon icon="plus" type="table">
-                            <div class="e-icon-wrapper">
-                              <div class="e-icon e-icon-table">&#xF155;</div>
-                            </div>
-                          </e-icon>
-                          Add To Page
-                        </button>
-                      </td>
-                    </tr>
-                  `;
-                }).join('')}
-              </tbody>
-            </table>
-            ${empty}
-          `.trim();
-        }
+        const close = () => overlay.remove();
+        overlay.querySelector('.gem-favorite-image-meta-modal__backdrop')?.addEventListener('click', close);
+        overlay.querySelector('.gem-favorite-image-meta-modal__close')?.addEventListener('click', close);
+        overlay.querySelector('.gem-favorite-image-meta-cancel')?.addEventListener('click', close);
+
+        overlay.querySelector('.gem-favorite-image-meta-favtoggle')?.addEventListener('click', () => {
+          const targetUrl = startingUrl;
+          if (!targetUrl) return;
+          toggleFavoriteImageUrl(targetUrl, () => {
+            // Update icon immediately
+            getFavoriteImages((nextFavList) => {
+              const nextSet = new Set((Array.isArray(nextFavList) ? nextFavList : []).map((x) => x && x.url).filter(Boolean));
+              const nowFav = nextSet.has(targetUrl);
+              const btn = overlay.querySelector('.gem-favorite-image-meta-favtoggle');
+              if (btn) {
+                btn.setAttribute('aria-label', nowFav ? 'Unfavorite' : 'Favorite');
+                btn.setAttribute('title', nowFav ? 'Unfavorite' : 'Favorite');
+                const starEl = btn.querySelector('.gem-recent-image-star');
+                if (starEl) starEl.textContent = nowFav ? '★' : '☆';
+              }
+              showRecentImagesPicker(modal);
+            });
+          });
+        });
+
+        overlay.querySelector('.gem-favorite-image-meta-save')?.addEventListener('click', () => {
+          const rawUrl = mode === 'create'
+            ? (overlay.querySelector('.gem-favorite-image-meta-url')?.value || '')
+            : startingUrl;
+          const targetUrl = normalizeRecentImageUrlCandidate(rawUrl);
+          if (!targetUrl) {
+            alert('Please enter a valid image URL.');
+            return;
+          }
+          const cat = overlay.querySelector('.gem-favorite-image-meta-category')?.value || '';
+          const key = overlay.querySelector('.gem-favorite-image-meta-keyword')?.value || '';
+          const lang = overlay.querySelector('.gem-favorite-image-meta-language')?.value || '';
+          const alt = overlay.querySelector('.gem-favorite-image-meta-alttext')?.value || '';
+          const trn = overlay.querySelector('.gem-favorite-image-meta-translation')?.value || '';
+          const widthRaw = overlay.querySelector('.gem-favorite-image-meta-width')?.value || '';
+          const widthNum = parseInt(String(widthRaw || '').trim(), 10);
+          const widthClean = Number.isFinite(widthNum) && widthNum > 0 ? Math.trunc(widthNum) : '';
+
+          const incoming = {
+            category: (cat || '').trim(),
+            keyword: (key || '').trim(),
+            language: (lang || '').trim(),
+            altText: (alt || '').trim(),
+            translation: (trn || '').trim(),
+            width: widthClean
+          };
+
+          if (mode === 'create') {
+            // Ensure it exists in favorites, then save metadata.
+            ensureFavoriteImageUrl(targetUrl, () => {
+              // Merge with existing metadata; do not overwrite existing values with blanks.
+              getFavoriteImageMetaMap((map) => {
+                const existing = (map && typeof map === 'object' && map[targetUrl]) ? map[targetUrl] : {};
+                const merged = {
+                  category: incoming.category || (existing.category || ''),
+                  keyword: incoming.keyword || (existing.keyword || ''),
+                  language: incoming.language || (existing.language || ''),
+                  altText: incoming.altText || (existing.altText || ''),
+                  translation: incoming.translation || (existing.translation || ''),
+                  width: (incoming.width !== '' ? incoming.width : (existing.width || ''))
+                };
+                upsertFavoriteImageMeta(targetUrl, merged, () => {
+                  close();
+                  showRecentImagesPicker(modal);
+                });
+              });
+            });
+            return;
+          }
+
+          // Edit mode: save metadata without forcing favorite status (star toggle controls that).
+          upsertFavoriteImageMeta(targetUrl, incoming, () => {
+            close();
+            showRecentImagesPicker(modal);
+          });
+        });
+        });
       });
-
-      // Toggle display
-      previewCanvas.style.display = 'none';
-      picker.style.display = '';
     }
 
-    function toggleRecentImagesPicker(modal) {
-      const leftPanelContainer = modal.querySelector('#gem-image-properties-left-panel');
-      const previewCanvas = modal.querySelector('#gem-image-preview-canvas');
-      const picker = leftPanelContainer && leftPanelContainer.querySelector('#gem-recent-images-picker');
-      if (!leftPanelContainer || !previewCanvas) return;
-
-      if (picker && picker.style.display !== 'none') {
-        picker.style.display = 'none';
-        previewCanvas.style.display = '';
-        return;
-      }
-
-      showRecentImagesPicker(modal);
-    }
+    // Picker is now always visible; no toggle behavior needed.
 
     function debugDumpDialogButtons(modal, label = '') {
       try {
@@ -695,17 +1830,25 @@ function initializeOverlayPanelControls() {
       console.log("[Gem] Modifying Image Properties modal, modal element:", modal);
       console.log("[Gem][RecentImages] modifyImagePropertiesModal called");
 
+      const previewLog = (...args) => {
+        try { console.log('[gem-image-preview]', ...args); } catch (_) {}
+      };
+
       // Find the dialog active element
-      const dialogActive = modal.querySelector('.e-dialog-active');
+      const dialogActive = (modal && modal.matches && modal.matches('.e-dialog-active'))
+        ? modal
+        : modal.querySelector('.e-dialog-active');
       if (!dialogActive) {
         console.log("[Gem] Dialog active element not found");
+        previewLog('abort: dialogActive not found', { modalTag: modal && modal.tagName, modalClass: modal && modal.className });
         return;
       }
+      previewLog('dialogActive resolved', { modalTag: modal && modal.tagName, modalClass: modal && modal.className, dialogActiveTag: dialogActive.tagName, dialogActiveClass: dialogActive.className });
 
       // Apply flex styles to the dialog active element
-      dialogActive.style.flexDirection = 'row';
+      dialogActive.style.flexDirection = 'row-reverse';
       dialogActive.style.alignItems = 'stretch';
-      dialogActive.style.padding = '54px 0';
+      dialogActive.style.padding = '0';
       dialogActive.classList.add('gem-enhanced-image-properties-dialog');
       console.log("[Gem] Applied flex styles and class to dialog-active element:", dialogActive);
 
@@ -713,8 +1856,14 @@ function initializeOverlayPanelControls() {
       const container = dialogActive.querySelector('div.e-dialog__container');
       if (!container) {
         console.log("[Gem] Image Properties modal container not found");
+        previewLog('abort: container not found');
         return;
       }
+      if (!container._gemPreviewDebugId) {
+        gemImagePreviewDebugSeq += 1;
+        container._gemPreviewDebugId = gemImagePreviewDebugSeq;
+      }
+      previewLog('container resolved', { debugId: container._gemPreviewDebugId });
 
       // Check if already modified to avoid duplicate modifications
       if (container._gemModified) {
@@ -722,12 +1871,77 @@ function initializeOverlayPanelControls() {
         return;
       }
 
-      // Store reference to the left panel for later updates
-      let leftPanelImage = null;
+      // ------------------------------------------------------------
+      // Cleanup / teardown (prevents MutationObserver feedback loops on close)
+      // ------------------------------------------------------------
+
+      const cleanupImagePropertiesModal = () => {
+        if (container._gemIsClosing) return;
+        container._gemIsClosing = true;
+        try { container._gemContainerObserver && container._gemContainerObserver.disconnect(); } catch (_) {}
+        try { container._gemAccordionObserver && container._gemAccordionObserver.disconnect(); } catch (_) {}
+        try { container._gemHtmlEditorObserver && container._gemHtmlEditorObserver.disconnect(); } catch (_) {}
+        try { container._gemRecentImagesCmObserver && container._gemRecentImagesCmObserver.disconnect(); } catch (_) {}
+        try { container._gemRecentImagesButtonObserver && container._gemRecentImagesButtonObserver.disconnect(); } catch (_) {}
+        try { container._gemModalDetachObserver && container._gemModalDetachObserver.disconnect(); } catch (_) {}
+        try { container._gemPreviewRemovalObserver && container._gemPreviewRemovalObserver.disconnect(); } catch (_) {}
+        try {
+          if (container._gemStorageChangeHandler) {
+            chrome.storage.onChanged.removeListener(container._gemStorageChangeHandler);
+          }
+        } catch (_) {}
+        try { clearTimeout(container._gemRecentlySeenRefreshT); } catch (_) {}
+
+        container._gemContainerObserver = null;
+        container._gemAccordionObserver = null;
+        container._gemHtmlEditorObserver = null;
+        container._gemRecentImagesCmObserver = null;
+        container._gemRecentImagesButtonObserver = null;
+        container._gemModalDetachObserver = null;
+        container._gemPreviewRemovalObserver = null;
+        container._gemStorageChangeHandler = null;
+        container._gemRecentlySeenRefreshT = null;
+        previewLog('cleanup complete', { debugId: container._gemPreviewDebugId });
+      };
+      container._gemCleanupImagePropertiesModal = cleanupImagePropertiesModal;
+
+      // Call cleanup on explicit close button click.
+      if (!container._gemCloseClickBound) {
+        container._gemCloseClickBound = true;
+        modal.addEventListener('click', (e) => {
+          const btn = e.target && e.target.closest && e.target.closest('button[aria-label="Close Dialog"], .e-dialog__close');
+          if (!btn) return;
+          cleanupImagePropertiesModal();
+        }, true);
+      }
+
+      // Call cleanup when modal is detached from DOM.
+      if (!container._gemModalDetachObserver) {
+        const parent = modal.parentNode;
+        if (parent) {
+          container._gemModalDetachObserver = new MutationObserver((mutations) => {
+            for (const m of mutations) {
+              for (const n of m.removedNodes || []) {
+                if (n === modal) {
+                  cleanupImagePropertiesModal();
+                  return;
+                }
+              }
+            }
+          });
+          try {
+            container._gemModalDetachObserver.observe(parent, { childList: true });
+          } catch (_) {}
+        }
+      }
+
+      // Store reference to the preview images for later updates (one per tab)
+      let previewImgDesktop = container._gemPreviewImgDesktop || null;
+      let previewImgMobile = container._gemPreviewImgMobile || null;
 
       // Apply inline styles to the container
-      container.style.maxWidth = '580px';
-      container.style.width = '580px';
+      container.style.maxWidth = '720px';
+      container.style.width = '720px';
       container.style.overflow = 'hidden';
 
       // Create and insert the new left panel div before the container
@@ -737,70 +1951,345 @@ function initializeOverlayPanelControls() {
       leftPanelContainer.style.width = '100%';
       leftPanelContainer.style.zIndex = '9';
 
-      // Create and insert the new left panel div before the container
-      const leftPanel = document.createElement('div');
-      leftPanel.id = 'gem-image-preview-canvas';
-      leftPanel.style.backgroundColor = 'var(--token-box-default-background)';
-      leftPanel.style.backgroundImage = 'linear-gradient(45deg, var(--token-background-strong) 25%, transparent 25%, transparent 75%, var(--token-background-strong) 75%, var(--token-background-strong)), linear-gradient(45deg, var(--token-background-strong) 25%, transparent 25%, transparent 75%, var(--token-background-strong) 75%, var(--token-background-strong))';
-      leftPanel.style.backgroundPosition = '0 0, 10px 10px';
-      leftPanel.style.backgroundSize = '20px 20px';
-      leftPanel.style.height = '100%';
-      leftPanel.style.width = '100%';
-
-      leftPanelContainer.appendChild(leftPanel);
-
       // Insert before the container element
       dialogActive.insertBefore(leftPanelContainer, container);
 
-      // Function to update or create image in left panel
-      const updateImageInLeftPanel = (imageUrl) => {
-        console.log("[Gem] Updating image in left panel:", imageUrl);
+      // Persistent preview canvas (kept on the container) so tab switching doesn't destroy it.
+      // We'll move this same element into the current dialog content as needed.
+      let previewCanvas = container._gemPreviewCanvas || modal.querySelector('#gem-image-preview-canvas');
+      if (!previewCanvas) {
+        previewCanvas = document.createElement('div');
+        previewCanvas.id = 'gem-image-preview-canvas';
+        previewCanvas.style.backgroundColor = 'var(--token-box-default-background)';
+        previewCanvas.style.backgroundImage = 'linear-gradient(45deg, var(--token-background-strong) 25%, transparent 25%, transparent 75%, var(--token-background-strong) 75%, var(--token-background-strong)), linear-gradient(45deg, var(--token-background-strong) 25%, transparent 25%, transparent 75%, var(--token-background-strong) 75%, var(--token-background-strong))';
+        previewCanvas.style.backgroundPosition = '0 0, 10px 10px';
+        previewCanvas.style.backgroundSize = '20px 20px';
+        previewCanvas.style.minHeight = '140px';
+        // Fixed height prevents layout jumping when the image loads/decodes.
+        previewCanvas.style.maxHeight = '340px';
+        previewCanvas.style.padding = '16px';
+        previewCanvas.style.boxSizing = 'border-box';
+      }
+      container._gemPreviewCanvas = previewCanvas;
 
-        if (imageUrl && imageUrl.match(/\.(jpg|jpeg|png|gif|webp|svg)(\?.*)?$/i) && imageUrl !== 'null') {
-          // Create image element if it doesn't exist
-          if (!leftPanelImage) {
-            leftPanelImage = document.createElement('img');
-            leftPanelImage.style.maxWidth = '100%';
-            leftPanelImage.style.maxHeight = '100%';
-            leftPanelImage.style.width = 'auto';
-            leftPanelImage.style.height = 'auto';
-            leftPanelImage.style.display = 'block';
+      // Hidden parking lot keeps the preview node (and <img>) in the DOM even if Emarsys
+      // temporarily re-renders the dialog content, which helps prevent reloading/flashing.
+      let previewParkingLot = container._gemPreviewParkingLot;
+      if (!previewParkingLot) {
+        previewParkingLot = document.createElement('div');
+        previewParkingLot.id = 'gem-image-preview-parkinglot';
+        previewParkingLot.style.display = 'none';
+        container.appendChild(previewParkingLot);
+        container._gemPreviewParkingLot = previewParkingLot;
+      }
 
-            // Clear existing content and add image
-            leftPanel.innerHTML = '';
-            leftPanel.style.display = 'flex';
-            leftPanel.style.alignItems = 'center';
-            leftPanel.style.justifyContent = 'center';
-            leftPanel.appendChild(leftPanelImage);
+      const getActivePreviewTab = () => {
+        const active = modal.querySelector('.e-tabs__title-active[data-tab]');
+        const domTab = active && active.getAttribute('data-tab');
+        const last = container._gemPreviewLastTab;
+        // Emarsys can delay updating the active-tab class until after CodeMirror blur.
+        // If we have a recent user intent (last clicked tab), trust it over the DOM.
+        if (last) {
+          const normalizedLast = last === 'mobile' ? 'mobile' : 'desktop';
+          // If DOM agrees, great; if DOM disagrees, DOM is likely stale—keep last.
+          if (domTab && (domTab === 'mobile' ? 'mobile' : 'desktop') === normalizedLast) {
+            return normalizedLast;
           }
+          return normalizedLast;
+        }
 
-          // Update image source
-          leftPanelImage.src = imageUrl;
+        if (domTab) {
+          const normalizedDom = domTab === 'mobile' ? 'mobile' : 'desktop';
+          // Seed lastTab on first read so future logic can rely on it.
+          container._gemPreviewLastTab = normalizedDom;
+          return normalizedDom;
+        }
 
-          // Handle image load error
-          leftPanelImage.onerror = () => {
-            console.log("[Gem] Failed to load image:", imageUrl);
-            leftPanelImage.style.display = 'none';
+        return 'desktop';
+      };
+
+      const ensurePreviewImgs = () => {
+        // Ensure base layout once
+        previewCanvas.style.display = 'flex';
+        previewCanvas.style.alignItems = 'center';
+        previewCanvas.style.justifyContent = 'center';
+
+        if (!previewImgDesktop) {
+          previewImgDesktop = document.createElement('img');
+          previewImgDesktop.dataset.gemPreviewTab = 'desktop';
+          try {
+            previewImgDesktop.loading = 'eager';
+            previewImgDesktop.decoding = 'async';
+          } catch (_) {}
+          previewImgDesktop.style.maxWidth = '100%';
+          previewImgDesktop.style.maxHeight = '100%';
+          previewImgDesktop.style.width = 'auto';
+          previewImgDesktop.style.height = 'auto';
+          previewImgDesktop.style.display = 'none';
+          previewImgDesktop.onerror = () => {
+            console.log("[Gem] Failed to load desktop image:", previewImgDesktop.src);
+            previewLog('img error', { debugId: container._gemPreviewDebugId, tab: 'desktop', src: previewImgDesktop.src });
+            previewImgDesktop.style.display = 'none';
+            // Reset border color on error
+            previewCanvas.style.borderColor = 'var(--token-border-default)';
           };
-
-          // Handle image load success
-          leftPanelImage.onload = () => {
-            console.log("[Gem] Image loaded successfully:", imageUrl);
-            leftPanelImage.style.display = 'block';
+          previewImgDesktop.onload = () => {
+            console.log("[Gem] Desktop image loaded successfully:", previewImgDesktop.src);
+            previewLog('img load', { debugId: container._gemPreviewDebugId, tab: 'desktop', src: previewImgDesktop.src });
+            // Add visual indicator that image loaded successfully
+            previewCanvas.style.borderColor = 'var(--token-border-success)';
           };
-        } else {
-          // Hide image if URL is not valid or null (disabled state)
-          if (leftPanelImage) {
-            leftPanelImage.style.display = 'none';
-          }
+          previewCanvas.appendChild(previewImgDesktop);
+          container._gemPreviewImgDesktop = previewImgDesktop;
+          previewLog('created preview img', { debugId: container._gemPreviewDebugId, tab: 'desktop' });
+        }
+
+        if (!previewImgMobile) {
+          previewImgMobile = document.createElement('img');
+          previewImgMobile.dataset.gemPreviewTab = 'mobile';
+          try {
+            previewImgMobile.loading = 'eager';
+            previewImgMobile.decoding = 'async';
+          } catch (_) {}
+          previewImgMobile.style.maxWidth = '100%';
+          previewImgMobile.style.maxHeight = '100%';
+          previewImgMobile.style.width = 'auto';
+          previewImgMobile.style.height = 'auto';
+          previewImgMobile.style.display = 'none';
+          previewImgMobile.onerror = () => {
+            console.log("[Gem] Failed to load mobile image:", previewImgMobile.src);
+            previewLog('img error', { debugId: container._gemPreviewDebugId, tab: 'mobile', src: previewImgMobile.src });
+            previewImgMobile.style.display = 'none';
+            // Reset border color on error
+            previewCanvas.style.borderColor = 'var(--token-border-default)';
+          };
+          previewImgMobile.onload = () => {
+            console.log("[Gem] Mobile image loaded successfully:", previewImgMobile.src);
+            previewLog('img load', { debugId: container._gemPreviewDebugId, tab: 'mobile', src: previewImgMobile.src });
+            // Add visual indicator that image loaded successfully
+            previewCanvas.style.borderColor = 'var(--token-border-success)';
+          };
+          previewCanvas.appendChild(previewImgMobile);
+          container._gemPreviewImgMobile = previewImgMobile;
+          previewLog('created preview img', { debugId: container._gemPreviewDebugId, tab: 'mobile' });
         }
       };
 
-      // Find and inject the initial image into the left panel
+      const syncPreviewVisibilityToTab = () => {
+        ensurePreviewImgs();
+        const active = getActivePreviewTab();
+        const dUrl = container._gemPreviewImgUrlDesktop || '';
+        const mUrl = container._gemPreviewImgUrlMobile || '';
+
+        // Only show the image for the active tab if it has a URL
+        const desktopShouldShow = active === 'desktop' && !!dUrl;
+        const mobileShouldShow = active === 'mobile' && !!mUrl;
+        previewImgDesktop.style.display = desktopShouldShow ? 'block' : 'none';
+        previewImgMobile.style.display = mobileShouldShow ? 'block' : 'none';
+
+        previewLog('preview visibility', {
+          debugId: container._gemPreviewDebugId,
+          active,
+          canvas: { display: previewCanvas.style.display, visibility: previewCanvas.style.visibility },
+          desktop: { shouldShow: desktopShouldShow, url: dUrl, display: previewImgDesktop.style.display },
+          mobile: { shouldShow: mobileShouldShow, url: mUrl, display: previewImgMobile.style.display }
+        });
+      };
+
+      const ensurePreviewCanvasPlacement = () => {
+        const dialogContent = container.querySelector('div.e-dialog__content') || modal.querySelector('div.e-dialog__content');
+        if (!dialogContent) {
+          try {
+            if (previewCanvas.parentNode !== previewParkingLot) {
+              previewParkingLot.appendChild(previewCanvas);
+              previewLog('preview parked (no dialogContent)', { debugId: container._gemPreviewDebugId });
+            }
+          } catch (_) {}
+          return;
+        }
+        // Position preview canvas right before the dialog header
+        const dialogHeader = container.querySelector('.e-dialog__header') || modal.querySelector('.e-dialog__header');
+        if (!dialogHeader) {
+          // Fallback: position as sibling to parking lot
+          const targetParent = previewParkingLot.parentNode;
+          const targetIndex = Array.from(targetParent.children).indexOf(previewParkingLot);
+          if (previewCanvas.parentNode !== targetParent) {
+            try { previewCanvas.remove(); } catch (_) {}
+            previewCanvas.style.display = 'block';
+            targetParent.insertBefore(previewCanvas, targetParent.children[targetIndex]);
+            previewLog('preview inserted before header (fallback)', { debugId: container._gemPreviewDebugId });
+          }
+          return;
+        }
+
+        // Position right before the dialog header
+        const headerParent = dialogHeader.parentNode;
+        if (previewCanvas.parentNode !== headerParent) {
+          try { previewCanvas.remove(); } catch (_) {}
+          previewCanvas.style.display = 'block';
+          headerParent.insertBefore(previewCanvas, dialogHeader);
+          previewLog('preview inserted before header', { debugId: container._gemPreviewDebugId });
+        } else if (previewCanvas.nextSibling !== dialogHeader) {
+          // Ensure it's positioned right before the header
+          headerParent.insertBefore(previewCanvas, dialogHeader);
+          previewLog('preview repositioned before header', { debugId: container._gemPreviewDebugId });
+        }
+      };
+
+      // Place it initially
+      ensurePreviewCanvasPlacement();
+      syncPreviewVisibilityToTab();
+
+      // Debug: Watch for preview canvas removal
+      if (!container._gemPreviewRemovalObserver) {
+        container._gemPreviewRemovalObserver = new MutationObserver((mutations) => {
+          if (container._gemIsClosing) return;
+          mutations.forEach((mutation) => {
+            if (mutation.type === 'childList') {
+              mutation.removedNodes.forEach((node) => {
+                if (node === previewCanvas || (node.contains && node.contains(previewCanvas))) {
+                  previewLog('preview canvas REMOVED from DOM', {
+                    debugId: container._gemPreviewDebugId,
+                    removedNode: node.tagName + (node.id ? '#' + node.id : ''),
+                    parentWas: previewCanvas.parentNode ? previewCanvas.parentNode.tagName + (previewCanvas.parentNode.id ? '#' + previewCanvas.parentNode.id : '') : 'null'
+                  });
+                }
+              });
+            }
+          });
+        });
+
+        // Observe the container and its subtree for childList changes
+        try {
+          container._gemPreviewRemovalObserver.observe(container, {
+            childList: true,
+            subtree: true
+          });
+        } catch (e) {
+          previewLog('failed to observe for preview removal', { debugId: container._gemPreviewDebugId, error: e.message });
+        }
+      }
+
+      // On tab interaction, toggle visibility instantly (do NOT touch src).
+      // Emarsys focuses CodeMirror on tab click; their active class update can be delayed until blur,
+      // so we optimistically use the clicked tab's data-tab.
+      if (!container._gemPreviewTabClickBound) {
+        container._gemPreviewTabClickBound = true;
+        modal.addEventListener('pointerdown', (e) => {
+          const tabEl = e.target && e.target.closest && e.target.closest('.e-tabs__title[data-tab]');
+          if (!tabEl) return;
+          const clicked = tabEl.getAttribute('data-tab') === 'mobile' ? 'mobile' : 'desktop';
+          container._gemPreviewLastTab = clicked;
+          // Run immediately so the preview swaps before Emarsys shifts focus into CodeMirror.
+          ensurePreviewCanvasPlacement();
+          syncPreviewVisibilityToTab();
+        }, true);
+
+        // Also run after the click settles (in case Emarsys updates classes asynchronously)
+        modal.addEventListener('click', (e) => {
+          const tabEl = e.target && e.target.closest && e.target.closest('.e-tabs__title[data-tab]');
+          if (!tabEl) return;
+          setTimeout(() => {
+            ensurePreviewCanvasPlacement();
+            syncPreviewVisibilityToTab();
+          }, 0);
+        }, true);
+      }
+
+      // Recent Images panel is always visible now
+      showRecentImagesPicker(modal);
+
+      // Emarsys can re-render dialog content right after open (especially when our picker loads prefs),
+      // which may temporarily detach the preview canvas and park it. Re-attach a few times to ensure
+      // the preview is visible on first open.
+      const ensurePreviewCanvasPlacedSoon = () => {
+        let tries = 0;
+        const tick = () => {
+          if (container._gemIsClosing || !container.isConnected || !modal.isConnected) return;
+          try {
+            ensurePreviewCanvasPlacement();
+            syncPreviewVisibilityToTab();
+          } catch (_) {}
+          // Check if preview canvas is properly positioned before the dialog header
+          const dialogHeader = container.querySelector('.e-dialog__header') || modal.querySelector('.e-dialog__header');
+          if (dialogHeader && previewCanvas.nextSibling === dialogHeader) return;
+          tries += 1;
+          if (tries === 1 || tries === 5 || tries === 9) {
+            previewLog('ensurePreviewCanvasPlacedSoon retry', { debugId: container._gemPreviewDebugId, tries });
+          }
+          if (tries < 10) setTimeout(tick, 50);
+        };
+        setTimeout(tick, 0);
+      };
+      ensurePreviewCanvasPlacedSoon();
+
+      // Live refresh: if "Recently Seen" is the active list, update immediately as new images are logged.
+      if (!container._gemStorageChangeHandler) {
+        container._gemStorageChangeHandler = (changes, namespace) => {
+          try {
+            if (namespace !== 'local' && namespace !== 'sync') return;
+            if (!changes || !changes.gemRecentlySeenImages) return;
+            if (container._gemIsClosing || !container.isConnected || !modal.isConnected) return;
+            const picker = modal.querySelector('#gem-recent-images-picker');
+            if (!picker) return;
+            if (picker.dataset.gemRecentImagesSource !== 'seen') return;
+            clearTimeout(container._gemRecentlySeenRefreshT);
+            container._gemRecentlySeenRefreshT = setTimeout(() => {
+              if (container._gemIsClosing || !container.isConnected || !modal.isConnected) return;
+              showRecentImagesPicker(modal);
+              // In case Emarsys repaints content while refreshing the picker, keep the preview attached.
+              ensurePreviewCanvasPlacedSoon();
+            }, 60);
+          } catch (_) {}
+        };
+        try { chrome.storage.onChanged.addListener(container._gemStorageChangeHandler); } catch (_) {}
+      }
+
+      // Function to update the active tab image in preview canvas (desktop/mobile have distinct <img>)
+      const updateImageInPreviewCanvas = (rawUrl) => {
+        const imageUrl = normalizePreviewImageUrl(rawUrl);
+        console.log("[Gem] Updating image in preview canvas:", imageUrl);
+        previewLog('updateImageInPreviewCanvas', { debugId: container._gemPreviewDebugId, rawUrl, imageUrl });
+
+        if (imageUrl && imageUrl.match(/\.(jpg|jpeg|png|gif|webp|svg)(\?.*)?$/i) && imageUrl !== 'null') {
+          // Ensure the canvas is in the active tab content before manipulating DOM
+          ensurePreviewCanvasPlacement();
+          ensurePreviewImgs();
+
+          const active = getActivePreviewTab();
+          const key = active === 'mobile' ? '_gemPreviewImgUrlMobile' : '_gemPreviewImgUrlDesktop';
+          const img = active === 'mobile' ? previewImgMobile : previewImgDesktop;
+          const lastUrl = container[key] || '';
+          const currentSrcAttr = img.getAttribute('src') || '';
+          // Only set src when it truly changed (prevents unnecessary re-requests).
+          previewLog('preview src check', { debugId: container._gemPreviewDebugId, active, key, lastUrl, currentSrcAttr, next: imageUrl });
+          if (lastUrl !== imageUrl || currentSrcAttr !== imageUrl) {
+            container[key] = imageUrl;
+            img.setAttribute('src', imageUrl);
+            previewLog('preview src set', { debugId: container._gemPreviewDebugId, active, src: imageUrl });
+            previewLog('img src attribute set', { debugId: container._gemPreviewDebugId, active, url: imageUrl, imgSrc: img.src });
+          }
+          syncPreviewVisibilityToTab();
+        } else {
+          // Hide the active tab image if URL is not valid or null (disabled state)
+          const active = getActivePreviewTab();
+          if (active === 'mobile' && previewImgMobile) previewImgMobile.style.display = 'none';
+          if (active === 'desktop' && previewImgDesktop) previewImgDesktop.style.display = 'none';
+          previewLog('preview hidden (invalid url)', { debugId: container._gemPreviewDebugId, active, imageUrl });
+        }
+      };
+
+      // Find and inject the initial image into the preview
       const htmlEditor = container.querySelector('vce-html-editor');
+      previewLog('initial htmlEditor check', {
+        debugId: container._gemPreviewDebugId,
+        found: !!htmlEditor,
+        disabled: !!(htmlEditor && htmlEditor.classList && htmlEditor.classList.contains('e-input-disabled')),
+        htmlAttr: htmlEditor && htmlEditor.getAttribute ? htmlEditor.getAttribute('html') : null
+      });
       if (htmlEditor && htmlEditor.getAttribute('html') && !htmlEditor.classList.contains('e-input-disabled')) {
-        const imageUrl = htmlEditor.getAttribute('html').trim();
-        updateImageInLeftPanel(imageUrl);
+        const imageUrl = normalizePreviewImageUrl(htmlEditor.getAttribute('html'));
+        updateImageInPreviewCanvas(imageUrl);
         // Collect recent image immediately on open
         if (imageUrl) upsertRecentImageUrl(imageUrl);
       }
@@ -812,29 +2301,37 @@ function initializeOverlayPanelControls() {
         if (htmlEditorObserver) {
           htmlEditorObserver.disconnect();
         }
+        previewLog('setupHtmlEditorObserver', {
+          debugId: container._gemPreviewDebugId,
+          disabled: !!(htmlEditor && htmlEditor.classList && htmlEditor.classList.contains('e-input-disabled')),
+          htmlAttr: htmlEditor && htmlEditor.getAttribute ? htmlEditor.getAttribute('html') : null
+        });
 
         // Watch for attribute changes on the vce-html-editor element
         htmlEditorObserver = new MutationObserver((mutations) => {
+          if (container._gemIsClosing || !container.isConnected || !modal.isConnected) return;
           mutations.forEach((mutation) => {
             if (mutation.type === 'attributes' && (mutation.attributeName === 'html' || mutation.attributeName === 'class')) {
               const target = mutation.target;
               const hasDisabledClass = target.classList.contains('e-input-disabled');
-              const newImageUrl = target.getAttribute('html')?.trim();
+              const newImageUrl = normalizePreviewImageUrl(target.getAttribute('html'));
 
               console.log("[Gem] vce-html-editor attribute changed:", mutation.attributeName, "disabled:", hasDisabledClass);
+              previewLog('htmlEditor mutation', { debugId: container._gemPreviewDebugId, attr: mutation.attributeName, disabled: hasDisabledClass, htmlAttr: target.getAttribute('html'), newImageUrl });
 
               if (hasDisabledClass) {
                 // If disabled, hide any existing image
-                updateImageInLeftPanel(null);
+                updateImageInPreviewCanvas(null);
               } else if (newImageUrl) {
                 // If not disabled and has URL, update image
-                updateImageInLeftPanel(newImageUrl);
+                updateImageInPreviewCanvas(newImageUrl);
                 // Collect into recent images list
                 upsertRecentImageUrl(newImageUrl);
               }
             }
           });
         });
+        container._gemHtmlEditorObserver = htmlEditorObserver;
 
         htmlEditorObserver.observe(htmlEditor, {
           attributes: true,
@@ -843,8 +2340,8 @@ function initializeOverlayPanelControls() {
 
         // Update image with current URL only if not disabled
         if (!htmlEditor.classList.contains('e-input-disabled')) {
-          const currentImageUrl = htmlEditor.getAttribute('html')?.trim();
-          updateImageInLeftPanel(currentImageUrl);
+          const currentImageUrl = normalizePreviewImageUrl(htmlEditor.getAttribute('html'));
+          updateImageInPreviewCanvas(currentImageUrl);
           if (currentImageUrl) upsertRecentImageUrl(currentImageUrl);
         }
 
@@ -853,9 +2350,38 @@ function initializeOverlayPanelControls() {
 
       // Watch for vce-html-editor being added/removed from container
       const containerObserver = new MutationObserver((mutations) => {
+        if (container._gemIsClosing || !container.isConnected || !modal.isConnected) return;
         mutations.forEach((mutation) => {
           if (mutation.type === 'childList') {
             const currentHtmlEditor = container.querySelector('vce-html-editor');
+            // Emarsys re-renders Desktop/Mobile tab content; when our preview node gets removed,
+            // immediately park it in a hidden container so the image stays "alive" in DOM.
+            try {
+              mutation.removedNodes && mutation.removedNodes.forEach((n) => {
+                if (!container._gemPreviewCanvas || !container._gemPreviewParkingLot) return;
+                if (n === container._gemPreviewCanvas || (n.querySelector && n.querySelector('#gem-image-preview-canvas') === container._gemPreviewCanvas)) {
+                  if (container._gemPreviewCanvas.parentNode !== container._gemPreviewParkingLot) {
+                    container._gemPreviewParkingLot.appendChild(container._gemPreviewCanvas);
+                  }
+                }
+              });
+            } catch (_) {}
+
+            // Then ensure it is placed back as the first child of the active dialog content.
+            try {
+              if (container._gemPreviewCanvas && !container.querySelector('#gem-image-preview-canvas')) {
+                const dc = container.querySelector('div.e-dialog__content') || modal.querySelector('div.e-dialog__content');
+                if (dc) {
+                  if (container._gemPreviewCanvas.parentNode !== dc) {
+                    dc.insertBefore(container._gemPreviewCanvas, dc.firstChild);
+                  }
+                } else if (container._gemPreviewParkingLot) {
+                  if (container._gemPreviewCanvas.parentNode !== container._gemPreviewParkingLot) {
+                    container._gemPreviewParkingLot.appendChild(container._gemPreviewCanvas);
+                  }
+                }
+              }
+            } catch (_) {}
 
             // Check if element was added
             mutation.addedNodes.forEach((node) => {
@@ -879,8 +2405,7 @@ function initializeOverlayPanelControls() {
                     htmlEditorObserver.disconnect();
                     htmlEditorObserver = null;
                   }
-                  // Clear the image when the editor is removed
-                  updateImageInLeftPanel(null);
+                  // Don't clear preview on tab switches; desktop/mobile may swap editors in/out.
                 }
               }
             });
@@ -893,6 +2418,7 @@ function initializeOverlayPanelControls() {
           }
         });
       });
+      container._gemContainerObserver = containerObserver;
 
       containerObserver.observe(container, {
         childList: true,
@@ -921,6 +2447,7 @@ function initializeOverlayPanelControls() {
 
       // Also watch for the accordion to be added if it's not there yet
       const accordionObserver = new MutationObserver((mutations) => {
+        if (container._gemIsClosing || !container.isConnected || !modal.isConnected) return;
         mutations.forEach((mutation) => {
           if (mutation.type === 'childList') {
             mutation.addedNodes.forEach((node) => {
@@ -942,57 +2469,25 @@ function initializeOverlayPanelControls() {
         childList: true,
         subtree: true
       });
+      container._gemAccordionObserver = accordionObserver;
 
       // Mark as modified
       container._gemModified = true;
 
       // ------------------------------------------------------------
-      // Recent Images button + CodeMirror URL tracking
+      // Recent Images (always visible) + CodeMirror URL tracking
       // ------------------------------------------------------------
-
-      // Insert button after the existing secondary button in the label row (with retries)
-      ensureRecentImagesButton(modal, container, dialogActive);
-
-      // Emarsys re-renders parts of this dialog when switching Desktop/Mobile tabs,
-      // which can remove our injected button. Keep it present by re-applying on:
-      // - tab clicks
-      // - DOM changes where the button is missing
-      const scheduleEnsureRecentImagesButton = () => {
-        if (container._gemRecentImagesEnsureScheduled) return;
-        container._gemRecentImagesEnsureScheduled = true;
-        setTimeout(() => {
-          container._gemRecentImagesEnsureScheduled = false;
-          // If the button disappeared, re-insert it.
-          if (!modal.querySelector(`.${GEM_RECENT_IMAGES_BTN_CLASS}`)) {
-            console.log('[Gem][RecentImages] Button missing after re-render; re-inserting.');
-            ensureRecentImagesButton(modal, container, dialogActive);
-          }
-        }, 75);
-      };
-
-      if (!dialogActive._gemRecentImagesTabClickBound) {
-        dialogActive._gemRecentImagesTabClickBound = true;
-        dialogActive.addEventListener('click', (e) => {
-          const tab = e.target && e.target.closest && e.target.closest('.e-tabs__title');
-          if (!tab) return;
-          console.log('[Gem][RecentImages] Tab click detected:', tab.getAttribute('data-tab') || (tab.textContent || '').trim());
-          scheduleEnsureRecentImagesButton();
-        }, true);
-      }
-
-      if (!dialogActive._gemRecentImagesRerenderObserver) {
-        dialogActive._gemRecentImagesRerenderObserver = new MutationObserver(() => {
-          if (!modal.querySelector(`.${GEM_RECENT_IMAGES_BTN_CLASS}`)) {
-            scheduleEnsureRecentImagesButton();
-          }
-        });
-        dialogActive._gemRecentImagesRerenderObserver.observe(dialogActive, { childList: true, subtree: true });
-      }
+      // Remove the old "Recent Images" toggle button if it exists (picker is always visible now)
+      try {
+        const oldBtn = modal.querySelector(`.${GEM_RECENT_IMAGES_BTN_CLASS}`);
+        if (oldBtn) oldBtn.remove();
+      } catch (_) {}
 
       // Watch for CodeMirror input field swapping in/out, and store the current URL whenever it appears.
       if (!container._gemRecentImagesCmObserver) {
         console.log('[Gem][RecentImages] Setting up CodeMirror observer');
         container._gemRecentImagesCmObserver = new MutationObserver(() => {
+          if (container._gemIsClosing || !container.isConnected || !modal.isConnected) return;
           const { cmEl, value } = getActiveImageUrlCodeMirror(modal);
           if (!cmEl) return;
           if (cmEl && container._gemLastSeenImageUrlCmEl !== cmEl) {
@@ -1021,12 +2516,9 @@ function initializeOverlayPanelControls() {
 
     // Monitor for modal appearance
     const observer = new MutationObserver((mutations) => {
-      console.log("[Gem] Mutation observer fired, checking for Image Properties modal");
       mutations.forEach((mutation) => {
         mutation.addedNodes.forEach((node) => {
           if (node.nodeType === Node.ELEMENT_NODE) {
-            console.log("[Gem] Checking added node:", node.tagName, node.className);
-
             // Check if this is an Image Properties modal
             if (isImagePropertiesModal(node)) {
               console.log("[Gem] Image Properties modal detected");

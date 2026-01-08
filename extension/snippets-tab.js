@@ -5,6 +5,70 @@ const SNIPPETS_STORAGE_KEY = 'gemSnippets';
 const SNIPPET_CATEGORY_COLLAPSE_STORAGE_KEY = 'gemSnippetCategoryCollapseState';
 const UNCATEGORIZED_LABEL = 'Uncategorized';
 
+// ------------------------------------------------------------
+// Toast notifications
+// ------------------------------------------------------------
+
+if (!window.gemShowToast) {
+  window.gemShowToast = function gemShowToast(message, opts = {}) {
+    try {
+      const type = opts.type || 'info'; // info | success | warn | error
+      const durationMs = typeof opts.durationMs === 'number' ? opts.durationMs : 2400;
+
+      let container = document.getElementById('gem-toast-container');
+      if (!container) {
+        container = document.createElement('div');
+        container.id = 'gem-toast-container';
+        container.style.position = 'fixed';
+        container.style.right = '16px';
+        container.style.bottom = '16px';
+        container.style.zIndex = '100000';
+        container.style.display = 'flex';
+        container.style.flexDirection = 'column';
+        container.style.gap = '10px';
+        container.style.pointerEvents = 'none';
+        document.body.appendChild(container);
+      }
+
+      const toast = document.createElement('div');
+      toast.style.pointerEvents = 'none';
+      toast.style.padding = '10px 12px';
+      toast.style.borderRadius = '10px';
+      toast.style.boxShadow = '0 10px 30px rgba(0,0,0,0.20)';
+      toast.style.border = '1px solid var(--token-box-default-border, rgba(0,0,0,0.12))';
+      toast.style.background = 'var(--token-box-default-background, #fff)';
+      toast.style.color = 'var(--token-font-default, #111)';
+      toast.style.fontSize = '13px';
+      toast.style.maxWidth = '420px';
+      toast.style.opacity = '0';
+      toast.style.transform = 'translateY(6px)';
+      toast.style.transition = 'opacity 140ms ease, transform 140ms ease';
+
+      const accent =
+        type === 'success' ? 'var(--token-green-600, #16a34a)' :
+        type === 'warn' ? 'var(--token-orange-600, #ea580c)' :
+        type === 'error' ? 'var(--token-red-600, #dc2626)' :
+        'var(--token-blue-600, #2563eb)';
+      toast.style.borderLeft = `4px solid ${accent}`;
+
+      toast.textContent = String(message || '');
+      container.appendChild(toast);
+
+      // animate in
+      requestAnimationFrame(() => {
+        toast.style.opacity = '1';
+        toast.style.transform = 'translateY(0)';
+      });
+
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(6px)';
+        setTimeout(() => toast.remove(), 180);
+      }, durationMs);
+    } catch (_) {}
+  };
+}
+
 // Default snippets to initialize with
 const DEFAULT_SNIPPETS = [
   {
@@ -120,7 +184,8 @@ function createSnippetModalHTML(isEditing = false) {
       <div style="margin-top: 6px;">
         <div style="display:flex; gap:10px; align-items:flex-end; margin-bottom:4px;">
           <div style="width:100%;">Optional Keyword for Swapping</div>
-          <div style="min-width:220px;">Swap Method</div>
+          <div style="min-width:120px;">Swap Method</div>
+           <div style="min-width:140px;">Initiate From</div>
           <div style="min-width:40px;"></div>
         </div>
         <div id="gem-swap-keywords-rows"></div>
@@ -195,7 +260,7 @@ function initializeSnippetsTab() {
               <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="var(--token-icon-default-text)"><path d="M320-240 80-480l240-240 57 57-184 184 183 183-56 56Zm320 0-57-57 184-184-183-183 56-56 240 240-240 240Z"/></svg>
             </div>
           </div>
-        </e-icon>
+        </gem-e-icon>
       </div>
       </e-tooltip>
 
@@ -278,6 +343,12 @@ function initializeSnippetsTab() {
     return mode === 'plain' ? 'plain' : 'token';
   }
 
+  function normalizeSwapInitiateFrom(v) {
+    // anywhere | panel | toolbar
+    if (v === 'panel' || v === 'toolbar') return v;
+    return 'anywhere';
+  }
+
   function normalizeSwapKeywordsFromSnippet(snippet) {
     if (!snippet) return [];
 
@@ -286,7 +357,8 @@ function initializeSnippetsTab() {
       const cleaned = snippet.swapKeywords
         .map((k) => ({
           keyword: (k && typeof k.keyword === 'string') ? k.keyword.trim() : '',
-          mode: normalizeSwapMode(k && k.mode)
+          mode: normalizeSwapMode(k && k.mode),
+          initiateFrom: normalizeSwapInitiateFrom(k && k.initiateFrom)
         }))
         .filter((k) => !!k.keyword);
 
@@ -304,7 +376,7 @@ function initializeSnippetsTab() {
     // Legacy format: swapKeyword/swapMode
     const legacyKeyword = (snippet.swapKeyword && typeof snippet.swapKeyword === 'string') ? snippet.swapKeyword.trim() : '';
     if (!legacyKeyword) return [];
-    return [{ keyword: legacyKeyword, mode: normalizeSwapMode(snippet.swapMode) }];
+    return [{ keyword: legacyKeyword, mode: normalizeSwapMode(snippet.swapMode), initiateFrom: 'anywhere' }];
   }
 
   function snippetHasAnySwapKeyword(snippet) {
@@ -355,14 +427,16 @@ function initializeSnippetsTab() {
           : '';
         const isFav = !!snippet.favorite;
         const hasSwap = snippetHasAnySwapKeyword(snippet);
+        const swapRules = normalizeSwapKeywordsFromSnippet(snippet);
+        const canRunFromPanel = swapRules.some((r) => r && r.keyword && r.initiateFrom !== 'toolbar');
         const swapBtn = hasSwap
           ? `
-    <button class="e-btn e-btn-sm gem-swap-snippet-btn" type="button" data-snippet-id="${snippet.id}" title="Swap Keywords" style="min-width: unset; padding: 0 2px 0 10px;">
+    <button class="e-btn e-btn-sm gem-swap-snippet-btn" type="button" data-snippet-id="${snippet.id}" title="${canRunFromPanel ? 'Swap Keywords' : 'Swap Keywords (available from Block Toolbar only)'}" ${canRunFromPanel ? '' : 'disabled'} style="min-width: unset; padding: 0 2px 0 10px; ${canRunFromPanel ? '' : 'opacity:0.35; cursor:not-allowed;'}">
       <gem-e-icon icon="style" color="inherit">
         <div aria-hidden="true" class="e-icon-wrapper">
           <div class="e-icon text-color-inherit" style="/*color: var(--token-blue-600);*/">&#xF0DE;</div>
         </div>
-      </e-icon>
+      </gem-e-icon>
     </button>
           `.trim()
           : '';
@@ -861,14 +935,15 @@ function initializeSnippetsTab() {
             swapKeywords = item.swapKeywords
               .map((k) => ({
                 keyword: (k && typeof k.keyword === 'string') ? k.keyword.trim() : '',
-                mode: normalizeSwapMode(k && k.mode)
+                mode: normalizeSwapMode(k && k.mode),
+                initiateFrom: normalizeSwapInitiateFrom(k && k.initiateFrom)
               }))
               .filter((k) => !!k.keyword);
           } else {
             // Backward-compatible import (legacy single keyword)
             const legacyKeyword = (item && typeof item.swapKeyword === 'string') ? item.swapKeyword.trim() : '';
             if (legacyKeyword) {
-              swapKeywords = [{ keyword: legacyKeyword, mode: normalizeSwapMode(item && item.swapMode) }];
+              swapKeywords = [{ keyword: legacyKeyword, mode: normalizeSwapMode(item && item.swapMode), initiateFrom: 'anywhere' }];
             }
           }
 
@@ -1287,8 +1362,12 @@ function initializeSnippetsTab() {
     }
     if (!doc) return;
 
-    const rules = normalizeSwapKeywordsFromSnippet(snippet);
-    if (!rules.length) return;
+    // Snippets Panel initiated: skip "Block Toolbar Only" rules
+    const rules = normalizeSwapKeywordsFromSnippet(snippet).filter((r) => r && r.keyword && r.initiateFrom !== 'toolbar');
+    if (!rules.length) {
+      window.gemShowToast && window.gemShowToast('No panel-eligible keyword swaps for this snippet.', { type: 'info' });
+      return;
+    }
 
     const isInsideExistingToken = (node) => {
       let cur = node;
@@ -1305,6 +1384,7 @@ function initializeSnippetsTab() {
     };
 
     let didChange = false;
+    let swapCount = 0;
     const touched = new Set();
 
     const editables = Array.from(doc.querySelectorAll('[contenteditable="true"]'));
@@ -1361,6 +1441,7 @@ function initializeSnippetsTab() {
           }
 
           replacedAny = true;
+          swapCount += 1;
           cursor = m.end;
         });
 
@@ -1385,6 +1466,12 @@ function initializeSnippetsTab() {
       markEmarsysDraftDirty(doc, Array.from(touched));
       nudgeEmarsysDirtyDetectionViaFocus(doc, Array.from(touched));
     }
+
+    const msg =
+      swapCount > 0
+        ? `Swapped ${swapCount} keyword${swapCount === 1 ? '' : 's'}.`
+        : 'No keywords swapped.';
+    window.gemShowToast && window.gemShowToast(msg, { type: swapCount > 0 ? 'success' : 'info' });
   }
 
   // ------------------------------------------------------------
@@ -1712,7 +1799,8 @@ function initializeSnippetsTab() {
       swapSection.innerHTML = `
         <div style="display:flex; gap:10px; align-items:flex-start; margin-bottom:4px;">
           <div style="width:100%;">Optional Keyword for Swapping</div>
-          <div style="min-width:220px;">Swap Method</div>
+          <div style="min-width:120px;">Swap Method</div>
+          <div style="min-width:140px;">Initiate From</div>
           <div style="min-width:40px;"></div>
         </div>
         <div id="${GEM_EMARSYS_SWAP_KEYWORDS_ROWS_ID}"></div>
@@ -1883,7 +1971,8 @@ function initializeSnippetsTab() {
       ? values.swapKeywords
           .map((k) => ({
             keyword: (k && typeof k.keyword === 'string') ? k.keyword.trim() : '',
-            mode: normalizeSwapMode(k && k.mode)
+            mode: normalizeSwapMode(k && k.mode),
+            initiateFrom: normalizeSwapInitiateFrom(k && k.initiateFrom)
           }))
           .filter((k) => !!k.keyword)
       : [];
@@ -1963,7 +2052,7 @@ function initializeSnippetsTab() {
   // Swap keyword rows UI (shared between Gem modal + Emarsys modal injection)
   // ------------------------------------------------------------
 
-  function addSwapKeywordRowEl(rowsContainer, keyword = '', mode = 'token') {
+  function addSwapKeywordRowEl(rowsContainer, keyword = '', mode = 'token', initiateFrom = 'anywhere') {
     const row = document.createElement('div');
     row.className = 'gem-swap-keyword-row';
     row.style.display = 'flex';
@@ -1981,12 +2070,24 @@ function initializeSnippetsTab() {
 
     const modeField = document.createElement('div');
     modeField.className = 'e-field';
-    modeField.style.minWidth = '220px';
+    modeField.style.minWidth = '120px';
     modeField.style.marginBottom = '0';
     modeField.innerHTML = `
       <select class="e-input gem-swap-mode-select" aria-label="Swap Method">
-        <option value="token">Swap as ESL Token</option>
-        <option value="plain">Swap as Plain Text</option>
+        <option value="token">ESL Token</option>
+        <option value="plain">Plain Text</option>
+      </select>
+    `.trim();
+
+    const initiateField = document.createElement('div');
+    initiateField.className = 'e-field';
+    initiateField.style.minWidth = '140px';
+    initiateField.style.marginBottom = '0';
+    initiateField.innerHTML = `
+      <select class="e-input gem-swap-initiate-select" aria-label="Initiate From">
+        <option value="anywhere">Anywhere</option>
+        <option value="panel">Snippets Panel</option>
+        <option value="toolbar">Block Toolbar</option>
       </select>
     `.trim();
 
@@ -2004,13 +2105,16 @@ function initializeSnippetsTab() {
 
     row.appendChild(keywordField);
     row.appendChild(modeField);
+    row.appendChild(initiateField);
     row.appendChild(removeWrap);
     rowsContainer.appendChild(row);
 
     const input = row.querySelector('.gem-swap-keyword-input');
     const select = row.querySelector('.gem-swap-mode-select');
+    const initiateSelect = row.querySelector('.gem-swap-initiate-select');
     if (input) input.value = keyword || '';
     if (select) select.value = normalizeSwapMode(mode);
+    if (initiateSelect) initiateSelect.value = normalizeSwapInitiateFrom(initiateFrom);
   }
 
   function resetSwapKeywordRowsUI(rowsContainer, swapKeywords) {
@@ -2020,14 +2124,15 @@ function initializeSnippetsTab() {
     const cleaned = list
       .map((k) => ({
         keyword: (k && typeof k.keyword === 'string') ? k.keyword.trim() : '',
-        mode: normalizeSwapMode(k && k.mode)
+        mode: normalizeSwapMode(k && k.mode),
+        initiateFrom: normalizeSwapInitiateFrom(k && k.initiateFrom)
       }))
       .filter((k) => !!k.keyword);
 
     if (cleaned.length === 0) {
-      addSwapKeywordRowEl(rowsContainer, '', 'token');
+      addSwapKeywordRowEl(rowsContainer, '', 'token', 'anywhere');
     } else {
-      cleaned.forEach((k) => addSwapKeywordRowEl(rowsContainer, k.keyword, k.mode));
+      cleaned.forEach((k) => addSwapKeywordRowEl(rowsContainer, k.keyword, k.mode, k.initiateFrom));
     }
   }
 
@@ -2044,7 +2149,8 @@ function initializeSnippetsTab() {
       }
       seen.add(keyword);
       const mode = normalizeSwapMode(row.querySelector('.gem-swap-mode-select')?.value);
-      out.push({ keyword, mode });
+      const initiateFrom = normalizeSwapInitiateFrom(row.querySelector('.gem-swap-initiate-select')?.value);
+      out.push({ keyword, mode, initiateFrom });
     }
 
     return { ok: true, swapKeywords: out };
@@ -2056,7 +2162,7 @@ function initializeSnippetsTab() {
 
     if (addBtn) {
       addBtn.addEventListener('click', () => {
-        addSwapKeywordRowEl(rowsContainer, '', 'token');
+        addSwapKeywordRowEl(rowsContainer, '', 'token', 'anywhere');
       });
     }
 
@@ -2072,8 +2178,10 @@ function initializeSnippetsTab() {
         // Keep at least one row; just clear it
         const input = row.querySelector('.gem-swap-keyword-input');
         const select = row.querySelector('.gem-swap-mode-select');
+        const initiateSelect = row.querySelector('.gem-swap-initiate-select');
         if (input) input.value = '';
         if (select) select.value = 'token';
+        if (initiateSelect) initiateSelect.value = 'anywhere';
         return;
       }
       row.remove();

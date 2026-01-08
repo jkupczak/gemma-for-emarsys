@@ -62,7 +62,7 @@ window.DEFAULT_COLOR_SWATCHES = ["#FE4D01", "", "", "", "", "", "", ""];
 window.DEFAULT_HIGHLIGHT_TERMS = {
   "\((price|prezzo|precio|preis|prix)\)": { color: "rgba(245, 46, 132, 0.40)", isRegex: true },
   "\{\{[^”“‘’}]+\}\}": { color: "rgba(255, 230, 0, 0.40)", isRegex: true },
-  "((\$|£|€)( |\\xA0)?\d+|\d+( |\\xA0)?€)": { color: "rgba(255, 230, 0, 0.40)", isRegex: true },
+  "((\$|£|€)( |\\xA0)?(\d|X)+|(\d|X)+( |\\xA0)?€)": { color: "rgba(255, 230, 0, 0.40)", isRegex: true },
   "(name)": { color: "rgba(0, 180, 255, 0.40)", isRegex: false },
   "(LearnLangAll)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
   "(learnlang_a_ENG)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },

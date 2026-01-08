@@ -294,13 +294,15 @@ function hasAnySwapKeywordConfigured(callback) {
       const snippets = result && result[GEM_SNIPPETS_STORAGE_KEY];
       const list = Array.isArray(snippets) ? snippets : [];
       const normalizeSwapMode = (mode) => (mode === 'plain' ? 'plain' : 'token');
+      const normalizeSwapInitiateFrom = (v) => (v === 'panel' || v === 'toolbar' ? v : 'anywhere');
       const normalizeSwapKeywordsFromSnippet = (snippet) => {
         if (!snippet) return [];
         if (Array.isArray(snippet.swapKeywords)) {
           const cleaned = snippet.swapKeywords
             .map((k) => ({
               keyword: (k && typeof k.keyword === 'string') ? k.keyword.trim() : '',
-              mode: normalizeSwapMode(k && k.mode)
+              mode: normalizeSwapMode(k && k.mode),
+              initiateFrom: normalizeSwapInitiateFrom(k && k.initiateFrom)
             }))
             .filter((k) => !!k.keyword);
           const seen = new Set();
@@ -314,7 +316,7 @@ function hasAnySwapKeywordConfigured(callback) {
         }
         const legacyKeyword = (snippet.swapKeyword && typeof snippet.swapKeyword === 'string') ? snippet.swapKeyword.trim() : '';
         if (!legacyKeyword) return [];
-        return [{ keyword: legacyKeyword, mode: normalizeSwapMode(snippet.swapMode) }];
+        return [{ keyword: legacyKeyword, mode: normalizeSwapMode(snippet.swapMode), initiateFrom: 'anywhere' }];
       };
       const hasAny = list.some((s) => normalizeSwapKeywordsFromSnippet(s).length > 0);
       callback(hasAny);
@@ -330,13 +332,15 @@ function applyTextSwapForBlock(eBlockId) {
     const list = Array.isArray(snippets) ? snippets : [];
 
     const normalizeSwapMode = (mode) => (mode === 'plain' ? 'plain' : 'token');
+    const normalizeSwapInitiateFrom = (v) => (v === 'panel' || v === 'toolbar' ? v : 'anywhere');
     const normalizeSwapKeywordsFromSnippet = (snippet) => {
       if (!snippet) return [];
       if (Array.isArray(snippet.swapKeywords)) {
         const cleaned = snippet.swapKeywords
           .map((k) => ({
             keyword: (k && typeof k.keyword === 'string') ? k.keyword.trim() : '',
-            mode: normalizeSwapMode(k && k.mode)
+            mode: normalizeSwapMode(k && k.mode),
+            initiateFrom: normalizeSwapInitiateFrom(k && k.initiateFrom)
           }))
           .filter((k) => !!k.keyword);
         const seen = new Set();
@@ -350,7 +354,7 @@ function applyTextSwapForBlock(eBlockId) {
       }
       const legacyKeyword = (snippet.swapKeyword && typeof snippet.swapKeyword === 'string') ? snippet.swapKeyword.trim() : '';
       if (!legacyKeyword) return [];
-      return [{ keyword: legacyKeyword, mode: normalizeSwapMode(snippet.swapMode) }];
+      return [{ keyword: legacyKeyword, mode: normalizeSwapMode(snippet.swapMode), initiateFrom: 'anywhere' }];
     };
 
     // Build rules from all snippets/keywords. Keywords are unique across snippets (case-sensitive),
@@ -360,6 +364,8 @@ function applyTextSwapForBlock(eBlockId) {
     list.forEach((s) => {
       normalizeSwapKeywordsFromSnippet(s).forEach((k) => {
         if (!k.keyword) return;
+        // Block Toolbar initiated: skip "Snippets Panel Only" rules
+        if (k.initiateFrom === 'panel') return;
         if (seenKeyword.has(k.keyword)) return;
         seenKeyword.add(k.keyword);
         rules.push({
@@ -404,6 +410,7 @@ function applyTextSwapForBlock(eBlockId) {
       };
 
       let didChange = false;
+      let swapCount = 0;
       const touchedEditables = new Set();
 
       blockEls.forEach((blockEl) => {
@@ -477,6 +484,7 @@ function applyTextSwapForBlock(eBlockId) {
               }
 
               didChange = true;
+              swapCount += 1;
               touchedEditables.add(editable);
               cursor = m.end;
             });
@@ -502,6 +510,15 @@ function applyTextSwapForBlock(eBlockId) {
         markEmarsysDraftDirty(doc, Array.from(touchedEditables));
         nudgeEmarsysDirtyDetectionViaFocus(doc, Array.from(touchedEditables));
       }
+
+      // Toast feedback (global helper defined in snippets-tab.js; no-op if missing)
+      const msg =
+        swapCount > 0
+          ? `Swapped ${swapCount} keyword${swapCount === 1 ? '' : 's'}.`
+          : 'No keywords swapped.';
+      try {
+        window.gemShowToast && window.gemShowToast(msg, { type: swapCount > 0 ? 'success' : 'info' });
+      } catch (_) {}
   });
 }
 

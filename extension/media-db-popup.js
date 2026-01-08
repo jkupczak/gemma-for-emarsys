@@ -1,24 +1,338 @@
-console.log("[Gem] media-db-popup.js loaded");
+// NOTE: Keep this file quiet by default to avoid perf issues in the MediaDB popup.
+
+// ------------------------------------------------------------
+// Recently Seen Images logger (for Image Properties picker)
+// ------------------------------------------------------------
+
+function initializeRecentlySeenLogger() {
+  const STORAGE_KEY = 'gemRecentlySeenImages';
+  const RECENTLY_USED_SYNC_KEY = 'gemRecentImages';
+  const MAX = 100;
+  const DEBUG = true;
+  const dbg = (...args) => { try { if (DEBUG) console.log('[Gem-Recently-Seen]', ...args); } catch (_) {} };
+  const loggedSkips = new Set();
+  // Use local storage for this high-churn list to avoid chrome.storage.sync quota/throttling.
+  const STORE = chrome.storage.local;
+  // Batch writes to avoid chrome.storage race conditions (last-write-wins).
+  const pendingMap = new Map(); // url -> { url, ts, path, friendlyFilename }
+  let flushT = null;
+  let flushInFlight = false;
+  let lastCopyActionCount = null;
+  let countLogT = null;
+
+  function normalizeUrlCandidate(raw) {
+    let s = String(raw || '');
+    s = s
+      .replace(/&ZeroWidthSpace;/gi, '')
+      .replace(/&#8203;/g, '')
+      .replace(/&#x200B;/gi, '')
+      .replace(/[\u200B\u200C\u200D\uFEFF]/g, '')
+      .trim();
+    if (!s) return '';
+    if (s === 'http://example.com/image.png') return '';
+    if (/\s/.test(s)) return '';
+    if (/[<>]/.test(s)) return '';
+    const looksLikeUrl =
+      /^https?:\/\/.+/i.test(s) ||
+      /^\/\/.+/i.test(s) ||
+      /^data:image\/.+/i.test(s);
+    return looksLikeUrl ? s : '';
+  }
+
+  function looksLikeImageUrl(url) {
+    const s = String(url || '');
+    if (!s) return false;
+    if (/^data:image\//i.test(s)) return true;
+    return /\.(png|jpe?g|gif|webp|svg|avif|bmp|tiff?)(\?|#|$)/i.test(s);
+  }
+
+  function getCurrentBreadcrumbPath() {
+    const el = document.querySelector('.e-mediadb-breadcrumb');
+    const title = el && el.getAttribute && el.getAttribute('title');
+    return (title || '').trim();
+  }
+
+  function scheduleFlush() {
+    if (flushT) return;
+    flushT = setTimeout(() => {
+      flushT = null;
+      flushNow();
+    }, 40);
+  }
+
+  function flushNow() {
+    if (flushInFlight) {
+      // Another flush is currently writing; wait until it completes.
+      scheduleFlush();
+      return;
+    }
+    if (!pendingMap.size) return;
+    flushInFlight = true;
+    const pending = Array.from(pendingMap.values());
+    pendingMap.clear();
+
+    dbg(`Flush: merging ${pending.length} queued item(s) into storage...`);
+
+    try {
+      STORE.get({ [STORAGE_KEY]: [] }, (result) => {
+        const list = Array.isArray(result && result[STORAGE_KEY]) ? result[STORAGE_KEY] : [];
+        const cleaned = list
+          .map((x) => {
+            const uu = normalizeUrlCandidate(x && x.url);
+            const ts = (x && typeof x.ts === 'number') ? x.ts : 0;
+            const pp = (x && typeof x.path === 'string') ? x.path : '';
+            const ffp = (x && typeof x.friendlyFilename === 'string') ? x.friendlyFilename : '';
+            return (uu && looksLikeImageUrl(uu)) ? { url: uu, ts, path: pp, friendlyFilename: ffp } : null;
+          })
+          .filter(Boolean);
+
+        const byUrl = new Map(cleaned.map((x) => [x.url, x]));
+        let added = 0;
+        let updated = 0;
+
+        dbg(`Flush merge: base=${cleaned.length}, pending=${pending.length}`);
+
+        pending.forEach((p) => {
+          const cur = byUrl.get(p.url);
+          if (cur) {
+            updated += 1;
+            byUrl.set(p.url, {
+              url: p.url,
+              ts: p.ts || Date.now(),
+              path: p.path || cur.path || '',
+              friendlyFilename: p.friendlyFilename || cur.friendlyFilename || ''
+            });
+          } else {
+            added += 1;
+            byUrl.set(p.url, {
+              url: p.url,
+              ts: p.ts || Date.now(),
+              path: p.path || '',
+              friendlyFilename: p.friendlyFilename || ''
+            });
+          }
+        });
+
+        const next = Array.from(byUrl.values());
+        next.sort((a, b) => (a.ts || 0) - (b.ts || 0));
+        while (next.length > MAX) next.shift();
+
+        STORE.set({ [STORAGE_KEY]: next }, () => {
+          dbg(`Flush complete: added=${added}, updated=${updated}, stored=${next.length}`);
+          flushInFlight = false;
+          if (pendingMap.size) scheduleFlush();
+          // If these URLs already exist in Recently Used, copy friendlyFilename into that list.
+          try { syncCopyFriendlyFilenameToRecentlyUsed(pending); } catch (_) {}
+        });
+      });
+    } catch (e) {
+      dbg('Flush error:', e);
+      flushInFlight = false;
+    }
+  }
+
+  function syncCopyFriendlyFilenameToRecentlyUsed(pending) {
+    const map = new Map();
+    (pending || []).forEach((p) => {
+      if (p && p.url && p.friendlyFilename) map.set(p.url, p.friendlyFilename);
+    });
+    if (!map.size) return;
+
+    chrome.storage.sync.get({ [RECENTLY_USED_SYNC_KEY]: [] }, (res) => {
+      const list = Array.isArray(res && res[RECENTLY_USED_SYNC_KEY]) ? res[RECENTLY_USED_SYNC_KEY] : [];
+      let changed = 0;
+      const next = list.map((x) => {
+        const url = x && x.url;
+        if (!url) return x;
+        const ff = map.get(url);
+        if (!ff) return x;
+        if (x.friendlyFilename === ff) return x;
+        changed += 1;
+        return { ...(x || {}), friendlyFilename: ff };
+      });
+      if (!changed) return;
+      chrome.storage.sync.set({ [RECENTLY_USED_SYNC_KEY]: next });
+    });
+  }
+
+  function enqueueRecentlySeen(url, path, friendlyFilename) {
+    const u = normalizeUrlCandidate(url);
+    if (!u) {
+      const key = `bad:${String(url || '').slice(0, 180)}`;
+      if (!loggedSkips.has(key)) {
+        loggedSkips.add(key);
+        dbg('Skip: invalid URL candidate', url);
+      }
+      return;
+    }
+    if (!looksLikeImageUrl(u)) {
+      const key = `nonimg:${u}`;
+      if (!loggedSkips.has(key)) {
+        loggedSkips.add(key);
+        dbg('Skip: not an image URL', u);
+      }
+      return;
+    }
+    const p = (path || '').trim();
+    const ff = (friendlyFilename || '').trim();
+    const now = Date.now();
+    pendingMap.set(u, { url: u, ts: now, path: p || '', friendlyFilename: ff || '' });
+    scheduleFlush();
+  }
+
+  function scanAndUpsert(root) {
+    const scope = root && root.querySelectorAll ? root : document;
+    const path = getCurrentBreadcrumbPath();
+    let found = 0;
+    let used = 0;
+    const hit = (el) => {
+      const url = el && el.getAttribute && el.getAttribute('copy-to-clipboard');
+      if (!url) return;
+      let friendly = '';
+      try {
+        const row = el.closest && el.closest('tr.file-table-row');
+        const nameSpan = row && row.querySelector && row.querySelector('.file-table-row span[editable-text="fileCtrl.file.name"] span[ng-hide="textBtnForm.$visible"]');
+        friendly = (nameSpan && nameSpan.getAttribute && nameSpan.getAttribute('title')) ? nameSpan.getAttribute('title') : '';
+      } catch (_) {}
+      found += 1;
+      const beforeSize = loggedSkips.size;
+      enqueueRecentlySeen(url, path, friendly);
+      // Heuristic: if it wasn't skipped as invalid/non-image, count it as used attempt.
+      if (loggedSkips.size === beforeSize) used += 1;
+    };
+
+    // Primary: these dropdown items (when present in light DOM)
+    scope.querySelectorAll('tr.file-table-row [copy-to-clipboard]').forEach(hit);
+
+    // Some Emarsys components may render dropdown content inside shadow DOM.
+    scope.querySelectorAll('e-dropdown').forEach((dd) => {
+      try {
+        if (dd && dd.shadowRoot) {
+          dd.shadowRoot.querySelectorAll('tr.file-table-row [copy-to-clipboard]').forEach(hit);
+        }
+      } catch (_) {}
+    });
+
+    if (DEBUG && (found > 0 || (Math.random() < 0.02))) {
+      dbg(`Scan: found ${found} nodes, attempted ${used} upserts`, path ? `(path="${path}")` : '');
+    }
+  }
+
+  function maybeLogCopyActionCount() {
+    if (!DEBUG) return;
+    if (countLogT) return;
+    countLogT = setTimeout(() => {
+      countLogT = null;
+      try {
+        const total = document.querySelectorAll('tr.file-table-row .test-copytoclipboard-dropdownaction').length;
+        if (lastCopyActionCount !== total) {
+          lastCopyActionCount = total;
+          dbg(`DOM count: .test-copytoclipboard-dropdownaction = ${total}`);
+        }
+      } catch (_) {}
+    }, 50);
+  }
+
+  function nodeMayAffectSeen(n) {
+    try {
+      if (!n || n.nodeType !== Node.ELEMENT_NODE) return false;
+      if (n.matches && (n.matches('tr.file-table-row') || n.matches('[copy-to-clipboard]') || n.matches('.test-copytoclipboard-dropdownaction'))) return true;
+      if (n.querySelector) {
+        if (n.querySelector('tr.file-table-row')) return true;
+        if (n.querySelector('tr.file-table-row [copy-to-clipboard]')) return true;
+        if (n.querySelector('tr.file-table-row .test-copytoclipboard-dropdownaction')) return true;
+      }
+    } catch (_) {}
+    return false;
+  }
+
+  // Initial scan
+  scanAndUpsert(document);
+
+  // As user scrolls, more rows are appended and attributes may be set later.
+  let pending = null;
+  const scheduleScan = (node) => {
+    if (pending) return;
+    pending = setTimeout(() => {
+      pending = null;
+      // Use full-document scan for reliability (Emarsys often reuses nodes/attrs across the table)
+      scanAndUpsert(document);
+    }, 50);
+  };
+
+  const obs = new MutationObserver((mutations) => {
+    for (const m of mutations) {
+      if (m.type === 'childList') {
+        let touchedCopyToClipboardNode = false;
+        m.addedNodes.forEach((n) => {
+          if (nodeMayAffectSeen(n)) {
+            scheduleScan(n);
+            try {
+              if (
+                (n.matches && n.matches('tr.file-table-row .test-copytoclipboard-dropdownaction')) ||
+                (n.querySelector && n.querySelector('tr.file-table-row .test-copytoclipboard-dropdownaction'))
+              ) {
+                touchedCopyToClipboardNode = true;
+              }
+            } catch (_) {}
+          }
+        });
+        m.removedNodes.forEach((n) => {
+          if (nodeMayAffectSeen(n)) {
+            try {
+              if (
+                (n.matches && n.matches('tr.file-table-row .test-copytoclipboard-dropdownaction')) ||
+                (n.querySelector && n.querySelector('tr.file-table-row .test-copytoclipboard-dropdownaction'))
+              ) {
+                touchedCopyToClipboardNode = true;
+              }
+            } catch (_) {}
+          }
+        });
+        if (touchedCopyToClipboardNode) maybeLogCopyActionCount();
+      } else if (m.type === 'attributes') {
+        const t = m.target;
+        if (t && t.nodeType === Node.ELEMENT_NODE && t.getAttribute && t.getAttribute('copy-to-clipboard')) {
+          scheduleScan(t);
+        }
+      }
+    }
+  });
+  obs.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['copy-to-clipboard'] });
+  dbg('Logger initialized. Watching DOM for [copy-to-clipboard] nodes/attr changes.');
+
+  // One-time best-effort migration from sync → local so existing data isn't lost.
+  try {
+    STORE.get({ [STORAGE_KEY]: [] }, (localRes) => {
+      const localList = Array.isArray(localRes && localRes[STORAGE_KEY]) ? localRes[STORAGE_KEY] : [];
+      if (localList.length) return;
+      chrome.storage.sync.get({ [STORAGE_KEY]: [] }, (syncRes) => {
+        const syncList = Array.isArray(syncRes && syncRes[STORAGE_KEY]) ? syncRes[STORAGE_KEY] : [];
+        if (!syncList.length) return;
+        STORE.set({ [STORAGE_KEY]: syncList }, () => {
+          dbg(`Migrated ${syncList.length} item(s) from sync → local.`);
+        });
+      });
+    });
+  } catch (_) {}
+}
 
 // MediaDB table column visibility functionality
 function initializeMediaDBColumnVisibility() {
-  console.log("[Gem] Initializing MediaDB column visibility");
+  // (debug logs removed to avoid MediaDB popup perf issues)
 
   // Storage keys for column visibility
   const STORAGE_KEY = 'gemMediaDBColumnVisibility';
 
   // Load settings from storage and apply them
   function loadAndApplySettings() {
-    console.log("[Gem] Loading MediaDB settings from storage key:", STORAGE_KEY);
     chrome.storage.sync.get({ [STORAGE_KEY]: {
       showCreated: true,
       showSize: true,
       showUser: true,
       showFileIcon: true
     } }, (result) => {
-      console.log("[Gem] MediaDB settings loaded from storage:", result);
       const settings = result[STORAGE_KEY];
-      console.log("[Gem] Applying loaded settings:", settings);
       applyColumnVisibility(settings);
     });
   }
@@ -38,18 +352,13 @@ function initializeMediaDBColumnVisibility() {
 
   // Apply column visibility
   function applyColumnVisibility(settings) {
-    console.log("[Gem] Applying column visibility:", settings);
-
     // Find the data table
     const dataTable = document.querySelector('table.e-table.e-table-modal.e-table-condensed');
-    console.log("[Gem] Found data table:", dataTable);
 
     // Find the header table
     const headerTable = document.querySelector('table.e-table.e-table-modal:not(.e-table-condensed)');
-    console.log("[Gem] Found header table:", headerTable);
 
     if (!dataTable) {
-      console.log("[Gem] No data table found, skipping column visibility application");
       return;
     }
 
@@ -57,7 +366,6 @@ function initializeMediaDBColumnVisibility() {
     const colgroup = dataTable.querySelector('colgroup');
     if (colgroup) {
       const cols = colgroup.querySelectorAll('col');
-      console.log("[Gem] Found", cols.length, "col elements");
 
       // Column indices in colgroup:
       // 0: File name
@@ -68,24 +376,20 @@ function initializeMediaDBColumnVisibility() {
 
       if (cols[1]) { // Created column
         cols[1].style.setProperty('display', settings.showCreated ? '' : 'none', 'important');
-        console.log(`[Gem] Setting Created col display to: ${settings.showCreated ? '' : 'none'}`);
       }
 
       if (cols[2]) { // Size column
         cols[2].style.setProperty('display', settings.showSize ? '' : 'none', 'important');
-        console.log(`[Gem] Setting Size col display to: ${settings.showSize ? '' : 'none'}`);
       }
 
       if (cols[3]) { // User column
         cols[3].style.setProperty('display', settings.showUser ? '' : 'none', 'important');
-        console.log(`[Gem] Setting User col display to: ${settings.showUser ? '' : 'none'}`);
       }
     }
 
     // Handle header table th elements
     if (headerTable) {
       const headerCells = headerTable.querySelectorAll('th');
-      console.log("[Gem] Found", headerCells.length, "header cells");
 
       // Column indices in header:
       // 0: Name
@@ -96,38 +400,28 @@ function initializeMediaDBColumnVisibility() {
 
       if (headerCells[1]) { // Created header
         headerCells[1].style.setProperty('display', settings.showCreated ? '' : 'none', 'important');
-        console.log(`[Gem] Setting Created header display to: ${settings.showCreated ? '' : 'none'}`);
       }
 
       if (headerCells[2]) { // Size header
         headerCells[2].style.setProperty('display', settings.showSize ? '' : 'none', 'important');
-        console.log(`[Gem] Setting Size header display to: ${settings.showSize ? '' : 'none'}`);
       }
 
       if (headerCells[3]) { // User header
         headerCells[3].style.setProperty('display', settings.showUser ? '' : 'none', 'important');
-        console.log(`[Gem] Setting User header display to: ${settings.showUser ? '' : 'none'}`);
       }
     }
 
     // Get table rows from data table
     const rows = dataTable.querySelectorAll('tr');
-    console.log("[Gem] Found", rows.length, "data table rows");
 
     rows.forEach((row, rowIndex) => {
       const cells = row.querySelectorAll('td');
-      console.log(`[Gem] Row ${rowIndex} has ${cells.length} cells, class: ${row.className}`);
 
       // Skip rows that are headers or special rows (colspan rows, loading rows, etc.)
       // Only process actual file/folder data rows
       const isFileRow = row.classList.contains('file-table-row');
       const isFolderRow = row.classList.contains('folder-table-row');
-      if ((!isFileRow && !isFolderRow) || cells.length !== 5) {
-        console.log(`[Gem] Skipping row ${rowIndex} - not a file/folder data row`);
-        return;
-      }
-
-      console.log(`[Gem] Processing ${isFolderRow ? 'folder' : 'file'} data row ${rowIndex}`);
+      if ((!isFileRow && !isFolderRow) || cells.length !== 5) return;
 
       // Column indices:
       // 0: File name (with icon) - always visible for file name, but can hide icon
@@ -138,8 +432,6 @@ function initializeMediaDBColumnVisibility() {
 
       // Toggle Created column (index 1)
       if (cells[1]) {
-        const newDisplay = settings.showCreated ? '' : 'none !important';
-        console.log(`[Gem] Setting Created column (cell 1) display to: ${newDisplay}`);
         cells[1].style.setProperty('display', settings.showCreated ? '' : 'none', 'important');
       }
       // Fallback: folder rows can sometimes still show created even when the column is hidden.
@@ -154,30 +446,23 @@ function initializeMediaDBColumnVisibility() {
 
       // Toggle Size column (index 2)
       if (cells[2]) {
-        const newDisplay = settings.showSize ? '' : 'none !important';
-        console.log(`[Gem] Setting Size column (cell 2) display to: ${newDisplay}`);
         cells[2].style.setProperty('display', settings.showSize ? '' : 'none', 'important');
       }
 
       // Toggle User column (index 3)
       if (cells[3]) {
-        const newDisplay = settings.showUser ? '' : 'none !important';
-        console.log(`[Gem] Setting User column (cell 3) display to: ${newDisplay}`);
         cells[3].style.setProperty('display', settings.showUser ? '' : 'none', 'important');
       }
 
       // Toggle File Icon (within column 0)
       if (cells[0] && isFileRow) {
         const icons = cells[0].querySelectorAll('e-icon[type="inline"]');
-        console.log(`[Gem] Found ${icons.length} file icons in cell 0`);
         if (!settings.showFileIcon) {
           icons.forEach(icon => {
-            console.log("[Gem] Hiding file icon");
             icon.style.setProperty('display', 'none', 'important');
           });
         } else {
           icons.forEach(icon => {
-            console.log("[Gem] Showing file icon");
             icon.style.setProperty('display', '', 'important');
           });
         }
@@ -187,12 +472,8 @@ function initializeMediaDBColumnVisibility() {
 
   // Listen for settings changes from the settings panel
   chrome.storage.onChanged.addListener((changes, namespace) => {
-    console.log("[Gem] Storage change detected:", changes, "namespace:", namespace);
     if (namespace === 'sync' && changes[STORAGE_KEY]) {
-      console.log("[Gem] MediaDB settings changed, applying new visibility:", changes[STORAGE_KEY].newValue);
       applyColumnVisibility(changes[STORAGE_KEY].newValue);
-    } else {
-      console.log("[Gem] Storage change ignored - not MediaDB settings");
     }
   });
 
@@ -222,7 +503,6 @@ function initializeMediaDBColumnVisibility() {
         });
 
         if (hasNewFileRows) {
-          console.log("[Gem] New file data rows detected, applying column visibility");
           // Small delay to ensure rows are fully rendered
           setTimeout(() => applyColumnVisibilityFromStorage(), 100);
         }
@@ -235,12 +515,15 @@ function initializeMediaDBColumnVisibility() {
     subtree: true
   });
 
-  console.log("[Gem] MediaDB column visibility initialized");
 }
 
 // Initialize when DOM is ready
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initializeMediaDBColumnVisibility);
+  document.addEventListener('DOMContentLoaded', () => {
+    initializeMediaDBColumnVisibility();
+    initializeRecentlySeenLogger();
+  });
 } else {
   initializeMediaDBColumnVisibility();
+  initializeRecentlySeenLogger();
 }

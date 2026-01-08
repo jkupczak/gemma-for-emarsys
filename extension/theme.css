@@ -1,5 +1,6 @@
 /* Scrollbar overrides */
 html.FLIPPER-theme-eveningHorizon {
+  & .e-dialog__container .e-dialog__content,
   & e-float-container .e-dialog__container .e-dialog__content,
   & cb-block-level-variable .e-section__content.cb-flex.variables,
   & .select2-drop .select2-results,
@@ -19,6 +20,7 @@ html.FLIPPER-theme-eveningHorizon {
     scrollbar-color: var(--token-border-default) var(--token-background-dark);
   }
 
+  & .e-dialog__container .e-dialog__content::-webkit-scrollbar-thumb,
   & e-float-container .e-dialog__container .e-dialog__content::-webkit-scrollbar-thumb,
   & cb-block-level-variable .e-section__content.cb-flex.variables::-webkit-scrollbar-thumb,
   & .select2-drop .select2-results::-webkit-scrollbar-thumb,
@@ -39,6 +41,7 @@ html.FLIPPER-theme-eveningHorizon {
   }
 
   & e-float-container .e-dialog__container .e-dialog__content::-webkit-scrollbar-track,
+  & .e-dialog__container .e-dialog__content::-webkit-scrollbar-track,
   & cb-block-level-variable .e-section__content.cb-flex.variables::-webkit-scrollbar-track,
   & .select2-drop .select2-results::-webkit-scrollbar-track,
   & .gem-scrollable::-webkit-scrollbar-track, .scrollable::-webkit-scrollbar-track,
@@ -257,6 +260,7 @@ html:root:not(.gem--retheme-inactive) {
   --token-navigationItem-selected-backgroundActiveHover: #f0edff;
 
   --token-navigationItem-default-backgroundHover: #b9adff;
+  --token-input-default-underline: #625b8b;
 }
 
 /* Darkmode retheme the UI to the gem color scheme */
@@ -427,5 +431,6 @@ html.FLIPPER-theme-eveningHorizon:root:not(.gem--retheme-inactive) {
   --token-navigationItem-selected-backgroundActiveHover: #332493;
   --token-navigationItem-default-backgroundActiveHover: #332493;
   --token-navigationItem-default-backgroundHover: #282635;
+  --token-input-default-underline: #625b8b;
 
 }

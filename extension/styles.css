@@ -397,8 +397,73 @@ cb-personalizable-input-with-context > vce-code-editor {
     border-right: 0 !important;
 }
 .gem-enhanced-image-properties-dialog #gem-image-properties-left-panel {
-    border-bottom: 1px solid var(--token-box-default-border);
-    border-top: 1px solid var(--token-box-default-border);
+    border-left: 1px solid var(--token-box-default-border);
+}
+
+/* ------------------------------------------------------------------------------------------------ */
+/* Image Properties Dialog */
+/* ------------------------------------------------------------------------------------------------ */
+
+e-float-container .gem-enhanced-image-properties-dialog {
+
+    /* Hide the alt text warning */
+    /* Hide the advanced settings title */
+    /* Hide the Outlook warning */
+    /* Hide the dialog headline */
+    /* Hide empty divs */
+    & .e-field:first-child:has(input[placeholder="Image alternative text"]) + .e-field:last-child,
+    & .e-field label.e-accordion__title,
+    & .e-field .e-accordion__content .e-field .e-field:last-child,
+    & .e-dialog__header .e-dialog__title,
+    & .e-field:empty {
+        display: none !important;
+    }
+
+    /* clear the styles on the advanced settings accordion */
+    & .e-field .e-accordion {
+        border: none !important;
+    }
+    & .e-field .e-accordion__content {
+        padding: 0 !important;
+        border: none !important;
+    }
+
+    & .e-tabs__title {
+        height: 64px !important;
+    }
+    & .e-tabs:before {
+        top: 64px !important;
+    }
+    & header.e-dialog__header {
+        position: absolute;
+        top: 0;
+        right: 0;
+        height: 64px;
+        z-index: 1;
+        border: 0;
+        margin: 0;
+        align-items: anchor-center !important;
+    }
+    & .e-dialog__container {
+        padding-top: 0;
+    }
+    & .e-dialog__content {
+        padding:0 !important;
+        display: flex !important;
+        flex-direction: column !important;
+    }
+
+    & .e-dialog__content > div:last-child {
+        padding: 16px !important;
+        border-top: 1px solid var(--token-box-default-border);
+    }
+
+    /* show the url input first in the mobile tab */
+    & e-dialog-header:has(.e-tabs__title-active[data-tab="mobile"]) + .e-dialog__content > div > div:first-child {
+        display: flex;
+        flex-direction: column-reverse;
+    }
+
 }
 
 /* Recent Images picker (Image Properties) - zebra striping like MediaDB popup */
@@ -413,7 +478,9 @@ cb-personalizable-input-with-context > vce-code-editor {
 .gem-enhanced-image-properties-dialog #gem-recent-images-picker {
     /* default (small) density */
     --gem-recent-thumb-h: 120px;
+    --gem-recent-grid-cols: 6;
 }
+
 .gem-enhanced-image-properties-dialog #gem-recent-images-picker[data-gem-recent-images-grid-density="medium"] {
     --gem-recent-thumb-h: 160px;
 }
@@ -423,15 +490,13 @@ cb-personalizable-input-with-context > vce-code-editor {
 
 .gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-recent-images-grid {
     display: grid;
-    /* Fill the container with a fixed number of columns per density. */
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    /* Fill the container with a fixed number of columns. Controlled by the slider. */
+    grid-template-columns: repeat(var(--gem-recent-grid-cols), minmax(0, 1fr));
     gap: 12px;
 }
-.gem-enhanced-image-properties-dialog #gem-recent-images-picker[data-gem-recent-images-grid-density="medium"] .gem-recent-images-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-.gem-enhanced-image-properties-dialog #gem-recent-images-picker[data-gem-recent-images-grid-density="large"] .gem-recent-images-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+
+#gem-image-properties-left-panel > #gem-recent-images-picker > .gem-recent-images-grid {
+    padding: 0 16px 16px;
 }
 .gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-recent-image-tile {
     position: relative;
@@ -453,11 +518,215 @@ cb-personalizable-input-with-context > vce-code-editor {
     align-items: center;
     justify-content: center;
     background: rgba(0,0,0,0.35);
+    z-index: 1;
     opacity: 0;
     transition: opacity 120ms ease-in-out;
 }
 .gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-recent-image-tile:hover .gem-recent-image-overlay {
     opacity: 1;
+}
+
+/* Favorite star button */
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-recent-image-fav-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 2;
+    width: 30px;
+    height: 30px;
+    border-radius: 999px;
+    border: 1px solid rgba(0,0,0,0.18);
+    background: rgba(0,0,0,0.35);
+    color: #fff;
+    font-size: 18px;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 120ms ease-in-out, background 120ms ease-in-out;
+}
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-recent-image-tile:hover .gem-recent-image-fav-btn {
+    opacity: 1;
+    pointer-events: auto;
+}
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-recent-image-fav-btn--active {
+    background: rgba(255, 196, 0, 0.85);
+    border-color: rgba(255, 196, 0, 0.85);
+    color: #111;
+}
+
+/* Table view: show star only on row hover */
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-recent-image-fav-btn--table {
+    position: static;
+    width: auto;
+    height: auto;
+    border: none;
+    background: transparent;
+    padding: 0;
+    margin-right: 6px;
+    opacity: 0;
+    pointer-events: none;
+    color: var(--token-icon-default-text);
+}
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-recent-images-table tbody tr:hover .gem-recent-image-fav-btn--table {
+    opacity: 1;
+    pointer-events: auto;
+}
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-recent-image-fav-btn--table .gem-recent-image-star {
+    font-size: 18px;
+    line-height: 1;
+}
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-recent-image-fav-btn--table.gem-recent-image-fav-btn--active {
+    color: #b45309; /* amber-ish */
+}
+
+/* Edit metadata button (Favorites view) */
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-recent-image-edit-btn {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    z-index: 2;
+    width: 30px;
+    height: 30px;
+    border-radius: 999px;
+    border: 1px solid rgba(0,0,0,0.18);
+    background: rgba(0,0,0,0.35);
+    color: #fff;
+    font-size: 16px;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 120ms ease-in-out, background 120ms ease-in-out;
+}
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-recent-image-tile:hover .gem-recent-image-edit-btn {
+    opacity: 1;
+}
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-recent-image-edit-btn--table {
+    position: static;
+    width: auto;
+    height: auto;
+    border: none;
+    background: transparent;
+    padding: 0;
+    margin-right: 6px;
+    opacity: 1;
+    color: var(--token-icon-default-text);
+}
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-recent-image-edit-btn--table .gem-recent-image-edit {
+    font-size: 16px;
+    line-height: 1;
+}
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-recent-image-meta2 {
+    margin-top: 4px;
+    font-size: 12px;
+    opacity: 0.75;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Favorite image metadata modal */
+.gem-favorite-image-meta-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 100000;
+}
+.gem-favorite-image-meta-modal__backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+}
+.gem-favorite-image-meta-modal__panel {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: min(720px, calc(100vw - 32px));
+    max-height: calc(100vh - 32px);
+    overflow: auto;
+    background: var(--token-box-default-background);
+    border: 1px solid var(--token-box-default-border);
+    border-radius: 10px;
+    box-shadow: 0 16px 50px rgba(0,0,0,0.35);
+    padding: 14px 14px 12px;
+}
+.gem-favorite-image-meta-modal__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+.gem-favorite-image-meta-modal__body .e-field {
+    margin-top: 10px;
+}
+.gem-favorite-image-meta-modal__thumbrow {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+.gem-favorite-image-meta-modal__thumbrow img {
+    width: 120px;
+    height: 70px;
+    object-fit: contain;
+    border-radius: 6px;
+    border: 1px solid var(--token-box-default-border);
+    background: var(--token-box-default-background);
+}
+.gem-favorite-image-meta-modal__url {
+    font-size: 12px;
+    opacity: 0.8;
+    word-break: break-word;
+}
+.gem-favorite-image-meta-modal__footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 14px;
+}
+
+.gem-enhanced-image-properties-dialog .e-dialog__container {
+    border:0 !important;
+}
+
+/* Favorites category grouping UI */
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-fav-cat-section {
+    margin-top: 14px;
+}
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker #gem-image-list-header + .gem-fav-cat-section {
+    margin-top: 0;
+}
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-fav-cat-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--token-box-default-border);
+    border-radius: 0;
+}
+
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker[data-gem-recent-images-view="table"] .gem-fav-cat-header {
+    border:0 !important
+}
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-fav-cat-title {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex: 1;
+}
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-fav-cat-name {
+    font-weight: 600;
+}
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-fav-cat-count {
+    opacity: 0.7;
+    font-size: 12px;
 }
 .gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-recent-image-meta {
     padding: 8px 10px;
@@ -577,13 +846,6 @@ cb-available-block-list e-select {
     }
 }
 
-/* ------------------------------------------------------------------------------------------------ */
-/* Media Selection Popup */
-/* ------------------------------------------------------------------------------------------------ */
-
-.gem-enhanced-image-properties-dialog .e-field .e-grid:has([content="Personalization"]) {
-    flex-direction: column;
-}
 /* Size details fade transition */
 .gem-frame-size-details {
     transition: opacity 0.5s ease-out;
@@ -827,4 +1089,12 @@ span.gem-e-icon {
 }
 .e-contentblocks-blocktemplatelist .block-templates + .e-section__title {
     z-index: 2;
+}
+
+/* ------------------------------------------------------------------------------------------------ */
+/* Recent Images */
+/* ------------------------------------------------------------------------------------------------ */
+.gem-recent-image-meta {
+    line-height: 1.2;
+    word-break: break-all;
 }

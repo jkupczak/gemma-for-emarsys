@@ -721,7 +721,6 @@ function initializeBlockPinning() {
             }
 
             if (node.matches && node.matches('.block-template')) {
-              console.log("[Gem] Block element added, processing");
               shouldProcessBlocks = true;
               return;
             }
