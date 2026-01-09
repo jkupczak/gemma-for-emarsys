@@ -1,6 +1,6 @@
 {
   "name": "Gemma for Emarsys",
-  "version": "5.0.0",
+  "version": "5.0.1",
   "manifest_version": 3,
   "description": "Enhances the Emarsys email editor with a settings panel and more!",
   "permissions": ["storage", "tabs", "activeTab"],
@@ -34,7 +34,7 @@
     },
     {
       "matches": ["https://*.emarsys.net/bootstrap.php?*r=contentBlocks/campaign*"],
-      "js": ["verticalnav-enhancer.js", "mobile-view.js", "textarea-expand.js", "text-highlighting.js", "color-swatch-manager.js", "keyboard-shortcuts.js", "toggle-page-elements.js", "progress-cloner.js", "page-title-updater.js", "condensed-blocks-panel.js", "mobile-contact-preview.js", "content-block-toolbar.js", "header-copy-icon.js", "block-pinning.js", "overlay-panel-controls.js", "snippets-tab.js", "link-status-tracker.js"],
+      "js": ["verticalnav-enhancer.js", "mobile-view.js", "textarea-expand.js", "text-highlighting.js", "color-swatch-manager.js", "keyboard-shortcuts.js", "toggle-page-elements.js", "progress-cloner.js", "page-title-updater.js", "condensed-blocks-panel.js", "mobile-contact-preview.js", "content-block-toolbar.js", "header-copy-icon.js", "block-pinning.js", "overlay-panel-controls.js", "snippets-tab.js", "keyword-swap.js", "link-status-tracker.js"],
       "css": ["styles.css", "e-panel--links.css", "e-panels.css"]
     }
   ]

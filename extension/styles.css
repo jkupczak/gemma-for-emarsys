@@ -1,3 +1,33 @@
+/* ------------------------------------------------------------------------------------------------ */
+/* Hiding Disabled Features that require an account upgrade */
+/* ------------------------------------------------------------------------------------------------ */
+
+cb-personalizable-input-with-context#subject-line-input button[disabled]:has([icon="ai"]),
+cb-preheader button[disabled]:has([icon="ai"]) {
+    display: none !important;
+}
+/* ------------------------------------------------------------------------------------------------ */
+
+
+/* ------------------------------------------------------------------------------------------------ */
+/* Keyword Swap */
+/* ------------------------------------------------------------------------------------------------ */
+/* Subject line toolbar edits to support the injection of the keyword swap button */
+vce-code-editor-toolbar {
+    display: flex !important;
+    gap: 1.5px;
+}
+/* ------------------------------------------------------------------------------------------------ */
+
+
+/* Image Checkered Canvas Background */
+.gem-checkered-canvas {
+    background-color: var(--token-box-default-background);
+    background-image: linear-gradient(45deg, var(--token-background-strong) 25%, transparent 25%, transparent 75%, var(--token-background-strong) 75%, var(--token-background-strong)), linear-gradient(45deg, var(--token-background-strong) 25%, transparent 25%, transparent 75%, var(--token-background-strong) 75%, var(--token-background-strong));
+    background-position: 0px 0px, 10px 10px;
+    background-size: 20px 20px;
+}
+
 h5 {
     font-size: 1em !important;
 }
@@ -415,8 +445,14 @@ e-float-container .gem-enhanced-image-properties-dialog {
     & .e-field label.e-accordion__title,
     & .e-field .e-accordion__content .e-field .e-field:last-child,
     & .e-dialog__header .e-dialog__title,
+    & .e-dialog__header e-tooltip,
+    & .e-dialog__header .e-dialog__headline-slot,
     & .e-field:empty {
         display: none !important;
+    }
+
+    & .e-accordion__content label + div.e-grid {
+        flex-wrap: wrap;
     }
 
     /* clear the styles on the advanced settings accordion */
@@ -435,14 +471,9 @@ e-float-container .gem-enhanced-image-properties-dialog {
         top: 64px !important;
     }
     & header.e-dialog__header {
-        position: absolute;
-        top: 0;
-        right: 0;
-        height: 64px;
-        z-index: 1;
-        border: 0;
+        padding:0;
         margin: 0;
-        align-items: anchor-center !important;
+        height: 36% !important;
     }
     & .e-dialog__container {
         padding-top: 0;
@@ -504,6 +535,7 @@ e-float-container .gem-enhanced-image-properties-dialog {
     border-radius: 8px;
     overflow: hidden;
     background: var(--token-box-default-background);
+    box-shadow: 0px 4px 8px rgb(0 0 0 / 0.075), 0px 1px 1px 0px rgb(0 0 0 / 0.05);
 }
 .gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-recent-image-thumb {
     display: block;
@@ -758,6 +790,10 @@ cb-available-block-list .e-section .e-section__title {
 /* ------------------------------------------------------------------------------------------------ */
 /* Vertical Nav Menu */
 /* ------------------------------------------------------------------------------------------------ */
+e-verticalnav-menu {
+    padding-top: 8px;
+}
+
 /* Override the default active state for the vertical nav menu because we can't control it when switching to and from the Snippets tab */
 cb-vertical-tab .e-verticalnavitem-active gem-e-icon svg {
     fill: var(--token-tab-selected-text) !important;
@@ -993,13 +1029,6 @@ cb-available-block-list .e-card-auto_height .e-card__content {
 }
 
 
-.gem-bg-pattern {
-    background-color: var(--token-box-default-background);
-    background-image: linear-gradient(45deg, var(--token-background-strong) 25%, transparent 25%, transparent 75%, var(--token-background-strong) 75%, var(--token-background-strong)), linear-gradient(45deg, var(--token-background-strong) 25%, transparent 25%, transparent 75%, var(--token-background-strong) 75%, var(--token-background-strong));
-    background-position: 0px 0px, 10px 10px;
-    background-size: 20px 20px;
-}
-
 /* ------------------------------------------------------------------------------------------------ */
 /* Emarsys Icon Styles */
 /* ------------------------------------------------------------------------------------------------ */
@@ -1062,12 +1091,6 @@ span.gem-e-icon {
 }
 
 
-
-#gem-image-preview-canvas {
-    display:flex;
-}
-
-
 /* Content block toolbar */
 .e-contentblocks-toolbar {
     background: color-mix(in srgb, var(--token-overlay-dark) 80%, transparent) !important;
@@ -1097,4 +1120,142 @@ span.gem-e-icon {
 .gem-recent-image-meta {
     line-height: 1.2;
     word-break: break-all;
+}
+
+html:has(.gem-enhanced-image-properties-dialog) {
+    overflow: hidden;
+}
+
+.gem-fav-grid-cols-slider {
+    max-width: 300px;
+    width: 100%;
+}
+
+/* Recently Seen Image Details Modal */
+.gem-seen-image-details-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.gem-seen-image-details-modal__backdrop {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+}
+
+.gem-seen-image-details-modal__panel {
+    position: relative;
+    background: var(--token-box-default-background);
+    border: 1px solid var(--token-box-default-border);
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    max-width: 600px;
+    max-height: 80vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.gem-seen-image-details-modal__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--token-box-default-border);
+    background: var(--token-box-alternate-background);
+}
+
+.gem-seen-image-details-modal__close {
+    color: var(--token-box-default-icon);
+    font-size: 18px;
+    padding: 4px;
+    line-height: 1;
+}
+
+.gem-seen-image-details-modal__body {
+    padding: 20px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.gem-seen-image-details-modal__thumbrow {
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 16px;
+}
+
+.gem-seen-image-details-modal__thumbrow img {
+    display: block;
+}
+
+.gem-seen-image-details-modal__metadata .e-field {
+    margin-bottom: 16px;
+}
+
+.gem-seen-image-details-modal__metadata .e-field:last-child {
+    margin-bottom: 0;
+}
+
+.gem-seen-image-details-modal__metadata .e-field__label {
+    font-weight: 600;
+    margin-bottom: 4px;
+    color: var(--token-box-alternate-text);
+    font-size: 14px;
+}
+
+.gem-seen-image-details-modal__url {
+    word-break: break-all;
+    font-family: monospace;
+    background: var(--token-box-alternate-background);
+    color: var(--token-box-default-text);
+    padding: 8px;
+    border-radius: 4px;
+    border: 1px solid var(--token-box-default-border);
+    font-size: 13px;
+}
+
+/* Info button styles */
+.gem-recent-image-info-btn {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    background: rgba(255, 255, 255, 0.9);
+    border: 1px solid var(--token-box-default-border);
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    color: var(--token-box-default-icon);
+    cursor: pointer;
+    z-index: 2;
+    transition: all 0.2s ease;
+}
+
+.gem-recent-image-info-btn:hover {
+    background: var(--token-box-default-background);
+    transform: scale(1.1);
+}
+
+.gem-recent-image-info-btn--table {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    width: 20px;
+    height: 20px;
+    font-size: 12px;
 }

@@ -2915,6 +2915,9 @@ window.debugSnippets = function() {
   console.log("[Gem] DEBUG: Counters reset to 0");
 };
 
+// Expose getSnippets globally for use by other modules
+window.getSnippets = getSnippets;
+
 // Wait for page to be ready before initializing
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initializeSnippetsTab);

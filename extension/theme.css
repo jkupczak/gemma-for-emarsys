@@ -1,5 +1,6 @@
 /* Scrollbar overrides */
 html.FLIPPER-theme-eveningHorizon {
+  & .e-section__content,
   & .e-dialog__container .e-dialog__content,
   & e-float-container .e-dialog__container .e-dialog__content,
   & cb-block-level-variable .e-section__content.cb-flex.variables,
@@ -20,6 +21,7 @@ html.FLIPPER-theme-eveningHorizon {
     scrollbar-color: var(--token-border-default) var(--token-background-dark);
   }
 
+  & .e-section__content::-webkit-scrollbar-thumb,
   & .e-dialog__container .e-dialog__content::-webkit-scrollbar-thumb,
   & e-float-container .e-dialog__container .e-dialog__content::-webkit-scrollbar-thumb,
   & cb-block-level-variable .e-section__content.cb-flex.variables::-webkit-scrollbar-thumb,
@@ -39,7 +41,8 @@ html.FLIPPER-theme-eveningHorizon {
   & .e-mediadb .e-mediadb-section .e-mediadb-section__content::-webkit-scrollbar-thumb {
     background: var(--token-border-default);
   }
-
+  
+  & .e-section__content::-webkit-scrollbar-track,
   & e-float-container .e-dialog__container .e-dialog__content::-webkit-scrollbar-track,
   & .e-dialog__container .e-dialog__content::-webkit-scrollbar-track,
   & cb-block-level-variable .e-section__content.cb-flex.variables::-webkit-scrollbar-track,
@@ -91,6 +94,38 @@ html.FLIPPER-theme-eveningHorizon:root {
   --gemma-primary-200: #dcd6ff;
   --gemma-primary-100: #f0edff;
   --gemma-primary-default: #523ae6;
+}
+
+/* Emarsys default lightmode theme colors */
+:root {
+  --token-box-default-background: #ffffff;
+  --token-box-default-border: #d5dadd;
+  --token-box-default-text: #1a2733;
+  --token-box-default-icon: #1a2733;
+  --token-box-alternate-background: #eaecee;
+  --token-box-alternate-border: #d5dadd;
+  --token-box-alternate-text: #223548;
+  --token-box-alternate-icon: #1a2733;
+  --token-box-strong-background: #ffffff;
+  --token-box-strong-border: #5b738b;
+  --token-box-strong-text: #1a2733;
+  --token-box-strong-icon: #1a2733;
+  --token-box-highlight-background: #ebf8ff;
+  --token-box-highlight-border: #0070f2;
+  --token-box-highlight-text: #1a2733;
+  --token-box-highlight-icon: #0070f2;
+  --token-box-success-background: #f5fae5;
+  --token-box-success-border: #36a41d;
+  --token-box-success-text: #1a2733;
+  --token-box-success-icon: #36a41d;
+  --token-box-warning-background: #fff8d6;
+  --token-box-warning-border: #e76500;
+  --token-box-warning-text: #1a2733;
+  --token-box-warning-icon: #e76500;
+  --token-box-error-background: #ffeaf4;
+  --token-box-error-border: #ee3939;
+  --token-box-error-text: #1a2733;
+  --token-box-error-icon: #d20a0a;
 }
 
 /* retheme the UI to the gem color scheme */
@@ -261,6 +296,38 @@ html:root:not(.gem--retheme-inactive) {
 
   --token-navigationItem-default-backgroundHover: #b9adff;
   --token-input-default-underline: #625b8b;
+}
+
+/* Emarsys default darkmode theme colors */
+.FLIPPER-theme-eveningHorizon:root {
+  --token-box-default-background: #1d232a;
+    --token-box-default-border: #2e3b47;
+    --token-box-default-text: #eaecee;
+    --token-box-default-icon: #eaecee;
+    --token-box-alternate-background: #232b33;
+    --token-box-alternate-border: #2e3b47;
+    --token-box-alternate-text: #b8c1c9;
+    --token-box-alternate-icon: #eaecee;
+    --token-box-strong-background: #1d232a;
+    --token-box-strong-border: #5b738b;
+    --token-box-strong-text: #eaecee;
+    --token-box-strong-icon: #eaecee;
+    --token-box-highlight-background: #002a86;
+    --token-box-highlight-border: #89d1ff;
+    --token-box-highlight-text: #eaecee;
+    --token-box-highlight-icon: #89d1ff;
+    --token-box-success-background: #164323;
+    --token-box-success-border: #36a41d;
+    --token-box-success-text: #eaecee;
+    --token-box-success-icon: #36a41d;
+    --token-box-warning-background: #382700;
+    --token-box-warning-border: #cc8800;
+    --token-box-warning-text: #eaecee;
+    --token-box-warning-icon: #cc8800;
+    --token-box-error-background: #5a0404;
+    --token-box-error-border: #ee3939;
+    --token-box-error-text: #eaecee;
+    --token-box-error-icon: #ff8cb2;
 }
 
 /* Darkmode retheme the UI to the gem color scheme */

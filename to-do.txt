@@ -1,3 +1,15 @@
+# URGENNT BUGS
+
+Ran into a issue where the snippets panel would not close. 1/9/26
+
+-----------------------------------------------
+# HOT
+
+Can I create "drag for padding" functionality? Would need to ask the user to designate an integere based variable for top and bottom padding in the settings panel.
+
+Add text replacement to the preheader box.
+
+-----------------------------------------------
 # PENDING
 
 When the Block Style Settings panel is empty, it should close on its own.
@@ -28,15 +40,6 @@ Use the Emarsys icon font
     Add a recently "seen" tab. Collect image urls whenever we use MediaDB.
     ✓ Let users apply metadata to favorited images: search keyword, category, language
 
-The "Favorite" icon should not be visible when the user is viewing the "Favorite Images" list. It should only be visible when the user hovers over the image in Grid view, or the table row in Table view.
-Rename the "Recent Images" list to "Recently Used".
-Create a new list called "Recently Seen". This list should log a maximum of 50 images. When the user browses images in the MediaDB popup window (loaded with the URL parameter `r=MediaDB/popup` as seen in the manifest), we should log the URLs of the images we see in Emarsys's media picker. Image URLs can be found in the `copy-to-clipboard` attribute of this element: `.test-copytoclipboard-dropdownaction`.
-Matches will enter the DOM as the user scrolls through the list so be sure to listen for them.
-When you add them to the list, also add a timestamp.
-Also add a metadata property of "path" with a value taken from the `title` attribute on the element `.e-mediadb-breadcrumb`.
-If an image URL is found that already exists in the Recently Seen list, update its timestamp.
-Once you reach the limit of 50 images for the list, remove the oldest image to make room for new images.
-Update the button in our Image Properties Dialog designed to switch between list views. The dropdown should include options for "Recently Used", "Recently Seen", and "Favorites".
 
 
 Add a toggle in settings for the email preview header. Let them change it between vertical and horizontal.
@@ -50,12 +53,15 @@ Double click to open esl tokens and image properties
 While the ESL syntax checker is thinking, you should not be able to click OK to click the dialog
 
 
+Lets add a new field to the Favorited Image edit modal called "Width". This input should accept an integer. If the user uses an "Add to Page" button on any image that has this metadata, in addition to adding the URL to the CodeMirror URL input, we should also add the Width value to the element at `.e-accordion .e-grid:has(option[value='px']) > .e-cell:first-child input` if the value exists in the metadata and if the element exists in the DOM.
+
+-----------------------------------------------
 # NO 
 
 ✗ Can I open the block /variable settings panel just because the user clicked on the block? - REMOVED: block-level-variables-opener.js removed
 
 
-
+-----------------------------------------------
 # COMPLETE
 
 ✓ Can I create a way to quickly replace a string of text in a block with a snippet that has the exact same name?

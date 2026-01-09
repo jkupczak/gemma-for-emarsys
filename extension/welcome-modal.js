@@ -26,11 +26,13 @@ function createWelcomeModalHTML() {
                 <li>Tokens will be named after a matching snippet name if it exists. If no matching snippet name is found, Gemma will try to give it an appropriate name. If it can't, the token will be named "ESL snippet".</li>
               </ul>
             </li>
-
             <li>
-              <b>Keyword Swapping</b> You can now quickly swap keywords you define in your content blocks with your own custom snippets. Simply add a keyword to one of your snippets and then use the keyword in your content block. Then click the swap icon <span class="gem-e-icon">&#xF0DE;</span> in the content block toolbar to swap the keyword with the snippet.
+              <b>Keyword Swapping</b> You can now quickly swap keywords you define with your own custom snippets. Click the swap icon <span class="gem-e-icon">&#xF0DE;</span> in the content block toolbar, the preheader box, or the subject line to swap matching keywords with their corresponding snippets.
             </li>
-            <li><b>Text Highlighting</b> Automatically highlight important text in the email editor preview. Edit what text is highlighted and what color the highlight is in the Settings panel.</li>
+            <li><b>Image Picker</b> When adding an image to your email you'll now get a preview of it right next to the image editor. Makes adding ALT text much easier! You can also see a list of your recently seen, used, and favorited images for quick selection.</li>
+            <li>
+              <b>Text Highlighting</b> Automatically highlight important text in the email editor preview. Edit what text is highlighted and what color the highlight is in the Settings panel.
+            </li>
             <li><b>Mobile Previews</b> See a mobile preview of your email right next to your desktop view while you make edits. This is turned on by default and can be toggled from the settings menu or the purple phone icon in the bottom left of the editor. You can also drag the mobile preview left and right to change the size. The settings panel lets you adjust the scaling too. <em>(You'll also see a mobile preview when you load a contact preview)</em></li>
             <li><b>Custom Color Swatches</b> Custom color swatches are now permanent! Emarsys doesn't remember what colors you used when editing an email. But Gemma does. You can also add default presets that will always display at the top of the color picker (up to 8) from the settings panel.</li>
             <li><b>Blocks Panel</b> Choose how many blocks to display per row in the blocks panel (1, 2, or 3 per row). More blocks per row means less scrolling to find what you need! Pin or hide blocks from the blocks panel to keep them organized.
@@ -57,6 +59,13 @@ function createWelcomeModalHTML() {
             <h3>Full List of Changes</h3>
             <h4>Email Editor (r=contentBlocks/campaign)</h4>
 
+            <h5>Email Basics Panel</h5>
+            <ul>
+              <li>Added "Keyword Swap" buttons to the subject line and preheader boxes to allow for quick swapping of keywords with snippets.</li>
+              <li>Preheader box now increases in height if it is very long. See the entire preheader at once for easier editing.</li>
+              <li>Hid the "AI" buttons that required an account upgrade from the subject line and preheader boxes if the user does not have access to them.</li>
+            </ul>
+            
             <h5>Blocks Panel</h5>
             <ul>
               <li>Users can adjust the view to show 1, 2, or 3 blocks per row.</li>
@@ -79,11 +88,29 @@ function createWelcomeModalHTML() {
               <li>Snippets can be searched and filtered by category, favorite, and keyword swappable.</li>
             </ul>
 
+            <h5>Style Settings Panel</h5>
+            <ul>
+              <li>Inputs and their labels are now condensed onto the same row so that more settings are visible at once.</li>
+            </ul>
+
             <h5>Image Properties Dialog</h5>
             <ul>
-              <li>The selected image is now displayed to the left for both desktop and mobile views.</li>
+              <li>The selected image is now displayed at the top for both desktop and mobile views.</li>
               <li>The Advanced settings panel is now automatically expanded for easier access to image dimensions.</li>
-              <li>A new "Recent Images" button has been added to the image properties dialog. Click it to see a list of your recently used images for quick selection.</li>
+              <li>The dialog has been expanded to fullscreen to allow for a new image selection panel.</li>
+              <ul>
+                <li>Images can now be quickly selected without opening the Media DB popup window.</li>
+                <li>Images are listed in one of three views: "Recently Used", "Recently Seen", or "Favorites".</li>
+                  <ul>
+                    <li>Images can be favorited to keep them in a separate list for quick access.</li>
+                    <li>Images that you have recently used are logged in a "Recently Used" list.</li>
+                    <li>Images that you have recently seen in the Media DB are logged in a "Recently Seen" list.</li>
+                  </ul>
+                <li>Images are displayed in either a table or customizable grid view.</li>
+                <li>Recently Seen and Favorites can be searched by name, url, path, and more.</li>
+                <li>Favorites are grouped by category, translation, or language.</li>
+                <li>Favorites can be enriched with metadata: search keyword, category, language, translation, alt text, and width. The latter two will be automatically inserted for you if you choose the image.</li>
+              </ul>
             </ul>
 
             <h5>Link Editor Dialog</h5>

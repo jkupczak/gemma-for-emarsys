@@ -8,16 +8,36 @@ function initializeOverlayPanelControls() {
   function handleEscapeKey(event) {
     // Only handle Escape key
     if (event.key === 'Escape' || event.code === 'Escape' || event.keyCode === 27) {
-      // If our Favorite Image Metadata modal is open, ESC should close it (and NOT the underlying
-      // Image Properties dialog). We must suppress Emarsys' ESC handler in this case.
-      const metaModal = document.getElementById('gem-favorite-image-meta-modal');
-      if (metaModal) {
-        try { metaModal.remove(); } catch (_) {}
-        event.preventDefault();
-        event.stopPropagation();
-        event.stopImmediatePropagation();
-        return false;
-      }
+    // If our modals are open, ESC should close them (and NOT the underlying
+    // Image Properties dialog). We must suppress Emarsys' ESC handler in this case.
+    const metaModal = document.getElementById('gem-favorite-image-meta-modal');
+    if (metaModal) {
+      try { metaModal.remove(); } catch (_) {}
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      return false;
+    }
+
+    // Check for category modal
+    const categoryModal = document.getElementById('gem-favorite-category-modal');
+    if (categoryModal) {
+      try { categoryModal.remove(); } catch (_) {}
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      return false;
+    }
+
+    // Check for image details modal
+    const detailsModal = document.getElementById('gem-seen-image-details-modal');
+    if (detailsModal) {
+      try { detailsModal.remove(); } catch (_) {}
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      return false;
+    }
 
       console.log("[Gem] Escape key pressed, checking for open overlay panels");
 
@@ -735,7 +755,7 @@ function initializeOverlayPanelControls() {
       }
     }
 
-    function showRecentImagesPicker(modal) {
+    function showRecentImagesPicker(modal, opts = {}) {
       const leftPanelContainer = modal.querySelector('#gem-image-properties-left-panel');
       if (!leftPanelContainer) return;
 
@@ -760,6 +780,9 @@ function initializeOverlayPanelControls() {
         }
         if (!picker.dataset.gemFavoriteImagesSearch) {
           picker.dataset.gemFavoriteImagesSearch = '';
+        }
+        if (!picker.dataset.gemSeenImagesSearch) {
+          picker.dataset.gemSeenImagesSearch = '';
         }
         if (!picker.dataset.gemFavoriteImagesGroupBy) {
           picker.dataset.gemFavoriteImagesGroupBy = 'category'; // category | language | translation
@@ -818,6 +841,15 @@ function initializeOverlayPanelControls() {
             return;
           }
 
+          const infoBtn = e.target.closest && e.target.closest('.gem-recent-image-info-btn');
+          if (infoBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+            const url = infoBtn.getAttribute('data-url') || '';
+            openRecentlySeenImageDetailsModal(modal, url);
+            return;
+          }
+
           const favBtn = e.target.closest && e.target.closest('.gem-recent-image-fav-btn');
           if (favBtn) {
             e.preventDefault();
@@ -867,11 +899,15 @@ function initializeOverlayPanelControls() {
           upsertRecentImageUrl(url);
         });
 
-        // Favorites search + grid slider (avoid focus loss by debouncing rerender)
+        // Favorites/Seen search + grid slider (avoid focus loss by debouncing rerender)
         picker.addEventListener('input', (e) => {
-          const searchInput = e.target && e.target.closest && e.target.closest('.gem-favorite-images-search');
+          const favSearchInput = e.target && e.target.closest && e.target.closest('.gem-favorite-images-search');
+          const seenSearchInput = e.target && e.target.closest && e.target.closest('.gem-seen-images-search');
+          const searchInput = favSearchInput || seenSearchInput;
+
           if (searchInput) {
-            picker.dataset.gemFavoriteImagesSearch = searchInput.value || '';
+            const isFavSearch = !!favSearchInput;
+            picker.dataset[isFavSearch ? 'gemFavoriteImagesSearch' : 'gemSeenImagesSearch'] = searchInput.value || '';
             picker._gemSearchFocus = {
               value: searchInput.value || '',
               start: searchInput.selectionStart ?? null,
@@ -879,8 +915,7 @@ function initializeOverlayPanelControls() {
             };
             clearTimeout(picker._gemSearchDebounceT);
             picker._gemSearchDebounceT = setTimeout(() => {
-              picker._gemPreserveSearchFocus = true;
-              showRecentImagesPicker(modal);
+              showRecentImagesPicker(modal, { contentOnly: true });
             }, 60);
             return;
           }
@@ -890,8 +925,6 @@ function initializeOverlayPanelControls() {
             const v = Math.min(8, Math.max(3, Number(slider.value || 6)));
             picker.dataset.gemRecentImagesGridCols = String(v);
             picker.style.setProperty('--gem-recent-grid-cols', String(v));
-            const label = picker.querySelector('.gem-fav-grid-cols-label');
-            if (label) label.textContent = String(v);
           }
         }, true);
 
@@ -1016,7 +1049,7 @@ function initializeOverlayPanelControls() {
             source === 'seen' ? 'Recently Seen' :
             'Recently Used';
           const addFavoriteBtn = source === 'favorites'
-            ? `<button class="e-btn e-btn-secondary gem-favorite-images-add-btn" type="button">Add Favorite</button>`
+            ? `<button class="e-btn gem-favorite-images-add-btn" type="button">Add</button>`
             : '';
 
           const sourceSelect = `
@@ -1042,10 +1075,10 @@ function initializeOverlayPanelControls() {
             `.trim()
             : '';
 
-          const favSearch = (source === 'favorites')
+          const favSearch = (source === 'favorites' || source === 'seen')
             ? `
-              <divstyle="margin-top:6px;">
-                <input class="e-input e-input-search gem-favorite-images-search" placeholder="Search favorites" type="search" value="${escape(picker.dataset.gemFavoriteImagesSearch || '')}">
+              <div style="margin-top:6px;">
+                <input class="e-input e-input-search ${source === 'favorites' ? 'gem-favorite-images-search' : 'gem-seen-images-search'}" placeholder="Search ${source === 'favorites' ? 'favorites' : 'recently seen'}" type="search" value="${escape(source === 'favorites' ? (picker.dataset.gemFavoriteImagesSearch || '') : (picker.dataset.gemSeenImagesSearch || ''))}">
               </div>
             `.trim()
             : '';
@@ -1055,7 +1088,6 @@ function initializeOverlayPanelControls() {
               <div style="display:flex; align-items:center; gap:8px;">
                 <label style="font-size:12px; opacity:0.75;">Cols</label>
                 <input class="gem-fav-grid-cols-slider" type="range" min="3" max="8" step="1" value="${escape(String(gridCols))}">
-                <span class="gem-fav-grid-cols-label" style="min-width:16px; text-align:right;">${escape(String(gridCols))}</span>
               </div>
             `.trim()
             : '';
@@ -1070,7 +1102,7 @@ function initializeOverlayPanelControls() {
               <div style="display:flex; gap:10px; align-items:center; justify-content:flex-end;">
                 ${groupBySelect}
                 ${gridColsControl}
-                <button class="e-btn e-btn-secondary gem-recent-images-toggle-view-btn" type="button">${toggleLabel}</button>
+                <button class="e-btn gem-recent-images-toggle-view-btn" type="button">${toggleLabel}</button>
               </div>
             </div>
             ${favSearch}
@@ -1079,10 +1111,10 @@ function initializeOverlayPanelControls() {
 
           const empty = rows.length === 0
             ? (source === 'favorites'
-              ? '<div style="margin-top:10px; opacity:0.7;">No favorites yet. Favorite an image from "Recently Used" or "Recently Seen".</div>'
+              ? '<div style="margin-top:10px; padding:0 16px 16px 16px; opacity:0.7;">No favorites yet. Favorite an image from "Recently Used" or "Recently Seen".</div>'
               : (source === 'seen'
-                ? '<div style="margin-top:10px; opacity:0.7;">No recently seen images yet. Browse Media DB images to start collecting them.</div>'
-                : '<div style="margin-top:10px; opacity:0.7;">No recently used images yet. Open an image properties dialog with an image URL to start collecting them.</div>'))
+                ? '<div style="margin-top:10px; padding:0 16px 16px 16px; opacity:0.7;">No recently seen images yet. Browse Media DB images to start collecting them.</div>'
+                : '<div style="margin-top:10px; padding:0 16px 16px 16px; opacity:0.7;">No recently used images yet. Open an image properties dialog with an image URL to start collecting them.</div>'))
             : '';
 
           const dateLabel =
@@ -1177,11 +1209,11 @@ function initializeOverlayPanelControls() {
                       ? ((it.language || '').trim())
                       : (((it.translation || '').trim()) || ((it.altText || '').trim()));
                   return `
-                    <div class="gem-recent-image-tile" title="${escape(it.url)}">
+                    <div class="gem-recent-image-tile gem-checkered-canvas" title="${escape(it.url)}">
                       <button class="gem-recent-image-edit-btn" type="button" data-url="${escape(it.url)}" aria-label="${editTitle}" title="${editTitle}">
                         ✎
                       </button>
-                      <img class="gem-recent-image-thumb gem-bg-pattern" src="${escape(it.url)}" alt="" />
+                      <img class="gem-recent-image-thumb gem-checkered-canvas" src="${escape(it.url)}" alt="" />
                       <div class="gem-recent-image-overlay">
                         <button class="e-btn e-btn-primary gem-recent-image-use-btn" type="button" data-url="${escape(it.url)}">
                           Add To Page
@@ -1200,7 +1232,7 @@ function initializeOverlayPanelControls() {
                     return `
                       <tr>
                         <td style="padding:6px; width:140px; vertical-align:middle;">
-                          <img class="gem-bg-pattern" src="${escape(it.url)}" style="display:block; width:128px; height:70px; object-fit:contain; border-radius:4px;" />
+                          <img class="gem-checkered-canvas" src="${escape(it.url)}" style="display:block; width:128px; height:70px; object-fit:contain; border-radius:4px;" />
                         </td>
                         <td style="padding:6px; vertical-align:middle; word-break:break-word;">${escape(it.url)}</td>
                         <td style="padding:6px; vertical-align:middle;">
@@ -1242,7 +1274,7 @@ function initializeOverlayPanelControls() {
                     const isCollapsed = !q && isCollapsedRaw;
                     if (viewMode === 'grid') {
                       return `
-                        <div class="gem-fav-cat-section" style="padding:0 16px 16px">
+                        <div class="gem-fav-cat-section" style="padding:0 16px">
                           ${headerHtml}
                           ${isCollapsed ? '' : `
                             <div class="gem-recent-images-grid">
@@ -1254,7 +1286,7 @@ function initializeOverlayPanelControls() {
                     }
 
                     return `
-                      <div class="gem-fav-cat-section" style="padding:0 16px 16px">
+                      <div class="gem-fav-cat-section" style="padding:0 16px">
                         ${headerHtml}
                         ${isCollapsed ? '' : `
                           <table data-e-version="2" class="e-table e-table-bordered gem-recent-images-table" style="width:100%; font-size: 14px; margin-top:8px;">
@@ -1276,86 +1308,71 @@ function initializeOverlayPanelControls() {
                   }).join('');
                 };
 
-                picker.innerHTML = `
-                  ${header}
-                  ${q && groupKeys.length === 0 ? '<div style="opacity:0.7;">No matches.</div>' : ''}
-                  ${buildCategorySections()}
-                  ${!q ? empty : ''}
-                `.trim();
-
-                // Restore search focus/selection after rerender (prevents focus loss each keystroke)
-                if (picker._gemPreserveSearchFocus) {
-                  picker._gemPreserveSearchFocus = false;
-                  const si = picker.querySelector('.gem-favorite-images-search');
-                  const s = picker._gemSearchFocus || {};
-                  if (si && document.activeElement !== si) {
-                    try { si.focus(); } catch (_) {}
-                  }
-                  try {
-                    if (si && s && s.value != null) {
-                      si.value = s.value;
-                      const start = typeof s.start === 'number' ? s.start : si.value.length;
-                      const end = typeof s.end === 'number' ? s.end : si.value.length;
-                      si.setSelectionRange(start, end);
+                // For content-only updates (search changes), preserve header and update only content
+                if (opts.contentOnly && picker.querySelector('#gem-image-list-header')) {
+                  const contentContainer = document.createElement('div');
+                  contentContainer.innerHTML = `
+                    ${q && groupKeys.length === 0 ? '<div style="padding:0 16px 16px 16px; opacity:0.7;">No matches.</div>' : ''}
+                    ${buildCategorySections()}
+                    ${!q ? empty : ''}
+                  `.trim();
+                  // Replace everything after the header
+                  const header = picker.querySelector('#gem-image-list-header');
+                  if (header) {
+                    // Remove all siblings after header
+                    let nextSibling = header.nextSibling;
+                    while (nextSibling) {
+                      const toRemove = nextSibling;
+                      nextSibling = nextSibling.nextSibling;
+                      toRemove.remove();
                     }
-                  } catch (_) {}
+                    // Add new content
+                    while (contentContainer.firstChild) {
+                      picker.appendChild(contentContainer.firstChild);
+                    }
+                  }
+                } else {
+                  picker.innerHTML = `
+                    ${header}
+                    ${q && groupKeys.length === 0 ? '<div style="padding:0 16px 16px 16px; opacity:0.7;">No matches.</div>' : ''}
+                    ${buildCategorySections()}
+                    ${!q ? empty : ''}
+                  `.trim();
                 }
+
+                // Focus restoration no longer needed since header is preserved during content-only updates
               });
             });
             return;
           }
 
+          // Filter rows for seen source if searching
+          let filteredRows = rows;
+          if (source === 'seen') {
+            const q = String(picker.dataset.gemSeenImagesSearch || '').trim().toLowerCase();
+            if (q) {
+              filteredRows = rows.filter((r) => {
+                const friendlyFilename = (r && typeof r.friendlyFilename === 'string') ? r.friendlyFilename : '';
+                const path = (r && typeof r.path === 'string') ? r.path : '';
+                const url = r.url || '';
+                const hay = `${friendlyFilename} ${path} ${url}`.toLowerCase();
+                return hay.includes(q);
+              });
+            }
+          }
+
           // Existing behavior for Recent list (ungrouped)
-          if (viewMode === 'grid') {
-            picker.innerHTML = `
-              ${header}
-              <div class="gem-recent-images-grid">
-                ${rows.map((r) => {
-                  const url = r.url || '';
-                  const ts = r.ts || 0;
-                  const friendlyFilename = (r && typeof r.friendlyFilename === 'string') ? r.friendlyFilename : '';
-                  const isFav = favSet.has(url);
-                  const star = isFav ? '★' : '☆';
-                  const starTitle = isFav ? 'Unfavorite' : 'Favorite';
-                  return `
-                    <div class="gem-recent-image-tile" title="${escape(url)}">
-                      <button class="gem-recent-image-fav-btn ${isFav ? 'gem-recent-image-fav-btn--active' : ''}" type="button" data-url="${escape(url)}" aria-label="${starTitle}" title="${starTitle}">
-                        ${star}
-                      </button>
-                      <img class="gem-recent-image-thumb gem-bg-pattern" src="${escape(url)}" alt="" />
-                      <div class="gem-recent-image-overlay">
-                        <button class="e-btn e-btn-primary gem-recent-image-use-btn" type="button" data-url="${escape(url)}">
-                          Add To Page
-                        </button>
-                      </div>
-                      <div class="gem-recent-image-meta">
-                        ${source === 'seen'
-                          ? `<div class="gem-recent-image-date" title="${escape(friendlyFilename || url)}">${escape(friendlyFilename || url)}</div>`
-                          : (source === 'recent' && friendlyFilename
-                            ? `<div class="gem-recent-image-date" title="${escape(friendlyFilename)}">${escape(friendlyFilename)}</div>`
-                            : '')}
-                      </div>
-                    </div>
-                  `;
-                }).join('')}
-              </div>
-              ${empty}
-            `.trim();
-          } else {
-            picker.innerHTML = `
-              ${header}
-              <div style="padding:0 16px 16px">
-              <table data-e-version="2" class="e-table e-table-bordered gem-recent-images-table" style="width:100%; font-size: 14 px;">
-                <thead>
-                  <tr>
-                    <th style="width:140px;">Preview</th>
-                    <th>${source === 'seen' ? 'Filename' : (source === 'recent' ? 'Name' : 'URL')}</th>
-                    <th style="width:160px;">${escape(dateLabel)}</th>
-                    <th style="width:160px; text-align:right;">Use</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${rows.map((r) => {
+          const seenSearchQuery = source === 'seen' ? String(picker.dataset.gemSeenImagesSearch || '').trim() : '';
+          const noMatches = source === 'seen' && seenSearchQuery && filteredRows.length === 0
+            ? '<div style="opacity:0.7; margin-top:10px;">No matches.</div>'
+            : '';
+
+          // For content-only updates (search changes), preserve header and update only content
+          const contentHtml = viewMode === 'grid'
+            ? `
+                ${noMatches}
+                <div class="gem-recent-images-grid">
+                  ${filteredRows.map((r) => {
                     const url = r.url || '';
                     const ts = r.ts || 0;
                     const friendlyFilename = (r && typeof r.friendlyFilename === 'string') ? r.friendlyFilename : '';
@@ -1363,27 +1380,104 @@ function initializeOverlayPanelControls() {
                     const star = isFav ? '★' : '☆';
                     const starTitle = isFav ? 'Unfavorite' : 'Favorite';
                     return `
-                      <tr>
-                        <td style="padding:6px; width:140px; vertical-align:middle;">
-                          <img class="gem-bg-pattern" src="${escape(url)}" style="display:block; width:128px; height:70px; object-fit:contain; border-radius:4px;" />
-                        </td>
-                        <td style="padding:6px; vertical-align:middle; word-break:break-word;">${escape(source === 'seen' ? (friendlyFilename || url) : (source === 'recent' ? (friendlyFilename || url) : url))}</td>
-                        <td style="padding:6px; vertical-align:middle;">${escape(formatRecentImageDate(ts))}</td>
-                        <td style="padding:6px; vertical-align:middle; text-align:right; white-space:nowrap;">
-                          <button class="e-btn e-btn-borderless e-btn-onlyicon gem-recent-image-fav-btn gem-recent-image-fav-btn--table ${isFav ? 'gem-recent-image-fav-btn--active' : ''}" type="button" data-url="${escape(url)}" aria-label="${starTitle}" title="${starTitle}">
-                            <span class="gem-recent-image-star">${star}</span>
+                      <div class="gem-recent-image-tile" title="${escape(url)}">
+                        ${source === 'seen' ? `
+                          <button class="gem-recent-image-info-btn" type="button" data-url="${escape(url)}" aria-label="View image details" title="View image details">
+                            ℹ
                           </button>
+                        ` : ''}
+                        <button class="gem-recent-image-fav-btn ${isFav ? 'gem-recent-image-fav-btn--active' : ''}" type="button" data-url="${escape(url)}" aria-label="${starTitle}" title="${starTitle}">
+                          ${star}
+                        </button>
+                        <img class="gem-recent-image-thumb gem-checkered-canvas" src="${escape(url)}" alt="" />
+                        <div class="gem-recent-image-overlay">
                           <button class="e-btn e-btn-primary gem-recent-image-use-btn" type="button" data-url="${escape(url)}">
                             Add To Page
                           </button>
-                        </td>
-                      </tr>
+                        </div>
+                        <div class="gem-recent-image-meta">
+                          ${source === 'seen'
+                            ? `<div class="gem-recent-image-date" title="${escape(friendlyFilename || url)}">${escape(friendlyFilename || url)}</div>`
+                            : (source === 'recent' && friendlyFilename
+                              ? `<div class="gem-recent-image-date" title="${escape(friendlyFilename)}">${escape(friendlyFilename)}</div>`
+                              : '')}
+                        </div>
+                      </div>
                     `;
                   }).join('')}
-                </tbody>
-              </table>
-              </div>
-              ${empty}
+                </div>
+                ${empty}
+              `.trim()
+            : `
+                ${noMatches}
+                <div style="padding:0 16px 16px">
+                <table data-e-version="2" class="e-table e-table-bordered gem-recent-images-table" style="width:100%; font-size: 14 px;">
+                  <thead>
+                    <tr>
+                      <th style="width:140px;">Preview</th>
+                      <th>${source === 'seen' ? 'Filename' : (source === 'recent' ? 'Name' : 'URL')}</th>
+                      <th style="width:160px;">${escape(dateLabel)}</th>
+                      <th style="width:160px; text-align:right;">Use</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${filteredRows.map((r) => {
+                      const url = r.url || '';
+                      const ts = r.ts || 0;
+                      const friendlyFilename = (r && typeof r.friendlyFilename === 'string') ? r.friendlyFilename : '';
+                      const isFav = favSet.has(url);
+                      const star = isFav ? '★' : '☆';
+                      const starTitle = isFav ? 'Unfavorite' : 'Favorite';
+                      return `
+                        <tr>
+                          <td style="padding:6px; width:140px; vertical-align:middle; position:relative;">
+                            <img class="gem-checkered-canvas" src="${escape(url)}" style="display:block; width:128px; height:70px; object-fit:contain; border-radius:4px;" />
+                            ${source === 'seen' ? `
+                              <button class="gem-recent-image-info-btn gem-recent-image-info-btn--table" type="button" data-url="${escape(url)}" aria-label="View image details" title="View image details" style="position:absolute; top:8px; left:8px; background:rgba(255,255,255,0.9); border:1px solid #ccc; border-radius:50%; width:20px; height:20px; display:flex; align-items:center; justify-content:center; font-size:12px; cursor:pointer;">
+                                ℹ
+                              </button>
+                            ` : ''}
+                          </td>
+                          <td style="padding:6px; vertical-align:middle; word-break:break-word;">${escape(source === 'seen' ? (friendlyFilename || url) : (source === 'recent' ? (friendlyFilename || url) : url))}</td>
+                          <td style="padding:6px; vertical-align:middle;">${escape(formatRecentImageDate(ts))}</td>
+                          <td style="padding:6px; vertical-align:middle; text-align:right; white-space:nowrap;">
+                            <button class="e-btn e-btn-borderless e-btn-onlyicon gem-recent-image-fav-btn gem-recent-image-fav-btn--table ${isFav ? 'gem-recent-image-fav-btn--active' : ''}" type="button" data-url="${escape(url)}" aria-label="${starTitle}" title="${starTitle}">
+                              ${star}
+                            </button>
+                            <button class="e-btn e-btn-primary gem-recent-image-use-btn" type="button" data-url="${escape(url)}">
+                              Use
+                            </button>
+                          </td>
+                        </tr>
+                      `;
+                    }).join('')}
+                  </tbody>
+                </table>
+                </div>
+              `.trim();
+
+          if (opts.contentOnly && picker.querySelector('#gem-image-list-header')) {
+            // Replace everything after the header
+            const header = picker.querySelector('#gem-image-list-header');
+            if (header) {
+              // Remove all siblings after header
+              let nextSibling = header.nextSibling;
+              while (nextSibling) {
+                const toRemove = nextSibling;
+                nextSibling = nextSibling.nextSibling;
+                toRemove.remove();
+              }
+              // Add new content
+              const contentContainer = document.createElement('div');
+              contentContainer.innerHTML = contentHtml;
+              while (contentContainer.firstChild) {
+                picker.appendChild(contentContainer.firstChild);
+              }
+            }
+          } else {
+            picker.innerHTML = `
+              ${header}
+              ${contentHtml}
             `.trim();
           }
           }; // render
@@ -1545,6 +1639,92 @@ function initializeOverlayPanelControls() {
       });
     }
 
+    function openRecentlySeenImageDetailsModal(modal, url) {
+      const u = normalizeRecentImageUrlCandidate(url);
+      if (!u) return;
+
+      // Remove any existing modal
+      const existing = document.getElementById('gem-seen-image-details-modal');
+      if (existing) existing.remove();
+
+      // Get the image data from recently seen list
+      getRecentlySeenImages((seenList) => {
+        const seenItem = (Array.isArray(seenList) ? seenList : []).find((x) => x && x.url === u);
+        if (!seenItem) return;
+
+        const friendlyFilename = (seenItem.friendlyFilename || '');
+        const path = (seenItem.path || '');
+        const ts = seenItem.ts || 0;
+
+        const overlay = document.createElement('div');
+        overlay.id = 'gem-seen-image-details-modal';
+        overlay.className = 'gem-seen-image-details-modal';
+        overlay.innerHTML = `
+          <div class="gem-seen-image-details-modal__backdrop"></div>
+          <div class="gem-seen-image-details-modal__panel" role="dialog" aria-modal="true">
+            <div class="gem-seen-image-details-modal__header">
+              <div style="font-weight:600;">Image Details</div>
+              <button class="e-btn e-btn-borderless e-btn-onlyicon gem-seen-image-details-modal__close" type="button" aria-label="Close">
+                ✕
+              </button>
+            </div>
+            <div class="gem-seen-image-details-modal__thumbrow gem-checkered-canvas">
+              <img class="gem-checkered-canvas" src="${u.replace(/"/g, '&quot;')}" alt="" style="max-width:400px; max-height:300px;" />
+            </div>
+            <div class="gem-seen-image-details-modal__body">
+              <div class="gem-seen-image-details-modal__metadata">
+                <div class="e-field">
+                  <label class="e-field__label">URL</label>
+                  <div class="gem-seen-image-details-modal__url">${u.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+                </div>
+                ${friendlyFilename ? `
+                  <div class="e-field">
+                    <label class="e-field__label">Filename</label>
+                    <div>${friendlyFilename.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+                  </div>
+                ` : ''}
+                ${path ? `
+                  <div class="e-field">
+                    <label class="e-field__label">Path</label>
+                    <div>${path.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+                  </div>
+                ` : ''}
+                <div class="e-field">
+                  <label class="e-field__label">Last Seen</label>
+                  <div>${formatRecentImageDate(ts)}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        `.trim();
+
+        document.body.appendChild(overlay);
+
+        // Event handlers
+        const closeModal = () => overlay.remove();
+
+        overlay.addEventListener('click', (e) => {
+          if (e.target === overlay || e.target.classList.contains('gem-seen-image-details-modal__backdrop') || e.target.classList.contains('gem-seen-image-details-modal__close')) {
+            closeModal();
+          }
+        });
+
+        overlay.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape') {
+            closeModal();
+            e.preventDefault();
+            e.stopPropagation();
+          }
+        });
+
+        // Focus the close button for accessibility
+        const closeBtn = overlay.querySelector('.gem-seen-image-details-modal__close');
+        if (closeBtn) {
+          try { closeBtn.focus(); } catch (_) {}
+        }
+      });
+    }
+
     function openFavoriteImageMetaModal(modal, url, opts = {}) {
       const mode = (opts && opts.mode === 'create') ? 'create' : 'edit';
       const u = normalizeRecentImageUrlCandidate(url);
@@ -1589,7 +1769,7 @@ function initializeOverlayPanelControls() {
                 </div>
               ` : `
                 <div class="gem-favorite-image-meta-modal__thumbrow">
-                  <img class="gem-bg-pattern" src="${u.replace(/"/g, '&quot;')}" alt="" />
+                  <img class="gem-checkered-canvas" src="${u.replace(/"/g, '&quot;')}" alt="" />
                   <div class="gem-favorite-image-meta-modal__url">${u.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
                 </div>
               `}
@@ -1940,7 +2120,7 @@ function initializeOverlayPanelControls() {
       let previewImgMobile = container._gemPreviewImgMobile || null;
 
       // Apply inline styles to the container
-      container.style.maxWidth = '720px';
+      container.style.maxWidth = '40%';
       container.style.width = '720px';
       container.style.overflow = 'hidden';
 
@@ -1960,14 +2140,14 @@ function initializeOverlayPanelControls() {
       if (!previewCanvas) {
         previewCanvas = document.createElement('div');
         previewCanvas.id = 'gem-image-preview-canvas';
-        previewCanvas.style.backgroundColor = 'var(--token-box-default-background)';
-        previewCanvas.style.backgroundImage = 'linear-gradient(45deg, var(--token-background-strong) 25%, transparent 25%, transparent 75%, var(--token-background-strong) 75%, var(--token-background-strong)), linear-gradient(45deg, var(--token-background-strong) 25%, transparent 25%, transparent 75%, var(--token-background-strong) 75%, var(--token-background-strong))';
-        previewCanvas.style.backgroundPosition = '0 0, 10px 10px';
-        previewCanvas.style.backgroundSize = '20px 20px';
-        previewCanvas.style.minHeight = '140px';
-        // Fixed height prevents layout jumping when the image loads/decodes.
-        previewCanvas.style.maxHeight = '340px';
+        previewCanvas.classList.add('gem-checkered-canvas');
+
+        // previewCanvas.style.minHeight = '140px';
+        // Responsive height that scales down on short screens, prevents layout jumping when the image loads/decodes.
+        // previewCanvas.style.maxHeight = 'min(340px, calc(100vh - 200px))';
         previewCanvas.style.padding = '16px';
+        previewCanvas.style.width = '100%';
+        previewCanvas.style.height = '100%';
         previewCanvas.style.boxSizing = 'border-box';
       }
       container._gemPreviewCanvas = previewCanvas;
@@ -1979,7 +2159,14 @@ function initializeOverlayPanelControls() {
         previewParkingLot = document.createElement('div');
         previewParkingLot.id = 'gem-image-preview-parkinglot';
         previewParkingLot.style.display = 'none';
-        container.appendChild(previewParkingLot);
+        // Add parking lot to dialog header instead of container
+        const dialogHeader = container.querySelector('.e-dialog__header') || modal.querySelector('.e-dialog__header');
+        if (dialogHeader) {
+          dialogHeader.appendChild(previewParkingLot);
+        } else {
+          // Fallback to container if header not found
+          container.appendChild(previewParkingLot);
+        }
         container._gemPreviewParkingLot = previewParkingLot;
       }
 
@@ -2011,7 +2198,6 @@ function initializeOverlayPanelControls() {
       const ensurePreviewImgs = () => {
         // Ensure base layout once
         previewCanvas.style.display = 'flex';
-        previewCanvas.style.alignItems = 'center';
         previewCanvas.style.justifyContent = 'center';
 
         if (!previewImgDesktop) {
@@ -2021,11 +2207,47 @@ function initializeOverlayPanelControls() {
             previewImgDesktop.loading = 'eager';
             previewImgDesktop.decoding = 'async';
           } catch (_) {}
+
           previewImgDesktop.style.maxWidth = '100%';
           previewImgDesktop.style.maxHeight = '100%';
+          previewImgDesktop.style.objectFit = 'contain';
           previewImgDesktop.style.width = 'auto';
           previewImgDesktop.style.height = 'auto';
           previewImgDesktop.style.display = 'none';
+
+          // Size image to fit container while maintaining aspect ratio
+          const sizeImageToFit = (img) => {
+            const containerRect = previewCanvas.getBoundingClientRect();
+            const containerWidth = containerRect.width - 32; // Subtract padding (16px * 2)
+            const containerHeight = containerRect.height - 32; // Subtract padding (16px * 2)
+
+            if (img.naturalWidth && img.naturalHeight) {
+              const imgAspectRatio = img.naturalWidth / img.naturalHeight;
+              const containerAspectRatio = containerWidth / containerHeight;
+
+              let newWidth, newHeight;
+
+              if (imgAspectRatio > containerAspectRatio) {
+                // Image is wider than container - fit by width
+                newWidth = containerWidth;
+                newHeight = containerWidth / imgAspectRatio;
+              } else {
+                // Image is taller than container - fit by height
+                newHeight = containerHeight;
+                newWidth = containerHeight * imgAspectRatio;
+              }
+
+              img.style.width = newWidth + 'px';
+              img.style.height = newHeight + 'px';
+              img.style.maxWidth = newWidth + 'px';
+              img.style.maxHeight = newHeight + 'px';
+            }
+          };
+
+          previewImgDesktop.onload = () => {
+            sizeImageToFit(previewImgDesktop);
+          };
+
           previewImgDesktop.onerror = () => {
             console.log("[Gem] Failed to load desktop image:", previewImgDesktop.src);
             previewLog('img error', { debugId: container._gemPreviewDebugId, tab: 'desktop', src: previewImgDesktop.src });
@@ -2051,11 +2273,18 @@ function initializeOverlayPanelControls() {
             previewImgMobile.loading = 'eager';
             previewImgMobile.decoding = 'async';
           } catch (_) {}
+
           previewImgMobile.style.maxWidth = '100%';
-          previewImgMobile.style.maxHeight = '100%';
+          previewImgMobile.style.maxHeight = '100%'; 
+          previewImgMobile.style.objectFit = 'contain';
           previewImgMobile.style.width = 'auto';
           previewImgMobile.style.height = 'auto';
           previewImgMobile.style.display = 'none';
+
+          previewImgMobile.onload = () => {
+            sizeImageToFit(previewImgMobile);
+          };
+
           previewImgMobile.onerror = () => {
             console.log("[Gem] Failed to load mobile image:", previewImgMobile.src);
             previewLog('img error', { debugId: container._gemPreviewDebugId, tab: 'mobile', src: previewImgMobile.src });
@@ -2107,7 +2336,7 @@ function initializeOverlayPanelControls() {
           } catch (_) {}
           return;
         }
-        // Position preview canvas right before the dialog header
+        // Position preview canvas inside the dialog header
         const dialogHeader = container.querySelector('.e-dialog__header') || modal.querySelector('.e-dialog__header');
         if (!dialogHeader) {
           // Fallback: position as sibling to parking lot
@@ -2122,17 +2351,16 @@ function initializeOverlayPanelControls() {
           return;
         }
 
-        // Position right before the dialog header
-        const headerParent = dialogHeader.parentNode;
-        if (previewCanvas.parentNode !== headerParent) {
+        // Position inside the dialog header as first child
+        if (previewCanvas.parentNode !== dialogHeader) {
           try { previewCanvas.remove(); } catch (_) {}
           previewCanvas.style.display = 'block';
-          headerParent.insertBefore(previewCanvas, dialogHeader);
-          previewLog('preview inserted before header', { debugId: container._gemPreviewDebugId });
-        } else if (previewCanvas.nextSibling !== dialogHeader) {
-          // Ensure it's positioned right before the header
-          headerParent.insertBefore(previewCanvas, dialogHeader);
-          previewLog('preview repositioned before header', { debugId: container._gemPreviewDebugId });
+          dialogHeader.insertBefore(previewCanvas, dialogHeader.firstChild);
+          previewLog('preview inserted inside header', { debugId: container._gemPreviewDebugId });
+        } else if (previewCanvas !== dialogHeader.firstChild) {
+          // Ensure it's positioned as first child of header
+          dialogHeader.insertBefore(previewCanvas, dialogHeader.firstChild);
+          previewLog('preview repositioned inside header', { debugId: container._gemPreviewDebugId });
         }
       };
 
@@ -2268,6 +2496,8 @@ function initializeOverlayPanelControls() {
             img.setAttribute('src', imageUrl);
             previewLog('preview src set', { debugId: container._gemPreviewDebugId, active, src: imageUrl });
             previewLog('img src attribute set', { debugId: container._gemPreviewDebugId, active, url: imageUrl, imgSrc: img.src });
+            // Size image immediately in case it's cached and loads instantly
+            setTimeout(() => sizeImageToFit(img), 10);
           }
           syncPreviewVisibilityToTab();
         } else {
@@ -2365,22 +2595,6 @@ function initializeOverlayPanelControls() {
                   }
                 }
               });
-            } catch (_) {}
-
-            // Then ensure it is placed back as the first child of the active dialog content.
-            try {
-              if (container._gemPreviewCanvas && !container.querySelector('#gem-image-preview-canvas')) {
-                const dc = container.querySelector('div.e-dialog__content') || modal.querySelector('div.e-dialog__content');
-                if (dc) {
-                  if (container._gemPreviewCanvas.parentNode !== dc) {
-                    dc.insertBefore(container._gemPreviewCanvas, dc.firstChild);
-                  }
-                } else if (container._gemPreviewParkingLot) {
-                  if (container._gemPreviewCanvas.parentNode !== container._gemPreviewParkingLot) {
-                    container._gemPreviewParkingLot.appendChild(container._gemPreviewCanvas);
-                  }
-                }
-              }
             } catch (_) {}
 
             // Check if element was added
@@ -2659,6 +2873,31 @@ function initializeOverlayPanelControls() {
   initializeLinkEditorFocus();
 
   console.log("[Gem] Overlay panel controls initialized - Escape key will close open overlay panels");
+
+  // Initialize keyword swap functionality (may not be loaded yet)
+  function tryInitializeKeywordSwap() {
+    if (window.initializeKeywordSwap) {
+      console.log("[Gem] Calling initializeKeywordSwap");
+      window.initializeKeywordSwap();
+      return true;
+    }
+    return false;
+  }
+
+  // Try immediately
+  if (!tryInitializeKeywordSwap()) {
+    // If not loaded yet, check periodically for up to 5 seconds
+    let attempts = 0;
+    const checkInterval = setInterval(() => {
+      attempts++;
+      if (tryInitializeKeywordSwap()) {
+        clearInterval(checkInterval);
+      } else if (attempts >= 50) { // 50 * 100ms = 5 seconds
+        console.log("[Gem] Keyword swap initialization timed out - function not found");
+        clearInterval(checkInterval);
+      }
+    }, 100);
+  }
 
   // Optional: Add debugging function
   window.debugOverlayPanels = function() {

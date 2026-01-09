@@ -534,7 +534,7 @@ function setupClonedIframe(originalIframe) {
 
   Object.assign(containerDiv.style, {
 
-    zIndex: "9"
+    zIndex: "3"
   });
 
   const cloneIframe = document.createElement("iframe");
