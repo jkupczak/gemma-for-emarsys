@@ -1203,8 +1203,9 @@ function initializeSnippetsTab() {
   // Function to set up the add snippet button
   function setupAddSnippetButton() {
     const addButton = document.querySelector('.gem-add-snippet-btn');
-    if (addButton) {
+    if (addButton && !addButton.hasAttribute('data-gem-handler-attached')) {
       addButton.addEventListener('click', () => openSnippetEditor(null));
+      addButton.setAttribute('data-gem-handler-attached', 'true');
       console.log("[Gem] Add snippet button handler attached");
     }
   }
@@ -1213,12 +1214,15 @@ function initializeSnippetsTab() {
   function setupEditSnippetButtons() {
     const editButtons = document.querySelectorAll('.gem-edit-snippet-btn');
     editButtons.forEach(button => {
-      button.addEventListener('click', (event) => {
-        const snippetId = event.currentTarget.getAttribute('data-snippet-id');
-        if (snippetId) {
-          openSnippetEditor(snippetId);
-        }
-      });
+      if (!button.hasAttribute('data-gem-handler-attached')) {
+        button.addEventListener('click', (event) => {
+          const snippetId = event.currentTarget.getAttribute('data-snippet-id');
+          if (snippetId) {
+            openSnippetEditor(snippetId);
+          }
+        });
+        button.setAttribute('data-gem-handler-attached', 'true');
+      }
     });
     console.log("[Gem] Edit snippet button handlers attached");
   }
@@ -2745,8 +2749,20 @@ let insertionCounter = 0;
     console.log(`[Gem] INSERT #${insertionCounter} (${insertionId}): insertSnippetAtCaret called for element ${element.id || 'unknown'}`);
     console.log(`[Gem] INSERT #${insertionCounter}: From drop: ${dropId || 'unknown'}`);
     try {
+      // Ensure doc.getSelection is available
+      if (!doc || typeof doc.getSelection !== 'function') {
+        console.warn('[Gem] INSERT #' + insertionCounter + ': Document getSelection not available, using fallback');
+        // Continue with fallback insertion logic
+      }
+
       const selection = doc.getSelection();
       let range = null;
+
+      // Ensure selection is valid
+      if (!selection) {
+        console.warn('[Gem] INSERT #' + insertionCounter + ': No selection available, using fallback');
+        // Continue with fallback insertion logic
+      }
 
       // Prefer a range derived from the drop coordinates (more accurate than current selection)
       if (dropEvent && typeof dropEvent.clientX === 'number' && typeof dropEvent.clientY === 'number') {
@@ -2763,12 +2779,16 @@ let insertionCounter = 0;
       }
 
       // Fall back to the current selection if it exists and is inside the target element
-      if (!range && selection && selection.rangeCount) {
-        const candidate = selection.getRangeAt(0);
-        const container = candidate.commonAncestorContainer;
-        const containerEl = container.nodeType === Node.ELEMENT_NODE ? container : container.parentElement;
-        if (containerEl && element.contains(containerEl)) {
-          range = candidate;
+      if (!range && selection && typeof selection.rangeCount === 'number' && selection.rangeCount > 0) {
+        try {
+          const candidate = selection.getRangeAt(0);
+          const container = candidate.commonAncestorContainer;
+          const containerEl = container.nodeType === Node.ELEMENT_NODE ? container : container.parentElement;
+          if (containerEl && element.contains(containerEl)) {
+            range = candidate;
+          }
+        } catch (e) {
+          console.warn('[Gem] Error accessing selection range:', e);
         }
       }
 

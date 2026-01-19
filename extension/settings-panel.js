@@ -5,9 +5,15 @@ console.log("[gem] settings-panel.js LOADED in frame:", window.location.href);
 // ------------------------------------------------------------
 const GEM_THEME_MODE_STORAGE_KEY = "gemThemeMode";
 const GEM_THEME_MODE_LOCAL_KEY = "gemThemeMode";
+const GEM_RECENT_IMAGES_STORAGE_KEY = 'gemRecentImages';
+const GEM_RECENTLY_SEEN_IMAGES_STORAGE_KEY = 'gemRecentlySeenImages';
 
 function normalizeGemThemeMode(value) {
-  return value === "original" ? "original" : "gemma";
+  if (value === "original") return "original";
+  if (value === "gemma-amethyst") return "gemma-amethyst";
+  if (value === "gemma-ruby") return "gemma-ruby";
+  if (value === "gemma-turquoise") return "gemma-turquoise";
+  return "gemma-amethyst"; // default
 }
 
 function applyGemThemeMode(mode, { persistLocal = false } = {}) {
@@ -15,10 +21,23 @@ function applyGemThemeMode(mode, { persistLocal = false } = {}) {
   const html = document.documentElement;
   if (!html) return;
 
+  // Remove all theme classes first
+  html.classList.remove("gem--retheme-inactive", "gem-theme-active", "gem-theme-amethyst", "gem-theme-ruby", "gem-theme-turquoise");
+
   if (normalized === "original") {
     html.classList.add("gem--retheme-inactive");
   } else {
-    html.classList.remove("gem--retheme-inactive");
+    // Apply gem theme active class for all gemma themes
+    html.classList.add("gem-theme-active");
+
+    // Apply specific theme class
+    if (normalized === "gemma-amethyst") {
+      html.classList.add("gem-theme-amethyst");
+    } else if (normalized === "gemma-ruby") {
+      html.classList.add("gem-theme-ruby");
+    } else if (normalized === "gemma-turquoise") {
+      html.classList.add("gem-theme-turquoise");
+    }
   }
 
   if (persistLocal) {
@@ -166,7 +185,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         height: 18px;
         margin-right: 12px;
         cursor: pointer;
-        accent-color: var(--gemma-primary-default);
+        accent-color: var(--token-primary-600);
         border-radius: 4px;
       }
 
@@ -459,17 +478,25 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         </div>
 
         <div class="gem-setting-section">
+          <button class="e-btn e-btn-secondary gem-keyboard-shortcuts-btn" type="button" style="width: 100%; height:auto; padding: 12px;">
+            ⌨️ Keyboard Shortcuts Reference
+          </button>
+        </div>
+
+        <div class="gem-setting-section">
           <h3>Theme</h3>
           <div class="gem-setting">
             <div style="display: flex; gap: 12px; align-items: center;">
               <label for="opt-theme-mode" style="flex: 1;">Theme</label>
               <select id="opt-theme-mode" style="width: 220px;">
-                <option value="gemma" selected>Gemma Theme</option>
+                <option value="gemma-amethyst" selected>Gemma Amethyst</option>
+                <option value="gemma-ruby">Gemma Ruby</option>
+                <option value="gemma-turquoise">Gemma Turquoise</option>
                 <option value="original">Original Emarsys Theme</option>
               </select>
             </div>
             <div style="font-size: 14px; color: var(--token-font-default); margin-top: 8px;">
-              Switch between the Gemma color scheme and the original Emarsys UI.
+              Choose from different Gemma color themes or use the original Emarsys UI.
             </div>
           </div>
         </div>
@@ -675,6 +702,12 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
           window.showWelcomeModal();
         }
       });
+    }
+
+    // Keyboard shortcuts button
+    const shortcutsBtn = panelEl.querySelector(".gem-keyboard-shortcuts-btn");
+    if (shortcutsBtn) {
+      shortcutsBtn.addEventListener("click", showKeyboardShortcutsModal);
     }
 
     return panelEl;
@@ -1406,6 +1439,43 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
   };
 
   // ------------------------------------------------------------
+  // Keyboard shortcut: ⌘+G / Ctrl+G opens the settings panel
+  // ------------------------------------------------------------
+  function setupOpenSettingsPanelShortcut() {
+    document.addEventListener('keydown', (e) => {
+      // ⌘+G (macOS) / Ctrl+G (Win/Linux)
+      if (!(e.metaKey || e.ctrlKey)) return;
+      if (e.shiftKey || e.altKey) return;
+      if ((e.key || '').toLowerCase() !== 'g') return;
+
+      // Don't trigger while typing
+      const ae = document.activeElement;
+      if (ae) {
+        const tag = (ae.tagName || '').toLowerCase();
+        const isTypingTarget =
+          tag === 'input' ||
+          tag === 'textarea' ||
+          tag === 'select' ||
+          ae.isContentEditable;
+        if (isTypingTarget) return;
+      }
+
+      // Toggle the panel
+      if (isOpen) {
+        closePanel();
+      } else {
+        openPanel();
+      }
+
+      // Prevent browser default (and any editor bindings)
+      e.preventDefault();
+      e.stopPropagation();
+    }, true);
+  }
+
+  setupOpenSettingsPanelShortcut();
+
+  // ------------------------------------------------------------
   // Keep dark theme in sync with storage changes
   // ------------------------------------------------------------
   chrome.storage.onChanged.addListener((changes, namespace) => {
@@ -1513,5 +1583,85 @@ console.log("[gem] settings-panel.js: setting up message listener");
       sendResponse({success: true});
     }
   });
+
+  function showKeyboardShortcutsModal() {
+  // Remove any existing modal
+  const existing = document.getElementById('gem-keyboard-shortcuts-modal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'gem-keyboard-shortcuts-modal';
+  modal.className = 'gem-welcome-modal';
+  modal.innerHTML = `
+    <div class="gem-welcome-modal__panel" role="dialog" aria-modal="true">
+      <div class="gem-welcome-modal__header">
+        <div style="font-weight:600;">Gemma Keyboard Shortcuts</div>
+        <button class="e-btn e-btn-borderless e-btn-onlyicon gem-welcome-modal__close" type="button" aria-label="Close">
+          ✕
+        </button>
+      </div>
+      <div class="gem-welcome-modal__body" style="max-height: 60vh; overflow-y: auto;">
+        <div style="margin-bottom: 24px;">
+          <h3 style="margin: 0 0 16px 0; color: var(--token-accent-foreground);">General Shortcuts</h3>
+          <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 8px; align-items: center;">
+            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">Ctrl+G and ⌘+G</kbd>
+            <span>Open/Close Gemma Settings Panel</span>
+
+            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">Ctrl+Shift+F and ⌘+Shift+F</kbd>
+            <span>Toggle Expanded View Mode</span>
+
+            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">Ctrl+S and ⌘+S</kbd>
+            <span>Save the current email</span>
+
+            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">Ctrl+/ and ⌘+/</kbd>
+            <span>Toggle the mobile email preview pane on and off</span>
+          </div>
+        </div>
+
+        <div style="margin-bottom: 24px;">
+          <h3 style="margin: 0 0 16px 0; color: var(--token-accent-foreground);">Image Properties Dialog</h3>
+          <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 8px; align-items: center;">
+            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">Enter</kbd>
+            <span>Accept changes (clicks the OK button)</span>
+
+            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">⌘+D / Ctrl+D</kbd>
+            <span>Toggle between Desktop and Mobile tabs</span>
+          </div>
+        </div>
+
+        <div style="margin-bottom: 24px;">
+          <h3 style="margin: 0 0 16px 0; color: var(--token-accent-foreground);">Block Editing</h3>
+          <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 8px; align-items: center;">
+            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">Double-click</kbd>
+            <span>on an editable image to open the Image Properties dialog</span>
+          </div>
+        </div>
+
+      </div>
+      <div class="gem-welcome-modal__footer">
+        <button class="e-btn e-btn-primary gem-keyboard-shortcuts-close" type="button">Close</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  // Event handlers
+  const closeModal = () => modal.remove();
+
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal || e.target.classList.contains('gem-welcome-modal__close') || e.target.classList.contains('gem-keyboard-shortcuts-close')) {
+      closeModal();
+    }
+  });
+
+  modal.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      closeModal();
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  });
+}
 
 })();

@@ -41,6 +41,15 @@ function initializeContentBlockToolbar() {
 
   // Inject extra toolbar actions when the toolbar appears
   setupToolbarInjectionObserver();
+
+  // Handle double-clicks on editable images in preview iframe
+  setupEditableImageDoubleClickHandler();
+
+  // Handle Enter key presses in Image Properties dialog
+  setupImagePropertiesEnterKeyHandler();
+
+  // Handle CMD+D / CTRL+D shortcut for toggling desktop/mobile tabs
+  setupImagePropertiesTabToggleShortcut();
 }
 
 function applyToolbarSettingsAsClasses() {
@@ -825,6 +834,210 @@ function nudgeEmarsysDirtyDetectionViaFocus(doc, editables = []) {
       }, 0);
     }
   } catch (_) {}
+}
+
+function setupEditableImageDoubleClickHandler() {
+  console.log("[gem] Setting up editable image double-click handler");
+
+  // Function to handle double-clicks on editable images within the preview iframe
+  function handleImageDoubleClick(event) {
+    const target = event.target;
+
+    // Check if the target is an image with [e-editable] attribute
+    if (target.tagName === 'IMG' && target.hasAttribute('e-editable')) {
+      console.log("[gem] Double-click detected on editable image:", target);
+
+      // Find the image properties button
+      const imagePropsButton = document.querySelector('button[image-toolbar-button="image-properties-plugin"]');
+
+      if (imagePropsButton) {
+        console.log("[gem] Triggering click on image properties button");
+        // Simulate a click on the button
+        imagePropsButton.click();
+      } else {
+        console.log("[gem] Image properties button not found in DOM");
+      }
+    }
+  }
+
+  // Set up a mutation observer to watch for the preview iframe
+  const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      mutation.addedNodes.forEach((node) => {
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          // Check if the added node is or contains the preview iframe
+          const iframe = node.classList && node.classList.contains('e-contentblocks-preview__iframe') ?
+            node : node.querySelector && node.querySelector('.e-contentblocks-preview__iframe');
+
+          if (iframe) {
+            console.log("[gem] Preview iframe found, attaching double-click handler");
+
+            // The iframe content is in a different document context
+            // We need to inject our handler into the iframe's document
+            try {
+              const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+
+              // Add the double-click event listener to the iframe's document
+              iframeDoc.addEventListener('dblclick', handleImageDoubleClick, true);
+
+              console.log("[gem] Double-click handler attached to iframe");
+            } catch (error) {
+              console.warn("[gem] Could not attach handler to iframe:", error);
+            }
+          }
+        }
+      });
+    });
+  });
+
+  // Start observing the document for iframe additions
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true
+  });
+
+  // Also check for existing iframes in case they were already loaded
+  const existingIframe = document.querySelector('.e-contentblocks-preview__iframe');
+  if (existingIframe) {
+    console.log("[gem] Existing preview iframe found, attaching double-click handler");
+
+    try {
+      const iframeDoc = existingIframe.contentDocument || existingIframe.contentWindow.document;
+
+      // Add the double-click event listener to the iframe's document
+      iframeDoc.addEventListener('dblclick', handleImageDoubleClick, true);
+
+      console.log("[gem] Double-click handler attached to existing iframe");
+    } catch (error) {
+      console.warn("[gem] Could not attach handler to existing iframe:", error);
+    }
+  }
+}
+
+function setupImagePropertiesEnterKeyHandler() {
+  console.log("[gem] Setting up Image Properties Enter key handler");
+
+  // Function to check if Image Properties dialog is the topmost modal
+  function isImagePropertiesDialogTopmost() {
+    const dialogs = document.querySelectorAll('.e-dialog__container');
+    if (dialogs.length === 0) return false;
+
+    // Get the topmost dialog (last one in DOM)
+    const topmostDialog = dialogs[dialogs.length - 1];
+
+    // Check if it contains "Image Properties" in the title
+    const titleElement = topmostDialog.querySelector('.e-dialog__title, h2, .dialog-title');
+    if (!titleElement) return false;
+
+    const titleText = titleElement.textContent || titleElement.innerText || '';
+    return titleText.trim().toLowerCase().includes('image properties');
+  }
+
+  // Function to check if current focus is on a disallowed input
+  function isFocusOnDisallowedInput() {
+    const activeElement = document.activeElement;
+    if (!activeElement) return false;
+
+    // Allow focus in "Image alternative text" input
+    if (activeElement.placeholder === 'Image alternative text') {
+      return false;
+    }
+
+    // Check if focused element is a search input (disallowed)
+    const isSearchInput = activeElement.matches('input[type="search"]') ||
+                         activeElement.classList.contains('e-input-search') ||
+                         activeElement.classList.contains('gem-favorite-images-search') ||
+                         activeElement.classList.contains('gem-seen-images-search');
+
+    return isSearchInput;
+  }
+
+  // Handle Enter key presses
+  function handleEnterKey(event) {
+    if (event.key !== 'Enter') return;
+
+    // Check if Image Properties dialog is open and topmost
+    if (!isImagePropertiesDialogTopmost()) return;
+
+    // Check if focus is on a disallowed input
+    if (isFocusOnDisallowedInput()) return;
+
+    // Find and click the OK button
+    const okButton = document.querySelector('.e-dialog__container button.ok-btn');
+    if (okButton) {
+      console.log("[gem] Enter key pressed in Image Properties dialog, clicking OK button");
+      okButton.click();
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  }
+
+  // Add the keydown event listener to the document
+  document.addEventListener('keydown', handleEnterKey, true);
+
+  console.log("[gem] Image Properties Enter key handler attached");
+}
+
+function setupImagePropertiesTabToggleShortcut() {
+  console.log("[gem] Setting up Image Properties tab toggle shortcut (CMD+D / CTRL+D)");
+
+  // Function to check if Image Properties dialog is open
+  function isImagePropertiesDialogOpen() {
+    const dialogs = document.querySelectorAll('.e-dialog__container');
+    if (dialogs.length === 0) return false;
+
+    // Check if any dialog contains "Image Properties" in the title
+    for (const dialog of dialogs) {
+      const titleElement = dialog.querySelector('.e-dialog__title, h2, .dialog-title');
+      if (titleElement) {
+        const titleText = titleElement.textContent || titleElement.innerText || '';
+        if (titleText.trim().toLowerCase().includes('image properties')) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  // Handle CMD+D / CTRL+D key presses
+  function handleTabToggleShortcut(event) {
+    // Check if CMD+D (Mac) or CTRL+D (Windows/Linux)
+    const isCmdOrCtrlD = (event.metaKey || event.ctrlKey) && event.key === 'd';
+    if (!isCmdOrCtrlD) return;
+
+    // Check if Image Properties dialog is open
+    if (!isImagePropertiesDialogOpen()) return;
+
+    // Find the desktop and mobile tabs
+    const desktopTab = document.querySelector('.e-tabs-dialogheader [data-tab="desktop"]');
+    const mobileTab = document.querySelector('.e-tabs-dialogheader [data-tab="mobile"]');
+
+    if (!desktopTab || !mobileTab) {
+      console.log("[gem] Desktop or mobile tab not found");
+      return;
+    }
+
+    // Check which tab is currently active and toggle to the other one
+    if (desktopTab.classList.contains('e-tabs__title-active')) {
+      console.log("[gem] Toggling from Desktop to Mobile tab");
+      mobileTab.click();
+    } else if (mobileTab.classList.contains('e-tabs__title-active')) {
+      console.log("[gem] Toggling from Mobile to Desktop tab");
+      desktopTab.click();
+    } else {
+      console.log("[gem] No active tab found, defaulting to Desktop");
+      desktopTab.click();
+    }
+
+    // Prevent default browser behavior (bookmark dialog on Ctrl+D)
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  // Add the keydown event listener to the document
+  document.addEventListener('keydown', handleTabToggleShortcut, true);
+
+  console.log("[gem] Image Properties tab toggle shortcut handler attached");
 }
 
 // Wait for page to be ready before initializing

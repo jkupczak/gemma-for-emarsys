@@ -31,11 +31,13 @@ function createWelcomeModalHTML() {
             </li>
             <li><b>Image Picker</b> When adding an image to your email you'll now get a preview of it right next to the image editor. Makes adding ALT text much easier! You can also see a list of your recently seen, used, and favorited images for quick selection.</li>
             <li>
+              <b>Enhanced Content Editing</b> Enjoy improved content block editing with better organization and management tools.
+            </li>
+            <li>
               <b>Text Highlighting</b> Automatically highlight important text in the email editor preview. Edit what text is highlighted and what color the highlight is in the Settings panel.
             </li>
             <li><b>Mobile Previews</b> See a mobile preview of your email right next to your desktop view while you make edits. This is turned on by default and can be toggled from the settings menu or the purple phone icon in the bottom left of the editor. You can also drag the mobile preview left and right to change the size. The settings panel lets you adjust the scaling too. <em>(You'll also see a mobile preview when you load a contact preview)</em></li>
             <li><b>Custom Color Swatches</b> Custom color swatches are now permanent! Emarsys doesn't remember what colors you used when editing an email. But Gemma does. You can also add default presets that will always display at the top of the color picker (up to 8) from the settings panel.</li>
-            <li><b>Blocks Panel</b> Choose how many blocks to display per row in the blocks panel (1, 2, or 3 per row). More blocks per row means less scrolling to find what you need! Pin or hide blocks from the blocks panel to keep them organized.
             </li>
             <li><b>Image Picker</b> When adding an image to your email you'll now get a preview of it right next to the image editor. Makes adding ALT text much easier! You can also see a list of your recently used images for quick selection.</li>
             <li><b>Fullscreen Email Editing</b> Go fullscreen for a bigger view of your email. Use the purple expand icon in the bottom left of the email editor to modify your layout. This increases the total viewable area of your email by over 40%!</li>
@@ -74,13 +76,6 @@ function createWelcomeModalHTML() {
               <li>The "Default Blocks" and "Saved Blocks" headers are now sticky and scroll with the panel.</li>
             </ul>
 
-            <h5>Links Panel</h5>
-            <ul>
-              <li>Links that could be tracked but are set to not be tracked are now alerted to the user.</li>
-              <li>Links table header is now sticky and scrolls with the table in most cases.</li>
-              <li>Panel is now styled to be more readable.</li>
-            </ul>
-
             <h5>Snippets Panel</h5>
             <ul>
               <li>A new snippets panel has been added to the vertical navigation.</li>
@@ -110,7 +105,21 @@ function createWelcomeModalHTML() {
                 <li>Recently Seen and Favorites can be searched by name, url, path, and more.</li>
                 <li>Favorites are grouped by category, translation, or language.</li>
                 <li>Favorites can be enriched with metadata: search keyword, category, language, translation, alt text, and width. The latter two will be automatically inserted for you if you choose the image.</li>
+                <li>Shortcut: Pressing 'Enter' now initiates a click on the "OK" button to accept your changes and close the dialog.</li>
+                <li>Shortcut: Pressing 'CMD+D' or 'CTRL+D' toggles the desktop and mobile tabs.</li>
               </ul>
+            </ul>
+
+            <h5>Content Blocks</h5>
+            <ul>
+              <li>Double-clicking an editable image instantly opens the Image Properties dialog.</li>
+              <li>Content Block Toolbar
+                <ul>
+                  <li>Now features a "Convert ESL to Tokens" button to convert plain text ESL into ESL tokens.</li>
+                  <li>Now features a "Keyword Swap" button to quickly swap keywords with snippets.</li>
+                  <li>Can be customized to show or hide most icons based on preferences you set in the settings panel.</li>
+                </ul>
+              </li>
             </ul>
 
             <h5>Link Editor Dialog</h5>
@@ -212,187 +221,8 @@ function initializeWelcomeModal() {
   });
 }
 
-// Function to inject welcome modal CSS
-function injectWelcomeModalCSS() {
-  // Check if CSS is already injected
-  if (document.getElementById('gem-welcome-modal-styles')) {
-    return;
-  }
-
-  const css = `
-    .gem-welcome-modal {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0, 0, 0, 0.7);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 10000;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    }
-
-    .gem-welcome-modal-content {
-        background: var(--token-box-default-background, #ffffff);
-        border-radius: 12px;
-        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-        max-width: 1000px;
-        max-height: 80vh;
-        margin: 20px;
-        position: relative;
-        display: flex;
-        flex-direction: row;
-        overflow: hidden;
-    }
-
-    .gem-welcome-modal-header {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 30px 40px 25px;
-        text-align: center;
-        width: 300px;
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-    }
-
-    .gem-welcome-modal-header h2 {
-        margin: 0 0 10px 0;
-        font-size: 28px;
-        font-weight: 700;
-    }
-
-    .gem-welcome-modal-header p {
-        margin: 0;
-        font-size: 16px;
-        opacity: 0.9;
-    }
-
-    .gem-welcome-modal-body {
-        padding: 30px 40px;
-        overflow-y: auto;
-        flex: 1;
-        min-height: 0;
-    }
-
-    .gem-welcome-modal-body h3 {
-        margin: 0 0 20px 0;
-        color: var(--token-font-default, #333333);
-        font-size: 20px;
-        font-weight: 600;
-    }
-
-    .gem-welcome-modal-features {
-        list-style: none;
-        padding: 0;
-        margin: 0;
-    }
-
-    .gem-welcome-modal-features li {
-        margin-bottom: 16px;
-        padding-left: 24px;
-        position: relative;
-        line-height: 1.5;
-        color: var(--token-font-default, #333333);
-    }
-
-    .gem-welcome-modal-features li b {
-        font-weight: 800;
-    }
-
-    .gem-welcome-modal-features li:before {
-        content: "✨";
-        position: absolute;
-        left: 0;
-        top: 0;
-        font-size: 16px;
-    }
-
-    .gem-welcome-modal-features-sublist {
-        list-style: none;
-        padding: 0;
-        margin: 8px 0 0 0;
-    }
-
-    .gem-welcome-modal-features-sublist li {
-        margin-bottom: 6px;
-        padding-left: 20px;
-        position: relative;
-        line-height: 1.4;
-        color: var(--token-font-default, #666666);
-        font-size: 14px;
-    }
-
-    .gem-welcome-modal-features-sublist li:before {
-        content: "•";
-        position: absolute;
-        left: 8px;
-        top: 0;
-        font-size: 12px;
-        color: var(--token-font-default, #999999);
-    }
-
-    .gem-welcome-modal-footer {
-
-        text-align: center;
-
-    }
-
-    .gem-welcome-modal-button {
-        background: white;
-        color: black;
-        border: none;
-        padding: 12px 30px;
-        border-radius: 25px;
-        font-size: 16px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: transform 0.2s ease, box-shadow 0.2s ease;
-    }
-
-    .gem-welcome-modal-button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
-    }
-
-    .gem-scrollable {
-        overflow-y: auto;
-        scrollbar-width: thin;
-        scrollbar-color: rgba(0, 0, 0, 0.2) transparent;
-    }
-
-    .gem-scrollable::-webkit-scrollbar {
-        width: 6px;
-    }
-
-    .gem-scrollable::-webkit-scrollbar-track {
-        background: transparent;
-    }
-
-    .gem-scrollable::-webkit-scrollbar-thumb {
-        background-color: rgba(0, 0, 0, 0.2);
-        border-radius: 3px;
-    }
-
-    .gem-scrollable::-webkit-scrollbar-thumb:hover {
-        background-color: rgba(0, 0, 0, 0.3);
-    }
-  `;
-
-  const style = document.createElement('style');
-  style.id = 'gem-welcome-modal-styles';
-  style.textContent = css;
-  document.head.appendChild(style);
-
-  console.log("[Gem] Welcome modal CSS injected");
-}
-
 // Function to show the welcome modal (used by initializeWelcomeModal)
 function showWelcomeModal() {
-  // Inject CSS first
-  injectWelcomeModalCSS();
 
   // Create modal HTML
   const modalHTML = createWelcomeModalHTML();
@@ -415,9 +245,6 @@ window.showWelcomeModal = function() {
   if (existingModal) {
     existingModal.remove();
   }
-
-  // Inject CSS first
-  injectWelcomeModalCSS();
 
   // Create modal HTML
   const modalHTML = createWelcomeModalHTML();

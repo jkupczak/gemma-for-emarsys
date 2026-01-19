@@ -1,0 +1,351 @@
+/* ------------------------------------------------------------------------------------------------ */
+/* Expanded Editor view */
+/* ------------------------------------------------------------------------------------------------ */
+.gem-expanded .e-layout.e-layout-without_navigation.e-layout-fullheight.e-layout-with_steps {
+    padding: 0 !important;
+}
+
+.gem-expanded cb-header {
+    display: none !important;
+}
+
+/* Compact Email Tools Dropdown */
+.gem-expanded .gem-compact-email-tools {
+    flex-direction: row-reverse;
+    justify-content: flex-end;
+    display: flex !important;
+    gap: 16px;
+    border-bottom: 1px solid var(--token-border-default) !important;
+    padding: 16px 22px 16px 22px;
+}
+.gem-expanded .gem-compact-email-tools-dropdown {
+    display: flex;
+    align-items: center;
+}
+
+.gem-expanded .gem-email-tools-select {
+    padding: 0 10px 0 0;
+    border: 0;
+    background: none;
+    margin: 0;
+    font-size: 20px;
+    font-weight: bold;
+    display: block;
+    width: unset;
+    outline: none !important;
+    margin-left:-7px;
+}
+
+.gem-expanded .e-section__title {
+    font-size: 18px !important;
+}
+
+.gem-expanded gem-cb-draft-save-button {
+    margin-left: auto;
+}
+
+.gem-expanded .e-verticalnav__content .e-section__header {
+    padding: 0 22px !important;
+}
+
+.gem-expanded gem-cb-draft-save-button button {
+    font-size: 16px;
+    padding: 6px 18px;
+    min-height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 5px !important;
+}
+
+.gem-expanded .gem-compact-email-versions {
+    display: none !important;
+    border-bottom: 1px solid var(--token-border-default) !important;
+    gap: 8px;
+}
+
+.gem-expanded cb-multilanguage-locale-selector {
+    width: 100% !important;
+}
+.gem-expanded .gem-compact-email-versions.active {
+    display: flex !important;
+    padding: 10px 22px 22px 22px;
+}
+
+.gem-expanded main .e-contentblocks-navigation_section h1 {
+    margin: 0 !important;
+    line-height: 20px !important;
+    word-break: break-all;
+    line-height: 20px;
+    font-size: 13px !important;
+    font-weight: normal !important;
+    word-break: break-all;
+    position: relative;
+    padding: 20px 22px 16px 22px;
+}
+
+.gem-expanded main .gem-header-copy-icon {
+    word-break: normal;
+    position: absolute;
+    right: 22px;
+    background: var(--token-box-default-background);
+    box-shadow: 0px 0px 0px 2px, 0 0 20px 24px var(--token-box-default-background) !important;
+    opacity: 1 !important;
+}
+
+.gem-expanded gem-cb-draft-save-button button .e-btn__loading {
+    margin-right: 8px;
+    display: none !important;
+}
+.gem-expanded gem-cb-draft-save-button button .e-btn__loading.e-btn__loading-active {
+    margin-right: 8px;
+    display: block !important;
+}
+
+/* Compact Email Versions */
+.gem-expanded .gem-compact-email-versions {
+    padding: 8px;
+    border-bottom: 1px solid var(--token-neutral-200);
+    background: var(--token-neutral-50);
+}
+
+.gem-expanded cb-header.e-layout__header h1.e-layout__title {
+    font-size: 13px;
+    font-weight: normal;
+    padding: 16px 0 0 22px;
+    line-height: 20px;
+}
+
+.gem-expanded h1.e-layout__title {
+    border-bottom: 1px solid var(--token-border-default) !important;
+}
+.gem-expanded .gem-compact-email-tools:has(+ .gem-compact-email-versions.active) {
+    border-bottom: none !important;
+    padding-bottom: 0 !important;
+}
+
+
+.gem-expanded cb-header.e-layout__header {
+    padding: 0 10px !important;
+    margin-bottom: 0 !important 
+}
+
+.gem-expanded .e-layout__section.e-contentblocks-preview_section {
+    border-radius: 5px !important;
+    margin: 0 !important;
+    overflow: hidden !important;
+}
+
+.gem-expanded .e-layout__application .e-layout main.e-layout__content > .e-layout__section.e-contentblocks-navigation_section {
+    margin: 0!important;
+}
+
+.gem-expanded main .e-contentblocks-navigation_section {
+    display: flex !important;
+    flex-direction: column !important;
+    border-radius: 5px !important;
+}
+
+.gem-expanded .gem-iframe-wrapper {
+    border-radius: 5px !important;
+}
+
+.gem-expanded .gem-iframe-wrapper {
+    border-right:0 !important;
+    border-bottom:0 !important;
+}
+
+.gem-expanded #gem-mobile-frame {
+    margin: 0 !important;
+}
+
+.gem-expanded cb-version-selector .e-select {
+    padding-right: 28px !important;
+    background-position: calc(100% - 6px), 50% calc(100% + 1px) !important;
+}
+
+.gem-expanded cb-multilanguage-locale-selector e-icon.e-selectnew__icon {
+    right: 6px !important;
+}
+.gem-expanded cb-multilanguage-locale-selector .e-selectnew {
+    padding-right: 28px !important;
+}
+
+.gem-expanded .e-layout__application .e-layout main.e-layout__content {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 99;
+    padding: 10px 10px 10px 23px !important;
+    margin: 0 !important;
+    gap: 10px
+}
+
+.gem-expanded e-shellbar {
+    display: none !important;
+}
+
+.gem-expanded e-navigation {
+    z-index: 610;
+    display: block !important;
+    left: -60px;
+    margin: 0 !important;
+    box-shadow: none !important;
+    height: calc(100vh - 20px);
+    top: 10px !important;
+    transition: left 0.05s ease-out;
+}
+.gem-expanded e-navigation:hover {
+    left: 0 !important;
+    transition: left 0.05s ease-out;
+}
+
+.gem-expanded .e-steps {
+    display: none !important;
+}
+
+.gem-expanded .e-layout__section-sidebar_with_verticalnav {
+    border-radius: 5px !important;
+}
+
+.gem-expanded .e-layout__action {
+    margin: 0 !important;
+}
+
+.gem-expanded .e-navigation__menu {
+    height: calc(100vh - 69px) !important;
+    border-radius: 0 5px 5px 0 !important;
+}
+
+/* cb-header */
+.gem-expanded cb-header {
+    z-index: 500;
+    position: fixed;
+    left: 0;
+    width: 100%;
+    background: none;
+    color: #fff;
+    padding-left: 20px !important;
+    padding-right: 10px !important;
+    height: 56px;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    top: 0 !important;
+    margin: 0 !important;
+    align-items: anchor-center;
+}
+
+.gem-expanded cb-header vce-languages-selector {
+    margin:0 !important;
+}
+
+.gem-expanded cb-header vce-languages-selector div[role="button"] e-icon.e-selectnew__icon {
+    right: 4px !important;
+}
+.gem-expanded cb-header vce-languages-selector div[role="button"] {
+    background: transparent;
+
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 5px !important;
+    outline: 2px solid var(--token-input-default-borderActive);
+    font-weight:bold !important;
+    padding-right:22px !important;
+}
+
+.gem-expanded cb-header cb-top-menu-dropdown {
+    display: none !important;
+}
+
+.gem-expanded cb-header cb-draft-save-button {
+    margin: 0 !important;
+    order: 3;
+}
+
+.gem-expanded cb-header cb-draft-save-button button.e-btn {
+    border-radius:5px !important;
+}
+
+.gem-expanded cb-header cb-draft-save-button e-tooltip[disabled="false"] button.e-btn {
+    color: rgba(255, 255, 255, 0.5) !important;
+    background: rgb(72 70 108) !important;
+    border: 1px solid transparent !important;
+}
+
+.gem-expanded cb-header .e-layout__actions {
+    gap: 10px;
+    padding-left:10px !important;
+}
+
+/* campaign preview toolbar */
+.gem-expanded cb-campaign-preview > .e-section {
+    display: flex;
+    flex-direction: row;
+}
+.gem-expanded cb-campaign-preview > .e-section .e-section__header:before {
+    display: none !important;
+}
+.gem-expanded cb-campaign-preview > .e-section .e-section__header {
+    display: flex;
+    flex-direction: column;
+    padding: 14px 10px;
+    border-bottom: 0;
+    border-right: 1px solid var(--token-border-default);
+
+    & > .e-cell:first-child > .e-buttongroup {
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    & > .e-cell:first-child > .e-buttongroup .e-border-right {
+        display: none !important;
+    }
+
+    & cb-undo-redo-buttons > div {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+    & .e-cell .e-section__actions {
+        padding: 0 !important;
+    }
+    & .e-buttongroup.e-section__action {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin: 0;
+    }
+}
+
+.gem-expanded .e-contentblocks-preview__iframe {
+    border-radius: 0 !important;
+}
+
+.gem-expanded .e-contentblocks-preview {
+    top:0 !important;
+    height:100% !important;
+}
+
+.gem-expanded cb-header cb-save-button {
+    margin: 0 !important;
+}
+.gem-expanded cb-multilanguage-locale-selector:has(.e-hidden) {
+    display: none;
+  }
+
+.gem-expanded cb-header cb-save-button button {
+    font-weight: normal !important;
+    border-radius: 5px !important;
+}
+
+.gem-expanded cb-header a.e-layout__back {
+    display: none !important;
+}
+
+.gem-expanded .gem-enhanced-blocks-panel--2:has(cb-available-block-list) {
+    flex: 0 0 450px !important;
+}
+.gem-expanded .gem-enhanced-blocks-panel--3:has(cb-available-block-list) {
+    flex: 0 0 510px !important;
+}

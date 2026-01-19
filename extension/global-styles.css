@@ -1,3 +1,68 @@
+/* Scrollbar overrides */
+html.FLIPPER-theme-eveningHorizon {
+    & .e-section__content,
+    & .e-dialog__container .e-dialog__content,
+    & e-float-container .e-dialog__container .e-dialog__content,
+    & cb-block-level-variable .e-section__content.cb-flex.variables,
+    & .select2-drop .select2-results,
+    & .gem-scrollable, .scrollable,
+    & .e-scrollable,
+    & .e-scrollable__content,
+    & cb-variables .e-section__content.e-padding-none.cb-flex,
+    & cb-block-template-list-panel .e-section__content.cb-flex,
+    & e-datagrid-wrapper .e-datagrid__table_wrapper,
+    & cdk-virtual-scroll-viewport,
+    & cb-campaign-latest-media .e-section__content,
+    & .e-verticalnav__content .e-fullheight__body,
+    & cb-campaign-variables .e-section__content.cb-flex.variables,
+    & cb-available-block-list .e-section__content,
+    & tactics-app .e-section__content.e-padding-none,
+    & .e-mediadb .e-mediadb-section .e-mediadb-section__content {
+      scrollbar-color: var(--token-border-default) var(--token-background-dark);
+    }
+  
+    & .e-section__content::-webkit-scrollbar-thumb,
+    & .e-dialog__container .e-dialog__content::-webkit-scrollbar-thumb,
+    & e-float-container .e-dialog__container .e-dialog__content::-webkit-scrollbar-thumb,
+    & cb-block-level-variable .e-section__content.cb-flex.variables::-webkit-scrollbar-thumb,
+    & .select2-drop .select2-results::-webkit-scrollbar-thumb,
+    & .gem-scrollable::-webkit-scrollbar-thumb, & .scrollable::-webkit-scrollbar-thumb,
+    & .e-scrollable::-webkit-scrollbar-thumb,
+    & .e-scrollable__content::-webkit-scrollbar-thumb,
+    & cb-variables .e-section__content.e-padding-none.cb-flex::-webkit-scrollbar-thumb,
+    & cb-block-template-list-panel .e-section__content.cb-flex::-webkit-scrollbar-thumb,
+    & e-datagrid-wrapper .e-datagrid__table_wrapper::-webkit-scrollbar-thumb,
+    & cdk-virtual-scroll-viewport::-webkit-scrollbar-thumb,
+    & cb-campaign-latest-media .e-section__content::-webkit-scrollbar-thumb,
+    & .e-verticalnav__content .e-fullheight__body::-webkit-scrollbar-thumb,
+    & cb-campaign-variables .e-section__content.cb-flex.variables::-webkit-scrollbar-thumb,
+    & cb-available-block-list .e-section__content::-webkit-scrollbar-thumb,
+    & tactics-app .e-section__content.e-padding-none::-webkit-scrollbar-thumb,
+    & .e-mediadb .e-mediadb-section .e-mediadb-section__content::-webkit-scrollbar-thumb {
+      background: var(--token-border-default);
+    }
+    
+    & .e-section__content::-webkit-scrollbar-track,
+    & e-float-container .e-dialog__container .e-dialog__content::-webkit-scrollbar-track,
+    & .e-dialog__container .e-dialog__content::-webkit-scrollbar-track,
+    & cb-block-level-variable .e-section__content.cb-flex.variables::-webkit-scrollbar-track,
+    & .select2-drop .select2-results::-webkit-scrollbar-track,
+    & .gem-scrollable::-webkit-scrollbar-track, .scrollable::-webkit-scrollbar-track,
+    & .e-scrollable::-webkit-scrollbar-track,
+    & .e-scrollable__content::-webkit-scrollbar-track,
+    & cb-variables .e-section__content.e-padding-none.cb-flex::-webkit-scrollbar-track,
+    & cb-block-template-list-panel .e-section__content.cb-flex::-webkit-scrollbar-track,
+    & e-datagrid-wrapper .e-datagrid__table_wrapper::-webkit-scrollbar-track,
+    & cdk-virtual-scroll-viewport::-webkit-scrollbar-track,
+    & cb-campaign-latest-media .e-section__content::-webkit-scrollbar-track,
+    & .e-verticalnav__content .e-fullheight__body::-webkit-scrollbar-track,
+    & cb-campaign-variables .e-section__content.cb-flex.variables::-webkit-scrollbar-track,
+    & cb-available-block-list .e-section__content::-webkit-scrollbar-track,
+    & .e-mediadb .e-mediadb-section .e-mediadb-section__content::-webkit-scrollbar-track {
+      background: var(--token-background-dark);
+    }
+}
+
 /* GLobal Styles */
 ul.e-navigation__menu_list {
     height: 100%;

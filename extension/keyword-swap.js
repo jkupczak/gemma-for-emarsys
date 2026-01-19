@@ -95,7 +95,7 @@ function initializeKeywordSwap() {
       console.log("[Gem-Keyword-Swap] Retrieved snippets for preheader swap:", snippets.length);
       const swappableSnippets = snippets.filter((snippet) => {
         const rules = normalizeSwapKeywordsFromSnippet(snippet);
-        const hasRules = rules.some((r) => r && r.keyword && r.initiateFrom !== 'toolbar');
+        const hasRules = rules.some((r) => r && r.keyword && r.initiateFrom !== 'toolbar' && r.initiateFrom !== 'panel');
         console.log(`[Gem-Keyword-Swap] Snippet "${snippet.name}" has swappable rules:`, hasRules, rules);
         return hasRules;
       });
@@ -112,7 +112,7 @@ function initializeKeywordSwap() {
 
       // Process each snippet's swap rules
       swappableSnippets.forEach((snippet) => {
-        const rules = normalizeSwapKeywordsFromSnippet(snippet).filter((r) => r && r.keyword && r.initiateFrom !== 'toolbar');
+        const rules = normalizeSwapKeywordsFromSnippet(snippet).filter((r) => r && r.keyword && r.initiateFrom !== 'toolbar' && r.initiateFrom !== 'panel');
 
         rules.forEach((rule) => {
           const { keyword, mode } = rule;
@@ -449,10 +449,10 @@ function initializeKeywordSwap() {
     window.getSnippets((snippets) => {
       console.log("[Gem-Keyword-Swap] Retrieved snippets:", snippets.length);
 
-      // Find snippets with keyword swap rules
+      // Find snippets with keyword swap rules (excluding panel-only keywords)
       const swappableSnippets = snippets.filter(snippet => {
         if (!snippet.swapKeywords || !Array.isArray(snippet.swapKeywords)) return false;
-        return snippet.swapKeywords.some(rule => rule.keyword && rule.keyword.trim());
+        return snippet.swapKeywords.some(rule => rule.keyword && rule.keyword.trim() && rule.initiateFrom !== 'panel');
       });
 
       console.log("[Gem-Keyword-Swap] Swappable snippets found:", swappableSnippets.length);
@@ -468,7 +468,7 @@ function initializeKeywordSwap() {
       // Process each swappable snippet
       swappableSnippets.forEach(snippet => {
         snippet.swapKeywords.forEach(rule => {
-          if (!rule.keyword || !rule.keyword.trim()) return;
+          if (!rule.keyword || !rule.keyword.trim() || rule.initiateFrom === 'panel') return;
 
           const keyword = rule.keyword.trim();
           const mode = normalizeSwapMode(rule.swapMode || 'exact');
@@ -728,10 +728,10 @@ function initializeKeywordSwap() {
     window.getSnippets((snippets) => {
       console.log("[Gem-Keyword-Swap] Retrieved snippets:", snippets.length);
 
-      // Find snippets with keyword swap rules
+      // Find snippets with keyword swap rules (excluding panel-only keywords)
       const swappableSnippets = snippets.filter(snippet => {
         if (!snippet.swapKeywords || !Array.isArray(snippet.swapKeywords)) return false;
-        return snippet.swapKeywords.some(rule => rule.keyword && rule.keyword.trim());
+        return snippet.swapKeywords.some(rule => rule.keyword && rule.keyword.trim() && rule.initiateFrom !== 'panel');
       });
 
       console.log("[Gem-Keyword-Swap] Swappable snippets found:", swappableSnippets.length);
@@ -747,7 +747,7 @@ function initializeKeywordSwap() {
       // Process each swappable snippet
       swappableSnippets.forEach(snippet => {
         snippet.swapKeywords.forEach(rule => {
-          if (!rule.keyword || !rule.keyword.trim()) return;
+          if (!rule.keyword || !rule.keyword.trim() || rule.initiateFrom === 'panel') return;
 
           const keyword = rule.keyword.trim();
           const mode = normalizeSwapMode(rule.swapMode || 'exact');

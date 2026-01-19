@@ -41,8 +41,8 @@ function applyMobilePreviewStyles(containerEl, iframeEl) {
 
   if (handle) {
     const expanded = document.body.classList.contains("gem-expanded");
-    handle.style.left = expanded ? "-12px" : "-24px";
-    handle.style.width = expanded ? "12px" : "24px";
+    handle.style.left = expanded ? "-10px" : "-24px";
+    handle.style.width = expanded ? "10px" : "24px";
   }
 }
 

@@ -570,24 +570,14 @@ function initializeBlockPinning() {
     toggleButton.style.cssText = `
       margin-left: auto;
       padding: 4px 8px;
-      border: none;
-      border-radius: 4px;
+      border: 1px solid var(--token-button-default-border);
+      border-radius: 5px;
+      background: var(--token-button-default-background);
+      color: var(--token-button-default-text);
       font-size: 11px;
       font-weight: 500;
       cursor: pointer;
-      transition: all 0.2s ease;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     `;
-
-    toggleButton.addEventListener('mouseenter', () => {
-      toggleButton.style.transform = 'translateY(-1px)';
-      toggleButton.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.2)';
-    });
-
-    toggleButton.addEventListener('mouseleave', () => {
-      toggleButton.style.transform = 'translateY(0)';
-      toggleButton.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)';
-    });
 
     toggleButton.addEventListener('click', () => {
       getShowHiddenBlocks((currentState) => {
@@ -607,25 +597,14 @@ function initializeBlockPinning() {
     layoutButton.style.cssText = `
       margin-left: 12px;
       padding: 4px 8px;
-      border: none;
-      border-radius: 4px;
+      border: 1px solid var(--token-button-default-border);
+      border-radius: 5px;
       font-size: 11px;
       font-weight: 500;
       cursor: pointer;
-      transition: all 0.2s ease;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-      transform: translateY(0px);
+      color: var(--token-button-default-text);
+      background: var(--token-button-default-background);
     `;
-
-    layoutButton.addEventListener('mouseenter', () => {
-      layoutButton.style.transform = 'translateY(-1px)';
-      layoutButton.style.boxShadow = '0 4px 8px rgba(0, 0, 0, 0.2)';
-    });
-
-    layoutButton.addEventListener('mouseleave', () => {
-      layoutButton.style.transform = 'translateY(0px)';
-      layoutButton.style.boxShadow = '0 2px 4px rgba(0, 0, 0, 0.1)';
-    });
 
     layoutButton.addEventListener('click', () => {
       // Get current layout setting and cycle to next

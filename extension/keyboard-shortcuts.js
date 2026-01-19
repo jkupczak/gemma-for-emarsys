@@ -141,6 +141,13 @@ function initializeKeyboardShortcuts() {
     // Check for CMD+/ (Mac) or CTRL+/ (Windows/Linux) - Mobile Preview Toggle
     const isMobilePreviewShortcut = (event.metaKey || event.ctrlKey) && event.key === '/';
 
+    // Check for CMD+SHIFT+F (Mac) or CTRL+SHIFT+F (Windows/Linux) - Expanded Mode Toggle
+    const isExpandedModeShortcut =
+      (event.metaKey || event.ctrlKey) &&
+      event.shiftKey &&
+      !event.altKey &&
+      (String(event.key || '').toLowerCase() === 'f');
+
     if (isSaveShortcut) {
       console.log("[Gem] Save shortcut detected:", event.metaKey ? 'CMD+S' : 'CTRL+S', "in context:", event.target.ownerDocument === document ? "main" : "iframe");
 
@@ -166,6 +173,50 @@ function initializeKeyboardShortcuts() {
       toggleMobilePreview();
 
       // Return false to ensure no further processing
+      return false;
+    } else if (isExpandedModeShortcut) {
+      console.log("[Gem] Expanded mode toggle shortcut detected:", event.metaKey ? 'CMD+SHIFT+F' : 'CTRL+SHIFT+F');
+
+      // Don't trigger while typing
+      const ae = (event.target && event.target.ownerDocument ? event.target.ownerDocument.activeElement : document.activeElement);
+      if (ae) {
+        const tag = (ae.tagName || '').toLowerCase();
+        const isTypingTarget =
+          tag === 'input' ||
+          tag === 'textarea' ||
+          tag === 'select' ||
+          ae.isContentEditable;
+        if (isTypingTarget) return;
+      }
+
+      // Prevent default browser find behavior
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+
+      // Toggle expanded mode (same behavior as the expand icon)
+      try {
+        const rootDoc = (() => {
+          try { return window.top && window.top.document ? window.top.document : document; } catch (_) { return document; }
+        })();
+        const body = rootDoc && rootDoc.body;
+        if (!body) return false;
+
+        const wasExpanded = body.classList.contains("gem-expanded");
+        body.classList.toggle("gem-expanded");
+        const isNowExpanded = body.classList.contains("gem-expanded");
+        console.log("[Gem] Expanded mode toggled:", wasExpanded, "->", isNowExpanded);
+
+        // Persist state (used by verticalnav-enhancer.js restore)
+        chrome.storage.sync.set({ fullscreenActive: isNowExpanded }, () => {
+          if (chrome.runtime.lastError) {
+            console.error("[Gem] Error saving expanded mode state:", chrome.runtime.lastError);
+          }
+        });
+      } catch (error) {
+        console.error("[Gem] Error toggling expanded mode:", error);
+      }
+
       return false;
     }
   }

@@ -1,13 +1,14 @@
 # URGENNT BUGS
 
-Ran into a issue where the snippets panel would not close. 1/9/26
+None
 
 -----------------------------------------------
 # HOT
 
 Can I create "drag for padding" functionality? Would need to ask the user to designate an integere based variable for top and bottom padding in the settings panel.
 
-Add text replacement to the preheader box.
+Can CMD+C copy ESL tokens as the plain text code for better pasting? Or better yet, paste them back in as tokens? 
+(Ask ChatGPT when I have credits, Grok failed)
 
 -----------------------------------------------
 # PENDING
@@ -63,6 +64,10 @@ Lets add a new field to the Favorited Image edit modal called "Width". This inpu
 
 -----------------------------------------------
 # COMPLETE
+
+✓ The Recently Seen list should be categorized by Path. Categories should be sorted by most recently seen.
+
+✓ Add text replacement to the preheader box.
 
 ✓ Can I create a way to quickly replace a string of text in a block with a snippet that has the exact same name?
 ✓ Add Snippets tab to vertical navigation - DONE: Created snippets-tab.js

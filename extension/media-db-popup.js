@@ -7,7 +7,7 @@
 function initializeRecentlySeenLogger() {
   const STORAGE_KEY = 'gemRecentlySeenImages';
   const RECENTLY_USED_SYNC_KEY = 'gemRecentImages';
-  const MAX = 100;
+  const MAX = 200;
   const DEBUG = true;
   const dbg = (...args) => { try { if (DEBUG) console.log('[Gem-Recently-Seen]', ...args); } catch (_) {} };
   const loggedSkips = new Set();
