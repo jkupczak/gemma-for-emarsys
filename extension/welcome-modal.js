@@ -90,6 +90,7 @@ function createWelcomeModalHTML() {
 
             <h5>Image Properties Dialog</h5>
             <ul>
+              <li>Shortcut: Double-clicking an editable image in the email preview instantly opens the Image Properties dialog.</li>
               <li>The selected image is now displayed at the top for both desktop and mobile views.</li>
               <li>The Advanced settings panel is now automatically expanded for easier access to image dimensions.</li>
               <li>The dialog has been expanded to fullscreen to allow for a new image selection panel.</li>
@@ -110,16 +111,17 @@ function createWelcomeModalHTML() {
               </ul>
             </ul>
 
-            <h5>Content Blocks</h5>
+            <h5>Content Block Toolbar</h5>
             <ul>
-              <li>Double-clicking an editable image instantly opens the Image Properties dialog.</li>
-              <li>Content Block Toolbar
-                <ul>
                   <li>Now features a "Convert ESL to Tokens" button to convert plain text ESL into ESL tokens.</li>
                   <li>Now features a "Keyword Swap" button to quickly swap keywords with snippets.</li>
                   <li>Can be customized to show or hide most icons based on preferences you set in the settings panel.</li>
-                </ul>
-              </li>
+            </ul>
+
+            <h5>Emarsys Scripting Language snippet Dialog</h5>
+            <ul>
+              <li>Shortcut: Double-clicking an ESL token in the email preview instantly opens the ESL snippet editor dialog.</li>
+              <li>"OK" button is disabled while ESL code is actively being validated to help prevent accidental submission of invalid code.</li>
             </ul>
 
             <h5>Link Editor Dialog</h5>

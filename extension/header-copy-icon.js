@@ -14,7 +14,6 @@ function initializeHeaderCopyIcon() {
     // Create copy icon
     const copyIcon = document.createElement('span');
     copyIcon.className = 'gem-header-copy-icon';
-    copyIcon.innerHTML = 'Copy'; // Text as icon
     copyIcon.style.cssText = `
       display: inline-block;
       margin-left: 12px;
@@ -54,13 +53,13 @@ function initializeHeaderCopyIcon() {
 
         // Visual feedback - temporarily change icon
         const originalHTML = copyIcon.innerHTML;
-        copyIcon.innerHTML = 'Boom!';
+        copyIcon.classList.add('gem-header-copy-icon-success');
         copyIcon.style.opacity = '1';
 
         setTimeout(() => {
           copyIcon.innerHTML = originalHTML;
           copyIcon.style.opacity = '0.6';
-        }, 1000);
+        }, 2000);
 
       } catch (err) {
         console.error('[Gem] Failed to copy text:', err);

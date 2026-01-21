@@ -13,6 +13,7 @@ function normalizeGemThemeMode(value) {
   if (value === "gemma-amethyst") return "gemma-amethyst";
   if (value === "gemma-ruby") return "gemma-ruby";
   if (value === "gemma-turquoise") return "gemma-turquoise";
+  if (value === "gemma-topaz") return "gemma-topaz";
   return "gemma-amethyst"; // default
 }
 
@@ -22,7 +23,7 @@ function applyGemThemeMode(mode, { persistLocal = false } = {}) {
   if (!html) return;
 
   // Remove all theme classes first
-  html.classList.remove("gem--retheme-inactive", "gem-theme-active", "gem-theme-amethyst", "gem-theme-ruby", "gem-theme-turquoise");
+  html.classList.remove("gem--retheme-inactive", "gem-theme-active", "gem-theme-amethyst", "gem-theme-ruby", "gem-theme-turquoise", "gem-theme-topaz");
 
   if (normalized === "original") {
     html.classList.add("gem--retheme-inactive");
@@ -35,6 +36,8 @@ function applyGemThemeMode(mode, { persistLocal = false } = {}) {
       html.classList.add("gem-theme-amethyst");
     } else if (normalized === "gemma-ruby") {
       html.classList.add("gem-theme-ruby");
+    } else if (normalized === "gemma-topaz") {
+      html.classList.add("gem-theme-topaz");
     } else if (normalized === "gemma-turquoise") {
       html.classList.add("gem-theme-turquoise");
     }
@@ -167,7 +170,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
 
       .gem-setting:hover {
         box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        border-color: #667eea;
+        border-color: var(--token-blue-700);
       }
 
       .gem-setting label {
@@ -492,6 +495,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
                 <option value="gemma-amethyst" selected>Gemma Amethyst</option>
                 <option value="gemma-ruby">Gemma Ruby</option>
                 <option value="gemma-turquoise">Gemma Turquoise</option>
+                <option value="gemma-topaz">Gemma Topaz</option>
                 <option value="original">Original Emarsys Theme</option>
               </select>
             </div>
@@ -1442,21 +1446,22 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
   // Keyboard shortcut: ⌘+G / Ctrl+G opens the settings panel
   // ------------------------------------------------------------
   function setupOpenSettingsPanelShortcut() {
-    document.addEventListener('keydown', (e) => {
+    function handleKeyDown(e) {
       // ⌘+G (macOS) / Ctrl+G (Win/Linux)
       if (!(e.metaKey || e.ctrlKey)) return;
       if (e.shiftKey || e.altKey) return;
       if ((e.key || '').toLowerCase() !== 'g') return;
 
       // Don't trigger while typing
-      const ae = document.activeElement;
+      const ae = e && e.target && e.target.ownerDocument
+        ? e.target.ownerDocument.activeElement
+        : document.activeElement;
       if (ae) {
         const tag = (ae.tagName || '').toLowerCase();
         const isTypingTarget =
           tag === 'input' ||
           tag === 'textarea' ||
-          tag === 'select' ||
-          ae.isContentEditable;
+          tag === 'select';
         if (isTypingTarget) return;
       }
 
@@ -1470,7 +1475,72 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
       // Prevent browser default (and any editor bindings)
       e.preventDefault();
       e.stopPropagation();
-    }, true);
+      e.stopImmediatePropagation && e.stopImmediatePropagation();
+      return false;
+    }
+
+    // Main document
+    document.addEventListener('keydown', handleKeyDown, true);
+
+    // Also attach into iframes so the shortcut works when focus is inside them
+    function injectIntoIframe(iframe) {
+      try {
+        const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+        if (!iframeDoc) return;
+        if (iframeDoc._gemSettingsShortcutHandler) return;
+        iframeDoc.addEventListener('keydown', handleKeyDown, true);
+        iframeDoc._gemSettingsShortcutHandler = true;
+      } catch (_) {
+        // Cross-origin iframe; ignore
+      }
+    }
+
+    function waitForIframeReady(iframe) {
+      try {
+        // If we can access the iframe document at all, attach immediately.
+        if (iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document)) {
+          injectIntoIframe(iframe);
+          return;
+        }
+
+        // Otherwise wait for load
+        {
+          iframe.addEventListener('load', () => setTimeout(() => injectIntoIframe(iframe), 50));
+          // Also retry briefly in case load doesn't fire (SPA behaviors)
+          let attempts = 0;
+          const tick = () => {
+            attempts++;
+            try {
+              if (iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document)) {
+                injectIntoIframe(iframe);
+                return;
+              }
+            } catch (_) {}
+            if (attempts < 40) setTimeout(tick, 100);
+          };
+          setTimeout(tick, 100);
+        }
+      } catch (_) {}
+    }
+
+    // Existing iframes
+    document.querySelectorAll('iframe').forEach(waitForIframeReady);
+
+    // New iframes
+    const iframeObserver = new MutationObserver((mutations) => {
+      mutations.forEach((m) => {
+        m.addedNodes.forEach((node) => {
+          if (!node || node.nodeType !== Node.ELEMENT_NODE) return;
+          if (node.tagName === 'IFRAME') {
+            waitForIframeReady(node);
+          } else if (node.querySelectorAll) {
+            node.querySelectorAll('iframe').forEach(waitForIframeReady);
+          }
+        });
+      });
+    });
+    // body may not exist at document_start; observe documentElement to be safe
+    iframeObserver.observe(document.documentElement, { childList: true, subtree: true });
   }
 
   setupOpenSettingsPanelShortcut();
@@ -1604,16 +1674,16 @@ console.log("[gem] settings-panel.js: setting up message listener");
         <div style="margin-bottom: 24px;">
           <h3 style="margin: 0 0 16px 0; color: var(--token-accent-foreground);">General Shortcuts</h3>
           <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 8px; align-items: center;">
-            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">Ctrl+G and ⌘+G</kbd>
+            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">${window.GEM_MOD_KEY}+G</kbd>
             <span>Open/Close Gemma Settings Panel</span>
 
-            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">Ctrl+Shift+F and ⌘+Shift+F</kbd>
+            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">${window.GEM_MOD_KEY}+SHIFT+F</kbd>
             <span>Toggle Expanded View Mode</span>
 
-            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">Ctrl+S and ⌘+S</kbd>
+            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">${window.GEM_MOD_KEY}+S</kbd>
             <span>Save the current email</span>
 
-            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">Ctrl+/ and ⌘+/</kbd>
+            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">${window.GEM_MOD_KEY}+/</kbd>
             <span>Toggle the mobile email preview pane on and off</span>
           </div>
         </div>
@@ -1624,7 +1694,7 @@ console.log("[gem] settings-panel.js: setting up message listener");
             <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">Enter</kbd>
             <span>Accept changes (clicks the OK button)</span>
 
-            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">⌘+D / Ctrl+D</kbd>
+            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">${window.GEM_MOD_KEY}+D</kbd>
             <span>Toggle between Desktop and Mobile tabs</span>
           </div>
         </div>
@@ -1634,6 +1704,9 @@ console.log("[gem] settings-panel.js: setting up message listener");
           <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 8px; align-items: center;">
             <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">Double-click</kbd>
             <span>on an editable image to open the Image Properties dialog</span>
+
+            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">Double-click</kbd>
+            <span>on an ESL token to open the ESL snippetdialog</span>
           </div>
         </div>
 

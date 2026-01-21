@@ -45,6 +45,9 @@ function initializeContentBlockToolbar() {
   // Handle double-clicks on editable images in preview iframe
   setupEditableImageDoubleClickHandler();
 
+  // Handle double-clicks on ESL tokens in desktop preview iframe
+  setupEslTokenDoubleClickHandler();
+
   // Handle Enter key presses in Image Properties dialog
   setupImagePropertiesEnterKeyHandler();
 
@@ -914,6 +917,63 @@ function setupEditableImageDoubleClickHandler() {
   }
 }
 
+function setupEslTokenDoubleClickHandler() {
+  console.log("[gem] Setting up ESL token double-click handler (desktop preview iframe)");
+
+  const DESKTOP_IFRAME_SELECTOR = 'iframe.e-contentblocks-preview__iframe-desktop';
+
+  function handleEslTokenDoubleClick(event) {
+    const target = event.target;
+    if (!target || !target.closest) return;
+
+    // Match the ESL token wrapper (or anything inside it)
+    const tokenEl = target.closest('[e-token="cust_esl"]');
+    if (!tokenEl) return;
+
+    console.log("[gem] Double-click detected on ESL token:", tokenEl);
+
+    const insertEslBtn = document.querySelector('.mce-active[aria-label="Insert Emarsys Scripting Language snippet"] button');
+    if (insertEslBtn) {
+      console.log("[gem] Triggering click on Insert ESL snippet button");
+      insertEslBtn.click();
+    } else {
+      console.log("[gem] Insert ESL snippet button not found in DOM");
+    }
+  }
+
+  function attachToIframe(iframe) {
+    if (!iframe) return;
+    try {
+      const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+      if (!iframeDoc) return;
+      if (iframeDoc._gemEslTokenDblClickAttached) return;
+      iframeDoc._gemEslTokenDblClickAttached = true;
+      iframeDoc.addEventListener('dblclick', handleEslTokenDoubleClick, true);
+      console.log("[gem] ESL token double-click handler attached to desktop iframe");
+    } catch (error) {
+      console.warn("[gem] Could not attach ESL token handler to desktop iframe:", error);
+    }
+  }
+
+  // Watch for the desktop preview iframe to appear
+  const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      mutation.addedNodes.forEach((node) => {
+        if (node.nodeType !== Node.ELEMENT_NODE) return;
+        const iframe =
+          (node.matches && node.matches(DESKTOP_IFRAME_SELECTOR) && node) ||
+          (node.querySelector && node.querySelector(DESKTOP_IFRAME_SELECTOR));
+        if (iframe) attachToIframe(iframe);
+      });
+    });
+  });
+
+  observer.observe(document.body, { childList: true, subtree: true });
+
+  // Also attach if it's already present
+  attachToIframe(document.querySelector(DESKTOP_IFRAME_SELECTOR));
+}
+
 function setupImagePropertiesEnterKeyHandler() {
   console.log("[gem] Setting up Image Properties Enter key handler");
 
@@ -961,6 +1021,17 @@ function setupImagePropertiesEnterKeyHandler() {
 
     // Check if focus is on a disallowed input
     if (isFocusOnDisallowedInput()) return;
+
+    // Emarsys doesn't always commit the "Image alternative text" value until blur.
+    // If Enter is pressed while focused on that field, blur before clicking OK.
+    try {
+      const ae = document.activeElement;
+      if (ae && ae.matches && ae.matches('input[placeholder="Image alternative text"]')) {
+        ae.blur();
+        // Some UIs only commit on change/blur; fire change defensively.
+        ae.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    } catch (_) {}
 
     // Find and click the OK button
     const okButton = document.querySelector('.e-dialog__container button.ok-btn');

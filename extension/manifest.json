@@ -1,6 +1,6 @@
 {
   "name": "Gemma for Emarsys",
-  "version": "5.2.0",
+  "version": "5.3.0",
   "manifest_version": 3,
   "description": "Enhances the Emarsys email editor with a settings panel and more!",
   "permissions": ["storage", "tabs", "activeTab"],
@@ -23,7 +23,7 @@
     {
       "matches": ["https://*.emarsys.net/*"], 
       "css": ["theme.css", "global-styles.css"],
-      "js": ["settings-panel.js", "nav-menu-inject.js", "welcome-modal.js"],
+      "js": ["platform.js", "settings-panel.js", "nav-menu-inject.js", "welcome-modal.js"],
       "run_at": "document_start"
     },
     {
@@ -34,7 +34,7 @@
     },
     {
       "matches": ["https://*.emarsys.net/bootstrap.php?*r=contentBlocks/campaign*"],
-      "js": ["verticalnav-enhancer.js", "mobile-view.js", "textarea-expand.js", "text-highlighting.js", "color-swatch-manager.js", "keyboard-shortcuts.js", "toggle-page-elements.js", "page-title-updater.js", "condensed-blocks-panel.js", "mobile-contact-preview.js", "content-block-toolbar.js", "header-copy-icon.js", "block-pinning.js", "overlay-panel-controls.js", "expanded-mode.js", "snippets-tab.js", "keyword-swap.js"],
+      "js": ["platform.js", "verticalnav-enhancer.js", "mobile-view.js", "textarea-expand.js", "text-highlighting.js", "color-swatch-manager.js", "keyboard-shortcuts.js", "toggle-page-elements.js", "page-title-updater.js", "condensed-blocks-panel.js", "mobile-contact-preview.js", "content-block-toolbar.js", "header-copy-icon.js", "block-pinning.js", "overlay-panel-controls.js", "expanded-mode.js", "snippets-tab.js", "keyword-swap.js"],
       "css": ["styles.css", "e-panels.css", "expanded-mode.css"]
     }
   ]

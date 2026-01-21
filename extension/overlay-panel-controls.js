@@ -1575,7 +1575,7 @@ function initializeOverlayPanelControls() {
             ? `
               <div id="gem-search-container" style="margin-top:8px;padding:0 16px;display: flex;gap: 8px;align-items: center;">
                 ${groupBySelect}
-                <input class="e-input e-input-search ${source === 'favorites' ? 'gem-favorite-images-search' : 'gem-seen-images-search'}" placeholder="Search ${source === 'favorites' ? 'favorites' : 'recently seen'}" type="search" value="${escape(source === 'favorites' ? (picker.dataset.gemFavoriteImagesSearch || '') : (picker.dataset.gemSeenImagesSearch || ''))}">
+                <input class="e-input e-input-search gem-image-search ${source === 'favorites' ? 'gem-favorite-images-search' : 'gem-seen-images-search'}" placeholder="Search ${source === 'favorites' ? 'favorites' : 'recently seen'}" type="search" value="${escape(source === 'favorites' ? (picker.dataset.gemFavoriteImagesSearch || '') : (picker.dataset.gemSeenImagesSearch || ''))}">
               </div>
             `.trim()
             : '';
@@ -1685,8 +1685,7 @@ function initializeOverlayPanelControls() {
                   // Back-compat: older builds stored raw category keys (no prefix).
                   const legacyKey = (groupBy === 'category') ? (gKey || '') : null;
                   const isCollapsedRaw = !!collapse[storageKey] || (legacyKey != null && !!collapse[legacyKey]);
-                  // While searching, always expand groups that have matches (groups without matches aren't rendered).
-                  const isCollapsed = !q && isCollapsedRaw;
+                  const isCollapsed = isCollapsedRaw;
                   const caret = isCollapsed ? '▸' : '▾';
                   const showEdit = groupBy === 'category';
                   return `
@@ -1713,6 +1712,17 @@ function initializeOverlayPanelControls() {
                     (groupBy === 'translation')
                       ? ((it.language || '').trim())
                       : (((it.translation || '').trim()) || ((it.altText || '').trim()));
+
+                  // Extra metadata to show under the primary label (varies by Group By)
+                  const extraPartsRaw =
+                    (groupBy === 'category')
+                      ? [((it.language || '').trim()), ((it.translation || '').trim())]
+                      : (groupBy === 'translation')
+                        ? [((it.category || '').trim()), ((it.language || '').trim())]
+                        : [((it.category || '').trim()), ((it.translation || '').trim())]; // language
+                  const extraParts = extraPartsRaw
+                    .filter((v) => !!v && v !== label);
+                  const extraText = extraParts.join(' • ');
                   return `
                     <div class="gem-recent-image-tile gem-checkered-canvas" title="${escape(it.url)}">
                       <button class="gem-recent-image-edit-btn" type="button" data-url="${escape(it.url)}" aria-label="${editTitle}" title="${editTitle}">
@@ -1724,20 +1734,35 @@ function initializeOverlayPanelControls() {
                           Add To Page
                         </button>
                       </div>
-                      <div class="gem-recent-image-meta">${label ? `<div class="gem-recent-image-meta2" title="${escape(label)}">${escape(label)}</div>` : ''}</div>
+                      <div class="gem-recent-image-meta">
+                        ${label ? `<div class="gem-recent-image-meta2" title="${escape(label)}">${escape(label)}</div>` : ''}
+                        ${extraText ? `<div class="gem-recent-image-meta2" title="${escape(extraText)}">${escape(extraText)}</div>` : ''}
+                      </div>
                     </div>
                   `;
                 };
 
                 const renderTableRows = (catItems) => {
                   return catItems.map((it) => {
-                    const metaText = [it.altText, it.keyword, it.language].filter(Boolean).join(' • ');
+                    const metaText = [it.altText, it.keyword].filter(Boolean).join(' • ');
+                    const colA = (groupBy === 'category')
+                      ? (it.language || '')
+                      : (groupBy === 'translation')
+                        ? (it.category || '')
+                        : (it.category || ''); // language
+                    const colB = (groupBy === 'category')
+                      ? (it.translation || '')
+                      : (groupBy === 'translation')
+                        ? (it.language || '')
+                        : (it.translation || ''); // language
                     return `
                       <tr>
                         <td style="padding:6px; width:140px; vertical-align:middle;">
                           <img class="gem-checkered-canvas" src="${escape(it.url)}" style="display:block; width:128px; height:70px; object-fit:contain; border-radius:4px;" />
                         </td>
                         <td style="padding:6px; vertical-align:middle; word-break:break-word;">${escape(it.url)}</td>
+                        <td style="padding:6px; vertical-align:middle; word-break:break-word;">${escape(colA || '')}</td>
+                        <td style="padding:6px; vertical-align:middle; word-break:break-word;">${escape(colB || '')}</td>
                         <td style="padding:6px; vertical-align:middle;">
                           <div>${escape(formatRecentImageDate(it.lastUsed || 0))}</div>
                           ${metaText ? `<div class="gem-recent-image-meta2" title="${escape(metaText)}">${escape(metaText)}</div>` : ''}
@@ -1774,7 +1799,7 @@ function initializeOverlayPanelControls() {
                     const storageKey = `${groupBy}:${gKey || ''}`;
                     const legacyKey = (groupBy === 'category') ? (gKey || '') : null;
                     const isCollapsedRaw = !!collapse[storageKey] || (legacyKey != null && !!collapse[legacyKey]);
-                    const isCollapsed = !q && isCollapsedRaw;
+                    const isCollapsed = isCollapsedRaw;
                     if (viewMode === 'grid') {
                       return `
                         <div class="gem-fav-cat-section" style="padding:0 16px">
@@ -1797,6 +1822,8 @@ function initializeOverlayPanelControls() {
                               <tr>
                                 <th style="width:140px;">Preview</th>
                                 <th>URL</th>
+                                <th style="width:140px;">${groupBy === 'category' ? 'Language' : (groupBy === 'translation' ? 'Category' : 'Category')}</th>
+                                <th style="width:140px;">${groupBy === 'category' ? 'Translation' : (groupBy === 'translation' ? 'Language' : 'Translation')}</th>
                                 <th style="width:160px;">${dateLabel}</th>
                                 <th style="width:160px; text-align:right;">Use</th>
                               </tr>
@@ -1815,7 +1842,7 @@ function initializeOverlayPanelControls() {
                 if (opts.contentOnly && picker.querySelector('#gem-image-list-header')) {
                   const contentContainer = document.createElement('div');
                   contentContainer.innerHTML = `
-                    ${q && groupKeys.length === 0 ? '<div style="padding:0 16px 16px 16px; opacity:0.7;">No matches.</div>' : ''}
+                    ${q && groupKeys.length === 0 ? `<div style="padding:0 16px 16px 16px; opacity:0.7;">No matches found for '${q}'.</div>` : ''}
                     ${buildCategorySections()}
                     ${!q ? empty : ''}
                   `.trim();
@@ -1837,7 +1864,7 @@ function initializeOverlayPanelControls() {
                 } else {
                   picker.innerHTML = `
                     ${header}
-                    ${q && groupKeys.length === 0 ? '<div style="padding:0 16px 16px 16px; opacity:0.7;">No matches.</div>' : ''}
+                    ${q && groupKeys.length === 0 ? `<div style="padding:0 16px 16px 16px; opacity:0.7;">No matches found for '${q}'.</div>` : ''}
                     ${buildCategorySections()}
                     ${!q ? empty : ''}
                   `.trim();
@@ -1911,8 +1938,7 @@ function initializeOverlayPanelControls() {
                   : (seenGroupBy === 'date' ? 'Unknown Date' : 'No Path');
                 const storageKey = `seen:${seenGroupBy}:${gKey || ''}`;
                 const isCollapsedRaw = !!collapse[storageKey];
-                // While searching, always expand groups that have matches (groups without matches aren't rendered).
-                const isCollapsed = !q && isCollapsedRaw;
+                const isCollapsed = isCollapsedRaw;
                 const caret = isCollapsed ? '▸' : '▾';
                 return `
                   <div class="gem-seen-cat-header" data-group-key="${escape(storageKey)}" data-cat="${escape(gKey)}">
@@ -1995,7 +2021,7 @@ function initializeOverlayPanelControls() {
                   const headerHtml = renderGroupHeader(gKey, catItems.length);
                   const storageKey = `seen:${seenGroupBy}:${gKey || ''}`;
                   const isCollapsedRaw = !!collapse[storageKey];
-                  const isCollapsed = !q && isCollapsedRaw;
+                  const isCollapsed = isCollapsedRaw;
                   if (viewMode === 'grid') {
                     return `
                       <div class="gem-seen-cat-section" style="padding:0 16px">
@@ -2036,7 +2062,7 @@ function initializeOverlayPanelControls() {
               if (opts.contentOnly && picker.querySelector('#gem-image-list-header')) {
                 const contentContainer = document.createElement('div');
                 contentContainer.innerHTML = `
-                  ${q && groupKeys.length === 0 ? '<div style="padding:0 16px 16px 16px; opacity:0.7;">No matches.</div>' : ''}
+                  ${q && groupKeys.length === 0 ? `<div style="padding:0 16px 16px 16px; opacity:0.7;">No matches found for '${q}'.</div>` : ''}
                   ${buildCategorySections()}
                   ${!q ? empty : ''}
                 `.trim();
@@ -2059,7 +2085,7 @@ function initializeOverlayPanelControls() {
               } else {
                 picker.innerHTML = `
                   ${header}
-                  ${q && groupKeys.length === 0 ? '<div style="padding:0 16px 16px 16px; opacity:0.7;">No matches.</div>' : ''}
+                  ${q && groupKeys.length === 0 ? `<div style="padding:0 16px 16px 16px; opacity:0.7;">No matches found for '${q}'.</div>` : ''}
                   ${buildCategorySections()}
                   ${!q ? empty : ''}
                 `.trim();
@@ -2086,7 +2112,7 @@ function initializeOverlayPanelControls() {
           // Existing behavior for Recent list (ungrouped)
           const seenSearchQuery = source === 'seen' ? String(picker.dataset.gemSeenImagesSearch || '').trim() : '';
           const noMatches = source === 'seen' && seenSearchQuery && filteredRows.length === 0
-            ? '<div style="opacity:0.7; margin-top:10px;">No matches.</div>'
+            ? `<div style="opacity:0.7; margin-top:10px;">No matches found for '${seenSearchQuery}'.</div>`
             : '';
 
           // For content-only updates (search changes), preserve header and update only content

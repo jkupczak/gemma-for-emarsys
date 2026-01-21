@@ -1352,3 +1352,22 @@ html:has(.gem-enhanced-image-properties-dialog) {
 .gem-scrollable::-webkit-scrollbar-thumb:hover {
     background-color: rgba(0, 0, 0, 0.3);
 }
+
+input.gem-image-search:not(:placeholder-shown) {
+    background-color: var(--token-input-default-backgroundActive);
+    border: 1px solid var(--token-input-default-borderActive);
+    border-bottom: 1px solid var(--token-input-default-borderActive);
+    outline-offset: -2px;
+    outline: 2px solid var(--token-input-default-borderActive);
+    background-image: url(data:image/svg+xml,%3csvg fill%3d%22%23eaecee%22 xmlns%3d%22http%3a%2f%2fwww.w3.org%2f2000%2fsvg%22 width%3d%2224%22 height%3d%2224%22 viewBox%3d%220 0 24 24%22%3e %3cpath fill-rule%3d%22evenodd%22 d%3d%22M11 3a8 8 0 1 0 4.906 14.32l3.387 3.387a1 1 0 0 0 1.414-1.414l-3.387-3.387A8 8 0 0 0 11 3Zm-6 8a6 6 0 1 1 12 0 6 6 0 0 1-12 0Z%22 clip-rule%3d%22evenodd%22%2f%3e %3c%2fsvg%3e), none;
+    background-position: calc(100% - 16px), 50% calc(100% + 1px);
+    background-repeat: no-repeat, repeat-x;
+    background-size: 16px, 100% 2px;
+  }
+
+  .gem-header-copy-icon:before {
+    content: "Copy";
+  }
+  .gem-header-copy-icon-success:before {
+    content: "Copied!";
+  }

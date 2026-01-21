@@ -115,8 +115,8 @@ function initializeKeywordSwap() {
         const rules = normalizeSwapKeywordsFromSnippet(snippet).filter((r) => r && r.keyword && r.initiateFrom !== 'toolbar' && r.initiateFrom !== 'panel');
 
         rules.forEach((rule) => {
-          const { keyword, mode } = rule;
-          console.log(`[Gem-Keyword-Swap] Processing keyword "${keyword}" with mode "${mode}"`);
+          const { keyword, mode, matchRule } = rule;
+          console.log(`[Gem-Keyword-Swap] Processing keyword "${keyword}" with mode "${mode}" and matchRule "${matchRule}"`);
 
           // Generate the replacement content (HTML token for contenteditable, plain text for textarea)
           const isTextareaContext = true; // We're always in textarea context for preheader
@@ -132,46 +132,16 @@ function initializeKeywordSwap() {
             });
           }
 
-          // Perform the replacement based on mode
-          if (mode === 'exact') {
-            // Exact match (case-sensitive)
-            const escapedKeyword = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            const regex = new RegExp(escapedKeyword, 'g');
-            console.log(`[Gem-Keyword-Swap] Testing exact regex: ${regex} against: "${modifiedText}"`);
-            const matches = modifiedText.match(regex);
-            if (matches) {
-              console.log(`[Gem-Keyword-Swap] Found ${matches.length} exact matches for "${keyword}":`, matches);
-              totalSwaps += matches.length;
-              modifiedText = modifiedText.replace(regex, replacementContent);
-            } else {
-              console.log(`[Gem-Keyword-Swap] No exact matches found for "${keyword}"`);
-            }
-          } else if (mode === 'word') {
-            // Word boundary match (case-sensitive) - for "word" mode, we want case-sensitive word boundaries
-            const escapedKeyword = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            const regex = new RegExp(`(?<!\\w)${escapedKeyword}(?!\\w)`, 'g');
-            console.log(`[Gem-Keyword-Swap] Testing word regex: ${regex} against: "${modifiedText}"`);
-            const matches = modifiedText.match(regex);
-            if (matches) {
-              console.log(`[Gem-Keyword-Swap] Found ${matches.length} word matches for "${keyword}":`, matches);
-              totalSwaps += matches.length;
-              modifiedText = modifiedText.replace(regex, replacementContent);
-            } else {
-              console.log(`[Gem-Keyword-Swap] No word matches found for "${keyword}"`);
-            }
-          } else if (mode === 'contains') {
-            // Contains match (case-sensitive)
-            const escapedKeyword = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            const regex = new RegExp(escapedKeyword, 'g');
-            console.log(`[Gem-Keyword-Swap] Testing contains regex: ${regex} against: "${modifiedText}"`);
-            const matches = modifiedText.match(regex);
-            if (matches) {
-              console.log(`[Gem-Keyword-Swap] Found ${matches.length} contains matches for "${keyword}":`, matches);
-              totalSwaps += matches.length;
-              modifiedText = modifiedText.replace(regex, replacementContent);
-            } else {
-              console.log(`[Gem-Keyword-Swap] No contains matches found for "${keyword}"`);
-            }
+          // Match Rules control whether we use word boundaries (\b) or not.
+          const regex = createKeywordRegex(keyword, matchRule);
+          console.log(`[Gem-Keyword-Swap] Testing regex: ${regex} against: "${modifiedText}"`);
+          const matches = modifiedText.match(regex);
+          if (matches) {
+            console.log(`[Gem-Keyword-Swap] Found ${matches.length} matches for "${keyword}":`, matches);
+            totalSwaps += matches.length;
+            modifiedText = modifiedText.replace(regex, replacementContent);
+          } else {
+            console.log(`[Gem-Keyword-Swap] No matches found for "${keyword}"`);
           }
         });
       });
@@ -214,6 +184,7 @@ function initializeKeywordSwap() {
         .map((k) => ({
           keyword: (k && typeof k.keyword === 'string') ? k.keyword.trim() : '',
           mode: normalizeSwapMode(k && k.mode),
+          matchRule: normalizeSwapMatchRule(k && k.matchRule),
           initiateFrom: normalizeSwapInitiateFrom(k && k.initiateFrom)
         }))
         .filter((k) => !!k.keyword);
@@ -232,30 +203,38 @@ function initializeKeywordSwap() {
     // Legacy format: swapKeyword/swapMode
     const legacyKeyword = (snippet.swapKeyword && typeof snippet.swapKeyword === 'string') ? snippet.swapKeyword.trim() : '';
     if (!legacyKeyword) return [];
-    return [{ keyword: legacyKeyword, mode: normalizeSwapMode(snippet.swapMode), initiateFrom: 'anywhere' }];
+    return [{ keyword: legacyKeyword, mode: normalizeSwapMode(snippet.swapMode), matchRule: 'partial', initiateFrom: 'anywhere' }];
   }
 
   function normalizeSwapMode(mode) {
+    // token | plain (how we insert the snippet content)
     if (typeof mode === 'string') {
       const m = mode.toLowerCase().trim();
-      if (['exact', 'word', 'contains'].includes(m)) return m;
+      if (m === 'plain') return 'plain';
     }
-    return 'word'; // default
+    return 'token'; // default
   }
 
-  function createKeywordRegex(keyword, mode) {
-    const escapedKeyword = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-    if (mode === 'exact') {
-      return new RegExp(escapedKeyword, 'g');
-    } else if (mode === 'word') {
-      return new RegExp(`(?<!\\w)${escapedKeyword}(?!\\w)`, 'g');
-    } else if (mode === 'contains') {
-      return new RegExp(escapedKeyword, 'g');
+  function normalizeSwapMatchRule(v) {
+    // partial | whole
+    if (typeof v === 'string') {
+      const m = v.toLowerCase().trim();
+      if (m === 'whole' || m === 'wholeword' || m === 'whole_word') return 'whole';
+      if (m === 'partial' || m === 'partialword' || m === 'partial_word') return 'partial';
+      // Back-compat guesses
+      if (m === 'word') return 'whole';
+      if (m === 'contains') return 'partial';
     }
+    return 'partial';
+  }
 
-    // Default to word mode
-    return new RegExp(`(?<!\\w)${escapedKeyword}(?!\\w)`, 'g');
+  function createKeywordRegex(keyword, matchRule) {
+    const escapedKeyword = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const mr = normalizeSwapMatchRule(matchRule);
+    // Whole Word uses \b boundaries, Partial Word does not.
+    return mr === 'whole'
+      ? new RegExp(`\\b${escapedKeyword}\\b`, 'g')
+      : new RegExp(escapedKeyword, 'g');
   }
 
   function normalizeSwapInitiateFrom(initiateFrom) {

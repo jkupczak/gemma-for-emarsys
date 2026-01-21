@@ -217,6 +217,9 @@ function createSnippetModalHTML(isEditing = false) {
 function initializeSnippetsTab() {
   console.log("[Gem] Initializing snippets tab");
 
+  // Always ensure Emarsys ESL submit is disabled while validation is busy (native + Gem-patched dialogs)
+  ensureEmarsysEslValidationDisableObserver();
+
   // When we open the Snippets tab, we hide the existing Emarsys panel(s) rather than removing them.
   // Emarsys sometimes assumes those nodes still exist and won't re-create them, which can break
   // certain tab switching sequences (Snippets -> X -> Snippets -> X).
@@ -343,6 +346,12 @@ function initializeSnippetsTab() {
     return mode === 'plain' ? 'plain' : 'token';
   }
 
+  function normalizeSwapMatchRule(v) {
+    // partial | whole
+    if (v === 'whole') return 'whole';
+    return 'partial';
+  }
+
   function normalizeSwapInitiateFrom(v) {
     // anywhere | panel | toolbar
     if (v === 'panel' || v === 'toolbar') return v;
@@ -358,6 +367,7 @@ function initializeSnippetsTab() {
         .map((k) => ({
           keyword: (k && typeof k.keyword === 'string') ? k.keyword.trim() : '',
           mode: normalizeSwapMode(k && k.mode),
+          matchRule: normalizeSwapMatchRule(k && k.matchRule),
           initiateFrom: normalizeSwapInitiateFrom(k && k.initiateFrom)
         }))
         .filter((k) => !!k.keyword);
@@ -376,7 +386,7 @@ function initializeSnippetsTab() {
     // Legacy format: swapKeyword/swapMode
     const legacyKeyword = (snippet.swapKeyword && typeof snippet.swapKeyword === 'string') ? snippet.swapKeyword.trim() : '';
     if (!legacyKeyword) return [];
-    return [{ keyword: legacyKeyword, mode: normalizeSwapMode(snippet.swapMode), initiateFrom: 'anywhere' }];
+    return [{ keyword: legacyKeyword, mode: normalizeSwapMode(snippet.swapMode), matchRule: 'partial', initiateFrom: 'anywhere' }];
   }
 
   function snippetHasAnySwapKeyword(snippet) {
@@ -1417,11 +1427,23 @@ function initializeSnippetsTab() {
 
         rules.forEach((rule) => {
           const needle = rule.keyword;
+          const matchRule = (rule && rule.matchRule) ? rule.matchRule : 'partial';
+          const isWordChar = (ch) => !!ch && /\w/.test(ch);
           let from = 0;
           while (true) {
             const idx = text.indexOf(needle, from);
             if (idx === -1) break;
-            matches.push({ start: idx, end: idx + needle.length, rule });
+            const endIdx = idx + needle.length;
+            if (matchRule === 'whole') {
+              const prev = idx > 0 ? text[idx - 1] : '';
+              const next = endIdx < text.length ? text[endIdx] : '';
+              // Whole Word: emulate \b boundaries (no \b => partial match)
+              if (isWordChar(prev) || isWordChar(next)) {
+                from = endIdx;
+                continue;
+              }
+            }
+            matches.push({ start: idx, end: endIdx, rule });
             from = idx + needle.length;
           }
         });
@@ -1598,6 +1620,85 @@ function initializeSnippetsTab() {
     gemEmarsysEslObserver.observe(document.body, { childList: true, subtree: true });
   }
 
+  // ------------------------------------------------------------
+  // Emarsys ESL dialog: disable submit while validation is busy
+  // (works for BOTH Gem-patched dialogs and native Emarsys dialogs)
+  // ------------------------------------------------------------
+  // NOTE: this runs inside initializeSnippetsTab(), so we must avoid TDZ issues.
+  // Use a function-scoped var and initialize lazily inside the ensure* function.
+  var gemEslValidationDisable;
+
+  function ensureEmarsysEslValidationDisableObserver() {
+    if (!gemEslValidationDisable) {
+      gemEslValidationDisable = { observer: null, wired: new WeakSet() };
+    }
+    if (gemEslValidationDisable.observer) return;
+
+    const wireDialog = (dialogRoot) => {
+      if (!dialogRoot || gemEslValidationDisable.wired.has(dialogRoot)) return;
+
+      // IMPORTANT: Only attach this behavior to the Emarsys ESL snippet dialog.
+      // This reduces the risk of interfering with other Emarsys dialogs that may also
+      // use submit buttons or busy indicators.
+      const isEslDialog =
+        !!dialogRoot.querySelector(`#${GEM_EMARSYS_ESL_NAME_INPUT_ID}`) ||
+        !!dialogRoot.querySelector('.CodeMirror') ||
+        !!dialogRoot.querySelector('vce-codemirror');
+      if (!isEslDialog) return;
+
+      gemEslValidationDisable.wired.add(dialogRoot);
+
+      const sync = () => {
+        const isBusy = !!dialogRoot.querySelector('e-busy-indicator');
+
+        // Native Emarsys submit targets can be either <button> or <e-btn>
+        const submitTargets = dialogRoot.querySelectorAll(
+          'button[type="submit"], button.e-btn-primary[type="submit"], e-btn[type="submit"]'
+        );
+
+        submitTargets.forEach((el) => {
+          if (!el) return;
+          if (isBusy) {
+            el.setAttribute('disabled', '');
+            el.dataset.gemDisabledByValidation = 'true';
+          } else {
+            // Only remove if we set it
+            if (el.dataset.gemDisabledByValidation === 'true') {
+              el.removeAttribute('disabled');
+              delete el.dataset.gemDisabledByValidation;
+            }
+          }
+        });
+
+        // If our injected Save button exists, keep it in sync too
+        const gemOkBtn = dialogRoot.querySelector('button.gem-esl-save-btn');
+        if (gemOkBtn) {
+          if (isBusy) gemOkBtn.dataset.gemValidating = 'true';
+          else delete gemOkBtn.dataset.gemValidating;
+          const isReading = gemOkBtn.dataset.gemReading === 'true';
+          const isValidating = gemOkBtn.dataset.gemValidating === 'true';
+          gemOkBtn.disabled = isReading || isValidating;
+        }
+      };
+
+      // Initial + observe within dialog for busy indicator changes
+      sync();
+      const localObs = new MutationObserver(sync);
+      localObs.observe(dialogRoot, { childList: true, subtree: true });
+      dialogRoot._gemEslValidationDisableLocalObs = localObs;
+    };
+
+    const scanAndWire = () => {
+      const dialogs = Array.from(document.querySelectorAll('e-float-container .e-dialog__container, .e-dialog__container'));
+      dialogs.forEach((d) => wireDialog(d));
+    };
+
+    // Observe DOM for new dialogs
+    gemEslValidationDisable.observer = new MutationObserver(scanAndWire);
+    gemEslValidationDisable.observer.observe(document.body, { childList: true, subtree: true });
+    scanAndWire();
+  }
+
   function patchEmarsysEslDialog(nameInputEl, context) {
     // Find the dialog container scope so we only touch this specific dialog instance.
     const dialogRoot =
@@ -1635,6 +1736,41 @@ function initializeSnippetsTab() {
     });
 
     if (!buttonGroup) return;
+
+    // Disable submit while Emarsys validation widget is busy (e-busy-indicator present)
+    const setupValidationBusyDisable = () => {
+      if (dialogRoot._gemValidationBusyObserver) return;
+
+      const sync = () => {
+        const isBusy = !!dialogRoot.querySelector('e-busy-indicator');
+
+        // If Emarsys submit button exists in this dialog, disable it while busy.
+        const emarsysSubmit =
+          dialogRoot.querySelector('button.e-btn-primary[type="submit"]') ||
+          dialogRoot.querySelector('button.e-btn[type="submit"]') ||
+          dialogRoot.querySelector('button[type="submit"]');
+        if (emarsysSubmit) {
+          if (isBusy) emarsysSubmit.setAttribute('disabled', '');
+          else emarsysSubmit.removeAttribute('disabled');
+        }
+
+        // Also disable our injected Save button while busy (if present).
+        const gemOkBtn = dialogRoot.querySelector('button.gem-esl-save-btn');
+        if (gemOkBtn) {
+          if (isBusy) gemOkBtn.dataset.gemValidating = 'true';
+          else delete gemOkBtn.dataset.gemValidating;
+          const isReading = gemOkBtn.dataset.gemReading === 'true';
+          const isValidating = gemOkBtn.dataset.gemValidating === 'true';
+          gemOkBtn.disabled = isReading || isValidating;
+        }
+      };
+
+      // Initial sync + observe for indicator appearing/disappearing
+      sync();
+      const obs = new MutationObserver(sync);
+      obs.observe(dialogRoot, { childList: true, subtree: true });
+      dialogRoot._gemValidationBusyObserver = obs;
+    };
 
     // Remove Emarsys Cancel/OK buttons in this specific dialog instance
     const emarsysCancel = buttonGroup.querySelector('button.cancel-btn[type="reset"]');
@@ -1684,6 +1820,7 @@ function initializeSnippetsTab() {
     gemOk.className = 'e-btn e-btn-primary';
     gemOk.type = 'button';
     gemOk.textContent = 'Save';
+    gemOk.classList.add('gem-esl-save-btn');
 
     gemCancel.addEventListener('click', () => {
       closeEmarsysDialog(dialogRoot);
@@ -1709,14 +1846,18 @@ function initializeSnippetsTab() {
 
       // Read code from CodeMirror robustly. The hidden textarea inside CodeMirror
       // does NOT reliably contain the editor value, so we retry and fall back.
+      gemOk.dataset.gemReading = 'true';
       gemOk.disabled = true;
       readEmarsysDialogCode(dialogRoot)
         .then((code) => {
-          gemOk.disabled = false;
+          delete gemOk.dataset.gemReading;
+          // Respect validation busy state
+          gemOk.disabled = gemOk.dataset.gemValidating === 'true';
           handleSnippetSaveFromValues({ favorite, category, name, code: code.trim(), description, swapKeywords }, context.snippetId, dialogRoot);
         })
         .catch(() => {
-          gemOk.disabled = false;
+          delete gemOk.dataset.gemReading;
+          gemOk.disabled = gemOk.dataset.gemValidating === 'true';
           handleSnippetSaveFromValues({ favorite, category, name, code: '', description, swapKeywords }, context.snippetId, dialogRoot);
         });
     });
@@ -1749,6 +1890,9 @@ function initializeSnippetsTab() {
 
     buttonGroup.appendChild(leftActions);
     buttonGroup.appendChild(rightActions);
+
+    // Start watching for Emarsys validation busy indicator once our buttons exist.
+    setupValidationBusyDisable();
   }
 
   function ensureGemFieldsInEmarsysDialog(dialogRoot, context) {
@@ -1804,6 +1948,7 @@ function initializeSnippetsTab() {
         <div style="display:flex; gap:10px; align-items:flex-start; margin-bottom:4px;">
           <div style="width:100%;">Optional Keyword for Swapping</div>
           <div style="min-width:120px;">Swap Method</div>
+          <div style="min-width:140px;">Match Rules</div>
           <div style="min-width:140px;">Initiate From</div>
           <div style="min-width:40px;"></div>
         </div>
@@ -2056,7 +2201,7 @@ function initializeSnippetsTab() {
   // Swap keyword rows UI (shared between Gem modal + Emarsys modal injection)
   // ------------------------------------------------------------
 
-  function addSwapKeywordRowEl(rowsContainer, keyword = '', mode = 'token', initiateFrom = 'anywhere') {
+  function addSwapKeywordRowEl(rowsContainer, keyword = '', mode = 'token', matchRule = 'partial', initiateFrom = 'anywhere') {
     const row = document.createElement('div');
     row.className = 'gem-swap-keyword-row';
     row.style.display = 'flex';
@@ -2080,6 +2225,17 @@ function initializeSnippetsTab() {
       <select class="e-input gem-swap-mode-select" aria-label="Swap Method">
         <option value="token">ESL Token</option>
         <option value="plain">Plain Text</option>
+      </select>
+    `.trim();
+
+    const matchField = document.createElement('div');
+    matchField.className = 'e-field';
+    matchField.style.minWidth = '140px';
+    matchField.style.marginBottom = '0';
+    matchField.innerHTML = `
+      <select class="e-input gem-swap-match-select" aria-label="Match Rules">
+        <option value="partial">Partial Word</option>
+        <option value="whole">Whole Word</option>
       </select>
     `.trim();
 
@@ -2109,15 +2265,18 @@ function initializeSnippetsTab() {
 
     row.appendChild(keywordField);
     row.appendChild(modeField);
+    row.appendChild(matchField);
     row.appendChild(initiateField);
     row.appendChild(removeWrap);
     rowsContainer.appendChild(row);
 
     const input = row.querySelector('.gem-swap-keyword-input');
     const select = row.querySelector('.gem-swap-mode-select');
+    const matchSelect = row.querySelector('.gem-swap-match-select');
     const initiateSelect = row.querySelector('.gem-swap-initiate-select');
     if (input) input.value = keyword || '';
     if (select) select.value = normalizeSwapMode(mode);
+    if (matchSelect) matchSelect.value = normalizeSwapMatchRule(matchRule);
     if (initiateSelect) initiateSelect.value = normalizeSwapInitiateFrom(initiateFrom);
   }
 
@@ -2129,14 +2288,15 @@ function initializeSnippetsTab() {
       .map((k) => ({
         keyword: (k && typeof k.keyword === 'string') ? k.keyword.trim() : '',
         mode: normalizeSwapMode(k && k.mode),
+        matchRule: normalizeSwapMatchRule(k && k.matchRule),
         initiateFrom: normalizeSwapInitiateFrom(k && k.initiateFrom)
       }))
       .filter((k) => !!k.keyword);
 
     if (cleaned.length === 0) {
-      addSwapKeywordRowEl(rowsContainer, '', 'token', 'anywhere');
+      addSwapKeywordRowEl(rowsContainer, '', 'token', 'partial', 'anywhere');
     } else {
-      cleaned.forEach((k) => addSwapKeywordRowEl(rowsContainer, k.keyword, k.mode, k.initiateFrom));
+      cleaned.forEach((k) => addSwapKeywordRowEl(rowsContainer, k.keyword, k.mode, k.matchRule, k.initiateFrom));
     }
   }
 
@@ -2153,8 +2313,9 @@ function initializeSnippetsTab() {
       }
       seen.add(keyword);
       const mode = normalizeSwapMode(row.querySelector('.gem-swap-mode-select')?.value);
+      const matchRule = normalizeSwapMatchRule(row.querySelector('.gem-swap-match-select')?.value);
       const initiateFrom = normalizeSwapInitiateFrom(row.querySelector('.gem-swap-initiate-select')?.value);
-      out.push({ keyword, mode, initiateFrom });
+      out.push({ keyword, mode, matchRule, initiateFrom });
     }
 
     return { ok: true, swapKeywords: out };
@@ -2166,7 +2327,7 @@ function initializeSnippetsTab() {
 
     if (addBtn) {
       addBtn.addEventListener('click', () => {
-        addSwapKeywordRowEl(rowsContainer, '', 'token', 'anywhere');
+        addSwapKeywordRowEl(rowsContainer, '', 'token', 'partial', 'anywhere');
       });
     }
 
@@ -2182,9 +2343,11 @@ function initializeSnippetsTab() {
         // Keep at least one row; just clear it
         const input = row.querySelector('.gem-swap-keyword-input');
         const select = row.querySelector('.gem-swap-mode-select');
+        const matchSelect = row.querySelector('.gem-swap-match-select');
         const initiateSelect = row.querySelector('.gem-swap-initiate-select');
         if (input) input.value = '';
         if (select) select.value = 'token';
+        if (matchSelect) matchSelect.value = 'partial';
         if (initiateSelect) initiateSelect.value = 'anywhere';
         return;
       }

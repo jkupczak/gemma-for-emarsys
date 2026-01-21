@@ -184,8 +184,7 @@ function initializeKeyboardShortcuts() {
         const isTypingTarget =
           tag === 'input' ||
           tag === 'textarea' ||
-          tag === 'select' ||
-          ae.isContentEditable;
+          tag === 'select';
         if (isTypingTarget) return;
       }
 

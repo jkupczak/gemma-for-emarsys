@@ -29,32 +29,16 @@ where they can toggle icons on or off
 
 Use the Emarsys icon font
 
-## Image Picker:
-    ✓ Let them apply a custom name to it (like "Ends Tomorrow Talker")
-    ✓ Perhaps add "Recent" and Favorites" buttons in the Image Propertiers dialog next to the "Media DB" button. Clicking on either reveals
-      a scrollable list of those files. Populate the image URL field by clicking + on them.
-    ✓ The list should take the place of the image preview on the left.
-    ✓ It should default to a table list of text (with small thumbnails)
-    ✓ It should have a toggle to show images in a grid as larger thumbnails.
-    Add an option to pin/favorite specific images files in the Media DB. Fine alternative to favoriting folders.
-    ✓ Favorites should be able to be categorized. Categories should be collapsable.
-    Add a recently "seen" tab. Collect image urls whenever we use MediaDB.
-    ✓ Let users apply metadata to favorited images: search keyword, category, language
-
-
-
 Add a toggle in settings for the email preview header. Let them change it between vertical and horizontal.
 
 When the email editor is maximized and the mobile view is off, sometimes there's an issue on a page refresh where the drag bar is misaligned.
 
 '_blank' should be considered an invalid URL
 
-Double click to open esl tokens and image properties
+Double click to open esl tokens and ✓ image properties
 
 While the ESL syntax checker is thinking, you should not be able to click OK to click the dialog
 
-
-Lets add a new field to the Favorited Image edit modal called "Width". This input should accept an integer. If the user uses an "Add to Page" button on any image that has this metadata, in addition to adding the URL to the CodeMirror URL input, we should also add the Width value to the element at `.e-accordion .e-grid:has(option[value='px']) > .e-cell:first-child input` if the value exists in the metadata and if the element exists in the DOM.
 
 -----------------------------------------------
 # NO 
@@ -64,6 +48,18 @@ Lets add a new field to the Favorited Image edit modal called "Width". This inpu
 
 -----------------------------------------------
 # COMPLETE
+
+## Image Picker:
+    ✓ Let them apply a custom name to it (like "Ends Tomorrow Talker")
+    ✓ Perhaps add "Recent" and Favorites" buttons in the Image Propertiers dialog next to the "Media DB" button. Clicking on either reveals
+      a scrollable list of those files. Populate the image URL field by clicking + on them.
+    ✓ The list should take the place of the image preview on the left.
+    ✓ It should default to a table list of text (with small thumbnails)
+    ✓ It should have a toggle to show images in a grid as larger thumbnails.
+    ✓ Add an option to pin/favorite specific images files in the Media DB. Fine alternative to favoriting folders.
+    ✓ Favorites should be able to be categorized. Categories should be collapsable.
+    ✓ Add a recently "seen" tab. Collect image urls whenever we use MediaDB.
+    ✓ Let users apply metadata to favorited images: search keyword, category, language
 
 ✓ The Recently Seen list should be categorized by Path. Categories should be sorted by most recently seen.
 
