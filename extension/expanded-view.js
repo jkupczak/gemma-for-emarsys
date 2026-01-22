@@ -1,12 +1,12 @@
-// expanded-mode.js - Handles repositioning of elements in expanded view mode
-console.log('[Gem-Expanded-Mode] expanded-mode.js loaded');
+// expanded-view.js - Handles repositioning of elements in expanded view view
+console.log('[Gem-Expanded-View] expanded-view.js loaded');
 
-function initializeExpandedMode() {
-  console.log('[Gem-Expanded-Mode] Initializing expanded mode functionality');
+function initializeExpandedView() {
+  console.log('[Gem-Expanded-View] Initializing expanded view functionality');
 
   // Wait for the navigation section to appear
   waitForElement('.e-contentblocks-navigation_section', (navSection) => {
-    console.log('[Gem-Expanded-Mode] Content blocks navigation section found, setting up expanded mode');
+    console.log('[Gem-Expanded-View] Content blocks navigation section found, setting up expanded view');
 
     // Create the compact versions div
     const compactVersionsDiv = document.createElement('div');
@@ -39,13 +39,13 @@ function initializeExpandedMode() {
           navSection.insertBefore(headerTitle, navSection.firstChild);
         }
 
-        console.log('[Gem-Expanded-Mode] Moved header title to navigation section (expanded view)');
+        console.log('[Gem-Expanded-View] Moved header title to navigation section (expanded view)');
       } else {
         // Element is already moved, just make sure it's positioned after compact tools
         if (!navSection.contains(headerTitle)) {
           // Insert as the first child of navigation section
           navSection.insertBefore(headerTitle, navSection.firstChild);
-          console.log('[Gem-Expanded-Mode] Re-attached header title to navigation section');
+          console.log('[Gem-Expanded-View] Re-attached header title to navigation section');
         }
       }
     }
@@ -71,12 +71,12 @@ function initializeExpandedMode() {
           versionSelector.remove();
           compactVersionsDiv.insertBefore(versionSelector, compactVersionsDiv.firstChild);
 
-          console.log('[Gem-Expanded-Mode] Moved version selector to compact versions (expanded view)');
+          console.log('[Gem-Expanded-View] Moved version selector to compact versions (expanded view)');
         } else {
           // Element is already moved, just make sure it's the first child
           if (!compactVersionsDiv.contains(versionSelector)) {
             compactVersionsDiv.insertBefore(versionSelector, compactVersionsDiv.firstChild);
-            console.log('[Gem-Expanded-Mode] Re-attached version selector to compact versions as first child');
+            console.log('[Gem-Expanded-View] Re-attached version selector to compact versions as first child');
           }
         }
 
@@ -89,7 +89,7 @@ function initializeExpandedMode() {
           // Move back to original location
           placeholder.parentNode.insertBefore(versionSelector, placeholder);
           placeholder.remove();
-          console.log('[Gem-Expanded-Mode] Moved version selector back to original location (normal view)');
+          console.log('[Gem-Expanded-View] Moved version selector back to original location (normal view)');
         }
       }
     }
@@ -111,12 +111,12 @@ function initializeExpandedMode() {
           localeSelector.remove();
           compactVersionsDiv.appendChild(localeSelector);
 
-          console.log('[Gem-Expanded-Mode] Moved multilanguage locale selector to compact versions (expanded view)');
+          console.log('[Gem-Expanded-View] Moved multilanguage locale selector to compact versions (expanded view)');
         } else {
           // Element is already moved, just make sure it's in the right place
           if (!compactVersionsDiv.contains(localeSelector)) {
             compactVersionsDiv.appendChild(localeSelector);
-            console.log('[Gem-Expanded-Mode] Re-attached multilanguage locale selector to compact versions');
+            console.log('[Gem-Expanded-View] Re-attached multilanguage locale selector to compact versions');
           }
         }
 
@@ -129,7 +129,7 @@ function initializeExpandedMode() {
           // Move back to original location
           placeholder.parentNode.insertBefore(localeSelector, placeholder);
           placeholder.remove();
-          console.log('[Gem-Expanded-Mode] Moved multilanguage locale selector back to original location (normal view)');
+          console.log('[Gem-Expanded-View] Moved multilanguage locale selector back to original location (normal view)');
         }
       }
     }
@@ -149,7 +149,7 @@ function initializeExpandedMode() {
     setupExpandedViewObserver(compactVersionsDiv);
     setupLanguagesSelectorObserver(compactVersionsDiv);
 
-    console.log('[Gem-Expanded-Mode] Expanded mode functionality initialized successfully');
+    console.log('[Gem-Expanded-View] Expanded view functionality initialized successfully');
   });
 }
 
@@ -177,7 +177,7 @@ function moveSelectorsBasedOnView(compactVersionsDiv, isExpanded) {
         // Insert as the first child of navigation section
         navSection.insertBefore(headerTitle, navSection.firstChild);
 
-        console.log('[Gem-Expanded-Mode] Moved header title to navigation section (view change)');
+        console.log('[Gem-Expanded-View] Moved header title to navigation section (view change)');
       }
 
       // Ensure it's positioned as first child
@@ -193,7 +193,7 @@ function moveSelectorsBasedOnView(compactVersionsDiv, isExpanded) {
           // Move back to original location
           placeholder.parentNode.insertBefore(headerTitle, placeholder);
           placeholder.remove();
-          console.log('[Gem-Expanded-Mode] Moved header title back to original location (view change)');
+          console.log('[Gem-Expanded-View] Moved header title back to original location (view change)');
         }
       }
     }
@@ -216,7 +216,7 @@ function moveSelectorsBasedOnView(compactVersionsDiv, isExpanded) {
         versionSelector.remove();
         compactVersionsDiv.insertBefore(versionSelector, compactVersionsDiv.firstChild);
 
-        console.log('[Gem-Expanded-Mode] Moved version selector to compact versions (view change)');
+        console.log('[Gem-Expanded-View] Moved version selector to compact versions (view change)');
       }
 
       // Show the compact versions div
@@ -228,7 +228,7 @@ function moveSelectorsBasedOnView(compactVersionsDiv, isExpanded) {
         // Move back to original location
         placeholder.parentNode.insertBefore(versionSelector, placeholder);
         placeholder.remove();
-        console.log('[Gem-Expanded-Mode] Moved version selector back to original location (view change)');
+        console.log('[Gem-Expanded-View] Moved version selector back to original location (view change)');
       }
     }
   }
@@ -250,7 +250,7 @@ function moveSelectorsBasedOnView(compactVersionsDiv, isExpanded) {
         localeSelector.remove();
         compactVersionsDiv.appendChild(localeSelector);
 
-        console.log('[Gem-Expanded-Mode] Moved multilanguage locale selector to compact versions (view change)');
+        console.log('[Gem-Expanded-View] Moved multilanguage locale selector to compact versions (view change)');
       }
 
       // Show the compact versions div
@@ -262,7 +262,7 @@ function moveSelectorsBasedOnView(compactVersionsDiv, isExpanded) {
         // Move back to original location
         placeholder.parentNode.insertBefore(localeSelector, placeholder);
         placeholder.remove();
-        console.log('[Gem-Expanded-Mode] Moved multilanguage locale selector back to original location (view change)');
+        console.log('[Gem-Expanded-View] Moved multilanguage locale selector back to original location (view change)');
       }
     }
   }
@@ -277,7 +277,7 @@ function moveSelectorsBasedOnView(compactVersionsDiv, isExpanded) {
 }
 
 function setupExpandedViewObserver(compactVersionsDiv) {
-  console.log('[Gem-Expanded-Mode] Setting up expanded view observer for locale selector');
+  console.log('[Gem-Expanded-View] Setting up expanded view observer for locale selector');
 
   // Watch for changes to the body class
   const bodyObserver = new MutationObserver((mutations) => {
@@ -288,7 +288,7 @@ function setupExpandedViewObserver(compactVersionsDiv) {
 
         // Only act if the expanded state actually changed
         if (wasExpanded !== isExpanded) {
-          console.log(`[Gem-Expanded-Mode] Expanded view changed: ${wasExpanded} -> ${isExpanded}`);
+          console.log(`[Gem-Expanded-View] Expanded view changed: ${wasExpanded} -> ${isExpanded}`);
           moveSelectorsBasedOnView(compactVersionsDiv, isExpanded);
         }
       }
@@ -301,11 +301,11 @@ function setupExpandedViewObserver(compactVersionsDiv) {
     attributeOldValue: true
   });
 
-  console.log('[Gem-Expanded-Mode] Expanded view observer set up');
+  console.log('[Gem-Expanded-View] Expanded view observer set up');
 }
 
 function setupLanguagesSelectorObserver(compactVersionsDiv) {
-  console.log('[Gem-Expanded-Mode] Setting up languages selector observer');
+  console.log('[Gem-Expanded-View] Setting up languages selector observer');
 
   // Watch for changes to vce-languages-selector class
   const languagesObserver = new MutationObserver((mutations) => {
@@ -360,7 +360,7 @@ function setupLanguagesSelectorObserver(compactVersionsDiv) {
     subtree: true
   });
 
-  console.log('[Gem-Expanded-Mode] Languages selector observer set up');
+  console.log('[Gem-Expanded-View] Languages selector observer set up');
 }
 
 function updateCompactVersionsActiveState(compactVersionsDiv, isExpanded) {
@@ -375,16 +375,16 @@ function updateCompactVersionsActiveState(compactVersionsDiv, isExpanded) {
 
   if (shouldBeActive) {
     compactVersionsDiv.classList.add('active');
-    console.log('[Gem-Expanded-Mode] Added active class to compact versions');
+    console.log('[Gem-Expanded-View] Added active class to compact versions');
   } else {
     compactVersionsDiv.classList.remove('active');
-    console.log('[Gem-Expanded-Mode] Removed active class from compact versions');
+    console.log('[Gem-Expanded-View] Removed active class from compact versions');
   }
 }
 
 // Initialize when DOM is ready
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initializeExpandedMode);
+  document.addEventListener('DOMContentLoaded', initializeExpandedView);
 } else {
-  initializeExpandedMode();
+  initializeExpandedView();
 }

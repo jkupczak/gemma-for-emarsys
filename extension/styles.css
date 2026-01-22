@@ -1371,3 +1371,47 @@ input.gem-image-search:not(:placeholder-shown) {
   .gem-header-copy-icon-success:before {
     content: "Copied!";
   }
+
+  /* campaign preview toolbar */
+.gem-campaign-preview-toolbar-vertical cb-campaign-preview > .e-section {
+    display: flex;
+    flex-direction: row;
+}
+.gem-campaign-preview-toolbar-vertical cb-campaign-preview > .e-section .e-section__header:before {
+    display: none !important;
+}
+.gem-campaign-preview-toolbar-vertical cb-campaign-preview > .e-section .e-section__header {
+    display: flex;
+    flex-direction: column;
+    padding: 14px 10px;
+    border-bottom: 0;
+    border-right: 1px solid var(--token-border-default);
+
+    & > .e-cell:first-child > .e-buttongroup {
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    & > .e-cell:first-child > .e-buttongroup .e-border-right {
+        display: none !important;
+    }
+
+    & cb-undo-redo-buttons > div {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+    & .e-cell .e-section__actions {
+        padding: 0 !important;
+    }
+    & .e-buttongroup.e-section__action {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin: 0;
+    }
+}
+
+.gem-campaign-preview-toolbar-vertical:not(.gem-expanded) .e-contentblocks-preview__iframe {
+    border-radius:0 8px 8px 0 !important;
+}

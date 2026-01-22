@@ -7,6 +7,57 @@ const GEM_THEME_MODE_STORAGE_KEY = "gemThemeMode";
 const GEM_THEME_MODE_LOCAL_KEY = "gemThemeMode";
 const GEM_RECENT_IMAGES_STORAGE_KEY = 'gemRecentImages';
 const GEM_RECENTLY_SEEN_IMAGES_STORAGE_KEY = 'gemRecentlySeenImages';
+const GEM_EMAIL_PREVIEW_TOOLBAR_NORMAL_KEY = "gemEmailPreviewToolbarPositionNormal";
+const GEM_EMAIL_PREVIEW_TOOLBAR_EXPANDED_KEY = "gemEmailPreviewToolbarPositionExpanded";
+
+let _gemEmailPreviewToolbarApplyQueued = false;
+
+function gemApplyEmailPreviewToolbarPositionClass() {
+  try {
+    const body = document.body;
+    if (!body) {
+      // settings-panel.js runs at document_start; body may not exist yet on fresh loads.
+      // Queue a one-time apply once body is available.
+      if (_gemEmailPreviewToolbarApplyQueued) return;
+      _gemEmailPreviewToolbarApplyQueued = true;
+
+      const tryApply = () => {
+        if (!document.body) return;
+        _gemEmailPreviewToolbarApplyQueued = false;
+        gemApplyEmailPreviewToolbarPositionClass();
+      };
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', tryApply, { once: true });
+      } else {
+        tryApply();
+      }
+
+      // Also observe in case body appears before DOMContentLoaded in some SPA flows.
+      const obs = new MutationObserver(() => {
+        if (!document.body) return;
+        obs.disconnect();
+        tryApply();
+      });
+      obs.observe(document.documentElement, { childList: true, subtree: true });
+      return;
+    }
+
+    const isExpanded = body.classList.contains('gem-expanded');
+    const key = isExpanded ? GEM_EMAIL_PREVIEW_TOOLBAR_EXPANDED_KEY : GEM_EMAIL_PREVIEW_TOOLBAR_NORMAL_KEY;
+    const defaultValue = isExpanded ? 'vertical' : 'horizontal';
+
+    chrome.storage.sync.get({ [key]: defaultValue }, (res) => {
+      try {
+        const next = (res && typeof res[key] === 'string') ? res[key] : defaultValue;
+        body.classList.toggle('gem-campaign-preview-toolbar-vertical', next === 'vertical');
+      } catch (_) {}
+    });
+  } catch (_) {}
+}
+
+// Make it callable from other scripts (expanded view toggles live elsewhere)
+window.gemApplyEmailPreviewToolbarPositionClass = gemApplyEmailPreviewToolbarPositionClass;
 
 function normalizeGemThemeMode(value) {
   if (value === "original") return "original";
@@ -662,6 +713,24 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         </div>
 
         <div class="gem-setting-section">
+          <h3>Email Preview Toolbar</h3>
+          <div class="gem-setting" style="display: flex; gap: 12px; align-items: center;">
+            <label for="opt-email-preview-toolbar-position-normal" style="flex: 1;">Position in Normal View</label>
+            <select id="opt-email-preview-toolbar-position-normal">
+              <option value="horizontal">Horizontal</option>
+              <option value="vertical">Vertical</option>
+            </select>
+          </div>
+          <div class="gem-setting" style="display: flex; gap: 12px; align-items: center;">
+            <label for="opt-email-preview-toolbar-position-expanded" style="flex: 1;">Position in Expanded View</label>
+            <select id="opt-email-preview-toolbar-position-expanded">
+              <option value="horizontal">Horizontal</option>
+              <option value="vertical">Vertical</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="gem-setting-section">
           <h3>Media Picker Settings</h3>
           <div class="gem-setting">
             <label>
@@ -757,7 +826,9 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         showFileIcon: true,
         showCreatedColumn: true,
         showSizeColumn: true,
-        showUserColumn: true
+        showUserColumn: true,
+        [GEM_EMAIL_PREVIEW_TOOLBAR_NORMAL_KEY]: "horizontal",
+        [GEM_EMAIL_PREVIEW_TOOLBAR_EXPANDED_KEY]: "vertical"
       }, (settings) => {
         const themeSelect = document.getElementById("opt-theme-mode");
         if (themeSelect) {
@@ -784,6 +855,11 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
           settings.convertEslToTokens;
         const swapKeywordsSelect = document.getElementById("opt-swap-keywords");
         if (swapKeywordsSelect) swapKeywordsSelect.value = settings.swapKeywords || "always-show";
+
+        const toolbarPosNormal = document.getElementById("opt-email-preview-toolbar-position-normal");
+        if (toolbarPosNormal) toolbarPosNormal.value = settings[GEM_EMAIL_PREVIEW_TOOLBAR_NORMAL_KEY] || "horizontal";
+        const toolbarPosExpanded = document.getElementById("opt-email-preview-toolbar-position-expanded");
+        if (toolbarPosExpanded) toolbarPosExpanded.value = settings[GEM_EMAIL_PREVIEW_TOOLBAR_EXPANDED_KEY] || "vertical";
 
         document.getElementById("opt-enable-highlighting").checked =
           settings.enableHighlighting;
@@ -861,6 +937,10 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
           document.getElementById("opt-convert-esl-to-tokens")?.value ?? "always-show",
         swapKeywords:
           document.getElementById("opt-swap-keywords")?.value ?? "always-show",
+        [GEM_EMAIL_PREVIEW_TOOLBAR_NORMAL_KEY]:
+          document.getElementById("opt-email-preview-toolbar-position-normal")?.value ?? "horizontal",
+        [GEM_EMAIL_PREVIEW_TOOLBAR_EXPANDED_KEY]:
+          document.getElementById("opt-email-preview-toolbar-position-expanded")?.value ?? "vertical",
         enableHighlighting:
           document.getElementById("opt-enable-highlighting")?.checked ?? true,
         enableMobilePreview: mobileVisible,
@@ -914,7 +994,9 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
       "opt-show-file-icon",
       "opt-show-created-column",
       "opt-show-size-column",
-      "opt-show-user-column"
+      "opt-show-user-column",
+      "opt-email-preview-toolbar-position-normal",
+      "opt-email-preview-toolbar-position-expanded"
     ];
 
     // Remove existing listeners and add new ones
@@ -1545,6 +1627,9 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
 
   setupOpenSettingsPanelShortcut();
 
+  // Apply initial toolbar class once on load
+  gemApplyEmailPreviewToolbarPositionClass();
+
   // ------------------------------------------------------------
   // Keep dark theme in sync with storage changes
   // ------------------------------------------------------------
@@ -1598,6 +1683,17 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
     if (changes.swapKeywords) {
       const select = document.getElementById("opt-swap-keywords");
       if (select) select.value = changes.swapKeywords.newValue;
+    }
+
+    if (changes[GEM_EMAIL_PREVIEW_TOOLBAR_NORMAL_KEY]) {
+      const select = document.getElementById("opt-email-preview-toolbar-position-normal");
+      if (select) select.value = changes[GEM_EMAIL_PREVIEW_TOOLBAR_NORMAL_KEY].newValue;
+      gemApplyEmailPreviewToolbarPositionClass();
+    }
+    if (changes[GEM_EMAIL_PREVIEW_TOOLBAR_EXPANDED_KEY]) {
+      const select = document.getElementById("opt-email-preview-toolbar-position-expanded");
+      if (select) select.value = changes[GEM_EMAIL_PREVIEW_TOOLBAR_EXPANDED_KEY].newValue;
+      gemApplyEmailPreviewToolbarPositionClass();
     }
 
     if (changes.mobilePreviewWidth) {
@@ -1706,7 +1802,7 @@ console.log("[gem] settings-panel.js: setting up message listener");
             <span>on an editable image to open the Image Properties dialog</span>
 
             <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">Double-click</kbd>
-            <span>on an ESL token to open the ESL snippetdialog</span>
+            <span>on an ESL token to open the ESL snippet dialog</span>
           </div>
         </div>
 

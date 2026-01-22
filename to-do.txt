@@ -1,4 +1,4 @@
-# URGENNT BUGS
+# URGENT BUGS
 
 None
 
@@ -15,11 +15,14 @@ Can CMD+C copy ESL tokens as the plain text code for better pasting? Or better y
 
 When the Block Style Settings panel is empty, it should close on its own.
 
+In expanded mode, the block style settings should not cover the top row where we keep the email name and save button
+
 The block reset button in the toolbar should have a confirmation prompt.
 
 add text highlighting to the subject line, preview text, and conditional text editors
 
 Add a red notification dot on the links panel for bad or missing links, or untracked links
+ - '_blank' should be considered an invalid URL
 
 Allow users to resize the Emarsys nav panel. Keep track of the size they set each panel to and 
 use that size whenever they return to that panel
@@ -29,16 +32,7 @@ where they can toggle icons on or off
 
 Use the Emarsys icon font
 
-Add a toggle in settings for the email preview header. Let them change it between vertical and horizontal.
-
-When the email editor is maximized and the mobile view is off, sometimes there's an issue on a page refresh where the drag bar is misaligned.
-
-'_blank' should be considered an invalid URL
-
-Double click to open esl tokens and ✓ image properties
-
-While the ESL syntax checker is thinking, you should not be able to click OK to click the dialog
-
+Can I add a note to the content block about what block targeting is being done?
 
 -----------------------------------------------
 # NO 
@@ -48,6 +42,12 @@ While the ESL syntax checker is thinking, you should not be able to click OK to 
 
 -----------------------------------------------
 # COMPLETE
+
+✓ Add a toggle in settings for the email preview header. Let them change it between vertical and horizontal.
+
+✓ While the ESL syntax checker is thinking, you should not be able to click OK to click the dialog
+
+✓ Double click to open esl tokens and ✓ image properties
 
 ## Image Picker:
     ✓ Let them apply a custom name to it (like "Ends Tomorrow Talker")
