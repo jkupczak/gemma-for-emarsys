@@ -9,6 +9,13 @@ const GEM_RECENT_IMAGES_STORAGE_KEY = 'gemRecentImages';
 const GEM_RECENTLY_SEEN_IMAGES_STORAGE_KEY = 'gemRecentlySeenImages';
 const GEM_EMAIL_PREVIEW_TOOLBAR_NORMAL_KEY = "gemEmailPreviewToolbarPositionNormal";
 const GEM_EMAIL_PREVIEW_TOOLBAR_EXPANDED_KEY = "gemEmailPreviewToolbarPositionExpanded";
+const GEM_CUSTOM_PASTE_ENABLED_KEY = "gemCustomPasteEnabled";
+const GEM_CUSTOM_PASTE_ALLOW_BOLD_KEY = "gemCustomPasteAllowBold";
+const GEM_CUSTOM_PASTE_ALLOW_ITALIC_KEY = "gemCustomPasteAllowItalic";
+const GEM_CUSTOM_PASTE_ALLOW_STRIKE_KEY = "gemCustomPasteAllowStrikethrough";
+const GEM_CUSTOM_PASTE_ALLOW_UNDERLINE_KEY = "gemCustomPasteAllowUnderline";
+const GEM_CUSTOM_PASTE_ALLOW_SUP_KEY = "gemCustomPasteAllowSuperscript";
+const GEM_CUSTOM_PASTE_ALLOW_ANCHOR_KEY = "gemCustomPasteAllowAnchor";
 
 let _gemEmailPreviewToolbarApplyQueued = false;
 
@@ -158,6 +165,8 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
 (function () {
   let panelEl = null;
   let isOpen = false;
+  let _gemPasteUiSyncing = false;
+  let _gemPasteLastAllowState = null;
 
   // ------------------------------------------------------------
   // Inject styles into page
@@ -218,7 +227,8 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         border: 1px solid var(--token-box-default-border);
         transition: all 0.2s ease;
       }
-
+      .gem-setting label + label { padding: 12px 0 0 }
+      .gem-setting label:has(input[disabled]), .gem-setting label input[disabled] { opacity: 0.5; cursor: not-allowed; }
       .gem-setting:hover {
         box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         border-color: var(--token-blue-700);
@@ -731,6 +741,42 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         </div>
 
         <div class="gem-setting-section">
+          <h3>Paste Behavior</h3>
+          <div class="gem-setting">
+            <label>
+              <input type="checkbox" id="opt-custom-paste-enabled" checked />
+              Enable Gemma custom paste behavior
+            </label>
+          </div>
+          <div class="gem-setting">
+            <label>
+              <input type="checkbox" id="opt-custom-paste-bold" checked />
+              Allow bold formatting to be pasted
+            </label>
+            <label>
+              <input type="checkbox" id="opt-custom-paste-italic" checked />
+              Allow italic formatting to be pasted
+            </label>
+            <label>
+              <input type="checkbox" id="opt-custom-paste-strike" checked />
+              Allow strikethrough formatting to be pasted
+            </label>
+            <label>
+              <input type="checkbox" id="opt-custom-paste-underline" checked />
+              Allow underline formatting to be pasted
+            </label>
+            <label>
+              <input type="checkbox" id="opt-custom-paste-sup" checked />
+              Allow superscript formatting to be pasted
+            </label>
+            <label>
+              <input type="checkbox" id="opt-custom-paste-anchor" checked />
+              Allow links to be pasted
+            </label>
+          </div>
+        </div>
+
+        <div class="gem-setting-section">
           <h3>Media Picker Settings</h3>
           <div class="gem-setting">
             <label>
@@ -828,7 +874,14 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         showSizeColumn: true,
         showUserColumn: true,
         [GEM_EMAIL_PREVIEW_TOOLBAR_NORMAL_KEY]: "horizontal",
-        [GEM_EMAIL_PREVIEW_TOOLBAR_EXPANDED_KEY]: "vertical"
+        [GEM_EMAIL_PREVIEW_TOOLBAR_EXPANDED_KEY]: "vertical",
+        [GEM_CUSTOM_PASTE_ENABLED_KEY]: true,
+        [GEM_CUSTOM_PASTE_ALLOW_BOLD_KEY]: true,
+        [GEM_CUSTOM_PASTE_ALLOW_ITALIC_KEY]: true,
+        [GEM_CUSTOM_PASTE_ALLOW_STRIKE_KEY]: true,
+        [GEM_CUSTOM_PASTE_ALLOW_UNDERLINE_KEY]: true,
+        [GEM_CUSTOM_PASTE_ALLOW_SUP_KEY]: true,
+        [GEM_CUSTOM_PASTE_ALLOW_ANCHOR_KEY]: true
       }, (settings) => {
         const themeSelect = document.getElementById("opt-theme-mode");
         if (themeSelect) {
@@ -860,6 +913,24 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         if (toolbarPosNormal) toolbarPosNormal.value = settings[GEM_EMAIL_PREVIEW_TOOLBAR_NORMAL_KEY] || "horizontal";
         const toolbarPosExpanded = document.getElementById("opt-email-preview-toolbar-position-expanded");
         if (toolbarPosExpanded) toolbarPosExpanded.value = settings[GEM_EMAIL_PREVIEW_TOOLBAR_EXPANDED_KEY] || "vertical";
+
+        document.getElementById("opt-custom-paste-enabled").checked =
+          settings[GEM_CUSTOM_PASTE_ENABLED_KEY] !== false;
+        document.getElementById("opt-custom-paste-bold").checked =
+          settings[GEM_CUSTOM_PASTE_ALLOW_BOLD_KEY] !== false;
+        document.getElementById("opt-custom-paste-italic").checked =
+          settings[GEM_CUSTOM_PASTE_ALLOW_ITALIC_KEY] !== false;
+        document.getElementById("opt-custom-paste-strike").checked =
+          settings[GEM_CUSTOM_PASTE_ALLOW_STRIKE_KEY] !== false;
+        document.getElementById("opt-custom-paste-underline").checked =
+          settings[GEM_CUSTOM_PASTE_ALLOW_UNDERLINE_KEY] !== false;
+        document.getElementById("opt-custom-paste-sup").checked =
+          settings[GEM_CUSTOM_PASTE_ALLOW_SUP_KEY] !== false;
+        document.getElementById("opt-custom-paste-anchor").checked =
+          settings[GEM_CUSTOM_PASTE_ALLOW_ANCHOR_KEY] !== false;
+
+        // Apply enable/disable state for Paste Behavior controls after values are loaded
+        syncPasteBehaviorUI({ fromLoad: true });
 
         document.getElementById("opt-enable-highlighting").checked =
           settings.enableHighlighting;
@@ -907,6 +978,8 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
   function attachListeners() {
     // Define handler functions
     function saveSettingsHandler() {
+      // Keep Paste Behavior UI consistent before saving (and avoid invalid state)
+      syncPasteBehaviorUI();
       const widthVal = parseInt(document.getElementById("opt-mobile-preview-width")?.value, 10);
       const safeWidth = Number.isFinite(widthVal) && widthVal > 0 ? widthVal : 414;
 
@@ -941,6 +1014,20 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
           document.getElementById("opt-email-preview-toolbar-position-normal")?.value ?? "horizontal",
         [GEM_EMAIL_PREVIEW_TOOLBAR_EXPANDED_KEY]:
           document.getElementById("opt-email-preview-toolbar-position-expanded")?.value ?? "vertical",
+        [GEM_CUSTOM_PASTE_ENABLED_KEY]:
+          document.getElementById("opt-custom-paste-enabled")?.checked ?? true,
+        [GEM_CUSTOM_PASTE_ALLOW_BOLD_KEY]:
+          document.getElementById("opt-custom-paste-bold")?.checked ?? true,
+        [GEM_CUSTOM_PASTE_ALLOW_ITALIC_KEY]:
+          document.getElementById("opt-custom-paste-italic")?.checked ?? true,
+        [GEM_CUSTOM_PASTE_ALLOW_STRIKE_KEY]:
+          document.getElementById("opt-custom-paste-strike")?.checked ?? true,
+        [GEM_CUSTOM_PASTE_ALLOW_UNDERLINE_KEY]:
+          document.getElementById("opt-custom-paste-underline")?.checked ?? true,
+        [GEM_CUSTOM_PASTE_ALLOW_SUP_KEY]:
+          document.getElementById("opt-custom-paste-sup")?.checked ?? true,
+        [GEM_CUSTOM_PASTE_ALLOW_ANCHOR_KEY]:
+          document.getElementById("opt-custom-paste-anchor")?.checked ?? true,
         enableHighlighting:
           document.getElementById("opt-enable-highlighting")?.checked ?? true,
         enableMobilePreview: mobileVisible,
@@ -996,7 +1083,14 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
       "opt-show-size-column",
       "opt-show-user-column",
       "opt-email-preview-toolbar-position-normal",
-      "opt-email-preview-toolbar-position-expanded"
+      "opt-email-preview-toolbar-position-expanded",
+      "opt-custom-paste-enabled",
+      "opt-custom-paste-bold",
+      "opt-custom-paste-italic",
+      "opt-custom-paste-strike",
+      "opt-custom-paste-underline",
+      "opt-custom-paste-sup",
+      "opt-custom-paste-anchor"
     ];
 
     // Remove existing listeners and add new ones
@@ -1006,6 +1100,22 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         el.removeEventListener("change", saveSettingsHandler);
         el.addEventListener("change", saveSettingsHandler);
       }
+    });
+
+    // Paste Behavior UI rules (enable/disable + auto-toggle)
+    const pasteIds = [
+      "opt-custom-paste-enabled",
+      "opt-custom-paste-bold",
+      "opt-custom-paste-italic",
+      "opt-custom-paste-strike",
+      "opt-custom-paste-underline",
+      "opt-custom-paste-sup",
+      "opt-custom-paste-anchor"
+    ];
+    pasteIds.forEach((id) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener("change", () => syncPasteBehaviorUI());
     });
 
     // Add term button listener
@@ -1044,6 +1154,88 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
           });
         }
       });
+    }
+  }
+
+  function syncPasteBehaviorUI({ fromLoad = false } = {}) {
+    if (_gemPasteUiSyncing) return;
+    _gemPasteUiSyncing = true;
+    try {
+      const enabledEl = document.getElementById('opt-custom-paste-enabled');
+      const allowEls = [
+        document.getElementById('opt-custom-paste-bold'),
+        document.getElementById('opt-custom-paste-italic'),
+        document.getElementById('opt-custom-paste-strike'),
+        document.getElementById('opt-custom-paste-underline'),
+        document.getElementById('opt-custom-paste-sup'),
+        document.getElementById('opt-custom-paste-anchor')
+      ].filter(Boolean);
+
+      if (!enabledEl || allowEls.length === 0) return;
+
+      const prevEnabled = enabledEl.dataset.gemPrevEnabled === 'true';
+      const isEnabled = !!enabledEl.checked;
+      const allowGroup = allowEls[0] && allowEls[0].closest ? allowEls[0].closest('.gem-setting') : null;
+
+      // If enabling, re-enable allow options first and ensure at least one is checked.
+      if (isEnabled && !prevEnabled) {
+        allowEls.forEach((el) => { el.disabled = false; });
+        if (allowGroup) delete allowGroup.dataset.gemPasteAllowDisabled;
+
+        const anyNow = allowEls.some((el) => !!el.checked);
+        if (!anyNow) {
+          if (_gemPasteLastAllowState && _gemPasteLastAllowState.length === allowEls.length) {
+            allowEls.forEach((el, idx) => { el.checked = !!_gemPasteLastAllowState[idx]; });
+          } else {
+            // Default: enable all allow options
+            allowEls.forEach((el) => { el.checked = true; });
+          }
+        }
+        _gemPasteLastAllowState = null;
+      }
+
+      const anyAllowChecked = allowEls.some((el) => !!el.checked);
+
+      // Rule 1: If user unchecks all "Allow…" options while enabled, disable custom paste as well.
+      // (But do NOT prevent enabling; enabling restores defaults above.)
+      if (isEnabled && prevEnabled && !anyAllowChecked) {
+        enabledEl.checked = false;
+      }
+
+      // Rule 2: If custom paste disabled, disable/gray out allow options.
+      const isEnabledFinal = !!enabledEl.checked;
+
+      if (!isEnabledFinal) {
+        // Remember state so re-enabling can restore it
+        if (!fromLoad && _gemPasteLastAllowState == null) {
+          _gemPasteLastAllowState = allowEls.map((el) => !!el.checked);
+        }
+        allowEls.forEach((el) => {
+          el.disabled = true;
+        });
+        if (allowGroup) allowGroup.dataset.gemPasteAllowDisabled = 'true';
+      } else {
+        allowEls.forEach((el) => {
+          el.disabled = false;
+        });
+        if (allowGroup) delete allowGroup.dataset.gemPasteAllowDisabled;
+
+        // If enabling while all allow options are unchecked, restore previous state or defaults.
+        const anyNow = allowEls.some((el) => !!el.checked);
+        if (!anyNow) {
+          if (_gemPasteLastAllowState && _gemPasteLastAllowState.length === allowEls.length) {
+            allowEls.forEach((el, idx) => { el.checked = !!_gemPasteLastAllowState[idx]; });
+          } else {
+            // Default: enable all allow options
+            allowEls.forEach((el) => { el.checked = true; });
+          }
+        }
+        _gemPasteLastAllowState = null;
+      }
+
+      enabledEl.dataset.gemPrevEnabled = (enabledEl.checked ? 'true' : 'false');
+    } finally {
+      _gemPasteUiSyncing = false;
     }
   }
 
@@ -1694,6 +1886,36 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
       const select = document.getElementById("opt-email-preview-toolbar-position-expanded");
       if (select) select.value = changes[GEM_EMAIL_PREVIEW_TOOLBAR_EXPANDED_KEY].newValue;
       gemApplyEmailPreviewToolbarPositionClass();
+    }
+
+    // Paste behavior settings (just keep UI in sync; loader reacts via its own onChanged)
+    if (changes[GEM_CUSTOM_PASTE_ENABLED_KEY]) {
+      const el = document.getElementById("opt-custom-paste-enabled");
+      if (el) el.checked = changes[GEM_CUSTOM_PASTE_ENABLED_KEY].newValue !== false;
+    }
+    if (changes[GEM_CUSTOM_PASTE_ALLOW_BOLD_KEY]) {
+      const el = document.getElementById("opt-custom-paste-bold");
+      if (el) el.checked = changes[GEM_CUSTOM_PASTE_ALLOW_BOLD_KEY].newValue !== false;
+    }
+    if (changes[GEM_CUSTOM_PASTE_ALLOW_ITALIC_KEY]) {
+      const el = document.getElementById("opt-custom-paste-italic");
+      if (el) el.checked = changes[GEM_CUSTOM_PASTE_ALLOW_ITALIC_KEY].newValue !== false;
+    }
+    if (changes[GEM_CUSTOM_PASTE_ALLOW_STRIKE_KEY]) {
+      const el = document.getElementById("opt-custom-paste-strike");
+      if (el) el.checked = changes[GEM_CUSTOM_PASTE_ALLOW_STRIKE_KEY].newValue !== false;
+    }
+    if (changes[GEM_CUSTOM_PASTE_ALLOW_UNDERLINE_KEY]) {
+      const el = document.getElementById("opt-custom-paste-underline");
+      if (el) el.checked = changes[GEM_CUSTOM_PASTE_ALLOW_UNDERLINE_KEY].newValue !== false;
+    }
+    if (changes[GEM_CUSTOM_PASTE_ALLOW_SUP_KEY]) {
+      const el = document.getElementById("opt-custom-paste-sup");
+      if (el) el.checked = changes[GEM_CUSTOM_PASTE_ALLOW_SUP_KEY].newValue !== false;
+    }
+    if (changes[GEM_CUSTOM_PASTE_ALLOW_ANCHOR_KEY]) {
+      const el = document.getElementById("opt-custom-paste-anchor");
+      if (el) el.checked = changes[GEM_CUSTOM_PASTE_ALLOW_ANCHOR_KEY].newValue !== false;
     }
 
     if (changes.mobilePreviewWidth) {
