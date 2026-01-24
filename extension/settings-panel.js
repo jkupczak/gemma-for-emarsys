@@ -204,8 +204,8 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         padding: 20px 24px;
         font-size: 18px;
         font-weight: 700;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
+        background: var(--token-box-default-border);
+        color: var(--token-text-default);
         border-radius: 8px 0 0 0;
       }
 
@@ -214,6 +214,10 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         overflow-y: auto;
         flex-grow: 1;
         background: var(--token-background-faint);
+      }
+
+      #gem-settings-panel input[type="color"] {
+        padding: 5px !important;
       }
 
       .gem-setting-section .gem-setting {
@@ -228,7 +232,8 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         transition: all 0.2s ease;
       }
       .gem-setting label + label { padding: 12px 0 0 }
-      .gem-setting label:has(input[disabled]), .gem-setting label input[disabled] { opacity: 0.5; cursor: not-allowed; }
+      [data-gem-paste-allow-disabled] { display: none; }
+      p:has(+ [data-gem-paste-allow-disabled]) { margin-bottom: 0 !important; }
       .gem-setting:hover {
         box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         border-color: var(--token-blue-700);
@@ -421,7 +426,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
 
       .gem-add-term button {
         padding: 10px 16px;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: var(--token-button-highlight-background);
         color: white;
         border: none;
         border-radius: 6px;
@@ -741,38 +746,39 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         </div>
 
         <div class="gem-setting-section">
-          <h3>Paste Behavior</h3>
+          <h3>Rich Paste</h3>
           <div class="gem-setting">
             <label>
               <input type="checkbox" id="opt-custom-paste-enabled" checked />
-              Enable Gemma custom paste behavior
+              Enable Gemma's Rich Paste behavior
             </label>
-          </div>
-          <div class="gem-setting">
-            <label>
-              <input type="checkbox" id="opt-custom-paste-bold" checked />
-              Allow bold formatting to be pasted
-            </label>
-            <label>
-              <input type="checkbox" id="opt-custom-paste-italic" checked />
-              Allow italic formatting to be pasted
-            </label>
-            <label>
-              <input type="checkbox" id="opt-custom-paste-strike" checked />
-              Allow strikethrough formatting to be pasted
-            </label>
-            <label>
-              <input type="checkbox" id="opt-custom-paste-underline" checked />
-              Allow underline formatting to be pasted
-            </label>
-            <label>
-              <input type="checkbox" id="opt-custom-paste-sup" checked />
-              Allow superscript formatting to be pasted
-            </label>
-            <label>
-              <input type="checkbox" id="opt-custom-paste-anchor" checked />
-              Allow links to be pasted
-            </label>
+            <p style="margin: 10px 0 30px;">Emarsys's normal plain text formatting is replaced with behavior that supports pasting common styles like bold and italic.</p>
+            <div class="gem-setting-group">
+              <label>
+                <input type="checkbox" id="opt-custom-paste-bold" checked />
+                Allow bold formatting to be pasted
+              </label>
+              <label>
+                <input type="checkbox" id="opt-custom-paste-italic" checked />
+                Allow italic formatting to be pasted
+              </label>
+              <label>
+                <input type="checkbox" id="opt-custom-paste-strike" checked />
+                Allow strikethrough formatting to be pasted
+              </label>
+              <label>
+                <input type="checkbox" id="opt-custom-paste-underline" checked />
+                Allow underline formatting to be pasted
+              </label>
+              <label>
+                <input type="checkbox" id="opt-custom-paste-sup" checked />
+                Allow superscript formatting to be pasted
+              </label>
+              <label>
+                <input type="checkbox" id="opt-custom-paste-anchor" checked />
+                Allow links to be pasted
+              </label>
+            </div>
           </div>
         </div>
 
@@ -1175,7 +1181,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
 
       const prevEnabled = enabledEl.dataset.gemPrevEnabled === 'true';
       const isEnabled = !!enabledEl.checked;
-      const allowGroup = allowEls[0] && allowEls[0].closest ? allowEls[0].closest('.gem-setting') : null;
+      const allowGroup = allowEls[0] && allowEls[0].closest ? allowEls[0].closest('.gem-setting-group') : null;
 
       // If enabling, re-enable allow options first and ensure at least one is checked.
       if (isEnabled && !prevEnabled) {

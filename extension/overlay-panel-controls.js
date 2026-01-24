@@ -1628,7 +1628,8 @@ function initializeOverlayPanelControls() {
 
           // Favorites view: group by category OR language, collapsible, searchable, sorted.
           if (source === 'favorites') {
-            const q = String(picker.dataset.gemFavoriteImagesSearch || '').trim().toLowerCase();
+            const qRaw = String(picker.dataset.gemFavoriteImagesSearch || '').trim();
+            const q = qRaw.toLowerCase();
 
             // Build last-used map from recent images so we can sort missing-altText items by last used.
             getRecentImages((recentList) => {
@@ -1655,6 +1656,9 @@ function initializeOverlayPanelControls() {
                   return hay.includes(q);
                 };
                 const filtered = items.filter(matchesQuery);
+                const searchSummary = qRaw && filtered.length > 0
+                  ? `<div style="padding:0 16px 16px 16px; opacity:0.7;">Found ${filtered.length} matches for '${escape(qRaw)}'.</div>`
+                  : '';
 
                 const groupMap = new Map();
                 filtered.forEach((it) => {
@@ -1842,7 +1846,8 @@ function initializeOverlayPanelControls() {
                 if (opts.contentOnly && picker.querySelector('#gem-image-list-header')) {
                   const contentContainer = document.createElement('div');
                   contentContainer.innerHTML = `
-                    ${q && groupKeys.length === 0 ? `<div style="padding:0 16px 16px 16px; opacity:0.7;">No matches found for '${q}'.</div>` : ''}
+                    ${searchSummary}
+                    ${qRaw && groupKeys.length === 0 ? `<div style="padding:0 16px 16px 16px; opacity:0.7;">No matches found for '${escape(qRaw)}'.</div>` : ''}
                     ${buildCategorySections()}
                     ${!q ? empty : ''}
                   `.trim();
@@ -1864,7 +1869,8 @@ function initializeOverlayPanelControls() {
                 } else {
                   picker.innerHTML = `
                     ${header}
-                    ${q && groupKeys.length === 0 ? `<div style="padding:0 16px 16px 16px; opacity:0.7;">No matches found for '${q}'.</div>` : ''}
+                    ${searchSummary}
+                    ${qRaw && groupKeys.length === 0 ? `<div style="padding:0 16px 16px 16px; opacity:0.7;">No matches found for '${escape(qRaw)}'.</div>` : ''}
                     ${buildCategorySections()}
                     ${!q ? empty : ''}
                   `.trim();
@@ -1878,7 +1884,8 @@ function initializeOverlayPanelControls() {
 
           // Recently Seen view: group by path OR date, collapsible, searchable, sorted.
           if (source === 'seen') {
-            const q = String(picker.dataset.gemSeenImagesSearch || '').trim().toLowerCase();
+            const qRaw = String(picker.dataset.gemSeenImagesSearch || '').trim();
+            const q = qRaw.toLowerCase();
 
             getRecentlySeenImageGroupCollapseMap((collapseMap) => {
               const collapse = collapseMap || {};
@@ -1897,6 +1904,9 @@ function initializeOverlayPanelControls() {
                 return hay.includes(q);
               };
               const filtered = items.filter(matchesQuery);
+              const searchSummary = qRaw && filtered.length > 0
+                ? `<div style="padding:0 16px 16px 16px; opacity:0.7;">Found ${filtered.length} matches for '${escape(qRaw)}'.</div>`
+                : '';
 
               const groupMap = new Map();
               filtered.forEach((it) => {
@@ -2062,7 +2072,8 @@ function initializeOverlayPanelControls() {
               if (opts.contentOnly && picker.querySelector('#gem-image-list-header')) {
                 const contentContainer = document.createElement('div');
                 contentContainer.innerHTML = `
-                  ${q && groupKeys.length === 0 ? `<div style="padding:0 16px 16px 16px; opacity:0.7;">No matches found for '${q}'.</div>` : ''}
+                  ${searchSummary}
+                  ${qRaw && groupKeys.length === 0 ? `<div style="padding:0 16px 16px 16px; opacity:0.7;">No matches found for '${escape(qRaw)}'.</div>` : ''}
                   ${buildCategorySections()}
                   ${!q ? empty : ''}
                 `.trim();
@@ -2085,7 +2096,8 @@ function initializeOverlayPanelControls() {
               } else {
                 picker.innerHTML = `
                   ${header}
-                  ${q && groupKeys.length === 0 ? `<div style="padding:0 16px 16px 16px; opacity:0.7;">No matches found for '${q}'.</div>` : ''}
+                  ${searchSummary}
+                  ${qRaw && groupKeys.length === 0 ? `<div style="padding:0 16px 16px 16px; opacity:0.7;">No matches found for '${escape(qRaw)}'.</div>` : ''}
                   ${buildCategorySections()}
                   ${!q ? empty : ''}
                 `.trim();
@@ -2111,13 +2123,17 @@ function initializeOverlayPanelControls() {
 
           // Existing behavior for Recent list (ungrouped)
           const seenSearchQuery = source === 'seen' ? String(picker.dataset.gemSeenImagesSearch || '').trim() : '';
+          const seenMatchesSummary = source === 'seen' && seenSearchQuery && filteredRows.length > 0
+            ? `<div style="opacity:0.7; margin-top:10px;">Found ${filteredRows.length} matches for '${escape(seenSearchQuery)}'.</div>`
+            : '';
           const noMatches = source === 'seen' && seenSearchQuery && filteredRows.length === 0
-            ? `<div style="opacity:0.7; margin-top:10px;">No matches found for '${seenSearchQuery}'.</div>`
+            ? `<div style="opacity:0.7; margin-top:10px;">No matches found for '${escape(seenSearchQuery)}'.</div>`
             : '';
 
           // For content-only updates (search changes), preserve header and update only content
           const contentHtml = viewMode === 'grid'
             ? `
+                ${seenMatchesSummary}
                 ${noMatches}
                 <div class="gem-recent-images-grid">
                   ${filteredRows.map((r) => {
@@ -2157,6 +2173,7 @@ function initializeOverlayPanelControls() {
                 ${empty}
               `.trim()
             : `
+                ${seenMatchesSummary}
                 ${noMatches}
                 <div style="padding:0 16px 16px">
                 <table data-e-version="2" class="e-table e-table-bordered gem-recent-images-table" style="width:100%; font-size: 14 px;">
@@ -2293,7 +2310,7 @@ function initializeOverlayPanelControls() {
             </div>
           </div>
           <div class="gem-favorite-image-meta-modal__footer">
-            <button class="e-btn e-btn-secondary gem-fav-cat-cancel" type="button">Cancel</button>
+            <button class="e-btn cancel-btn gem-fav-cat-cancel" type="button">Cancel</button>
             <button class="e-btn e-btn-primary gem-fav-cat-save" type="button">Save</button>
           </div>
         </div>
@@ -2584,7 +2601,7 @@ function initializeOverlayPanelControls() {
                 ` : ''}
               </div>
               <div style="display:flex; align-items:center; gap:10px;">
-                <button class="e-btn e-btn-secondary gem-favorite-image-meta-cancel" type="button">Cancel</button>
+                <button class="e-btn cancel-btn gem-favorite-image-meta-cancel" type="button">Cancel</button>
                 <button class="e-btn e-btn-primary gem-favorite-image-meta-save" type="button">Save</button>
               </div>
             </div>
