@@ -29,6 +29,7 @@ function createWelcomeModalHTML() {
             <li>
               <b>Keyword Swapping</b> You can now quickly swap keywords you define with your own custom snippets. Click the swap icon <span class="gem-e-icon">&#xF0DE;</span> in the content block toolbar, the preheader box, or the subject line to swap matching keywords with their corresponding snippets.
             </li>
+            <li><b>Rich Paste</b> Bold? Italics? You got it! Normally styled text that you copy and paste into your emails are reformatted to plain text. But not anymore! Gemma preserves bold, italics, underlines, links and more when copying and pasting from outside sources, or even from one content block to another.</li>
             <li><b>Image Picker</b> When adding an image to your email you'll now get a preview of it right next to the image editor. Makes adding ALT text much easier! You can also see a list of your recently seen, used, and favorited images for quick selection.</li>
             <li>
               <b>Enhanced Content Editing</b> Enjoy improved content block editing with better organization and management tools.
@@ -111,11 +112,12 @@ function createWelcomeModalHTML() {
               </ul>
             </ul>
 
-            <h5>Content Block Toolbar</h5>
+            <h5>Content Block Editing</h5>
             <ul>
-                  <li>Now features a "Convert ESL to Tokens" button to convert plain text ESL into ESL tokens.</li>
-                  <li>Now features a "Keyword Swap" button to quickly swap keywords with snippets.</li>
-                  <li>Can be customized to show or hide most icons based on preferences you set in the settings panel.</li>
+              <li>Pasting rich text (bold, italic, strikethrough, underline, superscript, anchor) is now supported.</li>
+              <li>Content block toolbar now features a "Convert ESL to Tokens" button to convert plain text ESL into ESL tokens.</li>
+              <li>Content block toolbar now features a "Keyword Swap" button to quickly swap keywords with snippets.</li>
+              <li>Content block toolbar can be customized to show or hide most icons based on preferences you set in the settings panel.</li>
             </ul>
 
             <h5>Emarsys Scripting Language snippet Dialog</h5>
