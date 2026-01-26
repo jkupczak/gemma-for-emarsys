@@ -220,6 +220,10 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         padding: 5px !important;
       }
 
+      .gem-setting-info {
+        margin-bottom: 20px;
+      }
+
       .gem-setting-section .gem-setting {
         margin: 20px;
       }
@@ -700,7 +704,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
           <div class="gem-setting">
             <label>
               <input type="checkbox" id="opt-show-finish-editing-btn" checked />
-              Show Finish Editing Button
+              Show "Finish Editing" Button
             </label>
           </div>
         </div>
@@ -729,6 +733,9 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
 
         <div class="gem-setting-section">
           <h3>Email Preview Toolbar</h3>
+          <p class="gem-setting-info">
+            The email preview toolbar (that place that lets you click to see an Inbox or Contact preview) can be customized to show in a horizontal or vertical position next to your email. 
+          </p>
           <div class="gem-setting" style="display: flex; gap: 12px; align-items: center;">
             <label for="opt-email-preview-toolbar-position-normal" style="flex: 1;">Position in Normal View</label>
             <select id="opt-email-preview-toolbar-position-normal">

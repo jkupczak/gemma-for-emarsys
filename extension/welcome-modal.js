@@ -21,19 +21,13 @@ function createWelcomeModalHTML() {
           <ul class="gem-welcome-modal-features">
             <li><b>Drag-and-Drop Snippets</b> Drag and drop custom ESL snippets into your email editor. Create, edit, pin, categorize, and delete snippets from the Snippets tab in the vertical navigation. You can also import and export snippets as shareable JSON.</li>
             <li>
-              <b>Convert ESL to Tokens</b> Instantly <b>convert plain text ESL into ESL tokens</b> by clicking the convert icon <span class="gem-e-icon"></span> in the content block toolbar.
-              <ul class="gem-welcome-modal-features-sublist">
-                <li>Tokens will be named after a matching snippet name if it exists. If no matching snippet name is found, Gemma will try to give it an appropriate name. If it can't, the token will be named "ESL snippet".</li>
-              </ul>
+              <b>Convert ESL to Tokens</b> Instantly <b>convert plain text ESL into ESL tokens</b> by clicking the convert icon <span class="gem-e-icon"></span> wherever you see it.
             </li>
             <li>
               <b>Keyword Swapping</b> You can now quickly swap keywords you define with your own custom snippets. Click the swap icon <span class="gem-e-icon">&#xF0DE;</span> in the content block toolbar, the preheader box, or the subject line to swap matching keywords with their corresponding snippets.
             </li>
             <li><b>Rich Paste</b> Bold? Italics? You got it! Normally styled text that you copy and paste into your emails are reformatted to plain text. But not anymore! Gemma preserves bold, italics, underlines, links and more when copying and pasting from outside sources, or even from one content block to another.</li>
             <li><b>Image Picker</b> When adding an image to your email you'll now get a preview of it right next to the image editor. Makes adding ALT text much easier! You can also see a list of your recently seen, used, and favorited images for quick selection.</li>
-            <li>
-              <b>Enhanced Content Editing</b> Enjoy improved content block editing with better organization and management tools.
-            </li>
             <li>
               <b>Text Highlighting</b> Automatically highlight important text in the email editor preview. Edit what text is highlighted and what color the highlight is in the Settings panel.
             </li>
@@ -42,25 +36,20 @@ function createWelcomeModalHTML() {
             </li>
             <li><b>Image Picker</b> When adding an image to your email you'll now get a preview of it right next to the image editor. Makes adding ALT text much easier! You can also see a list of your recently used images for quick selection.</li>
             <li><b>Fullscreen Email Editing</b> Go fullscreen for a bigger view of your email. Use the purple expand icon in the bottom left of the email editor to modify your layout. This increases the total viewable area of your email by over 40%!</li>
-
-
-            <li>
-              <b>Other Features</b> 
-              <ul class="gem-welcome-modal-features-sublist">
-                <li><b>Keyboard Shortcuts</b> Save a draft with keyboard shortcuts! CTRL+S and CMD+S now save your email draft instantly. CMD+/ and CTRL+/ will toggle the mobile preview pane on and off. No more dragging your mouse around to save or toggle features!</li>
-                <li><b>Unsaved Draft Alerts</b> Speaking of saving, if your email has unsaved changes you'll now see an animated emoji in the Google Chrome tab until you save it!</li>
-                <li><b>Helpful Tab Titles</b> Ever have multiple emails open at once and lost track of which is which? Emarsys names each tab the same: "Email Campaigns | Channels | Emarsys Marketing Platform". That's not helpful. Gemma renames your tabs to use your email name instead!</li>
-                <li><b>Customize the content block toolbar</b> to show or hide icons based on your preferences.</li>
-                <li>Columns in the <b>Media Directory</b> can be toggled on and off in the settings panel.</li>
-                <li>The <b>Preheader</b> text box now increases in height if your preheader is very long. Goodbye scrollbar! See the entire preheader at once for easier editing.</li>
-                <li>Hover over the campaign title in the header to see a copy icon. Click it to <b>copy the campaign name</b> to your clipboard!</li>
-              </ul>
-            </li>
           </ul>
 
           <div style="margin-top: 40px;">
+          <hr style="margin-bottom: 40px;">
             <h3>Full List of Changes</h3>
             <h4>Email Editor (r=contentBlocks/campaign)</h4>
+
+            <h5>General Improvements</h5>
+            <ul>
+              <li>Instantly convert plain text ESL into ESL tokens by clicking on a convert icon <span class="gem-e-icon"></span> in the content block toolbar, the new Snippets panel, in the subject line, and in the preheader box. Tokens will be named after a matching snippet name if it exists. If no matching snippet name is found, Gemma will try to give it an appropriate name. If it can't, the token will be named "ESL snippet".</li>
+              <li>Hover over the campaign title in the header to see a copy icon. Click it to <b>copy the campaign name</b> to your clipboard!</li>
+              <li><b>Unsaved Draft Alerts</b> If your email has unsaved changes you'll now see an animated emoji in the Google Chrome tab until you save it.</li>
+              <li>Normally, Emarsys names each Google Chrome tab the same: "Email Campaigns | Channels | Emarsys Marketing Platform". Tabs are now named after your emails' title instead.</li>  
+            </ul>
 
             <h5>Email Basics Panel</h5>
             <ul>
@@ -114,7 +103,7 @@ function createWelcomeModalHTML() {
 
             <h5>Content Block Editing</h5>
             <ul>
-              <li>Pasting rich text (bold, italic, strikethrough, underline, superscript, anchor) is now supported.</li>
+              <li>Pasting rich text (bold, italic, strikethrough, underline, superscript, links) is now supported. Settings can be tweaked int he Settings panel.</li>
               <li>Content block toolbar now features a "Convert ESL to Tokens" button to convert plain text ESL into ESL tokens.</li>
               <li>Content block toolbar now features a "Keyword Swap" button to quickly swap keywords with snippets.</li>
               <li>Content block toolbar can be customized to show or hide most icons based on preferences you set in the settings panel.</li>

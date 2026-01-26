@@ -1,4 +1,27 @@
 /* Scrollbar overrides */
+.gem-scrollable {
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 0, 0, 0.2) transparent;
+}
+
+.gem-scrollable::-webkit-scrollbar {
+    width: 6px;
+}
+
+.gem-scrollable::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.gem-scrollable::-webkit-scrollbar-thumb {
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 3px;
+}
+
+.gem-scrollable::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(0, 0, 0, 0.3);
+}
+
 html.FLIPPER-theme-eveningHorizon {
     & .e-section__content,
     & .e-dialog__container .e-dialog__content,
@@ -106,4 +129,259 @@ html.FLIPPER-theme-eveningHorizon .e-navigation__panel #gem-nav-settings-item .e
     background-color: var(--token-button-highlight-backgroundHover);
     border-color: var(--token-button-highlight-borderHover);
     color: var(--token-button-highlight-text);
+}
+
+/* Welcome Modal */
+/* Settings panel: keyboard shortcuts modal (shared modal shell) */
+.gem-welcome-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483647; /* stay above Emarsys dialogs */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.gem-welcome-modal__panel {
+    position: relative;
+    width: min(960px, calc(100vw - 32px));
+    max-height: min(80vh, calc(100vh - 64px));
+    background: var(--token-box-default-background, #ffffff);
+    color: var(--token-font-default, #111);
+    border: 1px solid var(--token-box-default-border, rgba(0,0,0,0.12));
+    border-radius: 12px;
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.35);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.gem-welcome-modal__header,
+.gem-welcome-modal__footer {
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    background: var(--token-box-alternate-background, #f7f7f7);
+}
+
+.gem-welcome-modal__body {
+    padding: 16px;
+    overflow: auto;
+}
+
+
+.gem-welcome-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.gem-welcome-modal b, 
+.gem-welcome-modal strong {
+    font-weight: 900;
+}
+.gem-welcome-modal-content {
+    background: var(--token-box-default-background, #ffffff);
+    border-radius: 12px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    max-width: 1240px;
+    max-height: 80vh;
+    margin: 20px;
+    position: relative;
+    display: flex;
+    flex-direction: row;
+    overflow: hidden;
+}
+
+.gem-welcome-modal-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 30px 40px 25px;
+    text-align: center;
+    width: 300px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+.gem-welcome-modal-header h2 {
+    margin: 0 0 10px 0;
+    font-size: 28px;
+    font-weight: 700;
+}
+
+.gem-welcome-modal-header p {
+    margin: 0;
+    font-size: 16px;
+    opacity: 0.9;
+}
+
+.gem-welcome-modal-body {
+    padding: 30px 40px;
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+}
+
+.gem-welcome-modal-body h3 {
+    margin: 0 0 20px 0;
+    color: var(--token-font-default, #333333);
+    font-size: 20px;
+    font-weight: 600;
+}
+
+.gem-welcome-modal-features {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.gem-welcome-modal-features li {
+    margin-bottom: 16px;
+    padding-left: 24px;
+    position: relative;
+    line-height: 1.5;
+    color: var(--token-font-default, #333333);
+}
+
+.gem-welcome-modal-features li b {
+    font-weight: 800;
+}
+
+.gem-welcome-modal-features li:before {
+    content: "✨";
+    position: absolute;
+    left: 0;
+    top: 0;
+    font-size: 16px;
+}
+
+.gem-welcome-modal-features-sublist {
+    list-style: none;
+    padding: 0;
+    margin: 8px 0 0 0;
+}
+
+.gem-welcome-modal-features-sublist li {
+    margin-bottom: 6px;
+    padding-left: 20px;
+    position: relative;
+    line-height: 1.4;
+    color: var(--token-font-default, #666666);
+    font-size: 14px;
+}
+
+.gem-welcome-modal-features-sublist li:before {
+    content: "•";
+    position: absolute;
+    left: 8px;
+    top: 0;
+    font-size: 12px;
+    color: var(--token-font-default, #999999);
+}
+
+.gem-welcome-modal-footer {
+    text-align: center;
+}
+
+.gem-welcome-modal h5 {
+    font-size: 1em !important;
+}
+
+.gem-welcome-modal-button {
+    background: white;
+    color: black;
+    border: none;
+    padding: 12px 30px;
+    border-radius: 25px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.gem-welcome-modal-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+}
+
+.gem-welcome-modal .gem-welcome-modal-features {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0px, 1fr));
+    gap: 10px;
+}
+
+.gem-welcome-modal .gem-welcome-modal-features li b:first-child {
+    display: block;
+    margin-bottom: 10px;
+}
+/* ------------------------------------------------------------------------------------------------ */
+/* Emarsys Icon Styles */
+/* ------------------------------------------------------------------------------------------------ */
+/* 
+    Re-using Emarsys icon styles.
+    This is necessary because if we want to use the Emarsys icon font, Emarsys will overwrite the font we want to use.
+    Renaming the HTML elements and some of the classes with a `gem-` prefix allows us to use the Emarsys icon font without conflict.
+*/
+gem-e-icon {
+    vertical-align: middle;
+    display: inline-flex;
+    position: relative;
+}
+.gem-e-icon {
+    color: var(--token-icon-default-text);
+    font-family: var(--token-icon-default-fontFamily);
+    font-size: var(--token-icon-default-size);
+    vertical-align: middle;
+    width: 24px;
+    height: 24px;
+}
+
+.e-btn .gem-e-icon {
+    font-size: var(--token-icon-default-sizeSmall);
+    height: var(--token-icon-default-sizeSmall);
+    width: var(--token-icon-default-sizeSmall);
+    margin: -2px 8px 0 0;
+}
+.e-btn-onlyicon .gem-e-icon {
+    margin: -2px 0 0;
+}
+.e-btn .gem-e-icon {
+    color: var(--token-button-default-text);
+}
+.e-btn-on_overlay .gem-e-icon {
+    color: var(--token-button-overlay-text);
+}
+.e-btn .gem-e-icon {
+    transition: color .2s ease-in-out;
+}
+gem-e-icon .gem-e-icon {
+    color: var(--token-icon-default-text);
+    pointer-events: none;
+    justify-content: center;
+    align-items: center;
+    font-weight: 400;
+    display: inline-flex;
+}
+gem-e-icon .e-icon {
+    color: var(--token-icon-default-text);
+    pointer-events: none;
+    justify-content: center;
+    align-items: center;
+    font-weight: 400;
+    display: inline-flex;
+}
+
+span.gem-e-icon {
+    font-size: inherit !important;
 }
