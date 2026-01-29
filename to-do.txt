@@ -5,6 +5,12 @@ None
 -----------------------------------------------
 # HOT
 
+In expanded mode, the hidden nav on the left should only open on click.
+
+Rich Paste should trim white space
+
+After rich pasting, MCPASTEBIN seems to be getting added and takes up space until the user blurs the block.
+
 Can I create "drag for padding" functionality? Would need to ask the user to designate an integere based variable for top and bottom padding in the settings panel.
 
 Can CMD+C copy ESL tokens as the plain text code for better pasting? Or better yet, paste them back in as tokens? 

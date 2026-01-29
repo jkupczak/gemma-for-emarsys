@@ -110,14 +110,57 @@ const GEM_ESL_CONTACT_NAME_REGEX = /contact\.\d+/;
 
 let gemToolbarObserver = null;
 
+// ------------------------------------------------------------
+// Debug logging for toolbar icon injection
+// ------------------------------------------------------------
+const GEM_TOOLBAR_INJECTION_DEBUG = true;
+const _gemToolbarInjectionDebugState = new WeakMap();
+
+function gemGetToolbarDebugState(toolbarEl) {
+  let state = _gemToolbarInjectionDebugState.get(toolbarEl);
+  if (!state) {
+    state = { convert: null, swap: null };
+    _gemToolbarInjectionDebugState.set(toolbarEl, state);
+  }
+  return state;
+}
+
+function gemLogToolbarInjection(toolbarEl, which, result) {
+  if (!GEM_TOOLBAR_INJECTION_DEBUG) return;
+  if (!toolbarEl) return;
+
+  const safeResult = (result && typeof result === 'object') ? result : { status: 'skipped', reason: 'no-result' };
+  const state = gemGetToolbarDebugState(toolbarEl);
+  const sig = `${safeResult.status}|${safeResult.reason || ''}|${safeResult.blockId || ''}|${safeResult.blockPosition || ''}|${safeResult.blockTemplateName || ''}`;
+  if (state[which] === sig) return;
+  state[which] = sig;
+
+  const label = which === 'convert' ? 'Convert ESL → Tokens' : 'Swap Keywords';
+  const ctx = {
+    status: safeResult.status,
+    reason: safeResult.reason || '',
+    blockId: safeResult.blockId || '',
+    blockPosition: safeResult.blockPosition || '',
+    blockTemplateName: safeResult.blockTemplateName || ''
+  };
+
+  if (safeResult.status === 'added') {
+    console.log(`[Gem][Toolbar] ${label}: ADDED`, ctx);
+  } else {
+    console.log(`[Gem][Toolbar] ${label}: SKIPPED`, ctx);
+  }
+}
+
 function setupToolbarInjectionObserver() {
   if (gemToolbarObserver) return;
 
   const injectIfPresent = () => {
     const toolbar = document.querySelector(GEM_TOOLBAR_SELECTOR);
     if (!toolbar) return;
-    injectConvertButtonIntoToolbar(toolbar);
-    injectTextSwapButtonIntoToolbar(toolbar);
+    const convertResult = injectConvertButtonIntoToolbar(toolbar);
+    const swapResult = injectTextSwapButtonIntoToolbar(toolbar);
+    gemLogToolbarInjection(toolbar, 'convert', convertResult);
+    gemLogToolbarInjection(toolbar, 'swap', swapResult);
   };
 
   gemToolbarObserver = new MutationObserver(() => injectIfPresent());
@@ -129,13 +172,15 @@ function setupToolbarInjectionObserver() {
 
 function injectConvertButtonIntoToolbar(toolbarEl) {
   const actions = toolbarEl.querySelector(GEM_TOOLBAR_ACTIONS_SELECTOR);
-  if (!actions) return;
+  if (!actions) return { status: 'skipped', reason: 'no-actions-container' };
 
   // Avoid duplicates per toolbar instance
-  if (actions.querySelector(`[block-toolbar-button="${GEM_CONVERT_BTN_ID}"]`)) return;
+  if (actions.querySelector(`[block-toolbar-button="${GEM_CONVERT_BTN_ID}"]`)) {
+    return { status: 'skipped', reason: 'already-present' };
+  }
 
   const reorderBtn = toolbarEl.querySelector(GEM_REORDER_BTN_SELECTOR);
-  if (!reorderBtn) return;
+  if (!reorderBtn) return { status: 'skipped', reason: 'no-reorder-button' };
 
   const eBlockId = reorderBtn.getAttribute('e-block-id') || '';
   const blockTemplateName = reorderBtn.getAttribute('blocktemplatename') || '';
@@ -144,7 +189,13 @@ function injectConvertButtonIntoToolbar(toolbarEl) {
   // Only show this action if the target block contains contenteditable areas.
   // The toolbar is per-block and appears/disappears on hover, so we can gate injection here.
   if (eBlockId && !blockHasEditableInPreviewIframe(eBlockId)) {
-    return;
+    return {
+      status: 'skipped',
+      reason: 'no-editable-in-preview-iframe',
+      blockId: eBlockId,
+      blockTemplateName,
+      blockPosition
+    };
   }
 
   const tooltip = document.createElement('e-tooltip');
@@ -187,22 +238,33 @@ function injectConvertButtonIntoToolbar(toolbarEl) {
   } else {
     actions.appendChild(tooltip);
   }
+
+  const inserted = !!actions.querySelector(`[block-toolbar-button="${GEM_CONVERT_BTN_ID}"]`);
+  return {
+    status: inserted ? 'added' : 'skipped',
+    reason: inserted ? '' : 'insert-failed',
+    blockId: eBlockId,
+    blockTemplateName,
+    blockPosition
+  };
 }
 
 function injectTextSwapButtonIntoToolbar(toolbarEl) {
   const actions = toolbarEl.querySelector(GEM_TOOLBAR_ACTIONS_SELECTOR);
-  if (!actions) return;
+  if (!actions) return { status: 'skipped', reason: 'no-actions-container' };
 
   // Respect settings: allow user to always hide this icon
   if (document.body.classList.contains('gem-toolbar-swapKeywords-always-hide')) {
-    return;
+    return { status: 'skipped', reason: 'always-hide-setting' };
   }
 
   // Avoid duplicates per toolbar instance
-  if (actions.querySelector(`[block-toolbar-button="${GEM_TEXT_SWAP_BTN_ID}"]`)) return;
+  if (actions.querySelector(`[block-toolbar-button="${GEM_TEXT_SWAP_BTN_ID}"]`)) {
+    return { status: 'skipped', reason: 'already-present' };
+  }
 
   const reorderBtn = toolbarEl.querySelector(GEM_REORDER_BTN_SELECTOR);
-  if (!reorderBtn) return;
+  if (!reorderBtn) return { status: 'skipped', reason: 'no-reorder-button' };
 
   const eBlockId = reorderBtn.getAttribute('e-block-id') || '';
   const blockTemplateName = reorderBtn.getAttribute('blocktemplatename') || '';
@@ -210,7 +272,13 @@ function injectTextSwapButtonIntoToolbar(toolbarEl) {
 
   // Only show this action if the target block contains contenteditable areas.
   if (eBlockId && !blockHasEditableInPreviewIframe(eBlockId)) {
-    return;
+    return {
+      status: 'skipped',
+      reason: 'no-editable-in-preview-iframe',
+      blockId: eBlockId,
+      blockTemplateName,
+      blockPosition
+    };
   }
 
   // Only show this action if the user has at least one snippet with a swap keyword configured.
@@ -219,14 +287,47 @@ function injectTextSwapButtonIntoToolbar(toolbarEl) {
     actions._gemSwapKeywordChecked = true;
     hasAnySwapKeywordConfigured((hasAny) => {
       actions._gemSwapKeywordHasAny = !!hasAny;
-      if (!hasAny) return;
+      if (!hasAny) {
+        // Log once when async check concludes there are no swap keywords configured.
+        gemLogToolbarInjection(toolbarEl, 'swap', {
+          status: 'skipped',
+          reason: 'no-swap-keywords-configured',
+          blockId: eBlockId,
+          blockTemplateName,
+          blockPosition
+        });
+        return;
+      }
       // Toolbar might already be gone by the time storage returns.
-      if (!document.contains(toolbarEl)) return;
+      if (!document.contains(toolbarEl)) {
+        gemLogToolbarInjection(toolbarEl, 'swap', {
+          status: 'skipped',
+          reason: 'toolbar-detached-before-async',
+          blockId: eBlockId,
+          blockTemplateName,
+          blockPosition
+        });
+        return;
+      }
       injectTextSwapButtonIntoToolbar(toolbarEl);
     });
-    return;
+    return {
+      status: 'skipped',
+      reason: 'async-check-started',
+      blockId: eBlockId,
+      blockTemplateName,
+      blockPosition
+    };
   }
-  if (actions._gemSwapKeywordHasAny === false) return;
+  if (actions._gemSwapKeywordHasAny === false) {
+    return {
+      status: 'skipped',
+      reason: 'no-swap-keywords-configured',
+      blockId: eBlockId,
+      blockTemplateName,
+      blockPosition
+    };
+  }
 
   const tooltip = document.createElement('e-tooltip');
   tooltip.setAttribute('content', 'Swap Keywords');
@@ -267,7 +368,14 @@ function injectTextSwapButtonIntoToolbar(toolbarEl) {
   const convertTooltip = convertBtn && convertBtn.closest && convertBtn.closest('e-tooltip');
   if (convertTooltip && convertTooltip.parentElement === actions) {
     convertTooltip.insertAdjacentElement('afterend', tooltip);
-    return;
+    const inserted = !!actions.querySelector(`[block-toolbar-button="${GEM_TEXT_SWAP_BTN_ID}"]`);
+    return {
+      status: inserted ? 'added' : 'skipped',
+      reason: inserted ? '' : 'insert-failed',
+      blockId: eBlockId,
+      blockTemplateName,
+      blockPosition
+    };
   }
 
   // Fallback: try to be the third child (index 2). If there isn't one, append.
@@ -277,6 +385,15 @@ function injectTextSwapButtonIntoToolbar(toolbarEl) {
   } else {
     actions.appendChild(tooltip);
   }
+
+  const inserted = !!actions.querySelector(`[block-toolbar-button="${GEM_TEXT_SWAP_BTN_ID}"]`);
+  return {
+    status: inserted ? 'added' : 'skipped',
+    reason: inserted ? '' : 'insert-failed',
+    blockId: eBlockId,
+    blockTemplateName,
+    blockPosition
+  };
 }
 
 function blockHasEditableInPreviewIframe(eBlockId) {

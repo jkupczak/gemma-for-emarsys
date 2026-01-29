@@ -58,6 +58,19 @@
   
     const container = document.createElement("div");
     container.innerHTML = html;
+
+    // Remove <style> / <script> entirely (do NOT preserve their text children)
+    try {
+      container.querySelectorAll('style, script').forEach((n) => n.remove());
+    } catch (_) {}
+
+    // Remove HTML comments that can come from sources like Google Sheets
+    try {
+      const commentWalker = document.createTreeWalker(container, NodeFilter.SHOW_COMMENT, null, false);
+      const comments = [];
+      while (commentWalker.nextNode()) comments.push(commentWalker.currentNode);
+      comments.forEach((c) => c && c.remove && c.remove());
+    } catch (_) {}
   
     const allowedTags = new Set(["SPAN", "BR"]); // always allow SPAN/BR (tokens + line breaks)
     if (config.allowBold) {

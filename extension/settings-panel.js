@@ -2033,6 +2033,9 @@ console.log("[gem] settings-panel.js: setting up message listener");
         <div style="margin-bottom: 24px;">
           <h3 style="margin: 0 0 16px 0; color: var(--token-accent-foreground);">Block Editing</h3>
           <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 8px; align-items: center;">
+            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">${window.GEM_MOD_KEY}+SHIFT+V</kbd>
+            <span>Paste plain text from the clipboard (without Rich Paste formatting)</span>
+
             <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">Double-click</kbd>
             <span>on an editable image to open the Image Properties dialog</span>
 
