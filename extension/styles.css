@@ -596,9 +596,21 @@ e-float-container .gem-enhanced-image-properties-dialog {
 .gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-seen-group-content.collapsed {
     display: none;
 }
-main section.e-contentblocks-navigation_section:has(gem-snippets) {
-    flex: 0 0 500px !important;
+main section.e-contentblocks-navigation_section:has(.e-verticalnav__content gem-snippets) {
+    flex: 0 0 530px !important;
 }
+main section.e-contentblocks-navigation_section:has(.e-verticalnav__content cb-email-basics-tab) {
+    flex: 0 0 530px !important;
+}
+
+main section.e-contentblocks-navigation_section:has(.e-verticalnav__content cb-versions) {
+    flex: 0 0 530px !important;
+}
+
+main section.e-contentblocks-navigation_section:has(.e-verticalnav__content cb-locales-tab) {
+    flex: 0 0 530px !important;
+}
+
 
 /* ------------------------------------------------------------------------------------------------ */
 /* Snippets */
@@ -651,11 +663,11 @@ cb-available-block-list e-select {
 }
 
 
-.gem-enhanced-blocks-panel--2:has(cb-available-block-list) {
+.gem-enhanced-blocks-panel--2:has(cb-available-block-list:not([data-gem-hidden-by-snippets="true"])) {
     flex: 0 0 440px !important;
 }
 
-.gem-enhanced-blocks-panel--3:has(cb-available-block-list) {
+.gem-enhanced-blocks-panel--3:has(cb-available-block-list:not([data-gem-hidden-by-snippets="true"])) {
     flex: 0 0 500px !important;
 }
 

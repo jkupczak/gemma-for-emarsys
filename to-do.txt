@@ -9,7 +9,7 @@ In expanded mode, the hidden nav on the left should only open on click.
 
 Rich Paste should trim white space
 
-After rich pasting, MCPASTEBIN seems to be getting added and takes up space until the user blurs the block.
+After rich pasting, MCPASTEBIN seems to be getting added and takes up space until the user blurs the block. Sometimes pasting into buttons creates a SECODN button in the mobile preview which suggests something else is getting pasted.
 
 Can I create "drag for padding" functionality? Would need to ask the user to designate an integere based variable for top and bottom padding in the settings panel.
 
@@ -48,6 +48,8 @@ Can I add a note to the content block about what block targeting is being done?
 
 -----------------------------------------------
 # COMPLETE
+
+✓ "Recently Seen" logging function doesn't work when the Media DB page is being viewed in thumbnail mode.
 
 ✓ Add a toggle in settings for the email preview header. Let them change it between vertical and horizontal.
 

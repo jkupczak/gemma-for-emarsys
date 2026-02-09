@@ -1,4 +1,18 @@
-/* Scrollbar overrides */
+/* General Emarsys Overrides 
+------------------------------------------------------------ */
+
+/* 
+    Emarsys v2 table last row border fix.
+    They override the last to have 0 border. This causes an issue where sometimes that last
+    cell does not have the same overall height as the previous cells that do have a border.
+*/
+[data-e-version="2"].e-table tbody tr:last-child th, [data-e-version="2"].e-table tbody tr:last-child td {
+    border-bottom: 1px solid transparent;
+}
+
+
+/* Scrollbar overrides 
+------------------------------------------------------------ */
 .gem-scrollable {
     overflow-y: auto;
     scrollbar-width: thin;

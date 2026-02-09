@@ -201,17 +201,31 @@ function initializeRecentlySeenLogger() {
       if (loggedSkips.size === beforeSize) used += 1;
     };
 
-    // Primary: these dropdown items (when present in light DOM)
-    scope.querySelectorAll('tr.file-table-row [copy-to-clipboard]').forEach(hit);
+    // Collect unique hits; copy-to-clipboard nodes may appear either:
+    // - inside the MediaDB file table rows, or
+    // - in dropdown overlays (often outside the table row subtree) as <span> or <a>.
+    const seenEls = new Set();
+    const addAll = (nodeList) => {
+      try {
+        (nodeList || []).forEach((el) => {
+          if (el && el.nodeType === Node.ELEMENT_NODE) seenEls.add(el);
+        });
+      } catch (_) {}
+    };
+
+    // Primary: anywhere in light DOM (covers both <span> and <a> variants)
+    addAll(scope.querySelectorAll('[copy-to-clipboard]'));
 
     // Some Emarsys components may render dropdown content inside shadow DOM.
     scope.querySelectorAll('e-dropdown').forEach((dd) => {
       try {
         if (dd && dd.shadowRoot) {
-          dd.shadowRoot.querySelectorAll('tr.file-table-row [copy-to-clipboard]').forEach(hit);
+          addAll(dd.shadowRoot.querySelectorAll('[copy-to-clipboard]'));
         }
       } catch (_) {}
     });
+
+    seenEls.forEach(hit);
 
     if (DEBUG && (found > 0 || (Math.random() < 0.02))) {
       dbg(`Scan: found ${found} nodes, attempted ${used} upserts`, path ? `(path="${path}")` : '');
@@ -224,10 +238,12 @@ function initializeRecentlySeenLogger() {
     countLogT = setTimeout(() => {
       countLogT = null;
       try {
-        const total = document.querySelectorAll('tr.file-table-row .test-copytoclipboard-dropdownaction').length;
+        const total =
+          document.querySelectorAll('tr.file-table-row .test-copytoclipboard-dropdownaction').length +
+          document.querySelectorAll('tr.file-table-row .test-copytoclipboard-action').length;
         if (lastCopyActionCount !== total) {
           lastCopyActionCount = total;
-          dbg(`DOM count: .test-copytoclipboard-dropdownaction = ${total}`);
+          dbg(`DOM count: copy-to-clipboard actions (table row scoped) = ${total}`);
         }
       } catch (_) {}
     }, 50);
@@ -236,11 +252,20 @@ function initializeRecentlySeenLogger() {
   function nodeMayAffectSeen(n) {
     try {
       if (!n || n.nodeType !== Node.ELEMENT_NODE) return false;
-      if (n.matches && (n.matches('tr.file-table-row') || n.matches('[copy-to-clipboard]') || n.matches('.test-copytoclipboard-dropdownaction'))) return true;
+      if (
+        n.matches &&
+        (
+          n.matches('tr.file-table-row') ||
+          n.matches('[copy-to-clipboard]') ||
+          n.matches('.test-copytoclipboard-dropdownaction') ||
+          n.matches('.test-copytoclipboard-action')
+        )
+      ) return true;
       if (n.querySelector) {
         if (n.querySelector('tr.file-table-row')) return true;
         if (n.querySelector('tr.file-table-row [copy-to-clipboard]')) return true;
         if (n.querySelector('tr.file-table-row .test-copytoclipboard-dropdownaction')) return true;
+        if (n.querySelector('tr.file-table-row .test-copytoclipboard-action')) return true;
       }
     } catch (_) {}
     return false;
@@ -269,8 +294,8 @@ function initializeRecentlySeenLogger() {
             scheduleScan(n);
             try {
               if (
-                (n.matches && n.matches('tr.file-table-row .test-copytoclipboard-dropdownaction')) ||
-                (n.querySelector && n.querySelector('tr.file-table-row .test-copytoclipboard-dropdownaction'))
+                (n.matches && (n.matches('tr.file-table-row .test-copytoclipboard-dropdownaction') || n.matches('tr.file-table-row .test-copytoclipboard-action'))) ||
+                (n.querySelector && (n.querySelector('tr.file-table-row .test-copytoclipboard-dropdownaction') || n.querySelector('tr.file-table-row .test-copytoclipboard-action')))
               ) {
                 touchedCopyToClipboardNode = true;
               }
@@ -281,8 +306,8 @@ function initializeRecentlySeenLogger() {
           if (nodeMayAffectSeen(n)) {
             try {
               if (
-                (n.matches && n.matches('tr.file-table-row .test-copytoclipboard-dropdownaction')) ||
-                (n.querySelector && n.querySelector('tr.file-table-row .test-copytoclipboard-dropdownaction'))
+                (n.matches && (n.matches('tr.file-table-row .test-copytoclipboard-dropdownaction') || n.matches('tr.file-table-row .test-copytoclipboard-action'))) ||
+                (n.querySelector && (n.querySelector('tr.file-table-row .test-copytoclipboard-dropdownaction') || n.querySelector('tr.file-table-row .test-copytoclipboard-action')))
               ) {
                 touchedCopyToClipboardNode = true;
               }

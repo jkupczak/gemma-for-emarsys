@@ -441,13 +441,15 @@ function initializeSnippetsTab() {
         const canRunFromPanel = swapRules.some((r) => r && r.keyword && r.initiateFrom !== 'toolbar');
         const swapBtn = hasSwap
           ? `
-    <button class="e-btn e-btn-sm gem-swap-snippet-btn" type="button" data-snippet-id="${snippet.id}" title="${canRunFromPanel ? 'Swap Keywords' : 'Swap Keywords (available from Block Toolbar only)'}" ${canRunFromPanel ? '' : 'disabled'} style="min-width: unset; padding: 0 2px 0 10px; ${canRunFromPanel ? '' : 'opacity:0.35; cursor:not-allowed;'}">
+    <e-tooltip width="200" content="Swap Keywords" permission="false">
+          <button class="e-datagrid__item_action gem-swap-snippet-btn" type="button" data-snippet-id="${snippet.id}" title="${canRunFromPanel ? 'Swap Keywords' : 'Swap Keywords (available from Block Toolbar only)'}" ${canRunFromPanel ? '' : 'disabled'} style="min-width: unset; padding: 2px; ${canRunFromPanel ? '' : 'opacity:0.35; cursor:not-allowed;'}">
       <gem-e-icon icon="style" color="inherit">
         <div aria-hidden="true" class="e-icon-wrapper">
-          <div class="e-icon text-color-inherit" style="/*color: var(--token-blue-600);*/">&#xF0DE;</div>
+          <div class="e-icon e-icon-table text-color-inherit" style="/*color: var(--token-blue-600);*/">&#xF0DE;</div>
         </div>
       </gem-e-icon>
     </button>
+    </e-tooltip>
           `.trim()
           : '';
         return `
@@ -459,16 +461,39 @@ function initializeSnippetsTab() {
         <span class="e-label e-label-primary" draggable="true" style="cursor: move;">${snippet.name}</span>
       </vce-token>
     </div>
+  ${snippet.description ? `<div style="
+        font-size: 11px;
+        color: var(--token-text-default);
+          line-height: 16px;
+          padding-top: 5px;
+          opacity: 0.6;
+      ">
+      ${snippet.description || ''}
+      </div>
+    ` : ''}
   </td>
-  <td style="text-align: right; vertical-align:middle; padding: 6px 6px 6px 2px;">
-    ${swapBtn}
-    <button class="e-btn e-btn-sm gem-edit-snippet-btn" type="button" data-snippet-id="${snippet.id}" title="Edit snippet" style="min-width: unset; padding: 0 2px 0 10px;">
-      <gem-e-icon icon="edit" color="inherit">
-        <div aria-hidden="true" class="e-icon-wrapper">
-          <div class="e-icon text-color-inherit">&#xF0CE;</div>
-        </div>
-      </gem-e-icon>
-    </button>
+  <td style="text-align: right; vertical-align:top; padding: 6px 6px 6px 2px;">
+    <div class="gem-snippet-row-actions" style="display:flex; justify-content:flex-end; align-items:center">
+      ${swapBtn}
+      <e-tooltip width="200" content="Copy" permission="false">
+      <button class="e-datagrid__item_action gem-copy-snippet-btn" type="button" data-snippet-id="${snippet.id}" title="Copy snippet" style="min-width: unset; padding: 2px;">
+        <gem-e-icon icon="edit" color="inherit">
+          <div aria-hidden="true" class="e-icon-wrapper">
+            <div class="e-icon e-icon-table text-color-inherit">&#xF0C9;</div>
+          </div>
+        </gem-e-icon>
+      </button>
+      </e-tooltip>
+      <e-tooltip width="200" content="Edit" permission="false">
+      <button class="e-datagrid__item_action gem-edit-snippet-btn" type="button" data-snippet-id="${snippet.id}" title="Edit snippet" style="min-width: unset; padding: 2px;">
+        <gem-e-icon icon="edit" color="inherit">
+          <div aria-hidden="true" class="e-icon-wrapper">
+            <div class="e-icon e-icon-table text-color-inherit">&#xF0CE;</div>
+          </div>
+        </gem-e-icon>
+      </button>
+      </e-tooltip>
+    </div>
   </td>
 </tr>
         `;
@@ -1119,6 +1144,9 @@ function initializeSnippetsTab() {
       // Set up edit snippet button functionality
       setupEditSnippetButtons();
 
+      // Set up copy snippet button functionality
+      setupCopySnippetButtons();
+
       // Set up import/export buttons
       setupSnippetsImportExportButtons();
 
@@ -1235,6 +1263,66 @@ function initializeSnippetsTab() {
       }
     });
     console.log("[Gem] Edit snippet button handlers attached");
+  }
+
+  async function copyTextToClipboard(text) {
+    const value = String(text ?? '');
+    try {
+      await navigator.clipboard.writeText(value);
+      return true;
+    } catch (_) {
+      // Fallback for restricted clipboard contexts
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = value;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        ta.style.top = '0';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        ta.setSelectionRange(0, ta.value.length);
+        const ok = document.execCommand('copy');
+        ta.remove();
+        return !!ok;
+      } catch (_) {
+        return false;
+      }
+    }
+  }
+
+  // Function to set up copy snippet buttons
+  function setupCopySnippetButtons() {
+    const copyButtons = document.querySelectorAll('.gem-copy-snippet-btn');
+    copyButtons.forEach((button) => {
+      if (button.hasAttribute('data-gem-handler-attached')) return;
+
+      button.addEventListener('click', (event) => {
+        const snippetId = event.currentTarget.getAttribute('data-snippet-id');
+        if (!snippetId) return;
+
+        getSnippets(async (snippets) => {
+          const snippet = snippets.find((s) => s && s.id === snippetId);
+          const code = (snippet && typeof snippet.content === 'string') ? snippet.content : '';
+
+          if (!code || !code.trim()) {
+            window.gemShowToast && window.gemShowToast('No snippet code to copy.', { type: 'warn', durationMs: 1800 });
+            return;
+          }
+
+          const ok = await copyTextToClipboard(code);
+          if (ok) {
+            window.gemShowToast && window.gemShowToast('Snippet code copied to clipboard.', { type: 'success', durationMs: 1400 });
+          } else {
+            alert('Failed to copy snippet code to clipboard.');
+          }
+        });
+      });
+
+      button.setAttribute('data-gem-handler-attached', 'true');
+    });
   }
 
   // ------------------------------------------------------------
@@ -2669,6 +2757,7 @@ function initializeSnippetsTab() {
         setupSnippetDragAndDrop();
         setupSwapSnippetButtons();
         setupEditSnippetButtons();
+        setupCopySnippetButtons();
         setupSnippetCategoryCollapseToggles();
         setupSnippetsSearch();
         setupSnippetsFilterSelect();
