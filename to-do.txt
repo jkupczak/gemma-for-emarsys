@@ -2,19 +2,50 @@
 
 None
 
+
 -----------------------------------------------
 # HOT
 
+Update expanded mode CSS to eliminate the spacing around the left column on the top, left, and bottom. Remove all borders except for the right border. Remove the border-radius. Add padding to the left so that the tab nav looks the same and not squished.
+
+The mobile image picker view retains the desktop image preview even if the mobile image is not set. This corrects itself after the user clicks away from the focus that is automatically applied to the URL field. Lets fix that.
+
+Sometimes i cant open the edit snippet modal
+
+Search results from the media picker are being saved to Recently Seen in whatever the last seen folder is. Update it so that they get added to a "Searched" folder instead since we can't determine their actual folder.
+
+Add disabled placeholders for the language and version selectboxes so that the UI is consistent when the real ones are unavailable. Clicking on these fake ones should trigger a click on the appropriate tab so they can edit them.
+
+  ```
+  <cb-version-selector class="cb-header-button e-layout__action">
+    <e-select inline="">
+      <select class="e-select e-select-inline">
+        <option value="3503412" selected="true">Version #a</option>
+        <option value="3503413">Version #b</option>
+        <!---->
+      </select>
+      <div class="e-selectnew__wrapper">
+        <!--<>-->
+        <div role="button" aria-haspopup="listbox" class="e-selectnew e-selectnew-native e-selectnew-inline" tabindex="0" aria-label="Version #a" aria-expanded="false" aria-disabled="false"></div>
+        <!--</>-->
+      </div>
+    </e-select>
+  </cb-version-selector>
+  ```
+
+The image picker popups that show metadata should show a bigger preview of the image.
+
+Add Expanded Mode as a toggle in the settings panel
+
 In expanded mode, the hidden nav on the left should only open on click.
 
-Rich Paste should trim white space
+When we modify a block with the block styles panel, sometimes the id (id="mce_8") of the contenteditable element changes (id="mce_9"). This throws off Gemma and the content block toolbar no longer loads in our custom buttons. Doesn't get fixed until the page refreshes.
 
-After rich pasting, MCPASTEBIN seems to be getting added and takes up space until the user blurs the block. Sometimes pasting into buttons creates a SECODN button in the mobile preview which suggests something else is getting pasted.
+#Rich Paste: After rich pasting, MCPASTEBIN seems to be getting added and takes up space until the user blurs the block. Sometimes pasting into buttons creates a SECODN button in the mobile preview which suggests something else is getting pasted.
+
+#Rich Paste: Sometimes Rich Paste inserts the paste inside of the existing text even though we did CMD+A to select all of the existing text.
 
 Can I create "drag for padding" functionality? Would need to ask the user to designate an integere based variable for top and bottom padding in the settings panel.
-
-Can CMD+C copy ESL tokens as the plain text code for better pasting? Or better yet, paste them back in as tokens? 
-(Ask ChatGPT when I have credits, Grok failed)
 
 -----------------------------------------------
 # PENDING
@@ -49,11 +80,19 @@ Can I add a note to the content block about what block targeting is being done?
 -----------------------------------------------
 # COMPLETE
 
+✓ Search terms should get added as active pills when you hit enter/tab? Moved to a new line undernear the search bar. Clicking them deactivates them but keeps them there, clicking an X on them removes them entirely. Search results should take all active pills and the search box into account. For example, right now searching for 'e4 uk' would not return images with the filename uk_e4.png. But searching with pills should treat each search term separately. Results should include ALL search terms, just not necesarrily in any specific order.
+
+✓ Move the "group by" folder to the right, search box to the left
+
+✓ Adjust the image thumbnail height in the image picker to be taller the fewer columns there are. Also allow two columns as the minimum.
+
 ✓ "Recently Seen" logging function doesn't work when the Media DB page is being viewed in thumbnail mode.
 
 ✓ Add a toggle in settings for the email preview header. Let them change it between vertical and horizontal.
 
 ✓ While the ESL syntax checker is thinking, you should not be able to click OK to click the dialog
+
+✓ Rich Paste should trim white space
 
 ✓ Double click to open esl tokens and ✓ image properties
 
@@ -70,6 +109,8 @@ Can I add a note to the content block about what block targeting is being done?
     ✓ Let users apply metadata to favorited images: search keyword, category, language
 
 ✓ The Recently Seen list should be categorized by Path. Categories should be sorted by most recently seen.
+
+✓ When adding a Favorite Image, the Enter key closes the Image Props dialog instead of pressing OK on the favorite image modal.
 
 ✓ Add text replacement to the preheader box.
 

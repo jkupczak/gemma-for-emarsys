@@ -244,17 +244,10 @@ e-float-container .gem-enhanced-image-properties-dialog {
 
 /* Recent Images picker - grid view */
 .gem-enhanced-image-properties-dialog #gem-recent-images-picker {
-    /* default (small) density */
-    --gem-recent-thumb-h: 120px;
+    /* Thumb height scales inversely with grid cols: 10 cols = 120px, 2 cols = 180px */
+    --gem-recent-thumb-h: calc(120px + 12px * (10 - var(--gem-recent-grid-cols)));
     --gem-recent-grid-cols: 6;
     padding-bottom: 16px;
-}
-
-.gem-enhanced-image-properties-dialog #gem-recent-images-picker[data-gem-recent-images-grid-density="medium"] {
-    --gem-recent-thumb-h: 160px;
-}
-.gem-enhanced-image-properties-dialog #gem-recent-images-picker[data-gem-recent-images-grid-density="large"] {
-    --gem-recent-thumb-h: 200px;
 }
 
 .gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-recent-images-grid {
@@ -280,6 +273,67 @@ e-float-container .gem-enhanced-image-properties-dialog {
     width: 100%;
     height: var(--gem-recent-thumb-h);
     object-fit: contain;
+}
+
+/* Search pills */
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-search-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 0;
+}
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-search-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0px 0 0 10px;
+    border-radius: 100px;
+    font-weight: normal;
+    cursor: pointer;
+    background: var(--token-tab-default-background);
+    opacity: 0.65;
+    overflow: hidden;
+    border: 1px solid var(--token-gray-600);
+    line-height: 28px;
+}
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-search-pill--active {
+    opacity: 1;
+    font-weight: bold;
+    background: var(--token-blue-400);
+    border: 1px solid var(--token-blue-400);
+}
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-search-pill:hover {
+    opacity: 1;
+}
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-search-pill-text {
+    flex: 0 1 auto;
+    font-size: 14px;
+    cursor: pointer;
+}
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-search-pill-remove {
+    margin-left: auto;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    font-weight: bold;
+    position: relative;
+    opacity: 1;
+    border-radius: 100%;
+    width: 28px;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    text-align: center;
+    justify-content: center;
+    border: 3px solid var(--token-tab-default-background)
+}
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-search-pill--active .gem-search-pill-remove {
+    border: 2px solid var(--token-blue-400);
+}
+
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-search-pill-remove:hover {
+    opacity: 1;
+    background: var(--token-blue-200);
 }
 
 /* Preview image styles */
@@ -596,6 +650,12 @@ e-float-container .gem-enhanced-image-properties-dialog {
 .gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-seen-group-content.collapsed {
     display: none;
 }
+
+
+main section.e-contentblocks-navigation_section:has(.e-verticalnav__content cb-campaign-variables) {
+    flex: 0 0 530px !important;
+}
+
 main section.e-contentblocks-navigation_section:has(.e-verticalnav__content gem-snippets) {
     flex: 0 0 530px !important;
 }
@@ -608,6 +668,14 @@ main section.e-contentblocks-navigation_section:has(.e-verticalnav__content cb-v
 }
 
 main section.e-contentblocks-navigation_section:has(.e-verticalnav__content cb-locales-tab) {
+    flex: 0 0 530px !important;
+}
+
+main section.e-contentblocks-navigation_section:has(.e-verticalnav__content cb-custom-tab) {
+    flex: 0 0 530px !important;
+}
+
+main section.e-contentblocks-navigation_section:has(.e-verticalnav__content cb-campaign-latest-media) {
     flex: 0 0 530px !important;
 }
 
@@ -863,11 +931,6 @@ cb-available-block-list .e-card-auto_height .e-card__content {
 .gem-hide-icon:hover {
     opacity: 1 !important;
     filter: none !important; /* Full color on hover */
-}
-
-
-.e-contentblocks-navigation_section:has(cb-campaign-variables) {
-    flex: 0 0 500px !important;
 }
 
 
@@ -1163,4 +1226,15 @@ input.gem-image-search:not(:placeholder-shown) {
 
 .gem-campaign-preview-toolbar-vertical:not(.gem-expanded) .e-contentblocks-preview__iframe {
     border-radius:0 8px 8px 0 !important;
+}
+
+
+/* 
+  Hide the tooltips that come from the MCE formatting toolbar. 
+  They can get stuck on the screen after the formatting bar disappears because the ESL 
+  conversion function temporarily opens the toolbar because it needs to edit the content.
+  After the conversion is complete, the tooltip stays on the screen.
+*/
+.mce-widget.mce-tooltip.mce-tooltip-n {
+    display: none !important;
 }

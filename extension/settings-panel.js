@@ -7,6 +7,7 @@ const GEM_THEME_MODE_STORAGE_KEY = "gemThemeMode";
 const GEM_THEME_MODE_LOCAL_KEY = "gemThemeMode";
 const GEM_RECENT_IMAGES_STORAGE_KEY = 'gemRecentImages';
 const GEM_RECENTLY_SEEN_IMAGES_STORAGE_KEY = 'gemRecentlySeenImages';
+const GEM_RECENTLY_SEEN_IMAGES_MAX_KEY = 'gemRecentlySeenImagesMax';
 const GEM_EMAIL_PREVIEW_TOOLBAR_NORMAL_KEY = "gemEmailPreviewToolbarPositionNormal";
 const GEM_EMAIL_PREVIEW_TOOLBAR_EXPANDED_KEY = "gemEmailPreviewToolbarPositionExpanded";
 const GEM_CUSTOM_PASTE_ENABLED_KEY = "gemCustomPasteEnabled";
@@ -142,7 +143,7 @@ window.DEFAULT_COLOR_SWATCHES = ["#FE4D01", "", "", "", "", "", "", ""];
 window.DEFAULT_HIGHLIGHT_TERMS = {
   "\((price|prezzo|precio|preis|prix)\)": { color: "rgba(245, 46, 132, 0.40)", isRegex: true },
   "\{\{[^”“‘’}]+\}\}": { color: "rgba(255, 230, 0, 0.40)", isRegex: true },
-  "((\$|£|€)( |\\xA0)?(\d|X)+|(\d|X)+( |\\xA0)?€)": { color: "rgba(255, 230, 0, 0.40)", isRegex: true },
+  "((\$|£|€)(\s|\\xA0)?(\d|X)+|(\d|X)+(\s|\\xA0)?€)": { color: "rgba(255, 230, 0, 0.40)", isRegex: true },
   "(name)": { color: "rgba(0, 180, 255, 0.40)", isRegex: false },
   "(LearnLangAll)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
   "(learnlang_a_ENG)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
@@ -528,6 +529,37 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
     document.head.appendChild(style);
   }
 
+  function normalizeRecentlySeenMax(value) {
+    const n = (typeof value === 'number') ? value : parseInt(String(value ?? ''), 10);
+    if (!Number.isFinite(n)) return 300;
+    return Math.min(2000, Math.max(50, Math.trunc(n)));
+  }
+
+  function pruneRecentlySeenToMax(max) {
+    const limit = normalizeRecentlySeenMax(max);
+    try {
+      chrome.storage.local.get({ [GEM_RECENTLY_SEEN_IMAGES_STORAGE_KEY]: [] }, (res) => {
+        try {
+          const list = Array.isArray(res && res[GEM_RECENTLY_SEEN_IMAGES_STORAGE_KEY]) ? res[GEM_RECENTLY_SEEN_IMAGES_STORAGE_KEY] : [];
+          if (list.length <= limit) return;
+          const cleaned = list
+            .map((x) => {
+              const url = x && x.url;
+              if (!url) return null;
+              const ts = (x && typeof x.ts === 'number') ? x.ts : 0;
+              const path = (x && typeof x.path === 'string') ? x.path : '';
+              const friendlyFilename = (x && typeof x.friendlyFilename === 'string') ? x.friendlyFilename : '';
+              return { url, ts, path, friendlyFilename };
+            })
+            .filter(Boolean);
+          cleaned.sort((a, b) => (a.ts || 0) - (b.ts || 0));
+          while (cleaned.length > limit) cleaned.shift();
+          chrome.storage.local.set({ [GEM_RECENTLY_SEEN_IMAGES_STORAGE_KEY]: cleaned });
+        } catch (_) {}
+      });
+    } catch (_) {}
+  }
+
   // ------------------------------------------------------------
   // Create panel structure
   // ------------------------------------------------------------
@@ -792,6 +824,15 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         <div class="gem-setting-section">
           <h3>Media Picker Settings</h3>
           <div class="gem-setting">
+            <label style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+              <span>Recently Seen limit</span>
+              <input type="number" id="opt-recently-seen-max" min="50" max="2000" step="1" value="300" style="width:120px;" />
+            </label>
+            <div style="font-size: 14px; color: var(--token-font-default); margin-top: 8px;">
+              Max number of images to keep in the Recently Seen list (50–2000).
+            </div>
+          </div>
+          <div class="gem-setting">
             <label>
               <input type="checkbox" id="opt-show-file-icon" checked />
               Show filetype icons in media picker
@@ -894,7 +935,8 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         [GEM_CUSTOM_PASTE_ALLOW_STRIKE_KEY]: true,
         [GEM_CUSTOM_PASTE_ALLOW_UNDERLINE_KEY]: true,
         [GEM_CUSTOM_PASTE_ALLOW_SUP_KEY]: true,
-        [GEM_CUSTOM_PASTE_ALLOW_ANCHOR_KEY]: true
+        [GEM_CUSTOM_PASTE_ALLOW_ANCHOR_KEY]: true,
+        [GEM_RECENTLY_SEEN_IMAGES_MAX_KEY]: 300
       }, (settings) => {
         const themeSelect = document.getElementById("opt-theme-mode");
         if (themeSelect) {
@@ -961,6 +1003,11 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
 
         document.getElementById("opt-show-finish-editing-btn").checked =
           settings.showFinishEditingBtn;
+
+        const recentlySeenMaxInput = document.getElementById("opt-recently-seen-max");
+        if (recentlySeenMaxInput) {
+          recentlySeenMaxInput.value = String(normalizeRecentlySeenMax(settings[GEM_RECENTLY_SEEN_IMAGES_MAX_KEY]));
+        }
 
         // Load MediaDB settings
         chrome.storage.sync.get({ gemMediaDBColumnVisibility: {
@@ -1041,6 +1088,8 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
           document.getElementById("opt-custom-paste-sup")?.checked ?? true,
         [GEM_CUSTOM_PASTE_ALLOW_ANCHOR_KEY]:
           document.getElementById("opt-custom-paste-anchor")?.checked ?? true,
+        [GEM_RECENTLY_SEEN_IMAGES_MAX_KEY]:
+          normalizeRecentlySeenMax(document.getElementById("opt-recently-seen-max")?.value),
         enableHighlighting:
           document.getElementById("opt-enable-highlighting")?.checked ?? true,
         enableMobilePreview: mobileVisible,
@@ -1055,6 +1104,9 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
       applyGemThemeMode(settingsToSave[GEM_THEME_MODE_STORAGE_KEY], { persistLocal: true });
 
       chrome.storage.sync.set(settingsToSave);
+
+      // If the limit was reduced, prune local recently seen immediately
+      try { pruneRecentlySeenToMax(settingsToSave[GEM_RECENTLY_SEEN_IMAGES_MAX_KEY]); } catch (_) {}
 
       // Save MediaDB settings separately
       const mediaDBSettings = {
@@ -1095,6 +1147,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
       "opt-show-created-column",
       "opt-show-size-column",
       "opt-show-user-column",
+      "opt-recently-seen-max",
       "opt-email-preview-toolbar-position-normal",
       "opt-email-preview-toolbar-position-expanded",
       "opt-custom-paste-enabled",

@@ -304,8 +304,8 @@
 }
 
 .gem-expanded .gem-enhanced-blocks-panel--2:has(cb-available-block-list:not([data-gem-hidden-by-snippets="true"])) {
-    flex: 0 0 450px !important;
+    flex: 0 0 530px !important;
 }
 .gem-expanded .gem-enhanced-blocks-panel--3:has(cb-available-block-list:not([data-gem-hidden-by-snippets="true"])) {
-    flex: 0 0 510px !important;
+    flex: 0 0 530px !important;
 }

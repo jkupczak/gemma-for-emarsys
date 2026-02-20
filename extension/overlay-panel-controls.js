@@ -428,7 +428,8 @@ function initializeOverlayPanelControls() {
     const GEM_RECENT_IMAGES_STORAGE_KEY = 'gemRecentlyUsedImages';
     const GEM_RECENT_IMAGES_MAX = 100;
     const GEM_RECENTLY_SEEN_IMAGES_STORAGE_KEY = 'gemRecentlySeenImages';
-    const GEM_RECENTLY_SEEN_IMAGES_MAX = 250;
+    const GEM_RECENTLY_SEEN_IMAGES_MAX_SETTING_KEY = 'gemRecentlySeenImagesMax';
+    let recentlySeenMax = 300;
     const GEM_FAVORITE_IMAGES_STORAGE_KEY = 'gemFavoriteImages';
     const GEM_FAVORITE_IMAGES_MAX = 1000;
     const GEM_FAVORITE_IMAGE_META_STORAGE_KEY = 'gemFavoriteImageMeta';
@@ -439,6 +440,21 @@ function initializeOverlayPanelControls() {
     const GEM_RECENT_IMAGES_BTN_CLASS = 'gem-recent-images-btn';
     const GEM_RECENT_IMAGES_PICKER_PREFS_KEY = 'gemRecentImagesPickerPrefs';
     const GEM_IMAGE_PROPERTIES_SEARCH_KEY = 'gemImagePropertiesSearch';
+    const GEM_IMAGE_PROPERTIES_SEARCH_PILLS_FAV_KEY = 'gemImagePropertiesSearchPillsFavorites';
+    const GEM_IMAGE_PROPERTIES_SEARCH_PILLS_SEEN_KEY = 'gemImagePropertiesSearchPillsSeen';
+
+    function normalizeRecentlySeenMax(value) {
+      const n = (typeof value === 'number') ? value : parseInt(String(value ?? ''), 10);
+      if (!Number.isFinite(n)) return 300;
+      return Math.min(2000, Math.max(50, Math.trunc(n)));
+    }
+
+    // Load the setting once; keep it updated via the storage change handler below.
+    try {
+      chrome.storage.sync.get({ [GEM_RECENTLY_SEEN_IMAGES_MAX_SETTING_KEY]: recentlySeenMax }, (res) => {
+        recentlySeenMax = normalizeRecentlySeenMax(res && res[GEM_RECENTLY_SEEN_IMAGES_MAX_SETTING_KEY]);
+      });
+    } catch (_) {}
 
     function getRecentImagesPickerPrefs(callback) {
       try {
@@ -658,7 +674,7 @@ function initializeOverlayPanelControls() {
           next.push({ url: u, ts: now, path: p || '' });
         }
         next.sort((a, b) => (a.ts || 0) - (b.ts || 0));
-        while (next.length > GEM_RECENTLY_SEEN_IMAGES_MAX) next.shift();
+        while (next.length > recentlySeenMax) next.shift();
         saveRecentlySeenImages(next);
       });
     }
@@ -1101,15 +1117,31 @@ function initializeOverlayPanelControls() {
         picker.style.background = 'var(--token-box-alternate-background)';
         picker.style.overflowY = 'scroll';
         picker.style.boxSizing = 'border-box';
+        picker._gemFavoriteImagesSearchPills = [];
+        picker._gemSeenImagesSearchPills = [];
         leftPanelContainer.appendChild(picker);
 
-        // Load persistent search values and set up picker
-        chrome.storage.sync.get({ [GEM_IMAGE_PROPERTIES_SEARCH_KEY]: {} }, (result) => {
+        // Load persistent search values and pills, set up picker
+        chrome.storage.sync.get({
+          [GEM_IMAGE_PROPERTIES_SEARCH_KEY]: {},
+          [GEM_IMAGE_PROPERTIES_SEARCH_PILLS_FAV_KEY]: [],
+          [GEM_IMAGE_PROPERTIES_SEARCH_PILLS_SEEN_KEY]: []
+        }, (result) => {
           const searches = result[GEM_IMAGE_PROPERTIES_SEARCH_KEY] || {};
 
           // Set search values from storage or defaults
           picker.dataset.gemFavoriteImagesSearch = searches.favorites || '';
           picker.dataset.gemSeenImagesSearch = searches.seen || '';
+
+          const favPillsRaw = result[GEM_IMAGE_PROPERTIES_SEARCH_PILLS_FAV_KEY];
+          const seenPillsRaw = result[GEM_IMAGE_PROPERTIES_SEARCH_PILLS_SEEN_KEY];
+          const normalizePills = (arr) => (Array.isArray(arr) ? arr : []).map((p) =>
+            (p && typeof p === 'object' && typeof p.term === 'string')
+              ? { term: String(p.term).trim(), active: !!p.active }
+              : null
+          ).filter(Boolean);
+          picker._gemFavoriteImagesSearchPills = normalizePills(favPillsRaw);
+          picker._gemSeenImagesSearchPills = normalizePills(seenPillsRaw);
 
           // Default source view
           if (!picker.dataset.gemRecentImagesSource) {
@@ -1129,6 +1161,42 @@ function initializeOverlayPanelControls() {
 
           // Delegate clicks for selecting
           picker.addEventListener('click', (e) => {
+            const removeBtn = e.target.closest && e.target.closest('.gem-search-pill-remove');
+            if (removeBtn) {
+              e.preventDefault();
+              e.stopPropagation();
+              const pillEl = removeBtn.closest && removeBtn.closest('.gem-search-pill');
+              if (!pillEl) return;
+              const idx = parseInt(pillEl.getAttribute('data-index') || '-1', 10);
+              const sourceAttr = (pillEl.closest && pillEl.closest('.gem-search-pills'))?.getAttribute('data-pills-source') || '';
+              const isFav = sourceAttr === 'favorites';
+              const pills = isFav ? (picker._gemFavoriteImagesSearchPills || []) : (picker._gemSeenImagesSearchPills || []);
+              if (idx < 0 || idx >= pills.length) return;
+              pills.splice(idx, 1);
+              if (isFav) picker._gemFavoriteImagesSearchPills = pills;
+              else picker._gemSeenImagesSearchPills = pills;
+              const key = isFav ? GEM_IMAGE_PROPERTIES_SEARCH_PILLS_FAV_KEY : GEM_IMAGE_PROPERTIES_SEARCH_PILLS_SEEN_KEY;
+              chrome.storage.sync.set({ [key]: pills });
+              showRecentImagesPicker(modal, { contentOnly: true });
+              return;
+            }
+            const pillEl2 = e.target.closest && e.target.closest('.gem-search-pill');
+            if (pillEl2 && !e.target.closest('.gem-search-pill-remove')) {
+              e.preventDefault();
+              e.stopPropagation();
+              const idx2 = parseInt(pillEl2.getAttribute('data-index') || '-1', 10);
+              const sourceAttr2 = (pillEl2.closest && pillEl2.closest('.gem-search-pills'))?.getAttribute('data-pills-source') || '';
+              const isFav2 = sourceAttr2 === 'favorites';
+              const pills2 = isFav2 ? (picker._gemFavoriteImagesSearchPills || []) : (picker._gemSeenImagesSearchPills || []);
+              if (idx2 < 0 || idx2 >= pills2.length) return;
+              pills2[idx2].active = !pills2[idx2].active;
+              if (isFav2) picker._gemFavoriteImagesSearchPills = pills2;
+              else picker._gemSeenImagesSearchPills = pills2;
+              const key2 = isFav2 ? GEM_IMAGE_PROPERTIES_SEARCH_PILLS_FAV_KEY : GEM_IMAGE_PROPERTIES_SEARCH_PILLS_SEEN_KEY;
+              chrome.storage.sync.set({ [key2]: pills2 });
+              showRecentImagesPicker(modal, { contentOnly: true });
+              return;
+            }
             const catToggleBtn = e.target.closest && e.target.closest('.gem-fav-cat-toggle');
             if (catToggleBtn) {
               e.preventDefault();
@@ -1364,6 +1432,44 @@ function initializeOverlayPanelControls() {
           upsertRecentImageUrl(url);
         });
 
+        // Enter/Tab on search input: add terms as pills
+        picker.addEventListener('keydown', (e) => {
+          const favSearchInput = e.target && e.target.closest && e.target.closest('.gem-favorite-images-search');
+          const seenSearchInput = e.target && e.target.closest && e.target.closest('.gem-seen-images-search');
+          const searchInput = favSearchInput || seenSearchInput;
+          if (!searchInput) return;
+          if (e.key !== 'Enter' && e.key !== 'Tab') return;
+          const raw = (searchInput.value || '').trim();
+          if (!raw) return;
+          e.preventDefault();
+          const tokens = raw.split(/\s+/).filter((t) => t && t.trim());
+          if (tokens.length === 0) return;
+          const isFav = !!favSearchInput;
+          const pills = isFav ? (picker._gemFavoriteImagesSearchPills || []) : (picker._gemSeenImagesSearchPills || []);
+          const existingTerms = new Set(pills.map((p) => (p.term || '').toLowerCase()));
+          let changed = false;
+          for (const t of tokens) {
+            const term = String(t).trim();
+            if (!term) continue;
+            if (existingTerms.has(term.toLowerCase())) continue;
+            existingTerms.add(term.toLowerCase());
+            pills.push({ term, active: true });
+            changed = true;
+          }
+          if (!changed) {
+            searchInput.value = '';
+            showRecentImagesPicker(modal, { contentOnly: true });
+            return;
+          }
+          if (isFav) picker._gemFavoriteImagesSearchPills = pills;
+          else picker._gemSeenImagesSearchPills = pills;
+          const key = isFav ? GEM_IMAGE_PROPERTIES_SEARCH_PILLS_FAV_KEY : GEM_IMAGE_PROPERTIES_SEARCH_PILLS_SEEN_KEY;
+          chrome.storage.sync.set({ [key]: pills });
+          searchInput.value = '';
+          picker.dataset[isFav ? 'gemFavoriteImagesSearch' : 'gemSeenImagesSearch'] = '';
+          showRecentImagesPicker(modal, { contentOnly: true });
+        }, true);
+
         // Favorites/Seen search + grid slider (avoid focus loss by debouncing rerender)
         picker.addEventListener('input', (e) => {
           const favSearchInput = e.target && e.target.closest && e.target.closest('.gem-favorite-images-search');
@@ -1399,7 +1505,7 @@ function initializeOverlayPanelControls() {
 
           const slider = e.target && e.target.closest && e.target.closest('.gem-fav-grid-cols-slider');
           if (slider) {
-            const v = Math.min(8, Math.max(3, Number(slider.value || 6)));
+            const v = Math.min(10, Math.max(2, Number(slider.value || 6)));
             picker.dataset.gemRecentImagesGridCols = String(v);
             picker.style.setProperty('--gem-recent-grid-cols', String(v));
           }
@@ -1439,7 +1545,7 @@ function initializeOverlayPanelControls() {
 
           const slider = e.target && e.target.closest && e.target.closest('.gem-fav-grid-cols-slider');
           if (slider) {
-            const v = Math.min(8, Math.max(3, Number(slider.value || 6)));
+            const v = Math.min(10, Math.max(2, Number(slider.value || 6)));
             picker.dataset.gemRecentImagesGridCols = String(v);
             picker.style.setProperty('--gem-recent-grid-cols', String(v));
             saveRecentImagesPickerPrefs({
@@ -1571,11 +1677,25 @@ function initializeOverlayPanelControls() {
             `.trim()
             : '';
 
+          const pillsForSource = source === 'favorites' ? (picker._gemFavoriteImagesSearchPills || []) : (picker._gemSeenImagesSearchPills || []);
+          const pillsHtml = pillsForSource.map((p, i) => {
+            const active = !!p.active;
+            const term = (p && typeof p.term === 'string') ? p.term : '';
+            if (!term) return '';
+            return `<span class="gem-search-pill ${active ? 'gem-search-pill--active' : ''}" data-term="${escape(term)}" data-index="${i}"><span class="gem-search-pill-text">${escape(term)}</span><span class="gem-search-pill-remove" aria-label="Remove">×</span></span>`;
+          }).filter(Boolean).join('');
           const favSearch = (source === 'favorites' || source === 'seen')
             ? `
-              <div id="gem-search-container" style="margin-top:8px;padding:0 16px;display: flex;gap: 8px;align-items: center;">
-                ${groupBySelect}
-                <input class="e-input e-input-search gem-image-search ${source === 'favorites' ? 'gem-favorite-images-search' : 'gem-seen-images-search'}" placeholder="Search ${source === 'favorites' ? 'favorites' : 'recently seen'}" type="search" value="${escape(source === 'favorites' ? (picker.dataset.gemFavoriteImagesSearch || '') : (picker.dataset.gemSeenImagesSearch || ''))}">
+              <div id="gem-search-container" style="margin-top:8px;padding:0 16px;display:flex;gap:8px;align-items:flex-start;">
+                <div style="flex:1;display:flex;flex-direction:column;gap:8px;min-width:0;">
+                  <input class="e-input e-input-search gem-image-search ${source === 'favorites' ? 'gem-favorite-images-search' : 'gem-seen-images-search'}" placeholder="Search ${source === 'favorites' ? 'favorites' : 'recently seen'}" type="search" value="${escape(source === 'favorites' ? (picker.dataset.gemFavoriteImagesSearch || '') : (picker.dataset.gemSeenImagesSearch || ''))}">
+                  <div class="gem-search-pills" data-pills-source="${source}">
+                    ${pillsHtml}
+                  </div>
+                </div>
+                <div style="margin-left:12px;padding-left:12px;border-left:1px solid var(--token-box-default-border);display:flex;align-items:center;gap:8px;">
+                  ${groupBySelect}
+                </div>
               </div>
             `.trim()
             : '';
@@ -1590,7 +1710,7 @@ function initializeOverlayPanelControls() {
             ? `
               <div style="display:flex; align-items:center; gap:8px;">
                 <label style="font-size:12px; opacity:0.75;">Cols</label>
-                <input class="gem-fav-grid-cols-slider" type="range" min="3" max="8" step="1" value="${escape(String(gridCols))}">
+                <input class="gem-fav-grid-cols-slider" type="range" min="2" max="10" step="1" value="${escape(String(gridCols))}">
               </div>
             `.trim()
             : '';
@@ -1629,7 +1749,11 @@ function initializeOverlayPanelControls() {
           // Favorites view: group by category OR language, collapsible, searchable, sorted.
           if (source === 'favorites') {
             const qRaw = String(picker.dataset.gemFavoriteImagesSearch || '').trim();
-            const q = qRaw.toLowerCase();
+            const favPills = picker._gemFavoriteImagesSearchPills || [];
+            const terms = [
+              ...favPills.filter((p) => p.active).map((p) => (p.term || '').toLowerCase().trim()).filter(Boolean),
+              ...qRaw.split(/\s+/).filter(Boolean).map((t) => t.toLowerCase())
+            ];
 
             // Build last-used map from recent images so we can sort missing-altText items by last used.
             getRecentImages((recentList) => {
@@ -1651,13 +1775,14 @@ function initializeOverlayPanelControls() {
                 });
 
                 const matchesQuery = (it) => {
-                  if (!q) return true;
-                  const hay = `${it.altText} ${it.keyword} ${it.language} ${it.translation}`.toLowerCase();
-                  return hay.includes(q);
+                  if (terms.length === 0) return true;
+                  const hay = `${it.altText} ${it.keyword} ${it.language} ${it.translation} ${it.category} ${it.url}`.toLowerCase();
+                  return terms.every((t) => hay.includes(t));
                 };
                 const filtered = items.filter(matchesQuery);
-                const searchSummary = qRaw && filtered.length > 0
-                  ? `<div style="padding:0 16px 16px 16px; opacity:0.7;">Found ${filtered.length} matches for '${escape(qRaw)}'.</div>`
+                const termsDisplay = terms.length > 0 ? terms.map((t) => `'${escape(t)}'`).join(', ') : '';
+                const searchSummary = terms.length > 0 && filtered.length > 0
+                  ? `<div style="padding:0 16px 16px 16px; opacity:0.7;">Found ${filtered.length} matches for ${termsDisplay}.</div>`
                   : '';
 
                 const groupMap = new Map();
@@ -1847,9 +1972,9 @@ function initializeOverlayPanelControls() {
                   const contentContainer = document.createElement('div');
                   contentContainer.innerHTML = `
                     ${searchSummary}
-                    ${qRaw && groupKeys.length === 0 ? `<div style="padding:0 16px 16px 16px; opacity:0.7;">No matches found for '${escape(qRaw)}'.</div>` : ''}
+                    ${terms.length > 0 && groupKeys.length === 0 ? `<div style="padding:0 16px 16px 16px; opacity:0.7;">No matches found for ${termsDisplay}.</div>` : ''}
                     ${buildCategorySections()}
-                    ${!q ? empty : ''}
+                    ${terms.length === 0 ? empty : ''}
                   `.trim();
                   // Replace everything after the header
                   const header = picker.querySelector('#gem-image-list-header');
@@ -1866,13 +1991,23 @@ function initializeOverlayPanelControls() {
                       picker.appendChild(contentContainer.firstChild);
                     }
                   }
+                  const pillsContainerFav = picker.querySelector('.gem-search-pills[data-pills-source="favorites"]');
+                  if (pillsContainerFav) {
+                    const favPillsForUpdate = picker._gemFavoriteImagesSearchPills || [];
+                    pillsContainerFav.innerHTML = favPillsForUpdate.map((p, i) => {
+                      const active = !!p.active;
+                      const term = (p && typeof p.term === 'string') ? p.term : '';
+                      if (!term) return '';
+                      return `<span class="gem-search-pill ${active ? 'gem-search-pill--active' : ''}" data-term="${escape(term)}" data-index="${i}"><span class="gem-search-pill-text">${escape(term)}</span><span class="gem-search-pill-remove" aria-label="Remove">×</span></span>`;
+                    }).filter(Boolean).join('');
+                  }
                 } else {
                   picker.innerHTML = `
                     ${header}
                     ${searchSummary}
-                    ${qRaw && groupKeys.length === 0 ? `<div style="padding:0 16px 16px 16px; opacity:0.7;">No matches found for '${escape(qRaw)}'.</div>` : ''}
+                    ${terms.length > 0 && groupKeys.length === 0 ? `<div style="padding:0 16px 16px 16px; opacity:0.7;">No matches found for ${termsDisplay}.</div>` : ''}
                     ${buildCategorySections()}
-                    ${!q ? empty : ''}
+                    ${terms.length === 0 ? empty : ''}
                   `.trim();
                 }
 
@@ -1885,7 +2020,11 @@ function initializeOverlayPanelControls() {
           // Recently Seen view: group by path OR date, collapsible, searchable, sorted.
           if (source === 'seen') {
             const qRaw = String(picker.dataset.gemSeenImagesSearch || '').trim();
-            const q = qRaw.toLowerCase();
+            const seenPills = picker._gemSeenImagesSearchPills || [];
+            const seenTerms = [
+              ...seenPills.filter((p) => p.active).map((p) => (p.term || '').toLowerCase().trim()).filter(Boolean),
+              ...qRaw.split(/\s+/).filter(Boolean).map((t) => t.toLowerCase())
+            ];
 
             getRecentlySeenImageGroupCollapseMap((collapseMap) => {
               const collapse = collapseMap || {};
@@ -1899,13 +2038,14 @@ function initializeOverlayPanelControls() {
               });
 
               const matchesQuery = (it) => {
-                if (!q) return true;
+                if (seenTerms.length === 0) return true;
                 const hay = `${it.friendlyFilename} ${it.path} ${it.url}`.toLowerCase();
-                return hay.includes(q);
+                return seenTerms.every((t) => hay.includes(t));
               };
               const filtered = items.filter(matchesQuery);
-              const searchSummary = qRaw && filtered.length > 0
-                ? `<div style="padding:0 16px 16px 16px; opacity:0.7;">Found ${filtered.length} matches for '${escape(qRaw)}'.</div>`
+              const seenTermsDisplay = seenTerms.length > 0 ? seenTerms.map((t) => `'${escape(t)}'`).join(', ') : '';
+              const searchSummary = seenTerms.length > 0 && filtered.length > 0
+                ? `<div style="padding:0 16px 16px 16px; opacity:0.7;">Found ${filtered.length} matches for ${seenTermsDisplay}.</div>`
                 : '';
 
               const groupMap = new Map();
@@ -2073,9 +2213,9 @@ function initializeOverlayPanelControls() {
                 const contentContainer = document.createElement('div');
                 contentContainer.innerHTML = `
                   ${searchSummary}
-                  ${qRaw && groupKeys.length === 0 ? `<div style="padding:0 16px 16px 16px; opacity:0.7;">No matches found for '${escape(qRaw)}'.</div>` : ''}
+                  ${seenTerms.length > 0 && groupKeys.length === 0 ? `<div style="padding:0 16px 16px 16px; opacity:0.7;">No matches found for ${seenTermsDisplay}.</div>` : ''}
                   ${buildCategorySections()}
-                  ${!q ? empty : ''}
+                  ${seenTerms.length === 0 ? empty : ''}
                 `.trim();
 
                 // Replace everything after the header
@@ -2093,41 +2233,58 @@ function initializeOverlayPanelControls() {
                     picker.appendChild(contentContainer.firstChild);
                   }
                 }
+                const pillsContainerSeen = picker.querySelector('.gem-search-pills[data-pills-source="seen"]');
+                if (pillsContainerSeen) {
+                  const seenPillsForUpdate = picker._gemSeenImagesSearchPills || [];
+                  pillsContainerSeen.innerHTML = seenPillsForUpdate.map((p, i) => {
+                    const active = !!p.active;
+                    const term = (p && typeof p.term === 'string') ? p.term : '';
+                    if (!term) return '';
+                    return `<span class="gem-search-pill ${active ? 'gem-search-pill--active' : ''}" data-term="${escape(term)}" data-index="${i}"><span class="gem-search-pill-text">${escape(term)}</span><span class="gem-search-pill-remove" aria-label="Remove">×</span></span>`;
+                  }).filter(Boolean).join('');
+                }
               } else {
                 picker.innerHTML = `
                   ${header}
                   ${searchSummary}
-                  ${qRaw && groupKeys.length === 0 ? `<div style="padding:0 16px 16px 16px; opacity:0.7;">No matches found for '${escape(qRaw)}'.</div>` : ''}
+                  ${seenTerms.length > 0 && groupKeys.length === 0 ? `<div style="padding:0 16px 16px 16px; opacity:0.7;">No matches found for ${seenTermsDisplay}.</div>` : ''}
                   ${buildCategorySections()}
-                  ${!q ? empty : ''}
+                  ${seenTerms.length === 0 ? empty : ''}
                 `.trim();
               }
             });
             return;
           }
 
-          // Filter rows for seen source if searching
+          // Filter rows for seen source if searching (ungrouped / fallback view)
           let filteredRows = rows;
+          let seenTermsUngrouped = [];
           if (source === 'seen') {
-            const q = String(picker.dataset.gemSeenImagesSearch || '').trim().toLowerCase();
-            if (q) {
+            const seenPillsUngrouped = picker._gemSeenImagesSearchPills || [];
+            const qRawUngrouped = String(picker.dataset.gemSeenImagesSearch || '').trim();
+            seenTermsUngrouped = [
+              ...seenPillsUngrouped.filter((p) => p.active).map((p) => (p.term || '').toLowerCase().trim()).filter(Boolean),
+              ...qRawUngrouped.split(/\s+/).filter(Boolean).map((t) => t.toLowerCase())
+            ];
+            if (seenTermsUngrouped.length > 0) {
               filteredRows = rows.filter((r) => {
                 const friendlyFilename = (r && typeof r.friendlyFilename === 'string') ? r.friendlyFilename : '';
                 const path = (r && typeof r.path === 'string') ? r.path : '';
                 const url = r.url || '';
                 const hay = `${friendlyFilename} ${path} ${url}`.toLowerCase();
-                return hay.includes(q);
+                return seenTermsUngrouped.every((t) => hay.includes(t));
               });
             }
           }
 
           // Existing behavior for Recent list (ungrouped)
-          const seenSearchQuery = source === 'seen' ? String(picker.dataset.gemSeenImagesSearch || '').trim() : '';
-          const seenMatchesSummary = source === 'seen' && seenSearchQuery && filteredRows.length > 0
-            ? `<div style="opacity:0.7; margin-top:10px;">Found ${filteredRows.length} matches for '${escape(seenSearchQuery)}'.</div>`
+          const seenTermsForSummary = source === 'seen' ? seenTermsUngrouped : [];
+          const seenTermsDisplaySummary = seenTermsForSummary.length > 0 ? seenTermsForSummary.map((t) => `'${escape(t)}'`).join(', ') : '';
+          const seenMatchesSummary = source === 'seen' && seenTermsForSummary.length > 0 && filteredRows.length > 0
+            ? `<div style="opacity:0.7; margin-top:10px;">Found ${filteredRows.length} matches for ${seenTermsDisplaySummary}.</div>`
             : '';
-          const noMatches = source === 'seen' && seenSearchQuery && filteredRows.length === 0
-            ? `<div style="opacity:0.7; margin-top:10px;">No matches found for '${escape(seenSearchQuery)}'.</div>`
+          const noMatches = source === 'seen' && seenTermsForSummary.length > 0 && filteredRows.length === 0
+            ? `<div style="opacity:0.7; margin-top:10px;">No matches found for ${seenTermsDisplaySummary}.</div>`
             : '';
 
           // For content-only updates (search changes), preserve header and update only content
@@ -3344,6 +3501,12 @@ function initializeOverlayPanelControls() {
         container._gemStorageChangeHandler = (changes, namespace) => {
           try {
             if (namespace !== 'local' && namespace !== 'sync') return;
+
+            // Keep Recently Seen max setting in sync (source of truth is sync storage)
+            if (namespace === 'sync' && changes && changes[GEM_RECENTLY_SEEN_IMAGES_MAX_SETTING_KEY]) {
+              recentlySeenMax = normalizeRecentlySeenMax(changes[GEM_RECENTLY_SEEN_IMAGES_MAX_SETTING_KEY].newValue);
+            }
+
             if (!changes || !changes.gemRecentlySeenImages) return;
             if (container._gemIsClosing || !container.isConnected || !modal.isConnected) return;
             const picker = modal.querySelector('#gem-recent-images-picker');

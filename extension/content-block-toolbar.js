@@ -1133,6 +1133,17 @@ function setupImagePropertiesEnterKeyHandler() {
   function handleEnterKey(event) {
     if (event.key !== 'Enter') return;
 
+    const addFavModal = document.getElementById('gem-favorite-image-meta-modal');
+    if (addFavModal && document.body.contains(addFavModal)) {
+      const saveBtn = addFavModal.querySelector('.gem-favorite-image-meta-save');
+      if (saveBtn) {
+        saveBtn.click();
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+    }
+
     // Check if Image Properties dialog is open and topmost
     if (!isImagePropertiesDialogTopmost()) return;
 

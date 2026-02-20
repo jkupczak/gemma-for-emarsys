@@ -7,7 +7,8 @@
 function initializeRecentlySeenLogger() {
   const STORAGE_KEY = 'gemRecentlySeenImages';
   const RECENTLY_USED_SYNC_KEY = 'gemRecentImages';
-  const MAX = 200;
+  const RECENTLY_SEEN_MAX_SETTING_KEY = 'gemRecentlySeenImagesMax';
+  let recentlySeenMax = 300;
   const DEBUG = true;
   const dbg = (...args) => { try { if (DEBUG) console.log('[Gem-Recently-Seen]', ...args); } catch (_) {} };
   const loggedSkips = new Set();
@@ -19,6 +20,26 @@ function initializeRecentlySeenLogger() {
   let flushInFlight = false;
   let lastCopyActionCount = null;
   let countLogT = null;
+
+  function normalizeRecentlySeenMax(value) {
+    const n = (typeof value === 'number') ? value : parseInt(String(value ?? ''), 10);
+    if (!Number.isFinite(n)) return 300;
+    return Math.min(2000, Math.max(50, Math.trunc(n)));
+  }
+
+  // Load + live-update the max from sync settings
+  try {
+    chrome.storage.sync.get({ [RECENTLY_SEEN_MAX_SETTING_KEY]: recentlySeenMax }, (res) => {
+      recentlySeenMax = normalizeRecentlySeenMax(res && res[RECENTLY_SEEN_MAX_SETTING_KEY]);
+    });
+    chrome.storage.onChanged.addListener((changes, namespace) => {
+      try {
+        if (namespace !== 'sync') return;
+        if (!changes || !changes[RECENTLY_SEEN_MAX_SETTING_KEY]) return;
+        recentlySeenMax = normalizeRecentlySeenMax(changes[RECENTLY_SEEN_MAX_SETTING_KEY].newValue);
+      } catch (_) {}
+    });
+  } catch (_) {}
 
   function normalizeUrlCandidate(raw) {
     let s = String(raw || '');
@@ -115,7 +136,7 @@ function initializeRecentlySeenLogger() {
 
         const next = Array.from(byUrl.values());
         next.sort((a, b) => (a.ts || 0) - (b.ts || 0));
-        while (next.length > MAX) next.shift();
+        while (next.length > recentlySeenMax) next.shift();
 
         STORE.set({ [STORAGE_KEY]: next }, () => {
           dbg(`Flush complete: added=${added}, updated=${updated}, stored=${next.length}`);
@@ -194,6 +215,51 @@ function initializeRecentlySeenLogger() {
         const nameSpan = row && row.querySelector && row.querySelector('.file-table-row span[editable-text="fileCtrl.file.name"] span[ng-hide="textBtnForm.$visible"]');
         friendly = (nameSpan && nameSpan.getAttribute && nameSpan.getAttribute('title')) ? nameSpan.getAttribute('title') : '';
       } catch (_) {}
+
+      // Thumbnail view (or some dropdown contexts): friendly filename may be on the download action link.
+      // Example: <a class="... test-download-action ..." download="BannerCopy_Banner_Mobile_FR_1.gif" ...>
+      if (!friendly) {
+        try {
+          const scopeEl = (el && el.closest)
+            ? (el.closest('tr.file-table-row') ||
+              el.closest('.file-thumbnail') ||
+              el.closest('.e-card') ||
+              el.closest('[id^="file-"]'))
+            : null;
+
+          // Prefer the visible title in thumbnail cards when available
+          const titleEl = scopeEl && scopeEl.querySelector && scopeEl.querySelector('.e-card__title');
+          const titleText = titleEl && titleEl.textContent ? String(titleEl.textContent).trim() : '';
+          if (titleText) friendly = titleText;
+
+          // Otherwise, try the download attribute on the download/preview action link
+          if (!friendly && scopeEl && scopeEl.querySelectorAll) {
+            let urlPath = '';
+            try {
+              urlPath = new URL(String(url), window.location.href).pathname || '';
+            } catch (_) {}
+
+            const candidates = Array.from(scopeEl.querySelectorAll('a.test-download-action[download]'));
+            let match = null;
+            if (urlPath) {
+              match = candidates.find((a) => {
+                const hrefAttr = a && a.getAttribute && a.getAttribute('href');
+                if (!hrefAttr) return false;
+                try {
+                  const hrefPath = new URL(String(hrefAttr), window.location.href).pathname || '';
+                  return hrefPath === urlPath;
+                } catch (_) {
+                  return String(hrefAttr).endsWith(urlPath);
+                }
+              }) || null;
+            }
+            const dl = match || candidates[0] || null;
+            const dlName = dl && dl.getAttribute && dl.getAttribute('download');
+            if (dlName) friendly = String(dlName || '').trim();
+          }
+        } catch (_) {}
+      }
+
       found += 1;
       const beforeSize = loggedSkips.size;
       enqueueRecentlySeen(url, path, friendly);
