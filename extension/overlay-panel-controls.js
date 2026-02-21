@@ -1219,6 +1219,26 @@ function initializeOverlayPanelControls() {
               return;
             }
 
+          const seenRemoveGroupBtn = e.target.closest && e.target.closest('.gem-seen-cat-remove-group');
+          if (seenRemoveGroupBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+            const header = seenRemoveGroupBtn.closest && seenRemoveGroupBtn.closest('.gem-seen-cat-header');
+            if (!header) return;
+            const gKey = header.getAttribute('data-cat') || '';
+            const seenGroupByAttr = header.getAttribute('data-seen-groupby') || 'path';
+            getRecentlySeenImages((list) => {
+              const raw = Array.isArray(list) ? list : [];
+              const filtered = raw.filter((item) => {
+                if (seenGroupByAttr === 'date') {
+                  return formatRecentImageDate(item.ts || 0).split(',')[0] !== gKey;
+                }
+                return (item.path || '') !== gKey;
+              });
+              saveRecentlySeenImages(filtered, () => showRecentImagesPicker(modal));
+            });
+            return;
+          }
           const seenCatToggleBtn = e.target.closest && e.target.closest('.gem-seen-cat-toggle');
           if (seenCatToggleBtn) {
             e.preventDefault();
@@ -1682,7 +1702,7 @@ function initializeOverlayPanelControls() {
             const active = !!p.active;
             const term = (p && typeof p.term === 'string') ? p.term : '';
             if (!term) return '';
-            return `<span class="gem-search-pill ${active ? 'gem-search-pill--active' : ''}" data-term="${escape(term)}" data-index="${i}"><span class="gem-search-pill-text">${escape(term)}</span><span class="gem-search-pill-remove" aria-label="Remove">×</span></span>`;
+            return `<span class="gem-search-pill ${active ? 'gem-search-pill--active' : ''}" data-term="${escape(term)}" data-index="${i}"><span class="gem-search-pill-remove" aria-label="Remove">×</span><span class="gem-search-pill-text">${escape(term)}</span></span>`;
           }).filter(Boolean).join('');
           const favSearch = (source === 'favorites' || source === 'seen')
             ? `
@@ -1998,7 +2018,7 @@ function initializeOverlayPanelControls() {
                       const active = !!p.active;
                       const term = (p && typeof p.term === 'string') ? p.term : '';
                       if (!term) return '';
-                      return `<span class="gem-search-pill ${active ? 'gem-search-pill--active' : ''}" data-term="${escape(term)}" data-index="${i}"><span class="gem-search-pill-text">${escape(term)}</span><span class="gem-search-pill-remove" aria-label="Remove">×</span></span>`;
+                      return `<span class="gem-search-pill ${active ? 'gem-search-pill--active' : ''}" data-term="${escape(term)}" data-index="${i}"><span class="gem-search-pill-remove" aria-label="Remove">×</span><span class="gem-search-pill-text">${escape(term)}</span></span>`;
                     }).filter(Boolean).join('');
                   }
                 } else {
@@ -2091,7 +2111,7 @@ function initializeOverlayPanelControls() {
                 const isCollapsed = isCollapsedRaw;
                 const caret = isCollapsed ? '▸' : '▾';
                 return `
-                  <div class="gem-seen-cat-header" data-group-key="${escape(storageKey)}" data-cat="${escape(gKey)}">
+                  <div class="gem-seen-cat-header" data-group-key="${escape(storageKey)}" data-cat="${escape(gKey)}" data-seen-groupby="${escape(seenGroupBy)}">
                     <button class="e-btn e-btn-borderless e-btn-onlyicon gem-seen-cat-toggle" type="button" data-group-key="${escape(storageKey)}" aria-label="Toggle" title="Toggle">
                       ${caret}
                     </button>
@@ -2099,6 +2119,7 @@ function initializeOverlayPanelControls() {
                       <span class="gem-seen-cat-name">${escape(label)}</span>
                       <span class="gem-seen-cat-count">${count}</span>
                     </div>
+                    <button class="e-btn e-btn-borderless e-btn-onlyicon gem-seen-cat-remove-group" type="button" data-group-key="${escape(storageKey)}" data-cat="${escape(gKey)}" data-seen-groupby="${escape(seenGroupBy)}" aria-label="Remove group" title="Remove all images in this group">×</button>
                   </div>
                 `.trim();
               };
@@ -2240,7 +2261,7 @@ function initializeOverlayPanelControls() {
                     const active = !!p.active;
                     const term = (p && typeof p.term === 'string') ? p.term : '';
                     if (!term) return '';
-                    return `<span class="gem-search-pill ${active ? 'gem-search-pill--active' : ''}" data-term="${escape(term)}" data-index="${i}"><span class="gem-search-pill-text">${escape(term)}</span><span class="gem-search-pill-remove" aria-label="Remove">×</span></span>`;
+                    return `<span class="gem-search-pill ${active ? 'gem-search-pill--active' : ''}" data-term="${escape(term)}" data-index="${i}"><span class="gem-search-pill-remove" aria-label="Remove">×</span><span class="gem-search-pill-text">${escape(term)}</span></span>`;
                   }).filter(Boolean).join('');
                 }
               } else {

@@ -73,6 +73,17 @@ function initializeRecentlySeenLogger() {
     return (title || '').trim();
   }
 
+  function isInSearchResultsMode() {
+    const headings = document.querySelectorAll('h3.ng-binding');
+    return Array.from(headings).some((h) => (h.textContent || '').trim().includes('Search results'));
+  }
+
+  function getSearchResultPath() {
+    const input = document.querySelector('input.mediadb-search__input');
+    const searchText = (input && input.value) ? String(input.value).trim() : '';
+    return searchText ? `Search result for '${searchText.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'` : 'Search result';
+  }
+
   function scheduleFlush() {
     if (flushT) return;
     flushT = setTimeout(() => {
@@ -203,7 +214,16 @@ function initializeRecentlySeenLogger() {
 
   function scanAndUpsert(root) {
     const scope = root && root.querySelectorAll ? root : document;
-    const path = getCurrentBreadcrumbPath();
+    // Active search (input has value) => use "Search result for 'x'". Otherwise prefer breadcrumb
+    // when it looks like a folder path, to avoid wrong "Search result" from stale h3.
+    const breadcrumb = getCurrentBreadcrumbPath();
+    const searchInput = document.querySelector('input.mediadb-search__input');
+    const hasSearchTerm = (searchInput && searchInput.value) ? String(searchInput.value).trim().length > 0 : false;
+    const path = hasSearchTerm
+      ? getSearchResultPath()
+      : (breadcrumb && !breadcrumb.startsWith('Search result'))
+        ? breadcrumb
+        : (isInSearchResultsMode() ? getSearchResultPath() : breadcrumb);
     let found = 0;
     let used = 0;
     const hit = (el) => {
@@ -332,6 +352,9 @@ function initializeRecentlySeenLogger() {
         if (n.querySelector('tr.file-table-row [copy-to-clipboard]')) return true;
         if (n.querySelector('tr.file-table-row .test-copytoclipboard-dropdownaction')) return true;
         if (n.querySelector('tr.file-table-row .test-copytoclipboard-action')) return true;
+        if (n.querySelector('[copy-to-clipboard]')) return true;
+        const h3 = n.querySelector('h3.ng-binding');
+        if (h3 && (h3.textContent || '').includes('Search results')) return true;
       }
     } catch (_) {}
     return false;
