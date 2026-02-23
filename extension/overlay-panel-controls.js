@@ -1878,7 +1878,7 @@ function initializeOverlayPanelControls() {
                       <img class="gem-recent-image-thumb gem-checkered-canvas" src="${escape(it.url)}" alt="" />
                       <div class="gem-recent-image-overlay">
                         <button class="e-btn e-btn-primary gem-recent-image-use-btn" type="button" data-url="${escape(it.url)}">
-                          Add To Page
+                          Insert
                         </button>
                       </div>
                       <div class="gem-recent-image-meta">
@@ -1919,7 +1919,7 @@ function initializeOverlayPanelControls() {
                             <span class="gem-recent-image-edit">✎</span>
                           </button>
                           <button class="e-btn e-btn-primary gem-recent-image-use-btn" type="button" data-url="${escape(it.url)}">
-                            Add To Page
+                            Insert
                           </button>
                         </td>
                       </tr>
@@ -2140,7 +2140,7 @@ function initializeOverlayPanelControls() {
                     <img class="gem-recent-image-thumb gem-checkered-canvas" src="${escape(url)}" alt="" />
                     <div class="gem-recent-image-overlay">
                       <button class="e-btn e-btn-primary gem-recent-image-use-btn" type="button" data-url="${escape(url)}">
-                        Add To Page
+                        Insert
                       </button>
                     </div>
                     <div class="gem-recent-image-meta">
@@ -2332,7 +2332,7 @@ function initializeOverlayPanelControls() {
                         <img class="gem-recent-image-thumb gem-checkered-canvas" src="${escape(url)}" alt="" />
                         <div class="gem-recent-image-overlay">
                           <button class="e-btn e-btn-primary gem-recent-image-use-btn" type="button" data-url="${escape(url)}">
-                            Add To Page
+                            Insert
                           </button>
                         </div>
                         <div class="gem-recent-image-meta">
@@ -2675,7 +2675,7 @@ function initializeOverlayPanelControls() {
 
           const footerRightHtml = `
             <button class="e-btn gem-seen-image-details-cancel" type="button">Cancel</button>
-            <button class="e-btn e-btn-primary gem-seen-image-details-add-to-page" type="button">Add to Page</button>
+            <button class="e-btn e-btn-primary gem-seen-image-details-add-to-page" type="button">Insert</button>
           `.trim();
 
         const overlay = document.createElement('div');
