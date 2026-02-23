@@ -254,7 +254,8 @@ e-float-container .gem-enhanced-image-properties-dialog {
     display: grid;
     /* Fill the container with a fixed number of columns. Controlled by the slider. */
     grid-template-columns: repeat(var(--gem-recent-grid-cols), minmax(0, 1fr));
-    gap: 12px;
+    /* Gap width scales inversely with grid cols: 10 cols = 4px, 2 cols = 20px */
+    gap: calc(16px - (var(--gem-recent-grid-cols) - 2) * 1.75px);
 }
 
 #gem-image-properties-left-panel > #gem-recent-images-picker > .gem-recent-images-grid {
@@ -274,33 +275,36 @@ e-float-container .gem-enhanced-image-properties-dialog {
     height: var(--gem-recent-thumb-h);
     object-fit: contain;
 }
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-recent-image-tile:hover .gem-recent-image-thumb {
+    object-fit: cover;
+}
 
 /* Search pills */
 .gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-search-pills {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
-    margin-top: 0;
 }
 .gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-search-pill {
+    margin-top: 0;
     display: inline-flex;
     align-items: center;
-    gap: 2px;
-    padding: 0 10px 0 0;
+    gap: 4px;
+    padding: 0 2px 0 0;
     border-radius: 100px;
     font-weight: normal;
     cursor: pointer;
     background: var(--token-tab-default-background);
     opacity: 0.4;
     overflow: hidden;
-    border: 1px solid var(--token-gray-600);
+    box-shadow: 0 0 0 1px var(--token-gray-600);
     line-height: 28px;
 }
 .gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-search-pill--active {
     opacity: 1;
     font-weight: bold;
-    background: var(--token-blue-400);
-    border: 1px solid var(--token-blue-400);
+    background: var(--token-button-highlight-background);
+    box-shadow: 0 0 0 1px var(--token-button-highlight-background);
 }
 .gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-search-pill:hover {
     opacity: 1;
@@ -309,6 +313,14 @@ e-float-container .gem-enhanced-image-properties-dialog {
     flex: 0 1 auto;
     font-size: 14px;
     cursor: pointer;
+    position: relative;
+    left:-13px;
+    padding-left: 13px;
+    z-index:1;
+}
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-search-pill--active .gem-search-pill-text,
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-search-pill--active .gem-search-pill-remove {
+    color:var(--token-button-highlight-text);
 }
 .gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-search-pill-remove {
     margin-left: auto;
@@ -325,16 +337,25 @@ e-float-container .gem-enhanced-image-properties-dialog {
     align-items: center;
     text-align: center;
     justify-content: center;
-    border: 3px solid var(--token-tab-default-background)
+    border: 5px solid var(--token-tab-default-background)
 }
 .gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-search-pill--active .gem-search-pill-remove {
-    border: 2px solid var(--token-blue-400);
+    border: 2px solid var(--token-button-highlight-background);
 }
 
 .gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-search-pill-remove:hover {
     opacity: 1;
-    background: var(--token-blue-200);
+    background: var(--token-action-selected-backgroundHover);
 }
+
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-search-pill--active:hover {
+    background: var(--token-button-highlight-backgroundHover);
+    box-shadow: 0 0 0 1px var(--token-button-highlight-backgroundHover);
+    & .gem-search-pill-remove {
+        border: 2px solid var(--token-button-highlight-backgroundHover);
+    }
+}
+    
 
 /* Preview image styles */
 .gem-enhanced-image-properties-dialog [data-gem-preview-tab="desktop"],
@@ -465,64 +486,160 @@ e-float-container .gem-enhanced-image-properties-dialog {
     text-overflow: ellipsis;
 }
 
-/* Favorite image metadata modal */
-.gem-favorite-image-meta-modal {
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-recent-image-meta2--first {
+    font-size: clamp(13px, calc(16px - (var(--gem-recent-grid-cols) - 2) * 0.375px), 16px);
+}
+
+/* Image modals - shared agnostic base */
+.gem-image-modal {
     position: fixed;
-    inset: 0;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
     z-index: 100000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
-.gem-favorite-image-meta-modal__backdrop {
-    position: absolute;
-    inset: 0;
-    background: rgba(0,0,0,0.45);
+
+.gem-seen-image-details-modal {
+    z-index: 10000;
 }
-.gem-favorite-image-meta-modal__panel {
+
+.gem-image-modal__backdrop {
     position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: min(720px, calc(100vw - 32px));
-    max-height: calc(100vh - 32px);
-    overflow: auto;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+}
+
+.gem-image-modal__panel {
+    position: relative;
     background: var(--token-box-default-background);
     border: 1px solid var(--token-box-default-border);
-    border-radius: 10px;
-    box-shadow: 0 16px 50px rgba(0,0,0,0.35);
-    padding: 14px 14px 12px;
+    border-radius: 5px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    max-height: 80vh;
+    max-width: 80vw;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
 }
-.gem-favorite-image-meta-modal__header {
+
+.gem-image-modal__header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 10px;
-    margin-bottom: 10px;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--token-box-default-border);
+    background: var(--token-box-alternate-background);
+    flex-shrink: 0;
 }
-.gem-favorite-image-meta-modal__body .e-field {
+
+.gem-favorite-image-meta-modal .gem-image-modal__header {
+    gap: 10px;
+}
+
+.gem-image-modal__footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-top: 1px solid var(--token-box-default-border);
+    background: var(--token-box-alternate-background);
+    flex-shrink: 0;
+}
+
+.gem-image-modal__footer-left,
+.gem-image-modal__footer-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.gem-image-modal__close {
+    color: var(--token-box-default-icon);
+    font-size: 18px;
+    padding: 4px;
+    line-height: 1;
+}
+
+/* Shared: two-column layout (preview + body/form) */
+.gem-image-modal__content {
+    display: flex;
+    flex-direction: row;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.gem-image-modal__preview {
+    flex-shrink: 0;
+    min-width: 280px;
+    width: 45%;
+    max-width: 560px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+.gem-image-modal__preview img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    display: block;
+}
+
+.gem-image-modal__body {
+    padding: 20px;
+    overflow-y: auto;
+    flex: 1;
+    min-width: 0;
+}
+
+.gem-favorite-image-meta-modal .gem-image-modal__body .e-field:first-child {
+    margin-top: 0;
+}
+
+.gem-favorite-image-meta-modal .gem-image-modal__body .e-field {
     margin-top: 10px;
 }
-.gem-favorite-image-meta-modal__thumbrow {
-    display: flex;
-    gap: 12px;
-    align-items: center;
-}
-.gem-favorite-image-meta-modal__thumbrow img {
-    width: 120px;
-    height: 70px;
-    object-fit: contain;
-    border-radius: 6px;
-    border: 1px solid var(--token-box-default-border);
-    background: var(--token-box-default-background);
-}
-.gem-favorite-image-meta-modal__url {
+
+.gem-image-modal__url {
     font-size: 12px;
     opacity: 0.8;
     word-break: break-word;
 }
-.gem-favorite-image-meta-modal__footer {
-    display: flex;
-    justify-content: flex-end;
-    gap: 10px;
-    margin-top: 14px;
+
+.gem-seen-image-details-modal .gem-image-modal__url {
+    font-family: monospace;
+    background: var(--token-box-alternate-background);
+    color: var(--token-box-default-text);
+    padding: 8px;
+    border-radius: 4px;
+    border: 1px solid var(--token-box-default-border);
+    font-size: 13px;
+    opacity: 1;
+}
+
+/* Image Details: metadata fields */
+.gem-image-modal__metadata .e-field {
+    margin-bottom: 16px;
+}
+
+.gem-image-modal__metadata .e-field:last-child {
+    margin-bottom: 0;
+}
+
+.gem-image-modal__metadata .e-field__label {
+    font-weight: 600;
+    margin-bottom: 4px;
+    color: var(--token-box-alternate-text);
+    font-size: 14px;
 }
 
 .gem-enhanced-image-properties-dialog .e-dialog__container {
@@ -604,11 +721,24 @@ e-float-container .gem-enhanced-image-properties-dialog {
     align-items: center;
     justify-content: center;
 }
+
+/* Adjusting input widths of the image properties dialog to make them thinner. */
+.gem-enhanced-image-properties-dialog .e-input-small {
+    width: 60px;
+}
+.gem-enhanced-image-properties-dialog select.e-select:not(.e-select__select2) {
+    padding-right: 28px;
+}
+.gem-enhanced-image-properties-dialog select.e-select {
+    background-position: calc(100% - 6px), 50% calc(100% + 1px);
+}
+
 .gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-recent-image-meta {
     padding: 8px 10px;
-    font-size: 12px;
+    font-size: calc(15px - (var(--gem-recent-grid-cols) - 2) * 0.625px);
     opacity: 0.8;
 }
+
 .gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-recent-image-meta:empty {
     display: none !important;
 }
@@ -982,101 +1112,6 @@ html:has(.gem-enhanced-image-properties-dialog) {
 .gem-fav-grid-cols-slider {
     max-width: 300px;
     width: 100%;
-}
-
-/* Recently Seen Image Details Modal */
-.gem-seen-image-details-modal {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    z-index: 10000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.gem-seen-image-details-modal__backdrop {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.5);
-}
-
-.gem-seen-image-details-modal__panel {
-    position: relative;
-    background: var(--token-box-default-background);
-    border: 1px solid var(--token-box-default-border);
-    border-radius: 5px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
-    max-width: 600px;
-    max-height: 80vh;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-}
-
-.gem-seen-image-details-modal__header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 16px 20px;
-    border-bottom: 1px solid var(--token-box-default-border);
-    background: var(--token-box-alternate-background);
-}
-
-.gem-seen-image-details-modal__close {
-    color: var(--token-box-default-icon);
-    font-size: 18px;
-    padding: 4px;
-    line-height: 1;
-}
-
-.gem-seen-image-details-modal__body {
-    padding: 20px;
-    overflow-y: auto;
-    flex: 1;
-}
-
-.gem-seen-image-details-modal__thumbrow {
-    margin-bottom: 8px;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    padding: 16px;
-}
-
-.gem-seen-image-details-modal__thumbrow img {
-    display: block;
-}
-
-.gem-seen-image-details-modal__metadata .e-field {
-    margin-bottom: 16px;
-}
-
-.gem-seen-image-details-modal__metadata .e-field:last-child {
-    margin-bottom: 0;
-}
-
-.gem-seen-image-details-modal__metadata .e-field__label {
-    font-weight: 600;
-    margin-bottom: 4px;
-    color: var(--token-box-alternate-text);
-    font-size: 14px;
-}
-
-.gem-seen-image-details-modal__url {
-    word-break: break-all;
-    font-family: monospace;
-    background: var(--token-box-alternate-background);
-    color: var(--token-box-default-text);
-    padding: 8px;
-    border-radius: 4px;
-    border: 1px solid var(--token-box-default-border);
-    font-size: 13px;
 }
 
 /* Info button styles */

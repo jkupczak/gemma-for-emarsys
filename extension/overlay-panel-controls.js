@@ -464,7 +464,7 @@ function initializeOverlayPanelControls() {
               view: 'table',
               density: 'small',
               source: 'recent', // recent | favorites | seen
-              gridCols: 6, // grid columns (3-8)
+              gridCols: 6, // grid columns (2-10)
               favGroupBy: 'category', // category | language | translation
               seenGroupBy: 'path' // path | date
             }
@@ -477,7 +477,7 @@ function initializeOverlayPanelControls() {
               prefs && (prefs.source === 'favorites' ? 'favorites' : (prefs.source === 'seen' ? 'seen' : 'recent'));
             const gridColsRaw = prefs && Number(prefs.gridCols);
             const gridCols =
-              Number.isFinite(gridColsRaw) ? Math.min(8, Math.max(3, Math.round(gridColsRaw))) : 6;
+              Number.isFinite(gridColsRaw) ? Math.min(10, Math.max(2, Math.round(gridColsRaw))) : 6;
           const favGroupBy =
             prefs && (prefs.favGroupBy === 'language' ? 'language' : (prefs.favGroupBy === 'translation' ? 'translation' : 'category'));
           const seenGroupBy =
@@ -497,7 +497,7 @@ function initializeOverlayPanelControls() {
         const source =
           prefs && (prefs.source === 'favorites' ? 'favorites' : (prefs.source === 'seen' ? 'seen' : 'recent'));
         const gridColsRaw = prefs && Number(prefs.gridCols);
-        const gridCols = Number.isFinite(gridColsRaw) ? Math.min(8, Math.max(3, Math.round(gridColsRaw))) : 6;
+        const gridCols = Number.isFinite(gridColsRaw) ? Math.min(10, Math.max(2, Math.round(gridColsRaw))) : 6;
         const favGroupBy =
           prefs && (prefs.favGroupBy === 'language' ? 'language' : (prefs.favGroupBy === 'translation' ? 'translation' : 'category'));
         const seenGroupBy =
@@ -857,7 +857,6 @@ function initializeOverlayPanelControls() {
       };
       const clean = {
         category: (meta && typeof meta.category === 'string') ? meta.category.trim() : '',
-        keyword: (meta && typeof meta.keyword === 'string') ? meta.keyword.trim() : '',
         language: (meta && typeof meta.language === 'string') ? meta.language.trim() : '',
         altText: (meta && typeof meta.altText === 'string') ? meta.altText.trim() : '',
         translation: (meta && typeof meta.translation === 'string') ? meta.translation.trim() : '',
@@ -1649,7 +1648,7 @@ function initializeOverlayPanelControls() {
 
           const viewMode = picker.dataset.gemRecentImagesView === 'grid' ? 'grid' : 'table';
           const toggleLabel = viewMode === 'grid' ? 'Show Table' : 'Show Grid';
-          const gridCols = Math.min(8, Math.max(3, Number(picker.dataset.gemRecentImagesGridCols || 6)));
+          const gridCols = Math.min(10, Math.max(2, Number(picker.dataset.gemRecentImagesGridCols || 6)));
           picker.style.setProperty('--gem-recent-grid-cols', String(gridCols));
 
           const title =
@@ -1786,17 +1785,16 @@ function initializeOverlayPanelControls() {
                   const url = r.url || '';
                   const m = meta[url] || {};
                   const category = (m.category || '').trim();
-                  const keyword = (m.keyword || '').trim();
                   const language = (m.language || '').trim();
                   const altText = (m.altText || '').trim();
                   const translation = (m.translation || '').trim();
                   const lastUsed = lastUsedMap.get(url) || r.ts || 0;
-                  return { url, category, keyword, language, altText, translation, lastUsed };
+                  return { url, category, language, altText, translation, lastUsed };
                 });
 
                 const matchesQuery = (it) => {
                   if (terms.length === 0) return true;
-                  const hay = `${it.altText} ${it.keyword} ${it.language} ${it.translation} ${it.category} ${it.url}`.toLowerCase();
+                  const hay = `${it.altText} ${it.language} ${it.translation} ${it.category} ${it.url}`.toLowerCase();
                   return terms.every((t) => hay.includes(t));
                 };
                 const filtered = items.filter(matchesQuery);
@@ -1873,7 +1871,7 @@ function initializeOverlayPanelControls() {
                     .filter((v) => !!v && v !== label);
                   const extraText = extraParts.join(' • ');
                   return `
-                    <div class="gem-recent-image-tile gem-checkered-canvas" title="${escape(it.url)}">
+                    <div class="gem-recent-image-tile gem-checkered-canvas">
                       <button class="gem-recent-image-edit-btn" type="button" data-url="${escape(it.url)}" aria-label="${editTitle}" title="${editTitle}">
                         ✎
                       </button>
@@ -1884,8 +1882,8 @@ function initializeOverlayPanelControls() {
                         </button>
                       </div>
                       <div class="gem-recent-image-meta">
-                        ${label ? `<div class="gem-recent-image-meta2" title="${escape(label)}">${escape(label)}</div>` : ''}
-                        ${extraText ? `<div class="gem-recent-image-meta2" title="${escape(extraText)}">${escape(extraText)}</div>` : ''}
+                        ${label ? `<div class="gem-recent-image-meta2 gem-recent-image-meta2--first" title="${escape(label)}">${escape(label)}</div>` : ''}
+                        ${extraText ? `<div class="gem-recent-image-meta2 gem-recent-image-meta2--second" title="${escape(extraText)}">${escape(extraText)}</div>` : ''}
                       </div>
                     </div>
                   `;
@@ -1893,7 +1891,7 @@ function initializeOverlayPanelControls() {
 
                 const renderTableRows = (catItems) => {
                   return catItems.map((it) => {
-                    const metaText = [it.altText, it.keyword].filter(Boolean).join(' • ');
+                    const metaText = [it.altText].filter(Boolean).join(' • ');
                     const colA = (groupBy === 'category')
                       ? (it.language || '')
                       : (groupBy === 'translation')
@@ -2132,7 +2130,7 @@ function initializeOverlayPanelControls() {
                 const starTitle = isFav ? 'Unfavorite' : 'Favorite';
                 const friendlyFilename = it.friendlyFilename || '';
                 return `
-                  <div class="gem-recent-image-tile" title="${escape(url)}">
+                  <div class="gem-recent-image-tile">
                     <button class="gem-recent-image-info-btn" type="button" data-url="${escape(url)}" aria-label="View image details" title="View image details">
                       ℹ
                     </button>
@@ -2322,7 +2320,7 @@ function initializeOverlayPanelControls() {
                     const star = isFav ? '★' : '☆';
                     const starTitle = isFav ? 'Unfavorite' : 'Favorite';
                     return `
-                      <div class="gem-recent-image-tile" title="${escape(url)}">
+                      <div class="gem-recent-image-tile">
                         ${source === 'seen' ? `
                           <button class="gem-recent-image-info-btn" type="button" data-url="${escape(url)}" aria-label="View image details" title="View image details">
                             ℹ
@@ -2469,15 +2467,15 @@ function initializeOverlayPanelControls() {
 
       const overlay = document.createElement('div');
       overlay.id = 'gem-favorite-category-modal';
-      overlay.className = 'gem-favorite-image-meta-modal';
+      overlay.className = 'gem-image-modal gem-favorite-image-meta-modal';
       overlay.innerHTML = `
-        <div class="gem-favorite-image-meta-modal__backdrop"></div>
-        <div class="gem-favorite-image-meta-modal__panel" role="dialog" aria-modal="true">
-          <div class="gem-favorite-image-meta-modal__header">
+        <div class="gem-image-modal__backdrop"></div>
+        <div class="gem-image-modal__panel" role="dialog" aria-modal="true">
+          <div class="gem-image-modal__header">
             <div style="font-weight:600;">Category</div>
-            <button class="e-btn e-btn-borderless e-btn-onlyicon gem-favorite-image-meta-modal__close" type="button" aria-label="Close">✕</button>
+            <button class="e-btn e-btn-borderless e-btn-onlyicon gem-image-modal__close" type="button" aria-label="Close">✕</button>
           </div>
-          <div class="gem-favorite-image-meta-modal__body">
+          <div class="gem-image-modal__body">
             <div class="e-field">
               <label class="e-field__label">Name</label>
               <input class="e-input gem-fav-cat-name-input" type="text" value="${label.replace(/&/g, '&amp;').replace(/"/g, '&quot;')}" />
@@ -2487,9 +2485,12 @@ function initializeOverlayPanelControls() {
               <button class="e-btn e-btn-danger gem-fav-cat-unfav" type="button">Unfavorite All</button>
             </div>
           </div>
-          <div class="gem-favorite-image-meta-modal__footer">
-            <button class="e-btn cancel-btn gem-fav-cat-cancel" type="button">Cancel</button>
-            <button class="e-btn e-btn-primary gem-fav-cat-save" type="button">Save</button>
+          <div class="gem-image-modal__footer">
+            <div class="gem-image-modal__footer-left"></div>
+            <div class="gem-image-modal__footer-right">
+              <button class="e-btn cancel-btn gem-fav-cat-cancel" type="button">Cancel</button>
+              <button class="e-btn e-btn-primary gem-fav-cat-save" type="button">Save</button>
+            </div>
           </div>
         </div>
       `.trim();
@@ -2497,8 +2498,8 @@ function initializeOverlayPanelControls() {
       const host = modal || document.body;
       host.appendChild(overlay);
       const close = () => overlay.remove();
-      overlay.querySelector('.gem-favorite-image-meta-modal__backdrop')?.addEventListener('click', close);
-      overlay.querySelector('.gem-favorite-image-meta-modal__close')?.addEventListener('click', close);
+      overlay.querySelector('.gem-image-modal__backdrop')?.addEventListener('click', close);
+      overlay.querySelector('.gem-image-modal__close')?.addEventListener('click', close);
       overlay.querySelector('.gem-fav-cat-cancel')?.addEventListener('click', close);
 
       const getCategoryItems = (cb) => {
@@ -2592,64 +2593,101 @@ function initializeOverlayPanelControls() {
       });
     }
 
+    function buildGemImageModalPanelHTML(opts) {
+      const {
+        title = '',
+        headerExtra = '',
+        previewImgSrc = '',
+        bodyHtml = '',
+        footerLeftHtml = '',
+        footerRightHtml = ''
+      } = opts;
+      const hasPreview = !!previewImgSrc;
+      const safeImgSrc = (previewImgSrc || '').replace(/"/g, '&quot;');
+      return `
+        <div class="gem-image-modal__backdrop"></div>
+        <div class="gem-image-modal__panel" role="dialog" aria-modal="true">
+          <div class="gem-image-modal__header">
+            <div style="font-weight:600;">${title}</div>
+            ${headerExtra}
+            <button class="e-btn e-btn-borderless e-btn-onlyicon gem-image-modal__close" type="button" aria-label="Close">✕</button>
+          </div>
+          <div class="gem-image-modal__content">
+            ${hasPreview ? `<div class="gem-image-modal__preview gem-checkered-canvas"><img src="${safeImgSrc}" alt="" /></div>` : ''}
+            <div class="gem-image-modal__body">${bodyHtml}</div>
+          </div>
+          <div class="gem-image-modal__footer">
+            <div class="gem-image-modal__footer-left">${footerLeftHtml}</div>
+            <div class="gem-image-modal__footer-right">${footerRightHtml}</div>
+          </div>
+        </div>
+      `.trim();
+    }
+
     function openRecentlySeenImageDetailsModal(modal, url) {
       const u = normalizeRecentImageUrlCandidate(url);
       if (!u) return;
 
-      // Remove any existing modal
       const existing = document.getElementById('gem-seen-image-details-modal');
       if (existing) existing.remove();
 
-      // Get the image data from recently seen list
       getRecentlySeenImages((seenList) => {
         const seenItem = (Array.isArray(seenList) ? seenList : []).find((x) => x && x.url === u);
         if (!seenItem) return;
 
-        const friendlyFilename = (seenItem.friendlyFilename || '');
-        const path = (seenItem.path || '');
-        const ts = seenItem.ts || 0;
+        getFavoriteImages((favList) => {
+          const favSet = new Set((Array.isArray(favList) ? favList : []).map((x) => x && x.url).filter(Boolean));
+          const isFav = favSet.has(u);
+          const friendlyFilename = (seenItem.friendlyFilename || '');
+          const path = (seenItem.path || '');
+          const ts = seenItem.ts || 0;
+
+          const bodyHtml = `
+            <div class="gem-image-modal__metadata">
+              <div class="e-field">
+                <label class="e-field__label">URL</label>
+                <div class="gem-image-modal__url">${u.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+              </div>
+              ${friendlyFilename ? `
+                <div class="e-field">
+                  <label class="e-field__label">Filename</label>
+                  <div style="word-wrap: break-word;">${friendlyFilename.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+                </div>
+              ` : ''}
+              ${path ? `
+                <div class="e-field">
+                  <label class="e-field__label">Path</label>
+                  <div>${path.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+                </div>
+              ` : ''}
+              <div class="e-field">
+                <label class="e-field__label">Last Seen</label>
+                <div>${formatRecentImageDate(ts)}</div>
+              </div>
+            </div>
+          `.trim();
+
+          const footerLeftHtml = `
+            <button class="e-btn e-btn-borderless e-btn-onlyicon gem-seen-image-details-favtoggle" type="button" aria-label="${isFav ? 'Unfavorite' : 'Favorite'}" title="${isFav ? 'Unfavorite' : 'Favorite'}">
+              <span class="gem-recent-image-star">${isFav ? '★' : '☆'}</span>
+            </button>
+          `.trim();
+
+          const footerRightHtml = `
+            <button class="e-btn gem-seen-image-details-cancel" type="button">Cancel</button>
+            <button class="e-btn e-btn-primary gem-seen-image-details-add-to-page" type="button">Add to Page</button>
+          `.trim();
 
         const overlay = document.createElement('div');
         overlay.id = 'gem-seen-image-details-modal';
-        overlay.className = 'gem-seen-image-details-modal';
-        overlay.innerHTML = `
-          <div class="gem-seen-image-details-modal__backdrop"></div>
-          <div class="gem-seen-image-details-modal__panel" role="dialog" aria-modal="true">
-            <div class="gem-seen-image-details-modal__header">
-              <div style="font-weight:600;">Image Details</div>
-              <button class="e-btn e-btn-borderless e-btn-onlyicon gem-seen-image-details-modal__close" type="button" aria-label="Close">
-                ✕
-              </button>
-            </div>
-            <div class="gem-seen-image-details-modal__thumbrow gem-checkered-canvas">
-              <img class="gem-checkered-canvas" src="${u.replace(/"/g, '&quot;')}" alt="" style="max-width:400px; max-height:300px;" />
-            </div>
-            <div class="gem-seen-image-details-modal__body">
-              <div class="gem-seen-image-details-modal__metadata">
-                <div class="e-field">
-                  <label class="e-field__label">URL</label>
-                  <div class="gem-seen-image-details-modal__url">${u.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
-                </div>
-                ${friendlyFilename ? `
-                  <div class="e-field">
-                    <label class="e-field__label">Filename</label>
-                    <div>${friendlyFilename.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
-                  </div>
-                ` : ''}
-                ${path ? `
-                  <div class="e-field">
-                    <label class="e-field__label">Path</label>
-                    <div>${path.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
-                  </div>
-                ` : ''}
-                <div class="e-field">
-                  <label class="e-field__label">Last Seen</label>
-                  <div>${formatRecentImageDate(ts)}</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        `.trim();
+        overlay.className = 'gem-image-modal gem-seen-image-details-modal';
+        overlay.innerHTML = buildGemImageModalPanelHTML({
+          title: 'Image Details',
+          previewImgSrc: u,
+          bodyHtml,
+          footerLeftHtml,
+          footerRightHtml
+        });
 
         document.body.appendChild(overlay);
 
@@ -2657,9 +2695,55 @@ function initializeOverlayPanelControls() {
         const closeModal = () => overlay.remove();
 
         overlay.addEventListener('click', (e) => {
-          if (e.target === overlay || e.target.classList.contains('gem-seen-image-details-modal__backdrop') || e.target.classList.contains('gem-seen-image-details-modal__close')) {
+          if (e.target === overlay || e.target.classList.contains('gem-image-modal__backdrop') || e.target.classList.contains('gem-image-modal__close')) {
             closeModal();
           }
+        });
+
+        overlay.querySelector('.gem-seen-image-details-cancel')?.addEventListener('click', closeModal);
+
+        overlay.querySelector('.gem-seen-image-details-add-to-page')?.addEventListener('click', () => {
+          const normalizedUrl = normalizeRecentImageUrlCandidate(u);
+          const applyMetaSideEffects = () => {
+            if (!normalizedUrl) return;
+            getFavoriteImageMetaMap((map) => {
+              const meta = (map && typeof map === 'object') ? map[normalizedUrl] : null;
+              if (!meta) return;
+              const alt = meta && typeof meta.altText === 'string' ? meta.altText.trim() : '';
+              if (alt) setImageAltTextInput(modal, alt);
+              const w = meta && (typeof meta.width === 'number' || typeof meta.width === 'string') ? meta.width : '';
+              if (w) setImageWidthInput(modal, w);
+            });
+          };
+          const switchedMobileRadio = ensureMobileAlternateImageEnabled(modal);
+          if (switchedMobileRadio) {
+            setActiveImageUrlCodeMirrorWithRetry(modal, u, 12, 90, applyMetaSideEffects);
+          } else {
+            const ok = setActiveImageUrlCodeMirror(modal, u);
+            if (!ok) {
+              console.warn('[Gem][RecentImages] Failed to set image URL into active CodeMirror.');
+              return;
+            }
+            applyMetaSideEffects();
+          }
+          upsertRecentImageUrl(u);
+          closeModal();
+        });
+
+        overlay.querySelector('.gem-seen-image-details-favtoggle')?.addEventListener('click', () => {
+          toggleFavoriteImageUrl(u, () => {
+            getFavoriteImages((nextFavList) => {
+              const nextSet = new Set((Array.isArray(nextFavList) ? nextFavList : []).map((x) => x && x.url).filter(Boolean));
+              const nowFav = nextSet.has(u);
+              const btn = overlay.querySelector('.gem-seen-image-details-favtoggle');
+              if (btn) {
+                btn.setAttribute('aria-label', nowFav ? 'Unfavorite' : 'Favorite');
+                btn.setAttribute('title', nowFav ? 'Unfavorite' : 'Favorite');
+                const starEl = btn.querySelector('.gem-recent-image-star');
+                if (starEl) starEl.textContent = nowFav ? '★' : '☆';
+              }
+            });
+          });
         });
 
         overlay.addEventListener('keydown', (e) => {
@@ -2671,10 +2755,11 @@ function initializeOverlayPanelControls() {
         });
 
         // Focus the close button for accessibility
-        const closeBtn = overlay.querySelector('.gem-seen-image-details-modal__close');
+        const closeBtn = overlay.querySelector('.gem-image-modal__close');
         if (closeBtn) {
           try { closeBtn.focus(); } catch (_) {}
         }
+        });
       });
     }
 
@@ -2695,103 +2780,98 @@ function initializeOverlayPanelControls() {
           const metaKey = mode === 'create' ? '' : u;
           const meta = (map && typeof map === 'object' && metaKey && map[metaKey]) ? map[metaKey] : {};
           const category = (meta.category || '');
-          const keyword = (meta.keyword || '');
           const language = (meta.language || '');
           const altText = (meta.altText || '');
           const translation = (meta.translation || '');
           const width = (meta.width || '');
           const startingUrl = mode === 'create' ? '' : u;
 
-        const overlay = document.createElement('div');
-        overlay.id = 'gem-favorite-image-meta-modal';
-        overlay.className = 'gem-favorite-image-meta-modal';
-        overlay.innerHTML = `
-          <div class="gem-favorite-image-meta-modal__backdrop"></div>
-          <div class="gem-favorite-image-meta-modal__panel" role="dialog" aria-modal="true">
-            <div class="gem-favorite-image-meta-modal__header">
-              <div style="font-weight:600;">${mode === 'create' ? 'Add Favorite Image' : 'Edit Image Metadata'}</div>
-              ${mode === 'create' ? `
-                <div class="gem-modal-mode-tabs">
-                  <button class="gem-modal-mode-tab gem-modal-mode-tab--active" data-mode="manual" type="button">Manual Entry</button>
-                  <button class="gem-modal-mode-tab" data-mode="json" type="button">JSON Import</button>
-                </div>
-              ` : ''}
-              <button class="e-btn e-btn-borderless e-btn-onlyicon gem-favorite-image-meta-modal__close" type="button" aria-label="Close">
-                ✕
-              </button>
-            </div>
-            <div class="gem-favorite-image-meta-modal__body">
-              <div class="gem-modal-content gem-modal-content--manual gem-modal-content--active">
-                ${mode === 'create' ? `
-                  <div class="e-field">
-                    <label class="e-field__label">Image URL</label>
-                    <input class="e-input gem-favorite-image-meta-url" type="text" value="" placeholder="https://example.com/image.png" />
-                  </div>
-                ` : `
-                  <div class="gem-favorite-image-meta-modal__thumbrow">
-                    <img class="gem-checkered-canvas" src="${u.replace(/"/g, '&quot;')}" alt="" />
-                    <div class="gem-favorite-image-meta-modal__url">${u.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
-                  </div>
-                `}
-                <div class="e-field">
-                  <label class="e-field__label">Category</label>
-                  <input class="e-input gem-favorite-image-meta-category" type="text" value="${String(category).replace(/&/g, '&amp;').replace(/"/g, '&quot;')}" />
-                </div>
-                <div class="e-field">
-                  <label class="e-field__label">Keyword</label>
-                  <input class="e-input gem-favorite-image-meta-keyword" type="text" value="${String(keyword).replace(/&/g, '&amp;').replace(/"/g, '&quot;')}" />
-                </div>
-                <div class="e-field">
-                  <label class="e-field__label">Language</label>
-                  <input class="e-input gem-favorite-image-meta-language" type="text" value="${String(language).replace(/&/g, '&amp;').replace(/"/g, '&quot;')}" />
-                </div>
-                <div class="e-field">
-                  <label class="e-field__label">Image alternative text</label>
-                  <input class="e-input gem-favorite-image-meta-alttext" type="text" value="${String(altText).replace(/&/g, '&amp;').replace(/"/g, '&quot;')}" />
-                </div>
-                <div class="e-field">
-                  <label class="e-field__label">Translation</label>
-                  <input class="e-input gem-favorite-image-meta-translation" type="text" value="${String(translation).replace(/&/g, '&amp;').replace(/"/g, '&quot;')}" />
-                </div>
-                <div class="e-field">
-                  <label class="e-field__label">Width</label>
-                  <input class="e-input gem-favorite-image-meta-width" type="number" inputmode="numeric" step="1" min="1" value="${String(width).replace(/&/g, '&amp;').replace(/"/g, '&quot;')}" />
-                </div>
-              </div>
-              ${mode === 'create' ? `
-                <div class="gem-modal-content gem-modal-content--json">
-                  <div class="e-field">
-                    <label class="e-field__label">JSON Import</label>
-                    <textarea class="e-input gem-favorite-image-meta-json" rows="12" placeholder='Paste JSON array of favorite images, e.g.:\n[\n  {\n    "url": "https://example.com/image1.jpg",\n    "category": "product",\n    "keyword": "summer collection",\n    "altText": "Beautiful summer dress"\n  },\n  {\n    "url": "https://example.com/image2.jpg",\n    "category": "banner",\n    "altText": "Hero banner"\n  }\n]'></textarea>
-                  </div>
-                  <div style="font-size: 14px; color: var(--token-comment); margin-top: 8px;">
-                    Import multiple favorite images at once using JSON format. All metadata fields are optional.
-                  </div>
-                </div>
-              ` : ''}
-            </div>
-            <div class="gem-favorite-image-meta-modal__footer" style="display:flex; align-items:center; justify-content:space-between;">
-              <div style="display:flex; align-items:center; gap:10px;">
-                ${mode === 'edit' ? `
-                  <button class="e-btn e-btn-borderless e-btn-onlyicon gem-favorite-image-meta-favtoggle" type="button" aria-label="${isFav ? 'Unfavorite' : 'Favorite'}" title="${isFav ? 'Unfavorite' : 'Favorite'}">
-                    <span class="gem-recent-image-star">${isFav ? '★' : '☆'}</span>
-                  </button>
-                ` : ''}
-              </div>
-              <div style="display:flex; align-items:center; gap:10px;">
-                <button class="e-btn cancel-btn gem-favorite-image-meta-cancel" type="button">Cancel</button>
-                <button class="e-btn e-btn-primary gem-favorite-image-meta-save" type="button">Save</button>
-              </div>
-            </div>
+        const headerExtra = mode === 'create' ? `
+          <div class="gem-modal-mode-tabs">
+            <button class="gem-modal-mode-tab gem-modal-mode-tab--active" data-mode="manual" type="button">Manual Entry</button>
+            <button class="gem-modal-mode-tab" data-mode="json" type="button">JSON Import</button>
+          </div>
+        ` : '';
+
+        const metaFieldsHtml = `
+          <div class="e-field">
+            <label class="e-field__label">Category</label>
+            <input class="e-input gem-favorite-image-meta-category" type="text" value="${String(category).replace(/&/g, '&amp;').replace(/"/g, '&quot;')}" />
+          </div>
+          <div class="e-field">
+            <label class="e-field__label">Language</label>
+            <input class="e-input gem-favorite-image-meta-language" type="text" value="${String(language).replace(/&/g, '&amp;').replace(/"/g, '&quot;')}" />
+          </div>
+          <div class="e-field">
+            <label class="e-field__label">Image alternative text</label>
+            <input class="e-input gem-favorite-image-meta-alttext" type="text" value="${String(altText).replace(/&/g, '&amp;').replace(/"/g, '&quot;')}" />
+          </div>
+          <div class="e-field">
+            <label class="e-field__label">Translation</label>
+            <input class="e-input gem-favorite-image-meta-translation" type="text" value="${String(translation).replace(/&/g, '&amp;').replace(/"/g, '&quot;')}" />
+          </div>
+          <div class="e-field">
+            <label class="e-field__label">Width</label>
+            <input class="e-input gem-favorite-image-meta-width" type="number" inputmode="numeric" step="1" min="1" value="${String(width).replace(/&/g, '&amp;').replace(/"/g, '&quot;')}" />
           </div>
         `.trim();
+
+        const bodyHtml = mode === 'edit'
+          ? `
+            <div class="e-field">
+              <label class="e-field__label">URL</label>
+              <div class="gem-image-modal__url">${u.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+            </div>
+            ${metaFieldsHtml}
+          `.trim()
+          : `
+            <div class="gem-modal-content gem-modal-content--manual gem-modal-content--active">
+              <div class="e-field">
+                <label class="e-field__label">Image URL</label>
+                <input class="e-input gem-favorite-image-meta-url" type="text" value="" placeholder="https://example.com/image.png" />
+              </div>
+              ${metaFieldsHtml}
+            </div>
+            <div class="gem-modal-content gem-modal-content--json">
+              <div class="e-field">
+                <label class="e-field__label">JSON Import</label>
+                <textarea class="e-input gem-favorite-image-meta-json" rows="12" placeholder='Paste JSON array of favorite images, e.g.:\n[\n  {\n    "url": "https://example.com/image1.jpg",\n    "category": "product",\n    "altText": "Beautiful summer dress"\n  },\n  {\n    "url": "https://example.com/image2.jpg",\n    "category": "banner",\n    "altText": "Hero banner"\n  }\n]'></textarea>
+              </div>
+              <div style="font-size: 14px; color: var(--token-comment); margin-top: 8px;">
+                Import multiple favorite images at once using JSON format. All metadata fields are optional.
+              </div>
+            </div>
+          `.trim();
+
+        const footerLeftHtml = mode === 'edit' ? `
+          <button class="e-btn e-btn-borderless e-btn-onlyicon gem-favorite-image-meta-favtoggle" type="button" aria-label="${isFav ? 'Unfavorite' : 'Favorite'}" title="${isFav ? 'Unfavorite' : 'Favorite'}">
+            <span class="gem-recent-image-star">${isFav ? '★' : '☆'}</span>
+          </button>
+        ` : '';
+
+        const footerRightHtml = `
+          <button class="e-btn cancel-btn gem-favorite-image-meta-cancel" type="button">Cancel</button>
+          <button class="e-btn e-btn-primary gem-favorite-image-meta-save" type="button">Save</button>
+        `.trim();
+
+        const overlay = document.createElement('div');
+        overlay.id = 'gem-favorite-image-meta-modal';
+        overlay.className = 'gem-image-modal gem-favorite-image-meta-modal';
+        overlay.innerHTML = buildGemImageModalPanelHTML({
+          title: mode === 'create' ? 'Add Favorite Image' : 'Edit Image Metadata',
+          headerExtra,
+          previewImgSrc: mode === 'edit' ? u : '',
+          bodyHtml,
+          footerLeftHtml,
+          footerRightHtml
+        });
 
         const host = modal || document.body;
         host.appendChild(overlay);
 
         const close = () => overlay.remove();
-        overlay.querySelector('.gem-favorite-image-meta-modal__backdrop')?.addEventListener('click', close);
-        overlay.querySelector('.gem-favorite-image-meta-modal__close')?.addEventListener('click', close);
+        overlay.querySelector('.gem-image-modal__backdrop')?.addEventListener('click', close);
+        overlay.querySelector('.gem-image-modal__close')?.addEventListener('click', close);
         overlay.querySelector('.gem-favorite-image-meta-cancel')?.addEventListener('click', close);
 
         // Mode switching for create mode
@@ -2946,7 +3026,6 @@ function initializeOverlayPanelControls() {
               return;
             }
             const cat = overlay.querySelector('.gem-favorite-image-meta-category')?.value || '';
-            const key = overlay.querySelector('.gem-favorite-image-meta-keyword')?.value || '';
             const lang = overlay.querySelector('.gem-favorite-image-meta-language')?.value || '';
             const alt = overlay.querySelector('.gem-favorite-image-meta-alttext')?.value || '';
             const trn = overlay.querySelector('.gem-favorite-image-meta-translation')?.value || '';
@@ -2956,7 +3035,6 @@ function initializeOverlayPanelControls() {
 
             const incoming = {
               category: (cat || '').trim(),
-              keyword: (key || '').trim(),
               language: (lang || '').trim(),
               altText: (alt || '').trim(),
               translation: (trn || '').trim(),
@@ -2971,7 +3049,6 @@ function initializeOverlayPanelControls() {
                   const existing = (map && typeof map === 'object' && map[targetUrl]) ? map[targetUrl] : {};
                   const merged = {
                     category: incoming.category || (existing.category || ''),
-                    keyword: incoming.keyword || (existing.keyword || ''),
                     language: incoming.language || (existing.language || ''),
                     altText: incoming.altText || (existing.altText || ''),
                     translation: incoming.translation || (existing.translation || ''),
@@ -3215,7 +3292,7 @@ function initializeOverlayPanelControls() {
       let previewImgMobile = container._gemPreviewImgMobile || null;
 
       // Apply inline styles to the container
-      container.style.maxWidth = '40%';
+      container.style.maxWidth = '480px';
       container.style.width = '720px';
       container.style.overflow = 'hidden';
 
