@@ -1,0 +1,247 @@
+[
+    {
+        "category": "Languages",
+        "content": "{{ rds.rds_babbel.personalization_locale_learn_language(contact.5753, contact.5758)[0].LearnLangAll|raw}}",
+        "description": "",
+        "favorite": false,
+        "id": "snippet-1767132006024-8z1xafra9",
+        "name": "LearnLangAll",
+        "swapKeywords": [
+            {
+                "initiateFrom": "anywhere",
+                "keyword": "(LearnLangAll)",
+                "mode": "token"
+            },
+            {
+                "initiateFrom": "anywhere",
+                "keyword": "{LearnLangAll}",
+                "mode": "token"
+            }
+        ]
+    },
+    {
+        "category": "Contact Name",
+        "content": "{{ contact.5751| default('friend') | raw }}",
+        "description": "",
+        "favorite": false,
+        "id": "snippet-1767628962531-tbu28mxb5",
+        "name": "name",
+        "swapKeywords": [
+            {
+                "initiateFrom": "anywhere",
+                "keyword": "(name)",
+                "matchRule": "partial",
+                "mode": "token"
+            },
+            {
+                "initiateFrom": "panel",
+                "keyword": "{name}",
+                "matchRule": "whole",
+                "mode": "plain"
+            },
+            {
+                "initiateFrom": "toolbar",
+                "keyword": "{names}",
+                "matchRule": "partial",
+                "mode": "token"
+            }
+        ]
+    },
+    {
+        "category": "Contact Name",
+        "content": "{{ contact.5751| default('Friend') | raw }}",
+        "description": "",
+        "favorite": false,
+        "id": "snippet-1767730774800-81pu68loq",
+        "name": "Name",
+        "swapKeywords": [
+            {
+                "initiateFrom": "anywhere",
+                "keyword": "(Name)",
+                "mode": "token"
+            },
+            {
+                "initiateFrom": "anywhere",
+                "keyword": "{Name}",
+                "mode": "token"
+            }
+        ]
+    },
+    {
+        "category": "Languages",
+        "content": "{{ rds.rds_babbel.personalization_locale_learn_language(contact.5753, contact.5758)[0].learnlang_ALL|raw}}",
+        "description": "",
+        "favorite": false,
+        "id": "snippet-1767800359792-8mrk1o9xn",
+        "name": "learnlang_ALL",
+        "swapKeywords": [
+            {
+                "initiateFrom": "anywhere",
+                "keyword": "(learnlang_ALL)",
+                "mode": "token"
+            },
+            {
+                "initiateFrom": "anywhere",
+                "keyword": "{learnlang_ALL}",
+                "mode": "token"
+            }
+        ]
+    },
+    {
+        "category": "Languages",
+        "content": "{{ rds.rds_babbel.personalization_locale_learn_language_pl(contact.5753, contact.5758)[0].learnlang_locative|raw}}",
+        "description": "",
+        "favorite": false,
+        "id": "snippet-1768180074265-wo9ny2u77",
+        "name": "learnlang_locative",
+        "swapKeywords": [
+            {
+                "initiateFrom": "anywhere",
+                "keyword": "(learnlang_locative)",
+                "mode": "token"
+            },
+            {
+                "initiateFrom": "anywhere",
+                "keyword": "{learnlang_locative}",
+                "mode": "token"
+            }
+        ]
+    },
+    {
+        "category": "Languages",
+        "content": "{{ rds.rds_babbel.personalization_locale_learn_language(contact.5753, contact.5758)[0].learnlang_d_l_ALL|raw}}",
+        "description": "",
+        "favorite": false,
+        "id": "snippet-1768186942474-0f3rc7ilw",
+        "name": "learnlang_d_l_ALL",
+        "swapKeywords": [
+            {
+                "initiateFrom": "anywhere",
+                "keyword": "(learnlang_d_l_ALL)",
+                "mode": "token"
+            },
+            {
+                "initiateFrom": "anywhere",
+                "keyword": "{learnlang_d_l_ALL}",
+                "mode": "token"
+            }
+        ]
+    },
+    {
+        "category": "Languages",
+        "content": "{{ rds.rds_babbel.personalization_locale_learn_language_pl(contact.5753, contact.5758)[0].learnlang_genitive|raw}}",
+        "description": "",
+        "favorite": false,
+        "id": "snippet-1768188204804-012s6augy",
+        "name": "learnlang_genitive",
+        "swapKeywords": [
+            {
+                "initiateFrom": "anywhere",
+                "keyword": "(learnlang_genitive)",
+                "mode": "token"
+            },
+            {
+                "initiateFrom": "anywhere",
+                "keyword": "{learnlang_genitive}",
+                "mode": "token"
+            }
+        ]
+    },
+    {
+        "category": "Languages",
+        "content": "{{ rds.rds_babbel.personalization_locale_learn_language_pl(contact.5753, contact.5758)[0].learnlang_locative_po|raw}}",
+        "description": "",
+        "favorite": false,
+        "id": "snippet-1768199998205-2jbcqt094",
+        "name": "learnlang_locative_po",
+        "swapKeywords": [
+            {
+                "initiateFrom": "anywhere",
+                "keyword": "(learnlang_locative_po)",
+                "mode": "token"
+            },
+            {
+                "initiateFrom": "anywhere",
+                "keyword": "{learnlang_locative_po}",
+                "mode": "token"
+            }
+        ]
+    },
+    {
+        "category": "Languages",
+        "content": "{{ rds.rds_babbel.personalization_locale_learn_language(contact.5753, contact.5758)[0].learnlang_l_ALL|raw}}",
+        "description": "",
+        "favorite": false,
+        "id": "snippet-1769706835786-xh94ulmbw",
+        "name": "learnlang_l_ALL",
+        "swapKeywords": [
+            {
+                "initiateFrom": "anywhere",
+                "keyword": "(learnlang_l_ALL)",
+                "matchRule": "partial",
+                "mode": "token"
+            }
+        ]
+    },
+    {
+        "category": "Upgrades",
+        "content": "{% foreach purchase in rds.emardata_rds.purchases(contact.5667) | reverse %}\n{% if purchase.purchase_state == 'active' %}\n{{ rds.emardata_rds.purchases(contact.5667)[0].following_period_in_months }}\n{% endif %}\n{% endforeach %}",
+        "description": "For all emails. Returns a value in months.",
+        "favorite": true,
+        "id": "snippet-1770649127443-0e2e6q65u",
+        "name": "Recurring period",
+        "swapKeywords": []
+    },
+    {
+        "category": "Upgrades",
+        "content": "{% set monthly = 0 %}\n{% set break = false %}\n{% foreach purchase in rds.rds_babbel.purchases(contact.5667) | reverse %}\n{% if purchase.purchase_state == 'active' and purchase.price_recurring > current and not break %}\n{% set monthly = purchase.price_recurring / purchase.following_period_in_months %}\n${{ monthly | number_format(2, '.', ',') }}\n{% set break = true %}\n{% endif %}\n{% endforeach %}",
+        "description": "(1-6M) For Price Per Month and no decimals use this.",
+        "favorite": false,
+        "id": "snippet-1770649272259-krrfo85j4",
+        "name": "recurring price (1m-6m) (no decimals)",
+        "swapKeywords": []
+    },
+    {
+        "category": "Upgrades",
+        "content": "{% set monthly = 0 %}\n{% set break = false %}\n{% foreach purchase in rds.rds_babbel.purchases(contact.5667) | reverse %}\n{% if purchase.purchase_state == 'active' and purchase.price_recurring > current and not break %}\n{% set monthly = purchase.price_recurring / purchase.following_period_in_months %}\n${{ monthly | number_format(2, '.', ',') }}\n{% set break = true %}\n{% endif %}\n{% endforeach %}",
+        "description": "For 1m-6m emails.",
+        "favorite": true,
+        "id": "snippet-1770649302909-v1ogtd1ht",
+        "name": "monthly price",
+        "swapKeywords": []
+    },
+    {
+        "category": "Upgrades",
+        "content": "{% foreach purchase in rds.emardata_rds.purchases(contact.5667) | reverse %}\n  {% if purchase.purchase_state == 'active' %}\n    {% if purchase.currency == 'EUR' %}\n    {{ purchase.price_recurring }} €\n    {% endif %}\n    {% if purchase.currency == 'GBP' %}\n    £{{ purchase.price_recurring }}\n    {% endif %}\n    {% if purchase.currency == 'CHF' %}\n    CHF{{ purchase.price_recurring }}\n    {% endif %}\n    {% if purchase.currency == 'SEK' %}\n    kr{{ purchase.price_recurring }}\n    {% endif %}\n    {% if purchase.currency == 'SEK' %}\n    kr{{ purchase.price_recurring }}\n    {% endif %}\n    {% if purchase.currency == 'PLN' %}\n    zł{{ purchase.price_recurring }}\n    {% endif %}\n    {% if purchase.currency != 'EUR' and purchase.currency != 'GBP' and purchase.currency != 'CHF' and purchase.currency != 'SEK' and purchase.currency != 'PLN' %}\n    ${{ purchase.price_recurring }}\n    {% endif %}\n  {% endif %}\n{% endforeach %}",
+        "description": "(12M) For Recurring Price (per period) use this.",
+        "favorite": false,
+        "id": "snippet-1770649366928-zzzv28sr0",
+        "name": "recurring price (12m) (per period)",
+        "swapKeywords": []
+    },
+    {
+        "category": "Upgrades",
+        "content": "{% foreach purchase in rds.rds_babbel.purchases(contact.5667) | reverse %}\n{% if purchase.purchase_state == 'active' %}\n${{ rds.rds_babbel.purchases(contact.5667)[0].price_recurring }}\n{% endif %}\n{% endforeach %}",
+        "description": "12-month auto upgrade for USA.",
+        "favorite": false,
+        "id": "snippet-1770649419759-vb9ptdjps",
+        "name": "recurring price (12m) (auto upgrade USA)",
+        "swapKeywords": []
+    },
+    {
+        "category": "Languages",
+        "content": "{{ rds.rds_babbel.personalization_locale_learn_language(contact.5753, contact.5758)[0].learnlang_d_ALL|raw}}",
+        "description": "",
+        "favorite": false,
+        "id": "snippet-1771579741831-mhxw6ge0e",
+        "name": "learnlang_d_ALL",
+        "swapKeywords": [
+            {
+                "initiateFrom": "anywhere",
+                "keyword": "(learnlang_d_ALL)",
+                "matchRule": "partial",
+                "mode": "token"
+            }
+        ]
+    }
+]

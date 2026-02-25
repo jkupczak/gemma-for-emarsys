@@ -691,6 +691,10 @@ function createEslTokenSpan(doc, name, script) {
 
 function getSavedSnippets(callback) {
   try {
+    if (typeof window.gemLoadSnippets === 'function') {
+      window.gemLoadSnippets((snippets) => callback(Array.isArray(snippets) ? snippets : []));
+      return;
+    }
     chrome.storage.sync.get({ [GEM_SNIPPETS_STORAGE_KEY]: [] }, (result) => {
       const snippets = result && result[GEM_SNIPPETS_STORAGE_KEY];
       callback(Array.isArray(snippets) ? snippets : []);

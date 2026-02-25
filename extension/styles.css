@@ -726,9 +726,14 @@ e-float-container .gem-enhanced-image-properties-dialog {
 }
 
 /* Adjusting input widths of the image properties dialog to make them thinner. */
-.gem-enhanced-image-properties-dialog .e-input-small {
+.gem-enhanced-image-properties-dialog .e-accordion__content .e-field .e-grid .e-cell.e-cell-small .e-input-small {
+    flex-grow: 1;
     width: 60px;
 }
+.gem-enhanced-image-properties-dialog .e-accordion__content .e-field .e-grid .e-cell.e-cell-small:has(.e-grid) {
+    flex-grow: 1;
+}
+
 .gem-enhanced-image-properties-dialog select.e-select:not(.e-select__select2) {
     padding-right: 28px;
 }

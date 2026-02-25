@@ -82,11 +82,14 @@ const DEFAULT_SNIPPETS = [
   }
 ];
 
-// Function to get snippets from storage
+// Function to get snippets from storage (uses snippet-storage module when available)
 function getSnippets(callback) {
+  if (typeof window.gemLoadSnippets === 'function') {
+    window.gemLoadSnippets(callback);
+    return;
+  }
   chrome.storage.sync.get({ [SNIPPETS_STORAGE_KEY]: DEFAULT_SNIPPETS }, (result) => {
     const snippets = result[SNIPPETS_STORAGE_KEY] || DEFAULT_SNIPPETS;
-    // Ensure each snippet has an ID
     const snippetsWithIds = snippets.map((snippet, index) => ({
       ...snippet,
       id: snippet.id || `snippet-${Date.now()}-${index}`
@@ -95,8 +98,12 @@ function getSnippets(callback) {
   });
 }
 
-// Function to save snippets to storage
+// Function to save snippets to storage (uses snippet-storage module when available)
 function saveSnippets(snippets, callback) {
+  if (typeof window.gemSaveSnippets === 'function') {
+    window.gemSaveSnippets(snippets, callback);
+    return;
+  }
   chrome.storage.sync.set({ [SNIPPETS_STORAGE_KEY]: snippets }, () => {
     if (callback) callback();
   });
@@ -171,7 +178,7 @@ function createSnippetModalHTML(isEditing = false) {
       </div>
       <div class="e-field">
         <label class="e-field__label e-field__label-inline" for="gem-snippet-name-input">Snippet name</label>
-        <input class="e-input" id="gem-snippet-name-input" type="text" placeholder="Enter snippet name">
+        <input class="e-input" id="gem-snippet-name-input" type="text" placeholder="Enter snippet name (max 100 characters)" maxlength="100">
       </div>
       <div class="e-field">
         <label class="e-field__label e-field__label-inline">Code snippet</label>
@@ -179,7 +186,7 @@ function createSnippetModalHTML(isEditing = false) {
       </div>
       <div class="e-field">
         <label class="e-field__label e-field__label-inline" for="gem-snippet-description-input">Description</label>
-        <textarea class="e-input gem-scrollable" id="gem-snippet-description-input" placeholder="Optional description" style="background-color:var(--token-input-default-background); width: 100%; min-height: 100px; resize: vertical; padding: 10px 12px;"></textarea>
+        <textarea class="e-input gem-scrollable" id="gem-snippet-description-input" placeholder="Optional description (max 200 characters)" maxlength="200" style="background-color:var(--token-input-default-background); width: 100%; min-height: 100px; resize: vertical; padding: 10px 12px;"></textarea>
       </div>
       <div style="margin-top: 6px;">
         <div style="display:flex; gap:10px; align-items:flex-end; margin-bottom:4px;">
@@ -1020,7 +1027,7 @@ function initializeSnippetsTab() {
           }
 
           updated.push({
-            id: `snippet-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            id: (window.gemGenerateSnippetId && window.gemGenerateSnippetId()) || `snippet-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             favorite,
             category: category,
             name: name,
@@ -1984,8 +1991,9 @@ function initializeSnippetsTab() {
   }
 
   function ensureGemFieldsInEmarsysDialog(dialogRoot, context) {
-    // Category field (above the name input)
+    // Category field (above the name input), and name length limit
     const nameInput = dialogRoot.querySelector(`#${GEM_EMARSYS_ESL_NAME_INPUT_ID}`);
+    if (nameInput) nameInput.maxLength = 100;
     if (nameInput && !dialogRoot.querySelector(`#${GEM_EMARSYS_CATEGORY_INPUT_ID}`)) {
       const categoryField = document.createElement('div');
       categoryField.className = 'e-field';
@@ -2006,7 +2014,7 @@ function initializeSnippetsTab() {
       descriptionField.className = 'e-field';
       descriptionField.innerHTML = `
         <label class="e-field__label e-field__label-inline" for="${GEM_EMARSYS_DESCRIPTION_INPUT_ID}">Description</label>
-        <textarea class="e-input gem-scrollable" id="${GEM_EMARSYS_DESCRIPTION_INPUT_ID}" placeholder="Optional description" style="background-color:var(--token-input-default-background); width: 100%; min-height: 100px; resize: vertical; padding: 10px 12px;"></textarea>
+        <textarea class="e-input gem-scrollable" id="${GEM_EMARSYS_DESCRIPTION_INPUT_ID}" placeholder="Optional description (max 200 characters)" maxlength="200" style="background-color:var(--token-input-default-background); width: 100%; min-height: 100px; resize: vertical; padding: 10px 12px;"></textarea>
       `.trim();
 
       // Place right after the html editor / codemirror container if present
@@ -2256,7 +2264,7 @@ function initializeSnippetsTab() {
         });
       } else {
         const newSnippet = {
-          id: `snippet-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          id: (window.gemGenerateSnippetId && window.gemGenerateSnippetId()) || `snippet-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           favorite,
           category,
           name,
@@ -2676,7 +2684,7 @@ function initializeSnippetsTab() {
       } else {
         // Create new snippet
         const newSnippet = {
-          id: `snippet-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          id: (window.gemGenerateSnippetId && window.gemGenerateSnippetId()) || `snippet-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           favorite,
           category: category,
           name: name,

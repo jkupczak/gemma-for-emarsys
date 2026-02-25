@@ -1,5 +1,6 @@
 console.log("mobile-view.js loaded");
 
+const LOG = "[Gem mobile-view]";
 const DEFAULT_MOBILE_WIDTH = 414;
 const DEFAULT_MOBILE_SCALE = 0.5;
 const MIN_BASE_WIDTH = 200;
@@ -298,11 +299,16 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
 //----------------------------------------------------------
 function waitForIframe(selector, callback) {
   const iframe = document.querySelector(selector);
-  if (iframe) return callback(iframe);
+  if (iframe) {
+    console.log(LOG, "waitForIframe: iframe found immediately", { selector, src: iframe.src?.slice?.(0, 80) });
+    return callback(iframe);
+  }
 
+  console.log(LOG, "waitForIframe: iframe not yet in DOM, observing...", selector);
   const obs = new MutationObserver(() => {
     const iframeNow = document.querySelector(selector);
     if (iframeNow) {
+      console.log(LOG, "waitForIframe: iframe appeared in DOM", { selector, src: iframeNow.src?.slice?.(0, 80) });
       obs.disconnect();
       callback(iframeNow);
     }
@@ -329,6 +335,11 @@ function onReady(fn) {
 // This function builds + syncs the clone for ONE iframe instance
 //----------------------------------------------------------
 function setupClonedIframe(originalIframe) {
+  console.log(LOG, "setupClonedIframe: entry", {
+    hasContentDocument: !!originalIframe?.contentDocument,
+    hasContentWindow: !!originalIframe?.contentWindow,
+    src: originalIframe?.src?.slice?.(0, 80)
+  });
 
   const LONG_WORD_THRESHOLD = 20;
 
@@ -366,7 +377,7 @@ function setupClonedIframe(originalIframe) {
           cloneDoc.body.innerHTML.trim() === "";
 
         if (cloneIsEmpty) {
-          console.log("Clone empty → forcing initial sync");
+          console.log(LOG, "MutationObserver: clone empty → forcing initial sync");
           syncIframe();
           return;
         }
@@ -403,7 +414,7 @@ function setupClonedIframe(originalIframe) {
 
         // If mutations only involve mce-edit-focus class changes, skip sync
         if (onlyFocusClassChanges) {
-          console.log("Skip sync: only mce-edit-focus class changes detected");
+          console.log(LOG, "MutationObserver: skip sync - only mce-edit-focus class changes");
           return;
         }
 
@@ -418,17 +429,21 @@ function setupClonedIframe(originalIframe) {
             if (!originalDoc) return;
 
             // Hash the content of the blocks container only
-            const currentContainer = originalDoc.querySelector('div[e-blocks-container="true"]');
-            if (!currentContainer) return;
+            const currentContainer = originalDoc.querySelector('[e-blocks-container="true"]');
+            if (!currentContainer) {
+              console.log(LOG, "MutationObserver: no e-blocks-container in originalDoc, skipping sync");
+              return;
+            }
 
             const snapshot = currentContainer.innerHTML.trim();
             const hash = quickHash(snapshot);
 
             if (hash === lastContentHash) {
-              console.log("Skip sync: blocks container content hash unchanged.");
+              console.log(LOG, "MutationObserver: skip sync - blocks container hash unchanged", { hash });
               return;
             }
 
+            console.log(LOG, "MutationObserver: content changed, syncing", { hash, prevHash: lastContentHash });
             lastContentHash = hash;
 
             syncIframe();
@@ -444,25 +459,33 @@ function setupClonedIframe(originalIframe) {
         attributes: true,
       });
 
-      console.log("[Gem] Set up content observer on e-blocks-container");
+      console.log(LOG, "setupContentObserver: observing e-blocks-container for mutations");
     }
 
     // Function to handle when e-blocks-container is added or removed
     function handleBlocksContainerChange() {
-      const blocksContainer = originalDoc.querySelector('div[e-blocks-container="true"]');
+      const blocksContainer = originalDoc.querySelector('[e-blocks-container="true"]');
+
+      console.log(LOG, "handleBlocksContainerChange:", {
+        blocksContainerFound: !!blocksContainer,
+        hasContentObserver: !!currentContentObserver,
+        containerInnerLength: blocksContainer ? blocksContainer.innerHTML?.length : 0
+      });
 
       if (blocksContainer && !currentContentObserver) {
         // Element was added - set up content observer
-        console.log("[Gem] e-blocks-container added, setting up content observer");
+        console.log(LOG, "e-blocks-container found: setting up content observer and initial sync");
         setupContentObserver(blocksContainer);
         // Force initial sync when container is re-added
         lastContentHash = "";
         syncIframe();
       } else if (!blocksContainer && currentContentObserver) {
         // Element was removed - clean up content observer
-        console.log("[Gem] e-blocks-container removed, cleaning up content observer");
+        console.log(LOG, "e-blocks-container removed: cleaning up content observer");
         currentContentObserver.disconnect();
         currentContentObserver = null;
+      } else if (!blocksContainer) {
+        console.log(LOG, "e-blocks-container NOT FOUND in original - sync will never run until container appears");
       }
     }
 
@@ -475,12 +498,12 @@ function setupClonedIframe(originalIframe) {
         const checkNodes = (nodes) => {
           for (const node of nodes) {
             if (node.nodeType === 1) { // Element node
-              if (node.matches && node.matches('div[e-blocks-container="true"]')) {
+              if (node.matches && node.matches('[e-blocks-container="true"]')) {
                 containerChanged = true;
                 return true;
               }
               // Check descendants
-              if (node.querySelector && node.querySelector('div[e-blocks-container="true"]')) {
+              if (node.querySelector && node.querySelector('[e-blocks-container="true"]')) {
                 containerChanged = true;
                 return true;
               }
@@ -496,6 +519,7 @@ function setupClonedIframe(originalIframe) {
       }
 
       if (containerChanged) {
+        console.log(LOG, "containerLifecycleObserver: e-blocks-container added/removed");
         handleBlocksContainerChange();
       }
     });
@@ -510,18 +534,37 @@ function setupClonedIframe(originalIframe) {
     handleBlocksContainerChange();
   }
 
+  // Log original document structure for debugging (before observers run)
+  (function logOriginalStructure() {
+    const doc = originalIframe.contentDocument;
+    if (!doc) {
+      console.log(LOG, "logOriginalStructure: original iframe has no contentDocument yet");
+      return;
+    }
+    const blocksContainer = doc.querySelector('[e-blocks-container="true"]');
+    const anyBlocksContainer = doc.querySelector('[e-blocks-container]');
+    console.log(LOG, "Original document structure:", {
+      hasDocElement: !!doc.documentElement,
+      bodyInnerLength: doc.body?.innerHTML?.length ?? 0,
+      eBlocksContainerDiv: !!blocksContainer,
+      anyEBlocksContainer: !!anyBlocksContainer,
+      bodyChildCount: doc.body?.childElementCount ?? 0
+    });
+  })();
+
   //----------------------------------------------------------
 // Check if mobile frame already exists - if so, clear it and recreate
 //----------------------------------------------------------
   const existingWrapper = document.getElementById("gem-mobile-frame");
   if (existingWrapper) {
-    console.log("[Gem] Mobile frame already exists, clearing and recreating");
+    console.log(LOG, "setupClonedIframe: mobile frame already exists, clearing and recreating");
     // Clear existing content
     existingWrapper.innerHTML = '';
     // Reuse the existing wrapper instead of creating a new one
     var wrapperDiv = existingWrapper;
   } else {
     // Create new wrapper if it doesn't exist
+    console.log(LOG, "setupClonedIframe: creating new mobile frame wrapper");
     var wrapperDiv = document.createElement("div");
     wrapperDiv.id = "gem-mobile-frame";
   }
@@ -563,6 +606,8 @@ function setupClonedIframe(originalIframe) {
 
   // Only insert if this is a newly created wrapper
   if (!existingWrapper) {
+    const insertTarget = document.querySelector("section.e-layout__section.e-contentblocks-preview_section");
+    console.log(LOG, "setupClonedIframe: insert target", insertTarget ? "found" : "NOT FOUND", "(selector: section.e-layout__section.e-contentblocks-preview_section)");
     document.querySelector("section.e-layout__section.e-contentblocks-preview_section").insertAdjacentElement("afterend", wrapperDiv);
   }
 
@@ -1036,33 +1081,46 @@ function setupCustomScrollbars(iframe, container) {
   };
 }
 
-//----------------------------------------------------------
+  //----------------------------------------------------------
   // Sync clone with original
   //----------------------------------------------------------
   function syncIframe() {
+    console.log(LOG, "syncIframe: START");
     try {
       const originalDoc = originalIframe.contentDocument;
       const cloneDoc = cloneIframe.contentDocument;
-      if (!originalDoc || !cloneDoc) return;
+
+      if (!originalDoc) {
+        console.log(LOG, "syncIframe: ABORT - no originalDoc");
+        return;
+      }
+      if (!cloneDoc) {
+        console.log(LOG, "syncIframe: ABORT - no cloneDoc (clone iframe may not be ready yet)");
+        return;
+      }
 
       // Serialize the original HTML to a string
       const originalHTML = originalDoc.documentElement.outerHTML;
+      console.log(LOG, "syncIframe: original HTML length:", originalHTML.length, "body length:", originalDoc.body?.innerHTML?.length ?? 0);
 
       // Parse it into a temporary DOM so we can remove scripts and clean content
       const parser = new DOMParser();
       const tempDoc = parser.parseFromString(originalHTML, "text/html");
 
-      // Remove all <script> tags from the temp document
+      const scriptsRemoved = tempDoc.querySelectorAll("script").length;
       tempDoc.querySelectorAll("script").forEach(script => script.remove());
 
-      // Remove all <e-vce-borderer> tags from the temp document
+      const vceBordererRemoved = tempDoc.querySelectorAll("e-vce-borderer").length;
+      const vceBordererElRemoved = tempDoc.querySelectorAll("e-vce-borderer-element").length;
+      const droplineRemoved = tempDoc.querySelectorAll("e-vce-dropline").length;
       tempDoc.querySelectorAll("e-vce-borderer").forEach(item => item.remove());
       tempDoc.querySelectorAll("e-vce-borderer-element").forEach(item => item.remove());
       tempDoc.querySelectorAll("e-vce-dropline").forEach(item => item.remove());
 
-
-      // Remove all .gem-text-highlight tags from the temp document
+      const highlightRemoved = tempDoc.querySelectorAll(".gem-text-highlight").length;
       tempDoc.querySelectorAll(".gem-text-highlight").forEach(item => item.remove());
+
+      console.log(LOG, "syncIframe: removed elements", { scriptsRemoved, vceBordererRemoved, vceBordererElRemoved, droplineRemoved, highlightRemoved });
 
       // Remove spellcheck attribute from body element if present
       const body = tempDoc.querySelector("body");
@@ -1070,9 +1128,14 @@ function setupCustomScrollbars(iframe, container) {
         body.removeAttribute("spellcheck");
       }
 
+      const htmlToWrite = tempDoc.documentElement.outerHTML;
+      console.log(LOG, "syncIframe: writing to clone, HTML length:", htmlToWrite.length);
+
       cloneDoc.open();
-      cloneDoc.write(tempDoc.documentElement.outerHTML);
+      cloneDoc.write(htmlToWrite);
       cloneDoc.close();
+
+      console.log(LOG, "syncIframe: clone written, body innerHTML length:", cloneDoc.body?.innerHTML?.length ?? 0);
 
       // Inject CSS to hide scrollbars while maintaining scrollability
       const scrollbarStyle = cloneDoc.createElement('style');
@@ -1099,10 +1162,10 @@ function setupCustomScrollbars(iframe, container) {
       // Set up custom overlay scrollbars
       setupCustomScrollbars(cloneIframe, wrapperDiv);
 
-      console.log("Succesfully duplicated iframe");
+      console.log(LOG, "syncIframe: DONE successfully");
 
     } catch (err) {
-      console.error("Error syncing iframe:", err);
+      console.error(LOG, "syncIframe: ERROR", err);
     }
   }
 
@@ -1140,7 +1203,7 @@ function setupCustomScrollbars(iframe, container) {
           cloneDoc.body.innerHTML.trim() === "";
 
         if (cloneIsEmpty) {
-          console.log("Clone empty → forcing initial sync");
+          console.log(LOG, "MutationObserver: clone empty → forcing initial sync");
           syncIframe();
           return;
         }
@@ -1177,7 +1240,7 @@ function setupCustomScrollbars(iframe, container) {
 
         // If mutations only involve mce-edit-focus class changes, skip sync
         if (onlyFocusClassChanges) {
-          console.log("Skip sync: only mce-edit-focus class changes detected");
+          console.log(LOG, "MutationObserver: skip sync - only mce-edit-focus class changes");
           return;
         }
 
@@ -1192,17 +1255,21 @@ function setupCustomScrollbars(iframe, container) {
             if (!originalDoc) return;
 
             // Hash the content of the blocks container only
-            const currentContainer = originalDoc.querySelector('div[e-blocks-container="true"]');
-            if (!currentContainer) return;
+            const currentContainer = originalDoc.querySelector('[e-blocks-container="true"]');
+            if (!currentContainer) {
+              console.log(LOG, "MutationObserver: no e-blocks-container in originalDoc, skipping sync");
+              return;
+            }
 
             const snapshot = currentContainer.innerHTML.trim();
             const hash = quickHash(snapshot);
 
             if (hash === lastContentHash) {
-              console.log("Skip sync: blocks container content hash unchanged.");
+              console.log(LOG, "MutationObserver: skip sync - blocks container hash unchanged", { hash });
               return;
             }
 
+            console.log(LOG, "MutationObserver: content changed, syncing", { hash, prevHash: lastContentHash });
             lastContentHash = hash;
 
             syncIframe();
@@ -1218,25 +1285,33 @@ function setupCustomScrollbars(iframe, container) {
         attributes: true,
       });
 
-      console.log("[Gem] Set up content observer on e-blocks-container");
+      console.log(LOG, "setupContentObserver: observing e-blocks-container for mutations");
     }
 
     // Function to handle when e-blocks-container is added or removed
     function handleBlocksContainerChange() {
-      const blocksContainer = originalDoc.querySelector('div[e-blocks-container="true"]');
+      const blocksContainer = originalDoc.querySelector('[e-blocks-container="true"]');
+
+      console.log(LOG, "handleBlocksContainerChange:", {
+        blocksContainerFound: !!blocksContainer,
+        hasContentObserver: !!currentContentObserver,
+        containerInnerLength: blocksContainer ? blocksContainer.innerHTML?.length : 0
+      });
 
       if (blocksContainer && !currentContentObserver) {
         // Element was added - set up content observer
-        console.log("[Gem] e-blocks-container added, setting up content observer");
+        console.log(LOG, "e-blocks-container found: setting up content observer and initial sync");
         setupContentObserver(blocksContainer);
         // Force initial sync when container is re-added
         lastContentHash = "";
         syncIframe();
       } else if (!blocksContainer && currentContentObserver) {
         // Element was removed - clean up content observer
-        console.log("[Gem] e-blocks-container removed, cleaning up content observer");
+        console.log(LOG, "e-blocks-container removed: cleaning up content observer");
         currentContentObserver.disconnect();
         currentContentObserver = null;
+      } else if (!blocksContainer) {
+        console.log(LOG, "e-blocks-container NOT FOUND in original - sync will never run until container appears");
       }
     }
 
@@ -1249,12 +1324,12 @@ function setupCustomScrollbars(iframe, container) {
         const checkNodes = (nodes) => {
           for (const node of nodes) {
             if (node.nodeType === 1) { // Element node
-              if (node.matches && node.matches('div[e-blocks-container="true"]')) {
+              if (node.matches && node.matches('[e-blocks-container="true"]')) {
                 containerChanged = true;
                 return true;
               }
               // Check descendants
-              if (node.querySelector && node.querySelector('div[e-blocks-container="true"]')) {
+              if (node.querySelector && node.querySelector('[e-blocks-container="true"]')) {
                 containerChanged = true;
                 return true;
               }
@@ -1270,6 +1345,7 @@ function setupCustomScrollbars(iframe, container) {
       }
 
       if (containerChanged) {
+        console.log(LOG, "containerLifecycleObserver: e-blocks-container added/removed");
         handleBlocksContainerChange();
       }
     });
@@ -1286,7 +1362,7 @@ function setupCustomScrollbars(iframe, container) {
 
   setupBlocksContainerObservers();
 
-  console.log("Duplicate iframe active with long-word breaking.");
+  console.log(LOG, "setupClonedIframe: DONE - duplicate iframe active with long-word breaking");
 }
 
 // Global state for cleanup
@@ -1300,9 +1376,10 @@ function initializeMobileView() {
   if (isMobileViewActive) return; // Already active
   isMobileViewActive = true;
 
-  console.log("Initializing mobile view...");
+  console.log(LOG, "Initializing mobile view...");
 
   function startForNewIframe(iframe) {
+    console.log(LOG, "startForNewIframe: setting up clone for iframe", { src: iframe?.src?.slice?.(0, 80) });
     // Build clone for this iframe instance
     setupClonedIframe(iframe);
 

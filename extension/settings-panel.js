@@ -17,6 +17,7 @@ const GEM_CUSTOM_PASTE_ALLOW_STRIKE_KEY = "gemCustomPasteAllowStrikethrough";
 const GEM_CUSTOM_PASTE_ALLOW_UNDERLINE_KEY = "gemCustomPasteAllowUnderline";
 const GEM_CUSTOM_PASTE_ALLOW_SUP_KEY = "gemCustomPasteAllowSuperscript";
 const GEM_CUSTOM_PASTE_ALLOW_ANCHOR_KEY = "gemCustomPasteAllowAnchor";
+const GEM_EMAIL_CAMPAIGN_LIST_LOAD_ALL_KEY = "gemEmailCampaignListLoadAll";
 
 let _gemEmailPreviewToolbarApplyQueued = false;
 
@@ -222,7 +223,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
       }
 
       .gem-setting-info {
-        margin-bottom: 20px;
+        margin: 20px;
       }
 
       .gem-setting-section .gem-setting {
@@ -236,6 +237,16 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         border: 1px solid var(--token-box-default-border);
         transition: all 0.2s ease;
       }
+
+      .gem-setting-section > .gem-setting-condensed {
+        border: none;
+        padding: 0;
+        border-radius: 0;
+      }
+        .gem-setting-section > .gem-setting-condensed:hover {
+          box-shadow: none;
+        }
+
       .gem-setting label + label { padding: 12px 0 0 }
       [data-gem-paste-allow-disabled] { display: none; }
       p:has(+ [data-gem-paste-allow-disabled]) { margin-bottom: 0 !important; }
@@ -466,6 +477,11 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         min-width: 60px;
       }
 
+      .gem-setting-section .sub-label {
+          font-weight: normal;
+          margin-top:8px;
+      }
+
       .color-swatch-input {
         flex: 1;
         padding: 8px 12px;
@@ -633,7 +649,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         <div class="gem-setting-section">
           <h3>Content Block Toolbar</h3>
 
-          <div class="gem-setting" style="display: flex; gap: 12px; align-items: center;">
+          <div class="gem-setting gem-setting-condensed" style="display: flex; gap: 12px; align-items: center;">
             <label for="opt-manage-optional-content" style="flex: 1;">Manage optional content</label>
             <select id="opt-manage-optional-content" style="width: 150px;">
               <option value="always-show">Always Show</option>
@@ -641,7 +657,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
             </select>
           </div>
 
-          <div class="gem-setting" style="display: flex; gap: 12px; align-items: center;">
+          <div class="gem-setting gem-setting-condensed" style="display: flex; gap: 12px; align-items: center;">
             <label for="opt-predict-recommendation" style="flex: 1;">Predict Recommendation Settings</label>
             <select id="opt-predict-recommendation" style="width: 150px;">
               <option value="always-show">Always Show</option>
@@ -650,7 +666,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
             </select>
           </div>
 
-          <div class="gem-setting" style="display: flex; gap: 12px; align-items: center;">
+          <div class="gem-setting gem-setting-condensed" style="display: flex; gap: 12px; align-items: center;">
             <label for="opt-product-finder" style="flex: 1;">Product Finder</label>
             <select id="opt-product-finder" style="width: 150px;">
               <option value="always-show" selected>Always Show</option>
@@ -658,7 +674,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
             </select>
           </div>
 
-          <div class="gem-setting" style="display: flex; gap: 12px; align-items: center;">
+          <div class="gem-setting gem-setting-condensed" style="display: flex; gap: 12px; align-items: center;">
             <label for="opt-product-source" style="flex: 1;">Product Source</label>
             <select id="opt-product-source" style="width: 150px;">
               <option value="always-show">Always Show</option>
@@ -667,7 +683,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
             </select>
           </div>
 
-          <div class="gem-setting" style="display: flex; gap: 12px; align-items: center;">
+          <div class="gem-setting gem-setting-condensed" style="display: flex; gap: 12px; align-items: center;">
             <label for="opt-save-to-reuse" style="flex: 1;">Save to reuse</label>
             <select id="opt-save-to-reuse" style="width: 150px;">
               <option value="always-show" selected>Always Show</option>
@@ -675,7 +691,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
             </select>
           </div>
 
-          <div class="gem-setting" style="display: flex; gap: 12px; align-items: center;">
+          <div class="gem-setting gem-setting-condensed" style="display: flex; gap: 12px; align-items: center;">
             <label for="opt-reset-block" style="flex: 1;">Reset block</label>
             <select id="opt-reset-block" style="width: 150px;">
               <option value="always-show" selected>Always Show</option>
@@ -683,7 +699,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
             </select>
           </div>
 
-          <div class="gem-setting" style="display: flex; gap: 12px; align-items: center;">
+          <div class="gem-setting gem-setting-condensed" style="display: flex; gap: 12px; align-items: center;">
             <label for="opt-convert-esl-to-tokens" style="flex: 1;">Convert ESL to Tokens</label>
             <select id="opt-convert-esl-to-tokens" style="width: 150px;">
               <option value="always-show" selected>Show if Available</option>
@@ -691,7 +707,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
             </select>
           </div>
 
-          <div class="gem-setting" style="display: flex; gap: 12px; align-items: center;">
+          <div class="gem-setting gem-setting-condensed" style="display: flex; gap: 12px; align-items: center;">
             <label for="opt-swap-keywords" style="flex: 1;">Swap Keywords</label>
             <select id="opt-swap-keywords" style="width: 150px;">
               <option value="always-show" selected>Show if Available</option>
@@ -708,11 +724,11 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
             Toggle mobile preview pane
             </label>
           </div>
-          <div class="gem-setting" style="display: flex; gap: 12px; align-items: center;">
+          <div class="gem-setting gem-setting-condensed" style="display: flex; gap: 12px; align-items: center;">
             <label for="opt-mobile-preview-width" style="flex: 1;">Width (px)</label>
             <input type="number" id="opt-mobile-preview-width" min="200" max="800" step="1" style="width: 120px;" />
           </div>
-          <div class="gem-setting" style="display: flex; gap: 12px; align-items: center;">
+          <div class="gem-setting gem-setting-condensed" style="display: flex; gap: 12px; align-items: center;">
             <label for="opt-mobile-preview-scale" style="flex: 1;">Scale</label>
             <select id="opt-mobile-preview-scale" style="width: 120px;">
               <option value="1">100%</option>
@@ -724,7 +740,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         <div class="gem-setting-section">
           <h3>Color Swatch Management</h3>
           <div class="gem-info">
-            <small>These colors will appear as the first row in the color picker. Add or remove any color you want (up to 8 total).</small>
+            <p class="gem-setting-info">These colors will appear as the first row in the color picker. Add or remove any color you want (up to 8 total).</p>
           </div>
           <div id="color-swatches-list">
             <!-- Color swatches will be dynamically added here -->
@@ -738,6 +754,19 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
               <input type="checkbox" id="opt-show-finish-editing-btn" checked />
               Show "Finish Editing" Button
             </label>
+          </div>
+        </div>
+
+        <div class="gem-setting-section">
+          <h3>Email Campaign List</h3>
+          <div class="gem-setting">
+            <label>
+              <input type="checkbox" id="opt-email-campaign-list-load-all" style="align-self: self-start; margin-top: 4px" />
+                Load all emails by default
+            </label>
+            <p class="sub-label">
+              The default 'Created' date filter is cleared automatically. Warning: This increases page load time.
+            </p>
           </div>
         </div>
 
@@ -791,7 +820,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
               <input type="checkbox" id="opt-custom-paste-enabled" checked />
               Enable Gemma's Rich Paste behavior
             </label>
-            <p style="margin: 10px 0 30px;">Emarsys's normal plain text formatting is replaced with behavior that supports pasting common styles like bold and italic.</p>
+            <p class="sub-label">Emarsys's normal plain text formatting is replaced with behavior that supports pasting common styles like bold and italic.</p>
             <div class="gem-setting-group">
               <label>
                 <input type="checkbox" id="opt-custom-paste-bold" checked />
@@ -832,25 +861,25 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
               Max number of images to keep in the Recently Seen list (50–2000).
             </div>
           </div>
-          <div class="gem-setting">
+          <div class="gem-setting gem-setting-condensed">
             <label>
               <input type="checkbox" id="opt-show-file-icon" checked />
               Show filetype icons in media picker
             </label>
           </div>
-          <div class="gem-setting">
+          <div class="gem-setting gem-setting-condensed">
             <label>
               <input type="checkbox" id="opt-show-created-column" checked />
               Show 'Created' column in media picker
             </label>
           </div>
-          <div class="gem-setting">
+          <div class="gem-setting gem-setting-condensed">
             <label>
               <input type="checkbox" id="opt-show-size-column" checked />
               Show 'Size' column in media picker
             </label>
           </div>
-          <div class="gem-setting">
+          <div class="gem-setting gem-setting-condensed">
             <label>
               <input type="checkbox" id="opt-show-user-column" checked />
               Show 'User' column in media picker
@@ -936,7 +965,8 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         [GEM_CUSTOM_PASTE_ALLOW_UNDERLINE_KEY]: true,
         [GEM_CUSTOM_PASTE_ALLOW_SUP_KEY]: true,
         [GEM_CUSTOM_PASTE_ALLOW_ANCHOR_KEY]: true,
-        [GEM_RECENTLY_SEEN_IMAGES_MAX_KEY]: 300
+        [GEM_RECENTLY_SEEN_IMAGES_MAX_KEY]: 300,
+        [GEM_EMAIL_CAMPAIGN_LIST_LOAD_ALL_KEY]: false
       }, (settings) => {
         const themeSelect = document.getElementById("opt-theme-mode");
         if (themeSelect) {
@@ -1003,6 +1033,11 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
 
         document.getElementById("opt-show-finish-editing-btn").checked =
           settings.showFinishEditingBtn;
+
+        const emailCampaignListLoadAll = document.getElementById("opt-email-campaign-list-load-all");
+        if (emailCampaignListLoadAll) {
+          emailCampaignListLoadAll.checked = settings[GEM_EMAIL_CAMPAIGN_LIST_LOAD_ALL_KEY] === true;
+        }
 
         const recentlySeenMaxInput = document.getElementById("opt-recently-seen-max");
         if (recentlySeenMaxInput) {
@@ -1096,6 +1131,8 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         mobileViewVisible: mobileVisible,
         showFinishEditingBtn:
           document.getElementById("opt-show-finish-editing-btn")?.checked ?? true,
+        [GEM_EMAIL_CAMPAIGN_LIST_LOAD_ALL_KEY]:
+          document.getElementById("opt-email-campaign-list-load-all")?.checked ?? false,
         mobilePreviewWidth: safeWidth,
         mobilePreviewScale: safeScale
       };
@@ -1141,6 +1178,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
       "opt-enable-highlighting",
       "opt-enable-mobile-preview",
       "opt-show-finish-editing-btn",
+      "opt-email-campaign-list-load-all",
       "opt-mobile-preview-width",
       "opt-mobile-preview-scale",
       "opt-show-file-icon",
