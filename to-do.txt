@@ -12,8 +12,6 @@ Deprecate recently used tab and roll the functionality into recently seen. Recen
 
 The mobile image picker view retains the desktop image preview even if the mobile image is not set. This corrects itself after the user clicks away from the focus that is automatically applied to the URL field. Lets fix that.
 
-Add an "Export" button in the Snippet edit window so that users can share just one snippet at a time. Add an export option that introduces checkboxes to the full list so that the user can select multiple instead of exporting them all. Add a "select all/deselectall" button in this mode.
-
 Grouping by "Last Seen" presents the images with the oldest at the top. Reverse this.
 
 When a search pill is deactivated, if the value in the search box is identical, clear the search box too.
@@ -89,6 +87,8 @@ Can I add a note to the content block about what block targeting is being done?
 # COMPLETE
 
 ✓ Search terms should get added as active pills when you hit enter/tab? Moved to a new line undernear the search bar. Clicking them deactivates them but keeps them there, clicking an X on them removes them entirely. Search results should take all active pills and the search box into account. For example, right now searching for 'e4 uk' would not return images with the filename uk_e4.png. But searching with pills should treat each search term separately. Results should include ALL search terms, just not necesarrily in any specific order.
+
+✓ Add an "Export" button in the Snippet edit window so that users can share just one snippet at a time. Add an export option that introduces checkboxes to the full list so that the user can select multiple instead of exporting them all. Add a "select all/deselectall" button in this mode.
 
 ✓ Move the "group by" folder to the right, search box to the left
 

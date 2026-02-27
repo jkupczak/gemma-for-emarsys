@@ -725,6 +725,27 @@ e-float-container .gem-enhanced-image-properties-dialog {
     justify-content: center;
 }
 
+/* Snippet Export */
+td:has(input.gem-export-snippet-checkbox:not(:checked)) + td > div {
+    & .e-label-primary {
+        background: transparent;
+        border-color: var(--token-gray-500);
+        color: var(--token-text-default);
+    }
+}
+td:has(input.gem-export-snippet-checkbox) ~ td .gem-snippet-row-actions {
+    display: none !important;
+}
+.gem-export-category-checkbox, .gem-export-snippet-checkbox, .gem-export-select-all-checkbox {
+    accent-color: var(--token-primary-600);
+}
+
+
+.gem-nav-icons e-tooltip {
+    width: 100%;
+    justify-content: center;
+}
+
 /* Adjusting input widths of the image properties dialog to make them thinner. */
 .gem-enhanced-image-properties-dialog .e-accordion__content .e-field .e-grid .e-cell.e-cell-small .e-input-small {
     flex-grow: 1;
@@ -797,36 +818,17 @@ e-float-container .gem-enhanced-image-properties-dialog {
     display: none;
 }
 
-
-main section.e-contentblocks-navigation_section:has(.e-verticalnav__content cb-campaign-variables) {
-    flex: 0 0 530px !important;
-}
-
-main section.e-contentblocks-navigation_section:has(.e-verticalnav__content gem-snippets) {
-    flex: 0 0 530px !important;
-}
-main section.e-contentblocks-navigation_section:has(.e-verticalnav__content cb-email-basics-tab) {
-    flex: 0 0 530px !important;
-}
-
-main section.e-contentblocks-navigation_section:has(.e-verticalnav__content cb-versions) {
-    flex: 0 0 530px !important;
-}
-
-main section.e-contentblocks-navigation_section:has(.e-verticalnav__content cb-locales-tab) {
-    flex: 0 0 530px !important;
-}
-
-main section.e-contentblocks-navigation_section:has(.e-verticalnav__content cb-custom-tab) {
-    flex: 0 0 530px !important;
-}
-
-main section.e-contentblocks-navigation_section:has(.e-verticalnav__content cb-campaign-latest-media) {
-    flex: 0 0 530px !important;
-}
-
-main section.e-contentblocks-navigation_section:has(.e-verticalnav__content cb-available-block-list) {
-    flex: 0 0 530px !important;
+main {
+    & section.e-contentblocks-navigation_section:has(.e-verticalnav__content cb-campaign-variables),
+    & section.e-contentblocks-navigation_section:has(.e-verticalnav__content gem-snippets),
+    & section.e-contentblocks-navigation_section:has(.e-verticalnav__content cb-email-basics-tab),
+    & section.e-contentblocks-navigation_section:has(.e-verticalnav__content cb-versions),
+    & section.e-contentblocks-navigation_section:has(.e-verticalnav__content cb-locales-tab),
+    & section.e-contentblocks-navigation_section:has(.e-verticalnav__content cb-custom-tab),
+    & section.e-contentblocks-navigation_section:has(.e-verticalnav__content cb-campaign-latest-media),
+    & section.e-contentblocks-navigation_section:has(.e-verticalnav__content cb-available-block-list) {
+        flex: 0 0 530px !important;
+    }
 }
 
 

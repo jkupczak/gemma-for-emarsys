@@ -60,9 +60,9 @@ function gemApplyEmailPreviewToolbarPositionClass() {
       try {
         const next = (res && typeof res[key] === 'string') ? res[key] : defaultValue;
         body.classList.toggle('gem-campaign-preview-toolbar-vertical', next === 'vertical');
-      } catch (_) {}
+      } catch (_) { }
     });
-  } catch (_) {}
+  } catch (_) { }
 }
 
 // Make it callable from other scripts (expanded view toggles live elsewhere)
@@ -212,7 +212,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
       }
 
       #gem-settings-body {
-        padding: 24px;
+        padding: 20px 10px 0 20px;
         overflow-y: auto;
         flex-grow: 1;
         background: var(--token-background-faint);
@@ -298,7 +298,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
       }
 
       .gem-setting-section {
-        margin-top: 24px;
+        margin: 15px 0 30px;
         background: var(--token-box-default-background);
         border-radius: 12px;
         border: 1px solid var(--token-box-default-border);
@@ -316,7 +316,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
       }
 
       .gem-setting-section > div {
-        padding: 20px;
+        margin: 20px;
       }
 
       .highlight-term-item {
@@ -440,6 +440,12 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         border-color: #667eea;
       }
 
+      .gem-setting-section-content-block-toolbar e-icon, 
+      .gem-setting-section-content-block-toolbar gem-e-icon {
+        margin-right: 4px;
+        transform: scale(0.9);
+      }
+
       .gem-add-term button {
         padding: 10px 16px;
         background: var(--token-button-highlight-background);
@@ -496,6 +502,11 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         outline: none;
         border-color: #667eea;
         box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+      }
+
+      #gem-settings-body h2 { 
+        margin-top: 30px;
+        margin-bottom: 10px;
       }
 
       .color-swatch-color {
@@ -571,9 +582,9 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
           cleaned.sort((a, b) => (a.ts || 0) - (b.ts || 0));
           while (cleaned.length > limit) cleaned.shift();
           chrome.storage.local.set({ [GEM_RECENTLY_SEEN_IMAGES_STORAGE_KEY]: cleaned });
-        } catch (_) {}
+        } catch (_) { }
       });
-    } catch (_) {}
+    } catch (_) { }
   }
 
   // ------------------------------------------------------------
@@ -604,6 +615,8 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
           </button>
         </div>
 
+        <h2>General Settings</h2>
+
         <div class="gem-setting-section">
           <h3>Theme</h3>
           <div class="gem-setting">
@@ -622,6 +635,8 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
             </div>
           </div>
         </div>
+
+        <h2>Email Editor Settings</h2>
 
         <div class="gem-setting-section">
           <h3>Blocks Panel</h3>
@@ -646,11 +661,13 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
           </div>
         </div>
 
-        <div class="gem-setting-section">
+        <div class="gem-setting-section gem-setting-section-content-block-toolbar">
           <h3>Content Block Toolbar</h3>
-
+          <p class="gem-setting-info">The content block toolbar is visible when hovering over a block in your email. Most of the icons can be toggled on or off based on the preferences you set here.</p>
           <div class="gem-setting gem-setting-condensed" style="display: flex; gap: 12px; align-items: center;">
-            <label for="opt-manage-optional-content" style="flex: 1;">Manage optional content</label>
+            <label for="opt-manage-optional-content" style="flex: 1;">
+            <e-icon icon="click-rate-over-time"><div aria-hidden="true" class="e-icon-wrapper"><div class="e-icon"></div></div></e-icon>
+            Manage optional content</label>
             <select id="opt-manage-optional-content" style="width: 150px;">
               <option value="always-show">Always Show</option>
               <option value="hide-if-disabled" selected>Hide if Disabled</option>
@@ -658,7 +675,10 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
           </div>
 
           <div class="gem-setting gem-setting-condensed" style="display: flex; gap: 12px; align-items: center;">
-            <label for="opt-predict-recommendation" style="flex: 1;">Predict Recommendation Settings</label>
+            <label for="opt-predict-recommendation" style="flex: 1;">
+            <e-icon icon="feature-predict"><div aria-hidden="true" class="e-icon-wrapper"><div class="e-icon"></div></div></e-icon>
+              Predict Recommendation
+            </label>
             <select id="opt-predict-recommendation" style="width: 150px;">
               <option value="always-show">Always Show</option>
               <option value="hide-if-disabled" selected>Hide if Disabled</option>
@@ -667,7 +687,9 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
           </div>
 
           <div class="gem-setting gem-setting-condensed" style="display: flex; gap: 12px; align-items: center;">
-            <label for="opt-product-finder" style="flex: 1;">Product Finder</label>
+            <label for="opt-product-finder" style="flex: 1;">
+            <e-icon icon="search"><div aria-hidden="true" class="e-icon-wrapper"><div class="e-icon"></div></div></e-icon>
+            Product Finder</label>
             <select id="opt-product-finder" style="width: 150px;">
               <option value="always-show" selected>Always Show</option>
               <option value="always-hide">Always Hide</option>
@@ -675,7 +697,9 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
           </div>
 
           <div class="gem-setting gem-setting-condensed" style="display: flex; gap: 12px; align-items: center;">
-            <label for="opt-product-source" style="flex: 1;">Product Source</label>
+            <label for="opt-product-source" style="flex: 1;">
+            <e-icon icon="product"><div aria-hidden="true" class="e-icon-wrapper"><div class="e-icon"></div></div></e-icon>
+            Product Source</label>
             <select id="opt-product-source" style="width: 150px;">
               <option value="always-show">Always Show</option>
               <option value="hide-if-disabled" selected>Hide if Disabled</option>
@@ -684,7 +708,9 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
           </div>
 
           <div class="gem-setting gem-setting-condensed" style="display: flex; gap: 12px; align-items: center;">
-            <label for="opt-save-to-reuse" style="flex: 1;">Save to reuse</label>
+            <label for="opt-save-to-reuse" style="flex: 1;">
+            <e-icon icon="save"><div aria-hidden="true" class="e-icon-wrapper"><div class="e-icon"></div></div></e-icon>
+            Save to reuse</label>
             <select id="opt-save-to-reuse" style="width: 150px;">
               <option value="always-show" selected>Always Show</option>
               <option value="always-hide">Always Hide</option>
@@ -692,7 +718,9 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
           </div>
 
           <div class="gem-setting gem-setting-condensed" style="display: flex; gap: 12px; align-items: center;">
-            <label for="opt-reset-block" style="flex: 1;">Reset block</label>
+            <label for="opt-reset-block" style="flex: 1;">
+            <e-icon icon="reset"><div aria-hidden="true" class="e-icon-wrapper"><div class="e-icon"></div></div></e-icon>
+            Reset block</label>
             <select id="opt-reset-block" style="width: 150px;">
               <option value="always-show" selected>Always Show</option>
               <option value="always-hide">Always Hide</option>
@@ -700,7 +728,13 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
           </div>
 
           <div class="gem-setting gem-setting-condensed" style="display: flex; gap: 12px; align-items: center;">
-            <label for="opt-convert-esl-to-tokens" style="flex: 1;">Convert ESL to Tokens</label>
+            <label for="opt-convert-esl-to-tokens" style="flex: 1;">
+            <gem-e-icon icon="style">
+      <div aria-hidden="true" class="e-icon-wrapper">
+        <div class="gem-e-icon"></div>
+      </div>
+    </gem-e-icon>
+            Convert ESL to Tokens</label>
             <select id="opt-convert-esl-to-tokens" style="width: 150px;">
               <option value="always-show" selected>Show if Available</option>
               <option value="always-hide">Always Hide</option>
@@ -708,7 +742,13 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
           </div>
 
           <div class="gem-setting gem-setting-condensed" style="display: flex; gap: 12px; align-items: center;">
-            <label for="opt-swap-keywords" style="flex: 1;">Swap Keywords</label>
+            <label for="opt-swap-keywords" style="flex: 1;">
+            <gem-e-icon icon="style">
+      <div aria-hidden="true" class="e-icon-wrapper">
+        <div class="gem-e-icon"></div>
+      </div>
+    </gem-e-icon>
+            Swap Keywords</label>
             <select id="opt-swap-keywords" style="width: 150px;">
               <option value="always-show" selected>Show if Available</option>
               <option value="always-hide">Always Hide</option>
@@ -739,9 +779,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
 
         <div class="gem-setting-section">
           <h3>Color Swatch Management</h3>
-          <div class="gem-info">
-            <p class="gem-setting-info">These colors will appear as the first row in the color picker. Add or remove any color you want (up to 8 total).</p>
-          </div>
+          <p class="gem-setting-info">These colors will appear as the first row in the color picker. Add or remove any color you want (up to 8 total).</p>
           <div id="color-swatches-list">
             <!-- Color swatches will be dynamically added here -->
           </div>
@@ -754,19 +792,6 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
               <input type="checkbox" id="opt-show-finish-editing-btn" checked />
               Show "Finish Editing" Button
             </label>
-          </div>
-        </div>
-
-        <div class="gem-setting-section">
-          <h3>Email Campaign List</h3>
-          <div class="gem-setting">
-            <label>
-              <input type="checkbox" id="opt-email-campaign-list-load-all" style="align-self: self-start; margin-top: 4px" />
-                Load all emails by default
-            </label>
-            <p class="sub-label">
-              The default 'Created' date filter is cleared automatically. Warning: This increases page load time.
-            </p>
           </div>
         </div>
 
@@ -850,8 +875,11 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
           </div>
         </div>
 
+
+        <h2>Media Picker Settings</h2>
+
         <div class="gem-setting-section">
-          <h3>Media Picker Settings</h3>
+          <h3>General</h3>
           <div class="gem-setting">
             <label style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
               <span>Recently Seen limit</span>
@@ -887,6 +915,22 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
           </div>
         </div>
 
+
+        <h2>Email Campaign List Settings</h2>
+
+        <div class="gem-setting-section">
+          <h3>Filters</h3>
+          <div class="gem-setting">
+            <label>
+              <input type="checkbox" id="opt-email-campaign-list-load-all" style="align-self: self-start; margin-top: 4px" />
+                Load all emails by default
+            </label>
+            <p class="sub-label">
+              The default 'Created' date filter is cleared automatically. Warning: This increases page load time.
+            </p>
+          </div>
+        </div>
+
       </div>
     `;
 
@@ -915,9 +959,9 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
     return panelEl;
   }
 
-// ------------------------------------------------------------
-// Load settings into UI
-// ------------------------------------------------------------
+  // ------------------------------------------------------------
+  // Load settings into UI
+  // ------------------------------------------------------------
   function loadSettings() {
     // First check if highlightTerms exists to determine if user has customized
     chrome.storage.sync.get(['highlightTerms'], (result) => {
@@ -1045,12 +1089,14 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         }
 
         // Load MediaDB settings
-        chrome.storage.sync.get({ gemMediaDBColumnVisibility: {
-          showFileIcon: true,
-          showCreated: true,
-          showSize: true,
-          showUser: true
-        } }, (mediaDBResult) => {
+        chrome.storage.sync.get({
+          gemMediaDBColumnVisibility: {
+            showFileIcon: true,
+            showCreated: true,
+            showSize: true,
+            showUser: true
+          }
+        }, (mediaDBResult) => {
           const mediaDBSettings = mediaDBResult.gemMediaDBColumnVisibility;
           document.getElementById("opt-show-file-icon").checked = mediaDBSettings.showFileIcon;
           document.getElementById("opt-show-created-column").checked = mediaDBSettings.showCreated;
@@ -1143,7 +1189,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
       chrome.storage.sync.set(settingsToSave);
 
       // If the limit was reduced, prune local recently seen immediately
-      try { pruneRecentlySeenToMax(settingsToSave[GEM_RECENTLY_SEEN_IMAGES_MAX_KEY]); } catch (_) {}
+      try { pruneRecentlySeenToMax(settingsToSave[GEM_RECENTLY_SEEN_IMAGES_MAX_KEY]); } catch (_) { }
 
       // Save MediaDB settings separately
       const mediaDBSettings = {
@@ -1814,7 +1860,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
   // ------------------------------------------------------------
   // Expose function to open settings panel (for welcome modal)
   // ------------------------------------------------------------
-  window.openGemmaSettings = function() {
+  window.openGemmaSettings = function () {
     if (!isOpen) {
       openPanel();
     }
@@ -1893,12 +1939,12 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
                 injectIntoIframe(iframe);
                 return;
               }
-            } catch (_) {}
+            } catch (_) { }
             if (attempts < 40) setTimeout(tick, 100);
           };
           setTimeout(tick, 100);
         }
-      } catch (_) {}
+      } catch (_) { }
     }
 
     // Existing iframes
@@ -2044,13 +2090,13 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
     }
   });
 
-// ------------------------------------------------------------
-// Listen for messages from background script or gear icon
-// ------------------------------------------------------------
-console.log("[gem] settings-panel.js: setting up message listener");
+  // ------------------------------------------------------------
+  // Listen for messages from background script or gear icon
+  // ------------------------------------------------------------
+  console.log("[gem] settings-panel.js: setting up message listener");
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  console.log("[gem] settings-panel.js: RECEIVED MESSAGE:", msg, "from:", sender);
-  console.log("[gem] Current isOpen state:", isOpen);
+    console.log("[gem] settings-panel.js: RECEIVED MESSAGE:", msg, "from:", sender);
+    console.log("[gem] Current isOpen state:", isOpen);
 
     if (msg.action === "openSettings") {
       // Toggle the panel: close if open, open if closed (from gear icon)
@@ -2072,19 +2118,19 @@ console.log("[gem] settings-panel.js: setting up message listener");
         console.log("[gem] Panel is closed, opening it");
         openPanel();
       }
-      sendResponse({success: true});
+      sendResponse({ success: true });
     }
   });
 
   function showKeyboardShortcutsModal() {
-  // Remove any existing modal
-  const existing = document.getElementById('gem-keyboard-shortcuts-modal');
-  if (existing) existing.remove();
+    // Remove any existing modal
+    const existing = document.getElementById('gem-keyboard-shortcuts-modal');
+    if (existing) existing.remove();
 
-  const modal = document.createElement('div');
-  modal.id = 'gem-keyboard-shortcuts-modal';
-  modal.className = 'gem-welcome-modal';
-  modal.innerHTML = `
+    const modal = document.createElement('div');
+    modal.id = 'gem-keyboard-shortcuts-modal';
+    modal.className = 'gem-welcome-modal';
+    modal.innerHTML = `
     <div class="gem-welcome-modal__panel" role="dialog" aria-modal="true">
       <div class="gem-welcome-modal__header">
         <div style="font-weight:600;">Gemma Keyboard Shortcuts</div>
@@ -2142,24 +2188,24 @@ console.log("[gem] settings-panel.js: setting up message listener");
     </div>
   `;
 
-  document.body.appendChild(modal);
+    document.body.appendChild(modal);
 
-  // Event handlers
-  const closeModal = () => modal.remove();
+    // Event handlers
+    const closeModal = () => modal.remove();
 
-  modal.addEventListener('click', (e) => {
-    if (e.target === modal || e.target.classList.contains('gem-welcome-modal__close') || e.target.classList.contains('gem-keyboard-shortcuts-close')) {
-      closeModal();
-    }
-  });
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal || e.target.classList.contains('gem-welcome-modal__close') || e.target.classList.contains('gem-keyboard-shortcuts-close')) {
+        closeModal();
+      }
+    });
 
-  modal.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      closeModal();
-      e.preventDefault();
-      e.stopPropagation();
-    }
-  });
-}
+    modal.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        closeModal();
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    });
+  }
 
 })();

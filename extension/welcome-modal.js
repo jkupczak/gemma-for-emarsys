@@ -20,6 +20,7 @@ function createWelcomeModalHTML() {
           <h3>Feature List</h3>
           <ul class="gem-welcome-modal-features">
             <li><b>Drag-and-Drop Snippets</b> Drag and drop custom ESL snippets into your email editor. Create, edit, pin, categorize, and delete snippets from the Snippets tab in the vertical navigation. You can also import and export snippets as shareable JSON.</li>
+            <li><b>Fullscreen Email Editing</b> Go fullscreen for a bigger view of your email. Use the purple expand icon in the bottom left of the email editor to modify your layout. This increases the total viewable area of your email by over 40%!</li>
             <li>
               <b>Convert ESL to Tokens</b> Instantly <b>convert plain text ESL into ESL tokens</b> by clicking the convert icon <span class="gem-e-icon"></span> wherever you see it.
             </li>
@@ -35,7 +36,6 @@ function createWelcomeModalHTML() {
             <li><b>Custom Color Swatches</b> Custom color swatches are now permanent! Emarsys doesn't remember what colors you used when editing an email. But Gemma does. You can also add default presets that will always display at the top of the color picker (up to 8) from the settings panel.</li>
             </li>
             <li><b>Image Picker</b> When adding an image to your email you'll now get a preview of it right next to the image editor. Makes adding ALT text much easier! You can also see a list of your recently used images for quick selection.</li>
-            <li><b>Fullscreen Email Editing</b> Go fullscreen for a bigger view of your email. Use the purple expand icon in the bottom left of the email editor to modify your layout. This increases the total viewable area of your email by over 40%!</li>
           </ul>
 
           <div style="margin-top: 40px;">
@@ -131,6 +131,7 @@ function createWelcomeModalHTML() {
             <h4>Email Campaign List (r=emailCampaignList/index)</h4>
             <ul>
               <li>Email table is now zebra striped for easier readability.</li>
+              <li>The "Created" filter can now be cleared on page load to load all emails by default. Must be turned on in the settings panel.</li>
             </ul>
 
           </div>

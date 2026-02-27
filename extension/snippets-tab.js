@@ -4,6 +4,11 @@ console.log("[Gem] snippets-tab.js loaded");
 const SNIPPETS_STORAGE_KEY = 'gemSnippets';
 const SNIPPET_CATEGORY_COLLAPSE_STORAGE_KEY = 'gemSnippetCategoryCollapseState';
 const UNCATEGORIZED_LABEL = 'Uncategorized';
+const snippetExportSelectionState = {
+  active: false,
+  mode: null,
+  selectedIds: new Set()
+};
 
 // ------------------------------------------------------------
 // Toast notifications
@@ -305,20 +310,45 @@ function initializeSnippetsTab() {
           <option value="swaps">Show Snippets with Keyword Swaps</option>
         </select>
       </div>
+      <div class="gem-snippets-export-selection-controls" style="display: none;
+    position: sticky; z-index: 10;    
+    top: -24px;">
+    <div style="display:flex; gap: 10px; align-items: center; margin-bottom: 10px; flex-wrap: nowrap;   background: var(--token-box-default-background);
+    border-bottom: 1px solid var(--token-border-default); position: relative; margin-left: -24px; margin-right: -24px; width: calc(100% + 48px);  padding: 22px 24px;">
+        <div style="display:flex; flex-direction:column; align-items:flex-start;">
+          <label style="display:flex; align-items:center; font-weight:bold; gap:6px; font-size:14px; line-height: 16px; cursor:pointer;">
+            <input class="gem-export-select-all-checkbox" type="checkbox">
+            <span class="gem-export-select-all-label">Check all</span>
+          </label>
+          <span class="gem-export-selected-count" style="font-size: 11px; line-height: 16px; opacity: 0.75; margin-left: 20px; margin-top: 2px;">0 selected</span>
+        </div>
+        <div style="margin-left: auto; display:flex; gap:10px; align-items:center;">
+          <button class="e-btn e-btn-primary gem-open-selected-export-modal-btn" type="button" disabled>
+            Export Selected
+          </button>
+          <button class="e-btn gem-cancel-snippet-export-btn" type="button">
+            Cancel
+          </button>
+        </div>
+        </div>
+      </div>
       <div class="gem-snippets-tables">
         ${tablesHTML}
       </div>
-      <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+      <div>
+        <button class="e-btn e-btn-primary gem-add-snippet-btn" type="button" style="width: 100%;">
+          Add a Snippet
+        </button>
+      </div>
+      <div class="gem-snippet-import-export-actions" style="display: flex; gap: 10px; margin-top: 10px;">
         <button class="e-btn gem-import-snippets-btn" type="button" style="flex: 1;">
           Import
         </button>
         <button class="e-btn gem-export-snippets-btn" type="button" style="flex: 1;">
           Export
         </button>
-      </div>
-      <div>
-        <button class="e-btn e-btn-primary gem-add-snippet-btn" type="button" style="width: 100%;">
-          Add a Snippet
+        <button class="e-btn gem-delete-snippets-btn" type="button" style="flex: 1;">
+          Delete
         </button>
       </div>
     </div>
@@ -435,10 +465,23 @@ function initializeSnippetsTab() {
       const categoryKey = category.toLowerCase();
       const isCollapsed = !!collapseState[categoryKey];
       const toggleIcon = isCollapsed ? '▸' : '▾';
+      const categoryExportCheckbox = snippetExportSelectionState.active
+        ? `<input class="gem-export-category-checkbox" type="checkbox" aria-label="Select all snippets in ${escapeHtmlText(category)}" style="cursor:pointer;">`
+        : '';
 
       const rows = list.map((snippet) => {
         const fullSnippetHTML = generateSnippetHTML(snippet.name, snippet.content);
         const snippetNameLower = (snippet.name || '').toLowerCase();
+        const snippetId = String(snippet.id || '');
+        const snippetIdAttr = escapeHtmlText(snippetId);
+        const isSelectedForExport = snippetExportSelectionState.active && snippetExportSelectionState.selectedIds.has(snippetId);
+        const exportSelectCell = snippetExportSelectionState.active
+          ? `
+  <td style="width: 30px; vertical-align:top; padding: 9px 2px 6px 10px;">
+    <input class="gem-export-snippet-checkbox" type="checkbox" data-snippet-id="${snippetIdAttr}" ${isSelectedForExport ? 'checked' : ''} style="cursor:pointer;">
+  </td>
+          `.trim()
+          : '';
         const favoriteStar = snippet.favorite
           ? '<span title="Favorite" aria-label="Favorite" style="margin-right: 6px; font-size: 14px; line-height: 1;">★</span>'
           : '';
@@ -449,7 +492,7 @@ function initializeSnippetsTab() {
         const swapBtn = hasSwap
           ? `
     <e-tooltip width="200" content="Swap Keywords" permission="false">
-          <button class="e-datagrid__item_action gem-swap-snippet-btn" type="button" data-snippet-id="${snippet.id}" title="${canRunFromPanel ? 'Swap Keywords' : 'Swap Keywords (available from Block Toolbar only)'}" ${canRunFromPanel ? '' : 'disabled'} style="min-width: unset; padding: 2px; ${canRunFromPanel ? '' : 'opacity:0.35; cursor:not-allowed;'}">
+          <button class="e-datagrid__item_action gem-swap-snippet-btn" type="button" data-snippet-id="${snippetIdAttr}" title="${canRunFromPanel ? 'Swap Keywords' : 'Swap Keywords (available from Block Toolbar only)'}" ${canRunFromPanel ? '' : 'disabled'} style="min-width: unset; padding: 2px; ${canRunFromPanel ? '' : 'opacity:0.35; cursor:not-allowed;'}">
       <gem-e-icon icon="style" color="inherit">
         <div aria-hidden="true" class="e-icon-wrapper">
           <div class="e-icon e-icon-table text-color-inherit" style="/*color: var(--token-blue-600);*/">&#xF0DE;</div>
@@ -460,8 +503,9 @@ function initializeSnippetsTab() {
           `.trim()
           : '';
         return `
-<tr data-snippet-name="${escapeHtmlText(snippetNameLower)}" data-gem-favorite="${isFav ? 'true' : 'false'}" data-gem-has-swap="${hasSwap ? 'true' : 'false'}">
-  <td style="vertical-align:middle;padding:8px 2px 8px 10px">
+<tr data-snippet-id="${snippetIdAttr}" data-snippet-name="${escapeHtmlText(snippetNameLower)}" data-gem-favorite="${isFav ? 'true' : 'false'}" data-gem-has-swap="${hasSwap ? 'true' : 'false'}">
+  ${exportSelectCell}
+  <td style="vertical-align:middle;padding:8px 2px 8px ${snippetExportSelectionState.active ? '4px' : '10px'}">
     <div style="display:flex; align-items:center;">
       ${favoriteStar}
       <vce-token name="${snippet.name}" data="${fullSnippetHTML.replace(/"/g, '&quot;')}">
@@ -483,7 +527,7 @@ function initializeSnippetsTab() {
     <div class="gem-snippet-row-actions" style="display:flex; justify-content:flex-end; align-items:center">
       ${swapBtn}
       <e-tooltip width="200" content="Copy" permission="false">
-      <button class="e-datagrid__item_action gem-copy-snippet-btn" type="button" data-snippet-id="${snippet.id}" title="Copy snippet" style="min-width: unset; padding: 2px;">
+      <button class="e-datagrid__item_action gem-copy-snippet-btn" type="button" data-snippet-id="${snippetIdAttr}" title="Copy snippet" style="min-width: unset; padding: 2px;">
         <gem-e-icon icon="edit" color="inherit">
           <div aria-hidden="true" class="e-icon-wrapper">
             <div class="e-icon e-icon-table text-color-inherit">&#xF0C9;</div>
@@ -492,7 +536,7 @@ function initializeSnippetsTab() {
       </button>
       </e-tooltip>
       <e-tooltip width="200" content="Edit" permission="false">
-      <button class="e-datagrid__item_action gem-edit-snippet-btn" type="button" data-snippet-id="${snippet.id}" title="Edit snippet" style="min-width: unset; padding: 2px;">
+      <button class="e-datagrid__item_action gem-edit-snippet-btn" type="button" data-snippet-id="${snippetIdAttr}" title="Edit snippet" style="min-width: unset; padding: 2px;">
         <gem-e-icon icon="edit" color="inherit">
           <div aria-hidden="true" class="e-icon-wrapper">
             <div class="e-icon e-icon-table text-color-inherit">&#xF0CE;</div>
@@ -510,6 +554,7 @@ function initializeSnippetsTab() {
 <div class="gem-snippets-category-block" style="margin-bottom: 15px;">
   <div class="gem-snippets-category-title" style="display:flex; align-items:center; justify-content:space-between; font-weight: 600; margin: 6px 0;">
     <span style="display:flex; align-items:center; gap:6px;">
+      ${categoryExportCheckbox}
       <span>${escapeHtmlText(category)}</span>
       <span class="gem-snippets-category-count" style="font-size: 10px;
     display: inline-block;
@@ -781,7 +826,7 @@ function initializeSnippetsTab() {
   }
 
   // ------------------------------------------------------------
-  // Snippet Import / Export
+  // Snippet Import / Export / Delete
   // ------------------------------------------------------------
 
   function parseImportedSnippetsJSON(raw) {
@@ -817,7 +862,304 @@ function initializeSnippetsTab() {
     return `${base} ${i}`;
   }
 
-  function showSnippetsExportModal() {
+  function createSnippetsExportPayload(snippets) {
+    return (snippets || []).map((s) => ({
+      category: s.category || '',
+      name: s.name,
+      content: s.content,
+      description: s.description || '',
+      favorite: !!s.favorite,
+      swapKeywords: normalizeSwapKeywordsFromSnippet(s)
+    }));
+  }
+
+  function resetSnippetExportSelectionState() {
+    snippetExportSelectionState.active = false;
+    snippetExportSelectionState.mode = null;
+    snippetExportSelectionState.selectedIds.clear();
+  }
+
+  function getSnippetSelectionActionLabel(mode = snippetExportSelectionState.mode) {
+    return mode === 'delete' ? 'Delete Selected' : 'Export Selected';
+  }
+
+  function getSelectedSnippetIds() {
+    return Array.from(snippetExportSelectionState.selectedIds);
+  }
+
+  function syncSnippetExportSelectionRows(root) {
+    if (!root) return { total: 0, selected: 0 };
+
+    const rowCheckboxes = Array.from(root.querySelectorAll('.gem-export-snippet-checkbox'));
+    if (!snippetExportSelectionState.active) {
+      rowCheckboxes.forEach((cb) => {
+        cb.checked = false;
+      });
+      return { total: rowCheckboxes.length, selected: 0 };
+    }
+
+    const validIds = new Set();
+    rowCheckboxes.forEach((cb) => {
+      const id = (cb.getAttribute('data-snippet-id') || '').trim();
+      if (id) validIds.add(id);
+    });
+
+    Array.from(snippetExportSelectionState.selectedIds).forEach((id) => {
+      if (!validIds.has(id)) {
+        snippetExportSelectionState.selectedIds.delete(id);
+      }
+    });
+
+    let selected = 0;
+    rowCheckboxes.forEach((cb) => {
+      const id = (cb.getAttribute('data-snippet-id') || '').trim();
+      const checked = !!id && snippetExportSelectionState.selectedIds.has(id);
+      cb.checked = checked;
+      if (checked) selected++;
+    });
+
+    return { total: rowCheckboxes.length, selected };
+  }
+
+  function syncSnippetExportCategoryCheckboxes(root) {
+    if (!root) return;
+
+    const categoryBlocks = root.querySelectorAll('.gem-snippets-category-block');
+    categoryBlocks.forEach((block) => {
+      const categoryCheckbox = block.querySelector('.gem-export-category-checkbox');
+      if (!categoryCheckbox) return;
+
+      const rowCheckboxes = Array.from(block.querySelectorAll('.gem-export-snippet-checkbox'));
+      const total = rowCheckboxes.length;
+      if (!snippetExportSelectionState.active || total === 0) {
+        categoryCheckbox.disabled = true;
+        categoryCheckbox.checked = false;
+        categoryCheckbox.indeterminate = false;
+        return;
+      }
+
+      const selected = rowCheckboxes.reduce((count, cb) => count + (cb.checked ? 1 : 0), 0);
+      categoryCheckbox.disabled = false;
+      categoryCheckbox.checked = selected === total;
+      categoryCheckbox.indeterminate = selected > 0 && selected < total;
+    });
+  }
+
+  function updateSnippetExportSelectionUI(root = document.querySelector('gem-snippets')) {
+    if (!root) return;
+
+    const ioActions = root.querySelector('.gem-snippet-import-export-actions');
+    const selectionControls = root.querySelector('.gem-snippets-export-selection-controls');
+    if (ioActions) {
+      ioActions.style.display = snippetExportSelectionState.active ? 'none' : 'flex';
+    }
+    if (selectionControls) {
+      selectionControls.style.display = snippetExportSelectionState.active ? 'flex' : 'none';
+    }
+
+    const { total, selected } = syncSnippetExportSelectionRows(root);
+    syncSnippetExportCategoryCheckboxes(root);
+
+    const countEl = root.querySelector('.gem-export-selected-count');
+    if (countEl) {
+      countEl.textContent = `${selected} selected`;
+    }
+
+    const selectAllCheckbox = root.querySelector('.gem-export-select-all-checkbox');
+    const selectAllLabel = root.querySelector('.gem-export-select-all-label');
+    if (selectAllCheckbox) {
+      selectAllCheckbox.disabled = !snippetExportSelectionState.active || total === 0;
+      selectAllCheckbox.checked = snippetExportSelectionState.active && total > 0 && selected === total;
+      selectAllCheckbox.indeterminate = snippetExportSelectionState.active && selected > 0 && selected < total;
+
+      const selectAllActionLabel = (snippetExportSelectionState.active && total > 0 && selected === total)
+        ? 'Uncheck all'
+        : 'Check all';
+      if (selectAllLabel) {
+        selectAllLabel.textContent = selectAllActionLabel;
+      }
+      selectAllCheckbox.setAttribute('aria-label', selectAllActionLabel);
+    }
+
+    const exportSelectedBtn = root.querySelector('.gem-open-selected-export-modal-btn');
+    if (exportSelectedBtn) {
+      const isDeleteMode = snippetExportSelectionState.mode === 'delete';
+      exportSelectedBtn.textContent = getSnippetSelectionActionLabel();
+      exportSelectedBtn.classList.toggle('e-btn-danger', isDeleteMode);
+      exportSelectedBtn.classList.toggle('e-btn-primary', !isDeleteMode);
+      exportSelectedBtn.disabled = !snippetExportSelectionState.active || selected === 0;
+    }
+  }
+
+  function enableSnippetSelectionMode(mode = 'export') {
+    const normalizedMode = mode === 'delete' ? 'delete' : 'export';
+    getSnippets((snippets) => {
+      if (!Array.isArray(snippets) || snippets.length === 0) {
+        const actionText = normalizedMode === 'delete' ? 'delete' : 'export';
+        window.gemShowToast && window.gemShowToast(`No snippets available to ${actionText}.`, { type: 'warn', durationMs: 1800 });
+        return;
+      }
+
+      snippetExportSelectionState.active = true;
+      snippetExportSelectionState.mode = normalizedMode;
+      snippetExportSelectionState.selectedIds.clear();
+      refreshSnippetsDisplay();
+    });
+  }
+
+  function enableSnippetExportSelectionMode() {
+    enableSnippetSelectionMode('export');
+  }
+
+  function enableSnippetDeleteSelectionMode() {
+    enableSnippetSelectionMode('delete');
+  }
+
+  function disableSnippetExportSelectionMode(refresh = true) {
+    resetSnippetExportSelectionState();
+    if (refresh) refreshSnippetsDisplay();
+  }
+
+  function setAllSnippetExportSelections(root, shouldSelect) {
+    if (!root || !snippetExportSelectionState.active) return;
+    const rowCheckboxes = root.querySelectorAll('.gem-export-snippet-checkbox');
+    rowCheckboxes.forEach((cb) => {
+      const id = (cb.getAttribute('data-snippet-id') || '').trim();
+      if (!id) return;
+      cb.checked = !!shouldSelect;
+      if (shouldSelect) {
+        snippetExportSelectionState.selectedIds.add(id);
+      } else {
+        snippetExportSelectionState.selectedIds.delete(id);
+      }
+    });
+  }
+
+  function setCategorySnippetExportSelections(categoryBlock, shouldSelect) {
+    if (!categoryBlock || !snippetExportSelectionState.active) return;
+
+    const rowCheckboxes = categoryBlock.querySelectorAll('.gem-export-snippet-checkbox');
+    rowCheckboxes.forEach((cb) => {
+      const id = (cb.getAttribute('data-snippet-id') || '').trim();
+      if (!id) return;
+      cb.checked = !!shouldSelect;
+      if (shouldSelect) {
+        snippetExportSelectionState.selectedIds.add(id);
+      } else {
+        snippetExportSelectionState.selectedIds.delete(id);
+      }
+    });
+  }
+
+  function openSelectedSnippetsExportModal() {
+    const selectedIds = getSelectedSnippetIds();
+    if (!selectedIds.length) {
+      window.gemShowToast && window.gemShowToast('Select at least one snippet to export.', { type: 'warn', durationMs: 1800 });
+      return;
+    }
+
+    getSnippets((snippets) => {
+      const selectedLookup = new Set(selectedIds);
+      const selectedSnippets = (snippets || []).filter((s) => selectedLookup.has(String((s && s.id) || '')));
+      if (!selectedSnippets.length) {
+        window.gemShowToast && window.gemShowToast('No selected snippets were found. Please try again.', { type: 'warn', durationMs: 2000 });
+        return;
+      }
+      showSnippetsExportModal(selectedSnippets);
+    });
+  }
+
+  function deleteSelectedSnippets() {
+    const selectedIds = getSelectedSnippetIds();
+    if (!selectedIds.length) {
+      window.gemShowToast && window.gemShowToast('Select at least one snippet to delete.', { type: 'warn', durationMs: 1800 });
+      return;
+    }
+
+    const confirmed = confirm(`Are you sure you want to delete ${selectedIds.length} selected snippet${selectedIds.length === 1 ? '' : 's'}? This action cannot be undone.`);
+    if (!confirmed) return;
+
+    getSnippets((snippets) => {
+      const source = Array.isArray(snippets) ? snippets : [];
+      const selectedLookup = new Set(selectedIds);
+      const updated = source.filter((s) => !selectedLookup.has(String((s && s.id) || '')));
+      const removedCount = source.length - updated.length;
+      if (removedCount <= 0) {
+        window.gemShowToast && window.gemShowToast('No selected snippets were found. Please try again.', { type: 'warn', durationMs: 2000 });
+        return;
+      }
+
+      saveSnippets(updated, () => {
+        disableSnippetExportSelectionMode(true);
+        window.gemShowToast && window.gemShowToast(`Deleted ${removedCount} snippet${removedCount === 1 ? '' : 's'}.`, { type: 'success', durationMs: 1800 });
+      });
+    });
+  }
+
+  function runSnippetSelectionPrimaryAction() {
+    if (snippetExportSelectionState.mode === 'delete') {
+      deleteSelectedSnippets();
+      return;
+    }
+    openSelectedSnippetsExportModal();
+  }
+
+  function setupSnippetExportSelectionHandlers(root) {
+    if (!root || root._gemExportSelectionBound) return;
+    root._gemExportSelectionBound = true;
+
+    root.addEventListener('change', (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+
+      const rowCheckbox = target.closest('.gem-export-snippet-checkbox');
+      if (rowCheckbox) {
+        const snippetId = (rowCheckbox.getAttribute('data-snippet-id') || '').trim();
+        if (snippetId) {
+          if (rowCheckbox.checked) {
+            snippetExportSelectionState.selectedIds.add(snippetId);
+          } else {
+            snippetExportSelectionState.selectedIds.delete(snippetId);
+          }
+        }
+        updateSnippetExportSelectionUI(root);
+        return;
+      }
+
+      const categoryCheckbox = target.closest('.gem-export-category-checkbox');
+      if (categoryCheckbox) {
+        const categoryBlock = categoryCheckbox.closest('.gem-snippets-category-block');
+        setCategorySnippetExportSelections(categoryBlock, !!categoryCheckbox.checked);
+        updateSnippetExportSelectionUI(root);
+        return;
+      }
+
+      const selectAllCheckbox = target.closest('.gem-export-select-all-checkbox');
+      if (selectAllCheckbox) {
+        setAllSnippetExportSelections(root, !!selectAllCheckbox.checked);
+        updateSnippetExportSelectionUI(root);
+      }
+    });
+
+    root.addEventListener('click', (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+
+      const exportSelectedBtn = target.closest('.gem-open-selected-export-modal-btn');
+      if (exportSelectedBtn) {
+        if (exportSelectedBtn.hasAttribute('disabled')) return;
+        runSnippetSelectionPrimaryAction();
+        return;
+      }
+
+      const cancelBtn = target.closest('.gem-cancel-snippet-export-btn');
+      if (cancelBtn) {
+        disableSnippetExportSelectionMode(true);
+      }
+    });
+  }
+
+  function showSnippetsExportModal(snippetsToExport = null) {
     const modal = document.createElement('div');
     modal.style.cssText = `
       position: fixed;
@@ -833,10 +1175,15 @@ function initializeSnippetsTab() {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     `;
 
+    const explicitSelectionCount = Array.isArray(snippetsToExport) ? snippetsToExport.length : null;
+    const subtitle = explicitSelectionCount === null
+      ? 'Copy the JSON below to backup or share your snippets:'
+      : `Copy the JSON below to backup or share ${explicitSelectionCount} selected snippet${explicitSelectionCount === 1 ? '' : 's'}:`;
+
     modal.innerHTML = `
       <div style="background: var(--token-box-default-background, #ffffff); border-radius: 12px; padding: 20px; max-width: 700px; width: 92%; max-height: 80vh; display: flex; flex-direction: column;">
         <h3 style="margin: 0 0 12px 0; color: var(--token-font-default, #333333);">Export Snippets</h3>
-        <p style="margin: 0 0 12px 0; color: var(--token-font-default, #666666); font-size: 14px;">Copy the JSON below to backup or share your snippets:</p>
+        <p style="margin: 0 0 12px 0; color: var(--token-font-default, #666666); font-size: 14px;">${subtitle}</p>
         <textarea id="gem-snippets-export-json" class="gem-scrollable" readonly style="background:var(--token-input-default-background); width: 100%; height: 260px; padding: 10px; border: 1px solid var(--token-box-default-border, #e0e0e0); border-radius: 4px; font-family: monospace; font-size: 12px; resize: vertical; margin-bottom: 15px;"></textarea>
         <div style="display: flex; gap: 10px; justify-content: flex-end;">
           <button id="gem-snippets-copy-export-btn" style="padding: 8px 16px; background: #10b981; color: white; border: none; border-radius: 4px; cursor: pointer;">Copy</button>
@@ -847,21 +1194,24 @@ function initializeSnippetsTab() {
 
     document.body.appendChild(modal);
 
-    getSnippets((snippets) => {
+    const setExportPayload = (snippets) => {
       const exportTextarea = modal.querySelector('#gem-snippets-export-json');
-      // Export user-facing fields (IDs are regenerated on import).
-      const exportPayload = snippets.map(s => ({
-        category: s.category || '',
-        name: s.name,
-        content: s.content,
-        description: s.description || '',
-        favorite: !!s.favorite,
-          swapKeywords: normalizeSwapKeywordsFromSnippet(s)
-      }));
+      const exportPayload = createSnippetsExportPayload(snippets);
       exportTextarea.value = JSON.stringify(exportPayload, null, 2);
-    });
+    };
 
-    const close = () => modal.remove();
+    if (Array.isArray(snippetsToExport)) {
+      setExportPayload(snippetsToExport);
+    } else {
+      getSnippets((snippets) => {
+        setExportPayload(snippets);
+      });
+    }
+
+    const close = () => {
+      document.removeEventListener('keydown', handleEscape);
+      modal.remove();
+    };
     modal.querySelector('#gem-snippets-close-export-btn').addEventListener('click', close);
 
     modal.querySelector('#gem-snippets-copy-export-btn').addEventListener('click', async () => {
@@ -896,7 +1246,6 @@ function initializeSnippetsTab() {
     const handleEscape = (e) => {
       if (e.key === 'Escape') {
         close();
-        document.removeEventListener('keydown', handleEscape);
       }
     };
     document.addEventListener('keydown', handleEscape);
@@ -1061,8 +1410,14 @@ function initializeSnippetsTab() {
   }
 
   function setupSnippetsImportExportButtons() {
-    const importBtn = document.querySelector('gem-snippets .gem-import-snippets-btn');
-    const exportBtn = document.querySelector('gem-snippets .gem-export-snippets-btn');
+    const root = document.querySelector('gem-snippets');
+    if (!root) return;
+
+    const importBtn = root.querySelector('.gem-import-snippets-btn');
+    const exportBtn = root.querySelector('.gem-export-snippets-btn');
+    const deleteBtn = root.querySelector('.gem-delete-snippets-btn');
+
+    setupSnippetExportSelectionHandlers(root);
 
     if (importBtn && !importBtn._gemImportBound) {
       importBtn._gemImportBound = true;
@@ -1071,8 +1426,15 @@ function initializeSnippetsTab() {
 
     if (exportBtn && !exportBtn._gemExportBound) {
       exportBtn._gemExportBound = true;
-      exportBtn.addEventListener('click', showSnippetsExportModal);
+      exportBtn.addEventListener('click', enableSnippetExportSelectionMode);
     }
+
+    if (deleteBtn && !deleteBtn._gemDeleteBound) {
+      deleteBtn._gemDeleteBound = true;
+      deleteBtn.addEventListener('click', enableSnippetDeleteSelectionMode);
+    }
+
+    updateSnippetExportSelectionUI(root);
   }
 
   // Function to add the snippets tab after the links tab
@@ -1229,6 +1591,7 @@ function initializeSnippetsTab() {
           // Remove the gem-snippets element from the DOM
           const snippetList = document.querySelector('gem-snippets');
           if (snippetList) {
+            disableSnippetExportSelectionMode(false);
             snippetList.remove();
             console.log("[Gem] Removed gem-snippets from DOM");
           }
@@ -2769,6 +3132,7 @@ function initializeSnippetsTab() {
         setupSnippetCategoryCollapseToggles();
         setupSnippetsSearch();
         setupSnippetsFilterSelect();
+        setupSnippetsImportExportButtons();
 
         // Re-apply current search after re-render
         if (root && currentSearch) {

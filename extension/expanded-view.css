@@ -16,7 +16,7 @@
     display: flex !important;
     gap: 16px;
     border-bottom: 1px solid var(--token-border-default) !important;
-    padding: 16px 22px 16px 34px;
+    padding: 16px 22px 16px 30px;
 }
 .gem-expanded .gem-compact-email-tools-dropdown {
     display: flex;
@@ -69,16 +69,25 @@
 }
 .gem-expanded .gem-compact-email-versions.active {
     display: flex !important;
-    padding: 10px 22px 22px 34px;
+    padding: 10px 22px 22px 30px;
 }
 
-.gem-expanded main e-verticalnav-menu {
-    width: 78px;
-    padding-left: 14px;
+.gem-expanded e-verticalnav-menu {
+    width: 87px;
+    padding-left: 15px;
+
+    & e-verticalnav-item .e-verticalnavitem-active:after {
+        left: 68px;
+    }
+    & e-verticalnav-item e-tooltip {
+        padding-right: 8px;
+    }
 }
 
-.gem-expanded main .gem-nav-icons {
-    padding-right: 14px !important;
+.gem-expanded .gem-nav-icons {
+    padding-right: 0 !important;
+    left: 8px;
+    width: 77px !important;
 }
 
 .gem-expanded main cb-block-level-variable .e-section__header,
@@ -99,7 +108,7 @@
     font-weight: normal !important;
     word-break: break-all;
     position: relative;
-    padding: 10px 18px 10px 34px;
+    padding: 10px 18px 10px 30px;
 }
 
 .gem-expanded main .gem-header-copy-icon {
@@ -209,12 +218,20 @@
 .gem-expanded e-navigation {
     z-index: 610;
     display: block !important;
-    left: -60px;
+    left: -64px;
     margin: 0 !important;
     box-shadow: none !important;
-    height: calc(100vh - 20px);
-    top: 10px !important;
+    height: 100vh;
+    top:0 !important;
     transition: left 0.05s ease-out;
+
+    & .e-navigation__panel > nav.e-navigation__menu {
+        height: 100vh !important;
+        background: var(--token-blue-200);
+        margin: 0;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+    }
 }
 .gem-expanded e-navigation:hover {
     left: 0 !important;
@@ -320,4 +337,17 @@
 
 .gem-expanded cb-header a.e-layout__back {
     display: none !important;
+}
+
+.gem-expanded main {
+    & section.e-contentblocks-navigation_section:has(.e-verticalnav__content cb-campaign-variables),
+    & section.e-contentblocks-navigation_section:has(.e-verticalnav__content gem-snippets),
+    & section.e-contentblocks-navigation_section:has(.e-verticalnav__content cb-email-basics-tab),
+    & section.e-contentblocks-navigation_section:has(.e-verticalnav__content cb-versions),
+    & section.e-contentblocks-navigation_section:has(.e-verticalnav__content cb-locales-tab),
+    & section.e-contentblocks-navigation_section:has(.e-verticalnav__content cb-custom-tab),
+    & section.e-contentblocks-navigation_section:has(.e-verticalnav__content cb-campaign-latest-media),
+    & section.e-contentblocks-navigation_section:has(.e-verticalnav__content cb-available-block-list) {
+        flex: 0 0 554px !important;
+    }
 }
