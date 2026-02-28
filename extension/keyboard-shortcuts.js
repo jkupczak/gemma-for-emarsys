@@ -213,15 +213,6 @@ function initializeKeyboardShortcuts() {
           }
         });
 
-        // Update preview toolbar orientation class based on current view + settings
-        try {
-          const rootWin = (() => {
-            try { return window.top || window; } catch (_) { return window; }
-          })();
-          if (rootWin && rootWin.gemApplyEmailPreviewToolbarPositionClass) {
-            rootWin.gemApplyEmailPreviewToolbarPositionClass();
-          }
-        } catch (_) {}
       } catch (error) {
         console.error("[Gem] Error toggling expanded mode:", error);
       }

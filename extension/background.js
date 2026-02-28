@@ -3,6 +3,74 @@
 // Simple background service worker for Gemma
 // ------------------------------------------------------------
 
+(function initGemDebugLoggingGate() {
+  const GEM_DEBUG_STORAGE_KEY = 'gemDebugLogging';
+  const root = globalThis;
+
+  try {
+    if (root.__gemDebugGateInstalled) return;
+    root.__gemDebugGateInstalled = true;
+
+    const state = { enabled: false };
+    const prefixRegex = /^\[(?:Gem(?:ma)?|gem(?:ma)?)(?:\]|-|\s)/;
+    const methods = ['log', 'info', 'debug', 'warn'];
+
+    methods.forEach((methodName) => {
+      const original = console[methodName];
+      if (typeof original !== 'function') return;
+      const bound = original.bind(console);
+      console[methodName] = (...args) => {
+        const first = args && args.length ? args[0] : null;
+        const isGemLog = typeof first === 'string' && prefixRegex.test(first);
+        if (!state.enabled && isGemLog) return;
+        bound(...args);
+      };
+    });
+
+    const applyDebugFlag = (enabled) => {
+      state.enabled = !!enabled;
+      root.GEM_DEBUG = state.enabled;
+    };
+
+    root.gemIsDebugLoggingEnabled = () => !!state.enabled;
+    root.gemSetDebugLogging = (enabled, persist = false) => {
+      applyDebugFlag(enabled);
+      if (!persist) return;
+      try {
+        chrome.storage.sync.set({ [GEM_DEBUG_STORAGE_KEY]: !!enabled });
+      } catch (_) {}
+    };
+
+    const logGemDebugHelpOnce = () => {
+      try {
+        if (root.__gemDebugHelpLogged) return;
+        root.__gemDebugHelpLogged = true;
+        console.log(
+          `Gemma debug logging is available. Default: OFF (suppresses Gemma console.log/info/debug/warn; errors remain). Enable: gemSetDebugLogging(true, true). Disable: gemSetDebugLogging(false, true). Current: ${state.enabled ? 'ON' : 'OFF'}.`
+        );
+      } catch (_) {}
+    };
+
+    applyDebugFlag(false);
+    logGemDebugHelpOnce();
+
+    try {
+      chrome.storage.sync.get({ [GEM_DEBUG_STORAGE_KEY]: false }, (res) => {
+        applyDebugFlag(!!(res && res[GEM_DEBUG_STORAGE_KEY]));
+      });
+    } catch (_) {}
+
+    try {
+      chrome.storage.onChanged.addListener((changes, namespace) => {
+        if (namespace !== 'sync' || !changes || !changes[GEM_DEBUG_STORAGE_KEY]) return;
+        applyDebugFlag(!!changes[GEM_DEBUG_STORAGE_KEY].newValue);
+      });
+    } catch (_) {}
+  } catch (_) {
+    root.GEM_DEBUG = false;
+  }
+})();
+
 console.log("[Gem] Background script loading...");
 
 function bgLog(...args) {

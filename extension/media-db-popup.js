@@ -1,3 +1,70 @@
+// Default logging behavior: quiet unless debug is explicitly enabled.
+(function initGemDebugLoggingGate() {
+  const GEM_DEBUG_STORAGE_KEY = 'gemDebugLogging';
+  try {
+    if (window.__gemDebugGateInstalled) return;
+    window.__gemDebugGateInstalled = true;
+
+    const state = { enabled: false };
+    const prefixRegex = /^\[(?:Gem(?:ma)?|gem(?:ma)?)(?:\]|-|\s)/;
+    const methods = ['log', 'info', 'debug', 'warn'];
+
+    methods.forEach((methodName) => {
+      const original = console[methodName];
+      if (typeof original !== 'function') return;
+      const bound = original.bind(console);
+      console[methodName] = (...args) => {
+        const first = args && args.length ? args[0] : null;
+        const isGemLog = typeof first === 'string' && prefixRegex.test(first);
+        if (!state.enabled && isGemLog) return;
+        bound(...args);
+      };
+    });
+
+    const applyDebugFlag = (enabled) => {
+      state.enabled = !!enabled;
+      window.GEM_DEBUG = state.enabled;
+    };
+
+    window.gemIsDebugLoggingEnabled = () => !!state.enabled;
+    window.gemSetDebugLogging = (enabled, persist = false) => {
+      applyDebugFlag(enabled);
+      if (!persist) return;
+      try {
+        chrome.storage.sync.set({ [GEM_DEBUG_STORAGE_KEY]: !!enabled });
+      } catch (_) {}
+    };
+
+    const logGemDebugHelpOnce = () => {
+      try {
+        if (window.__gemDebugHelpLogged) return;
+        window.__gemDebugHelpLogged = true;
+        console.log(
+          `Gemma debug logging is available. Default: OFF (suppresses Gemma console.log/info/debug/warn; errors remain). Enable: window.gemSetDebugLogging(true, true). Disable: window.gemSetDebugLogging(false, true). Current: ${state.enabled ? 'ON' : 'OFF'}.`
+        );
+      } catch (_) {}
+    };
+
+    applyDebugFlag(false);
+    logGemDebugHelpOnce();
+
+    try {
+      chrome.storage.sync.get({ [GEM_DEBUG_STORAGE_KEY]: false }, (res) => {
+        applyDebugFlag(!!(res && res[GEM_DEBUG_STORAGE_KEY]));
+      });
+    } catch (_) {}
+
+    try {
+      chrome.storage.onChanged.addListener((changes, namespace) => {
+        if (namespace !== 'sync' || !changes || !changes[GEM_DEBUG_STORAGE_KEY]) return;
+        applyDebugFlag(!!changes[GEM_DEBUG_STORAGE_KEY].newValue);
+      });
+    } catch (_) {}
+  } catch (_) {
+    window.GEM_DEBUG = false;
+  }
+})();
+
 // NOTE: Keep this file quiet by default to avoid perf issues in the MediaDB popup.
 
 // ------------------------------------------------------------
@@ -9,8 +76,12 @@ function initializeRecentlySeenLogger() {
   const RECENTLY_USED_SYNC_KEY = 'gemRecentImages';
   const RECENTLY_SEEN_MAX_SETTING_KEY = 'gemRecentlySeenImagesMax';
   let recentlySeenMax = 300;
-  const DEBUG = true;
-  const dbg = (...args) => { try { if (DEBUG) console.log('[Gem-Recently-Seen]', ...args); } catch (_) {} };
+  const dbg = (...args) => {
+    try {
+      if (window.gemIsDebugLoggingEnabled && !window.gemIsDebugLoggingEnabled()) return;
+      console.log('[Gem-Recently-Seen]', ...args);
+    } catch (_) {}
+  };
   const loggedSkips = new Set();
   // Use local storage for this high-churn list to avoid chrome.storage.sync quota/throttling.
   const STORE = chrome.storage.local;

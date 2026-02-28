@@ -335,7 +335,7 @@ function initializeSnippetsTab() {
       <div class="gem-snippets-tables">
         ${tablesHTML}
       </div>
-      <div>
+      <div class="gem-add-snippet-action">
         <button class="e-btn e-btn-primary gem-add-snippet-btn" type="button" style="width: 100%;">
           Add a Snippet
         </button>
@@ -950,11 +950,15 @@ function initializeSnippetsTab() {
 
     const ioActions = root.querySelector('.gem-snippet-import-export-actions');
     const selectionControls = root.querySelector('.gem-snippets-export-selection-controls');
+    const addSnippetAction = root.querySelector('.gem-add-snippet-action');
     if (ioActions) {
       ioActions.style.display = snippetExportSelectionState.active ? 'none' : 'flex';
     }
     if (selectionControls) {
       selectionControls.style.display = snippetExportSelectionState.active ? 'flex' : 'none';
+    }
+    if (addSnippetAction) {
+      addSnippetAction.style.display = snippetExportSelectionState.active ? 'none' : '';
     }
 
     const { total, selected } = syncSnippetExportSelectionRows(root);
@@ -1066,6 +1070,7 @@ function initializeSnippetsTab() {
         return;
       }
       showSnippetsExportModal(selectedSnippets);
+      disableSnippetExportSelectionMode(true);
     });
   }
 

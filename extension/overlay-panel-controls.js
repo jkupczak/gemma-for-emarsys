@@ -1071,6 +1071,171 @@ function initializeOverlayPanelControls() {
       }
     }
 
+    function normalizeImageAltSwapMode(mode) {
+      return mode === 'plain' ? 'plain' : 'token';
+    }
+
+    function normalizeImageAltSwapMatchRule(v) {
+      if (v === 'whole') return 'whole';
+      return 'partial';
+    }
+
+    function normalizeImageAltSwapInitiateFrom(v) {
+      if (v === 'panel' || v === 'toolbar') return v;
+      return 'anywhere';
+    }
+
+    function normalizeImageAltSwapKeywordsFromSnippet(snippet) {
+      if (!snippet) return [];
+
+      if (Array.isArray(snippet.swapKeywords)) {
+        const cleaned = snippet.swapKeywords
+          .map((k) => ({
+            keyword: (k && typeof k.keyword === 'string') ? k.keyword.trim() : '',
+            mode: normalizeImageAltSwapMode(k && k.mode),
+            matchRule: normalizeImageAltSwapMatchRule(k && k.matchRule),
+            initiateFrom: normalizeImageAltSwapInitiateFrom(k && k.initiateFrom)
+          }))
+          .filter((k) => !!k.keyword);
+
+        const seen = new Set();
+        const unique = [];
+        cleaned.forEach((k) => {
+          if (seen.has(k.keyword)) return;
+          seen.add(k.keyword);
+          unique.push(k);
+        });
+        return unique;
+      }
+
+      const legacyKeyword = (snippet.swapKeyword && typeof snippet.swapKeyword === 'string') ? snippet.swapKeyword.trim() : '';
+      if (!legacyKeyword) return [];
+      return [{ keyword: legacyKeyword, mode: normalizeImageAltSwapMode(snippet.swapMode), matchRule: 'partial', initiateFrom: 'anywhere' }];
+    }
+
+    function createImageAltSwapKeywordRegex(keyword, matchRule) {
+      const escaped = String(keyword || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      if (!escaped) return null;
+      return normalizeImageAltSwapMatchRule(matchRule) === 'whole'
+        ? new RegExp(`\\b${escaped}\\b`, 'g')
+        : new RegExp(escaped, 'g');
+    }
+
+    function loadSnippetsForImageAltSwap(callback) {
+      if (typeof window.getSnippets === 'function') {
+        window.getSnippets((snippets) => callback(Array.isArray(snippets) ? snippets : []));
+        return;
+      }
+      if (typeof window.gemLoadSnippets === 'function') {
+        window.gemLoadSnippets((snippets) => callback(Array.isArray(snippets) ? snippets : []));
+        return;
+      }
+      chrome.storage.sync.get({ gemSnippets: [] }, (result) => {
+        const snippets = result && Array.isArray(result.gemSnippets) ? result.gemSnippets : [];
+        callback(snippets);
+      });
+    }
+
+    function performImageAltTextKeywordSwap(modal, inputEl = null) {
+      const input = inputEl || modal.querySelector('input.e-input[placeholder="Image alternative text"]');
+      if (!input) {
+        window.gemShowToast && window.gemShowToast('Unable to access image alternative text.', { type: 'error', duration: 3000 });
+        return;
+      }
+
+      const originalText = String(input.value || '');
+      if (!originalText.trim()) {
+        window.gemShowToast && window.gemShowToast('Image alternative text is empty.', { type: 'info', duration: 3000 });
+        return;
+      }
+
+      loadSnippetsForImageAltSwap((snippets) => {
+        const swappableSnippets = (snippets || []).filter((snippet) =>
+          normalizeImageAltSwapKeywordsFromSnippet(snippet).some((r) => r && r.keyword && r.initiateFrom !== 'toolbar' && r.initiateFrom !== 'panel')
+        );
+
+        if (!swappableSnippets.length) {
+          window.gemShowToast && window.gemShowToast('No snippets with keyword swap rules found.', { type: 'info', duration: 3000 });
+          return;
+        }
+
+        let modifiedText = originalText;
+        let totalSwaps = 0;
+
+        swappableSnippets.forEach((snippet) => {
+          const rules = normalizeImageAltSwapKeywordsFromSnippet(snippet)
+            .filter((r) => r && r.keyword && r.initiateFrom !== 'toolbar' && r.initiateFrom !== 'panel');
+
+          rules.forEach((rule) => {
+            const regex = createImageAltSwapKeywordRegex(rule.keyword, rule.matchRule);
+            if (!regex) return;
+            const matches = modifiedText.match(regex);
+            if (!matches || !matches.length) return;
+            totalSwaps += matches.length;
+            modifiedText = modifiedText.replace(regex, (snippet && snippet.content) ? snippet.content : (snippet && snippet.name) ? snippet.name : '');
+          });
+        });
+
+        if (!totalSwaps) {
+          window.gemShowToast && window.gemShowToast('No matching keywords found to swap.', { type: 'info', duration: 3000 });
+          return;
+        }
+
+        input.value = modifiedText;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+        input.dispatchEvent(new Event('keydown', { bubbles: true }));
+        input.dispatchEvent(new Event('keyup', { bubbles: true }));
+        try {
+          if (document.activeElement !== input) {
+            input.focus();
+            input.blur();
+          }
+        } catch (_) {}
+
+        window.gemShowToast && window.gemShowToast(`Performed ${totalSwaps} keyword swap${totalSwaps === 1 ? '' : 's'} in image alternative text.`, { type: 'success', duration: 3500 });
+      });
+    }
+
+    function ensureImageAltTextSwapButton(modal) {
+      const input = modal.querySelector('input.e-input[placeholder="Image alternative text"]');
+      if (!input) return;
+
+      const row = input.closest('.e-grid.e-grid-xsmall') || input.closest('.e-grid');
+      if (!row) return;
+      if (row.querySelector('.gem-image-alt-swap-keywords-btn')) return;
+
+      const actionCell = document.createElement('div');
+      actionCell.className = 'e-cell e-cell-xsmall gem-image-alt-swap-cell';
+      actionCell.style.display = 'flex';
+      actionCell.style.alignItems = 'center';
+      actionCell.style.justifyContent = 'flex-end';
+      actionCell.style.paddingLeft = '8px';
+
+      const swapButton = document.createElement('button');
+      swapButton.className = 'e-btn e-btn-sm gem-image-alt-swap-keywords-btn';
+      swapButton.type = 'button';
+      swapButton.title = 'Swap Keywords';
+      swapButton.setAttribute('aria-label', 'Swap Keywords');
+      swapButton.style.minWidth = 'unset';
+      swapButton.style.padding = '0 2px 0 10px';
+      swapButton.innerHTML = `
+        <gem-e-icon icon="style" color="inherit">
+          <div aria-hidden="true" class="e-icon-wrapper">
+            <div class="e-icon text-color-inherit">&#xF0DE;</div>
+          </div>
+        </gem-e-icon>
+      `;
+      swapButton.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        performImageAltTextKeywordSwap(modal, input);
+      });
+
+      actionCell.appendChild(swapButton);
+      row.appendChild(actionCell);
+    }
+
     function setImageWidthInput(modal, width) {
       const n = (typeof width === 'number') ? width : parseInt(String(width || '').trim(), 10);
       if (!Number.isFinite(n) || n <= 0) return false;
@@ -1103,6 +1268,24 @@ function initializeOverlayPanelControls() {
       const leftPanelContainer = modal.querySelector('#gem-image-properties-left-panel');
       if (!leftPanelContainer) return;
 
+      function sanitizeSearchAgainstActivePills(rawValue, pills) {
+        const raw = String(rawValue || '').trim();
+        if (!raw) return '';
+        const activeTerms = new Set(
+          (Array.isArray(pills) ? pills : [])
+            .filter((p) => p && p.active)
+            .map((p) => String((p && p.term) || '').trim().toLowerCase())
+            .filter(Boolean)
+        );
+        if (activeTerms.size === 0) return raw;
+        const remainingTokens = raw
+          .split(/\s+/)
+          .map((t) => t.trim())
+          .filter(Boolean)
+          .filter((t) => !activeTerms.has(t.toLowerCase()));
+        return remainingTokens.join(' ');
+      }
+
       // Create picker container once
       let picker = leftPanelContainer.querySelector('#gem-recent-images-picker');
       if (!picker) {
@@ -1128,10 +1311,6 @@ function initializeOverlayPanelControls() {
         }, (result) => {
           const searches = result[GEM_IMAGE_PROPERTIES_SEARCH_KEY] || {};
 
-          // Set search values from storage or defaults
-          picker.dataset.gemFavoriteImagesSearch = searches.favorites || '';
-          picker.dataset.gemSeenImagesSearch = searches.seen || '';
-
           const favPillsRaw = result[GEM_IMAGE_PROPERTIES_SEARCH_PILLS_FAV_KEY];
           const seenPillsRaw = result[GEM_IMAGE_PROPERTIES_SEARCH_PILLS_SEEN_KEY];
           const normalizePills = (arr) => (Array.isArray(arr) ? arr : []).map((p) =>
@@ -1139,8 +1318,28 @@ function initializeOverlayPanelControls() {
               ? { term: String(p.term).trim(), active: !!p.active }
               : null
           ).filter(Boolean);
-          picker._gemFavoriteImagesSearchPills = normalizePills(favPillsRaw);
-          picker._gemSeenImagesSearchPills = normalizePills(seenPillsRaw);
+          const favoritePills = normalizePills(favPillsRaw);
+          const seenPills = normalizePills(seenPillsRaw);
+          picker._gemFavoriteImagesSearchPills = favoritePills;
+          picker._gemSeenImagesSearchPills = seenPills;
+
+          // Restore search values, but avoid duplicating terms already active as pills.
+          const favoriteSearchRaw = searches.favorites || '';
+          const seenSearchRaw = searches.seen || '';
+          const nextFavoriteSearch = sanitizeSearchAgainstActivePills(favoriteSearchRaw, favoritePills);
+          const nextSeenSearch = sanitizeSearchAgainstActivePills(seenSearchRaw, seenPills);
+          picker.dataset.gemFavoriteImagesSearch = nextFavoriteSearch;
+          picker.dataset.gemSeenImagesSearch = nextSeenSearch;
+
+          if (nextFavoriteSearch !== String(favoriteSearchRaw || '').trim() || nextSeenSearch !== String(seenSearchRaw || '').trim()) {
+            chrome.storage.sync.set({
+              [GEM_IMAGE_PROPERTIES_SEARCH_KEY]: {
+                ...searches,
+                favorites: nextFavoriteSearch,
+                seen: nextSeenSearch
+              }
+            });
+          }
 
           // Default source view
           if (!picker.dataset.gemRecentImagesSource) {
@@ -1477,6 +1676,12 @@ function initializeOverlayPanelControls() {
           }
           if (!changed) {
             searchInput.value = '';
+            picker.dataset[isFav ? 'gemFavoriteImagesSearch' : 'gemSeenImagesSearch'] = '';
+            chrome.storage.sync.get({ [GEM_IMAGE_PROPERTIES_SEARCH_KEY]: {} }, (result) => {
+              const searches = result[GEM_IMAGE_PROPERTIES_SEARCH_KEY] || {};
+              searches[isFav ? 'favorites' : 'seen'] = '';
+              chrome.storage.sync.set({ [GEM_IMAGE_PROPERTIES_SEARCH_KEY]: searches });
+            });
             showRecentImagesPicker(modal, { contentOnly: true });
             return;
           }
@@ -1486,6 +1691,11 @@ function initializeOverlayPanelControls() {
           chrome.storage.sync.set({ [key]: pills });
           searchInput.value = '';
           picker.dataset[isFav ? 'gemFavoriteImagesSearch' : 'gemSeenImagesSearch'] = '';
+          chrome.storage.sync.get({ [GEM_IMAGE_PROPERTIES_SEARCH_KEY]: {} }, (result) => {
+            const searches = result[GEM_IMAGE_PROPERTIES_SEARCH_KEY] || {};
+            searches[isFav ? 'favorites' : 'seen'] = '';
+            chrome.storage.sync.set({ [GEM_IMAGE_PROPERTIES_SEARCH_KEY]: searches });
+          });
           showRecentImagesPicker(modal, { contentOnly: true });
         }, true);
 
@@ -3237,6 +3447,7 @@ function initializeOverlayPanelControls() {
         try { container._gemRecentImagesButtonObserver && container._gemRecentImagesButtonObserver.disconnect(); } catch (_) {}
         try { container._gemModalDetachObserver && container._gemModalDetachObserver.disconnect(); } catch (_) {}
         try { container._gemPreviewRemovalObserver && container._gemPreviewRemovalObserver.disconnect(); } catch (_) {}
+        try { container._gemPreviewTabStateObserver && container._gemPreviewTabStateObserver.disconnect(); } catch (_) {}
         try {
           if (container._gemStorageChangeHandler) {
             chrome.storage.onChanged.removeListener(container._gemStorageChangeHandler);
@@ -3251,6 +3462,7 @@ function initializeOverlayPanelControls() {
         container._gemRecentImagesButtonObserver = null;
         container._gemModalDetachObserver = null;
         container._gemPreviewRemovalObserver = null;
+        container._gemPreviewTabStateObserver = null;
         container._gemStorageChangeHandler = null;
         container._gemRecentlySeenRefreshT = null;
         previewLog('cleanup complete', { debugId: container._gemPreviewDebugId });
@@ -3343,27 +3555,9 @@ function initializeOverlayPanelControls() {
       }
 
       const getActivePreviewTab = () => {
-        const active = modal.querySelector('.e-tabs__title-active[data-tab]');
+        const active = modal.querySelector('.e-tabs__title.e-tabs__title-active[data-tab="mobile"], .e-tabs__title.e-tabs__title-active[data-tab="desktop"]');
         const domTab = active && active.getAttribute('data-tab');
-        const last = container._gemPreviewLastTab;
-        // Emarsys can delay updating the active-tab class until after CodeMirror blur.
-        // If we have a recent user intent (last clicked tab), trust it over the DOM.
-        if (last) {
-          const normalizedLast = last === 'mobile' ? 'mobile' : 'desktop';
-          // If DOM agrees, great; if DOM disagrees, DOM is likely stale—keep last.
-          if (domTab && (domTab === 'mobile' ? 'mobile' : 'desktop') === normalizedLast) {
-            return normalizedLast;
-          }
-          return normalizedLast;
-        }
-
-        if (domTab) {
-          const normalizedDom = domTab === 'mobile' ? 'mobile' : 'desktop';
-          // Seed lastTab on first read so future logic can rely on it.
-          container._gemPreviewLastTab = normalizedDom;
-          return normalizedDom;
-        }
-
+        if (domTab === 'mobile') return 'mobile';
         return 'desktop';
       };
 
@@ -3447,21 +3641,81 @@ function initializeOverlayPanelControls() {
         }
       };
 
+      const getMobilePreviewVisibilityMode = () => {
+        const sameRadio = modal.querySelector('#imageVisibilitySwitch_showImageOnMobile');
+        const hideRadio = modal.querySelector('#imageVisibilitySwitch_hideImageOnMobile');
+        const altRadio = modal.querySelector('#imageVisibilitySwitch_useAlternateImage');
+        if (!sameRadio && !hideRadio && !altRadio) return null;
+        if (altRadio && altRadio.checked) return 'alternate';
+        if (hideRadio && hideRadio.checked) return 'hide';
+        if (sameRadio && sameRadio.checked) return 'same';
+        return null;
+      };
+
+      const getMobileAlternatePreviewUrl = () => {
+        const altRadio = modal.querySelector('#imageVisibilitySwitch_useAlternateImage');
+        let scopedCm = null;
+        let scope = altRadio;
+        while (!scopedCm && scope && scope !== modal) {
+          scopedCm = scope.querySelector && scope.querySelector('vce-codemirror[html]');
+          scope = scope.parentElement;
+        }
+        const cmHtml = ((scopedCm || modal.querySelector('vce-codemirror[html]'))?.getAttribute('html') || '').trim();
+        const fromAttr = normalizePreviewImageUrl(cmHtml);
+        if (fromAttr) return fromAttr;
+        const { value } = getActiveImageUrlCodeMirror(modal);
+        return normalizePreviewImageUrl(value);
+      };
+
+      const inferPreviewTabFromEditor = (htmlEditorEl) => {
+        if (!htmlEditorEl) return null;
+        const scope = htmlEditorEl.closest && htmlEditorEl.closest('.e-dialog__content');
+        const root = scope || htmlEditorEl;
+        const hasMobileVisibilityControls = !!(root.querySelector && root.querySelector('#imageVisibilitySwitch_showImageOnMobile, #imageVisibilitySwitch_hideImageOnMobile, #imageVisibilitySwitch_useAlternateImage'));
+        return hasMobileVisibilityControls ? 'mobile' : 'desktop';
+      };
+
+      const syncMobilePreviewSourceFromControls = () => {
+        ensurePreviewImgs();
+        const mobileMode = getMobilePreviewVisibilityMode();
+        const desktopSrcAttr = normalizePreviewImageUrl(previewImgDesktop.getAttribute('src') || '');
+        const dUrl = desktopSrcAttr || container._gemPreviewImgUrlDesktop || '';
+        let nextMobileUrl = normalizePreviewImageUrl(previewImgMobile.getAttribute('src') || '') || container._gemPreviewImgUrlMobile || '';
+
+        if (mobileMode === 'alternate') {
+          const mobileAltUrl = getMobileAlternatePreviewUrl();
+          if (mobileAltUrl) nextMobileUrl = mobileAltUrl;
+        } else if (mobileMode === 'same') {
+          const desktopUrlForMobile = desktopSrcAttr || dUrl;
+          if (desktopUrlForMobile) nextMobileUrl = desktopUrlForMobile;
+        }
+
+        if (nextMobileUrl) {
+          container._gemPreviewImgUrlMobile = nextMobileUrl;
+          if ((previewImgMobile.getAttribute('src') || '') !== nextMobileUrl) {
+            previewImgMobile.setAttribute('src', nextMobileUrl);
+          }
+        }
+      };
+
       const syncPreviewVisibilityToTab = () => {
         ensurePreviewImgs();
         const active = getActivePreviewTab();
-        const dUrl = container._gemPreviewImgUrlDesktop || '';
-        const mUrl = container._gemPreviewImgUrlMobile || '';
+        const desktopSrcAttr = normalizePreviewImageUrl(previewImgDesktop.getAttribute('src') || '');
+        const dUrl = desktopSrcAttr || container._gemPreviewImgUrlDesktop || '';
+        const mUrl = normalizePreviewImageUrl(previewImgMobile.getAttribute('src') || '') || container._gemPreviewImgUrlMobile || '';
+        const mobileMode = active === 'mobile' ? getMobilePreviewVisibilityMode() : null;
 
         // Only show the image for the active tab if it has a URL
         const desktopShouldShow = active === 'desktop' && !!dUrl;
-        const mobileShouldShow = active === 'mobile' && !!mUrl;
+        const mobileShouldShow = active === 'mobile' && mobileMode !== 'hide' && !!mUrl;
         previewImgDesktop.style.display = desktopShouldShow ? 'block' : 'none';
         previewImgMobile.style.display = mobileShouldShow ? 'block' : 'none';
 
         previewLog('preview visibility', {
           debugId: container._gemPreviewDebugId,
           active,
+          mobileMode,
           canvas: { display: previewCanvas.style.display, visibility: previewCanvas.style.visibility },
           desktop: { shouldShow: desktopShouldShow, url: dUrl, display: previewImgDesktop.style.display },
           mobile: { shouldShow: mobileShouldShow, url: mUrl, display: previewImgMobile.style.display }
@@ -3510,6 +3764,7 @@ function initializeOverlayPanelControls() {
       // Place it initially
       ensurePreviewCanvasPlacement();
       syncPreviewVisibilityToTab();
+      ensureImageAltTextSwapButton(modal);
 
       // Debug: Watch for preview canvas removal
       if (!container._gemPreviewRemovalObserver) {
@@ -3541,28 +3796,54 @@ function initializeOverlayPanelControls() {
         }
       }
 
-      // On tab interaction, toggle visibility instantly (do NOT touch src).
-      // Emarsys focuses CodeMirror on tab click; their active class update can be delayed until blur,
-      // so we optimistically use the clicked tab's data-tab.
-      if (!container._gemPreviewTabClickBound) {
-        container._gemPreviewTabClickBound = true;
-        modal.addEventListener('pointerdown', (e) => {
-          const tabEl = e.target && e.target.closest && e.target.closest('.e-tabs__title[data-tab]');
-          if (!tabEl) return;
-          const clicked = tabEl.getAttribute('data-tab') === 'mobile' ? 'mobile' : 'desktop';
-          container._gemPreviewLastTab = clicked;
-          // Run immediately so the preview swaps before Emarsys shifts focus into CodeMirror.
-          ensurePreviewCanvasPlacement();
-          syncPreviewVisibilityToTab();
-        }, true);
+      // React to real tab state changes (active class), not click intent.
+      if (!container._gemPreviewTabStateObserver) {
+        container._gemPreviewTabStateObserver = new MutationObserver((mutations) => {
+          if (container._gemIsClosing || !container.isConnected || !modal.isConnected) return;
+          let shouldSync = false;
 
-        // Also run after the click settles (in case Emarsys updates classes asynchronously)
-        modal.addEventListener('click', (e) => {
-          const tabEl = e.target && e.target.closest && e.target.closest('.e-tabs__title[data-tab]');
-          if (!tabEl) return;
+          for (const mutation of mutations) {
+            if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+              const target = mutation.target;
+              if (target && target.matches && target.matches('.e-tabs__title[data-tab="desktop"], .e-tabs__title[data-tab="mobile"]')) {
+                shouldSync = true;
+                break;
+              }
+            }
+          }
+
+          if (!shouldSync) return;
           setTimeout(() => {
+            if (getActivePreviewTab() === 'mobile') {
+              syncMobilePreviewSourceFromControls();
+            }
             ensurePreviewCanvasPlacement();
             syncPreviewVisibilityToTab();
+            ensureImageAltTextSwapButton(modal);
+          }, 0);
+        });
+
+        try {
+          container._gemPreviewTabStateObserver.observe(modal, {
+            subtree: true,
+            attributes: true,
+            attributeFilter: ['class']
+          });
+        } catch (_) {}
+      }
+
+      // Keep the mobile preview in sync with Image Visibility radio changes.
+      if (!container._gemPreviewMobileVisibilityBound) {
+        container._gemPreviewMobileVisibilityBound = true;
+        modal.addEventListener('change', (e) => {
+          const target = e.target;
+          if (!(target instanceof HTMLElement)) return;
+          if (!target.matches('#imageVisibilitySwitch_showImageOnMobile, #imageVisibilitySwitch_hideImageOnMobile, #imageVisibilitySwitch_useAlternateImage')) return;
+          setTimeout(() => {
+            syncMobilePreviewSourceFromControls();
+            ensurePreviewCanvasPlacement();
+            syncPreviewVisibilityToTab();
+            ensureImageAltTextSwapButton(modal);
           }, 0);
         }, true);
       }
@@ -3580,6 +3861,7 @@ function initializeOverlayPanelControls() {
           try {
             ensurePreviewCanvasPlacement();
             syncPreviewVisibilityToTab();
+            ensureImageAltTextSwapButton(modal);
           } catch (_) {}
           // Check if preview canvas is properly positioned before the dialog header
           const dialogHeader = container.querySelector('.e-dialog__header') || modal.querySelector('.e-dialog__header');
@@ -3622,38 +3904,40 @@ function initializeOverlayPanelControls() {
         try { chrome.storage.onChanged.addListener(container._gemStorageChangeHandler); } catch (_) {}
       }
 
-      // Function to update the active tab image in preview canvas (desktop/mobile have distinct <img>)
-      const updateImageInPreviewCanvas = (rawUrl) => {
+      // Function to update preview image in a specific tab context (desktop/mobile have distinct <img>)
+      const updateImageInPreviewCanvas = (rawUrl, preferredTab = null) => {
         const imageUrl = normalizePreviewImageUrl(rawUrl);
         console.log("[Gem] Updating image in preview canvas:", imageUrl);
-        previewLog('updateImageInPreviewCanvas', { debugId: container._gemPreviewDebugId, rawUrl, imageUrl });
+        previewLog('updateImageInPreviewCanvas', { debugId: container._gemPreviewDebugId, rawUrl, imageUrl, preferredTab });
+
+        const targetTab = preferredTab === 'mobile' || preferredTab === 'desktop'
+          ? preferredTab
+          : getActivePreviewTab();
 
         if (imageUrl && imageUrl.match(/\.(jpg|jpeg|png|gif|webp|svg)(\?.*)?$/i) && imageUrl !== 'null') {
           // Ensure the canvas is in the active tab content before manipulating DOM
           ensurePreviewCanvasPlacement();
           ensurePreviewImgs();
 
-          const active = getActivePreviewTab();
-          const key = active === 'mobile' ? '_gemPreviewImgUrlMobile' : '_gemPreviewImgUrlDesktop';
-          const img = active === 'mobile' ? previewImgMobile : previewImgDesktop;
+          const key = targetTab === 'mobile' ? '_gemPreviewImgUrlMobile' : '_gemPreviewImgUrlDesktop';
+          const img = targetTab === 'mobile' ? previewImgMobile : previewImgDesktop;
           const lastUrl = container[key] || '';
           const currentSrcAttr = img.getAttribute('src') || '';
           // Only set src when it truly changed (prevents unnecessary re-requests).
-          previewLog('preview src check', { debugId: container._gemPreviewDebugId, active, key, lastUrl, currentSrcAttr, next: imageUrl });
+          previewLog('preview src check', { debugId: container._gemPreviewDebugId, targetTab, key, lastUrl, currentSrcAttr, next: imageUrl });
           if (lastUrl !== imageUrl || currentSrcAttr !== imageUrl) {
             container[key] = imageUrl;
             img.setAttribute('src', imageUrl);
-            previewLog('preview src set', { debugId: container._gemPreviewDebugId, active, src: imageUrl });
-            previewLog('img src attribute set', { debugId: container._gemPreviewDebugId, active, url: imageUrl, imgSrc: img.src });
+            previewLog('preview src set', { debugId: container._gemPreviewDebugId, targetTab, src: imageUrl });
+            previewLog('img src attribute set', { debugId: container._gemPreviewDebugId, targetTab, url: imageUrl, imgSrc: img.src });
             // Image sizing no longer needed
           }
           syncPreviewVisibilityToTab();
         } else {
-          // Hide the active tab image if URL is not valid or null (disabled state)
-          const active = getActivePreviewTab();
-          if (active === 'mobile' && previewImgMobile) previewImgMobile.style.display = 'none';
-          if (active === 'desktop' && previewImgDesktop) previewImgDesktop.style.display = 'none';
-          previewLog('preview hidden (invalid url)', { debugId: container._gemPreviewDebugId, active, imageUrl });
+          // Hide the relevant tab image if URL is not valid or null (disabled state)
+          if (targetTab === 'mobile' && previewImgMobile) previewImgMobile.style.display = 'none';
+          if (targetTab === 'desktop' && previewImgDesktop) previewImgDesktop.style.display = 'none';
+          previewLog('preview hidden (invalid url)', { debugId: container._gemPreviewDebugId, targetTab, imageUrl });
         }
       };
 
@@ -3667,7 +3951,7 @@ function initializeOverlayPanelControls() {
       });
       if (htmlEditor && htmlEditor.getAttribute('html') && !htmlEditor.classList.contains('e-input-disabled')) {
         const imageUrl = normalizePreviewImageUrl(htmlEditor.getAttribute('html'));
-        updateImageInPreviewCanvas(imageUrl);
+        updateImageInPreviewCanvas(imageUrl, inferPreviewTabFromEditor(htmlEditor));
         // Collect recent image immediately on open
         if (imageUrl) upsertRecentImageUrl(imageUrl);
       }
@@ -3693,18 +3977,32 @@ function initializeOverlayPanelControls() {
               const target = mutation.target;
               const hasDisabledClass = target.classList.contains('e-input-disabled');
               const newImageUrl = normalizePreviewImageUrl(target.getAttribute('html'));
+              const tabContext = inferPreviewTabFromEditor(target);
 
               console.log("[Gem] vce-html-editor attribute changed:", mutation.attributeName, "disabled:", hasDisabledClass);
-              previewLog('htmlEditor mutation', { debugId: container._gemPreviewDebugId, attr: mutation.attributeName, disabled: hasDisabledClass, htmlAttr: target.getAttribute('html'), newImageUrl });
+              previewLog('htmlEditor mutation', { debugId: container._gemPreviewDebugId, attr: mutation.attributeName, disabled: hasDisabledClass, htmlAttr: target.getAttribute('html'), newImageUrl, tabContext });
 
               if (hasDisabledClass) {
-                // If disabled, hide any existing image
-                updateImageInPreviewCanvas(null);
+                // Mobile "Show same image" can disable the mobile URL editor; in that case
+                // derive preview from visibility controls instead of hiding it.
+                if (tabContext === 'mobile') {
+                  syncMobilePreviewSourceFromControls();
+                  ensurePreviewCanvasPlacement();
+                  syncPreviewVisibilityToTab();
+                } else {
+                  // Desktop disabled means hide desktop preview.
+                  updateImageInPreviewCanvas(null, tabContext);
+                }
               } else if (newImageUrl) {
                 // If not disabled and has URL, update image
-                updateImageInPreviewCanvas(newImageUrl);
+                updateImageInPreviewCanvas(newImageUrl, tabContext);
                 // Collect into recent images list
                 upsertRecentImageUrl(newImageUrl);
+              } else if (tabContext === 'mobile') {
+                // Keep mobile preview aligned with radio state even when no direct URL is present.
+                syncMobilePreviewSourceFromControls();
+                ensurePreviewCanvasPlacement();
+                syncPreviewVisibilityToTab();
               }
             }
           });
@@ -3719,7 +4017,7 @@ function initializeOverlayPanelControls() {
         // Update image with current URL only if not disabled
         if (!htmlEditor.classList.contains('e-input-disabled')) {
           const currentImageUrl = normalizePreviewImageUrl(htmlEditor.getAttribute('html'));
-          updateImageInPreviewCanvas(currentImageUrl);
+          updateImageInPreviewCanvas(currentImageUrl, inferPreviewTabFromEditor(htmlEditor));
           if (currentImageUrl) upsertRecentImageUrl(currentImageUrl);
         }
 
@@ -3777,6 +4075,9 @@ function initializeOverlayPanelControls() {
               console.log("[Gem] vce-html-editor found but no observer active, setting up");
               setupHtmlEditorObserver(currentHtmlEditor);
             }
+
+            // Desktop tab content can be re-rendered independently; keep alt-text swap button injected.
+            ensureImageAltTextSwapButton(modal);
           }
         });
       });

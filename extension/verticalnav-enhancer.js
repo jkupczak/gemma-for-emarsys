@@ -122,10 +122,6 @@ function createIconBar() {
         console.log("[Gem] Expand click - State saved to storage:", isNowExpanded);
       });
 
-      // Update preview toolbar orientation class based on current view + settings
-      if (window.gemApplyEmailPreviewToolbarPositionClass) {
-        window.gemApplyEmailPreviewToolbarPositionClass();
-      }
     } else {
       console.log("[Gem] Expand click - ERROR: Could not find content element");
     }
@@ -200,9 +196,6 @@ function activateFullscreenMode() {
       content.classList.add("gem-expanded");
       console.log("[Gem] Fullscreen mode activated - class added");
 
-      if (window.gemApplyEmailPreviewToolbarPositionClass) {
-        window.gemApplyEmailPreviewToolbarPositionClass();
-      }
     } else {
       console.log("[Gem] Fullscreen mode already active - skipping");
     }
@@ -225,9 +218,6 @@ function deactivateFullscreenMode() {
       content.classList.remove("gem-expanded");
       console.log("[Gem] Fullscreen mode deactivated - class removed");
 
-      if (window.gemApplyEmailPreviewToolbarPositionClass) {
-        window.gemApplyEmailPreviewToolbarPositionClass();
-      }
     } else {
       console.log("[Gem] Fullscreen mode already inactive - skipping");
     }
@@ -375,4 +365,3 @@ waitForElement("e-verticalnav-menu", (menu) => {
 
 // Initialize block search monitoring
 initializeBlockSearchMonitoring();
-

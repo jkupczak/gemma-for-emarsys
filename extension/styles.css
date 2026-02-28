@@ -99,12 +99,13 @@ cb-header.e-layout__header h1 {
 .gem-iframe-wrapper {
     border: 1px solid var(--token-box-default-border);
     box-shadow: none;
-    border-radius: 5px;
+    border-radius: 8px;
     overflow: hidden;
     position: relative;
     box-sizing: content-box;
     height: calc(100% - 2px); /* we take away 2px for the border */
 }
+
 
 .e-contentblocks-dragview {
     visibility: hidden
@@ -1246,20 +1247,19 @@ input.gem-image-search:not(:placeholder-shown) {
     content: "Copied!";
   }
 
-  /* campaign preview toolbar */
-.gem-campaign-preview-toolbar-vertical cb-campaign-preview > .e-section {
+/* campaign preview toolbar */
+cb-campaign-preview > .e-section {
     display: flex;
-    flex-direction: row;
+    flex-direction: row-reverse;
 }
-.gem-campaign-preview-toolbar-vertical cb-campaign-preview > .e-section .e-section__header:before {
+cb-campaign-preview > .e-section .e-section__header:before {
     display: none !important;
 }
-.gem-campaign-preview-toolbar-vertical cb-campaign-preview > .e-section .e-section__header {
+cb-campaign-preview > .e-section .e-section__header {
     display: flex;
     flex-direction: column;
     padding: 14px 10px;
     border-bottom: 0;
-    border-right: 1px solid var(--token-border-default);
 
     & > .e-cell:first-child > .e-buttongroup {
         flex-direction: column;
@@ -1286,8 +1286,8 @@ input.gem-image-search:not(:placeholder-shown) {
     }
 }
 
-.gem-campaign-preview-toolbar-vertical:not(.gem-expanded) .e-contentblocks-preview__iframe {
-    border-radius:0 8px 8px 0 !important;
+.e-contentblocks-preview__iframe {
+    border-radius:8px 0 0 8px !important;
 }
 
 

@@ -8,8 +8,6 @@ const GEM_THEME_MODE_LOCAL_KEY = "gemThemeMode";
 const GEM_RECENT_IMAGES_STORAGE_KEY = 'gemRecentImages';
 const GEM_RECENTLY_SEEN_IMAGES_STORAGE_KEY = 'gemRecentlySeenImages';
 const GEM_RECENTLY_SEEN_IMAGES_MAX_KEY = 'gemRecentlySeenImagesMax';
-const GEM_EMAIL_PREVIEW_TOOLBAR_NORMAL_KEY = "gemEmailPreviewToolbarPositionNormal";
-const GEM_EMAIL_PREVIEW_TOOLBAR_EXPANDED_KEY = "gemEmailPreviewToolbarPositionExpanded";
 const GEM_CUSTOM_PASTE_ENABLED_KEY = "gemCustomPasteEnabled";
 const GEM_CUSTOM_PASTE_ALLOW_BOLD_KEY = "gemCustomPasteAllowBold";
 const GEM_CUSTOM_PASTE_ALLOW_ITALIC_KEY = "gemCustomPasteAllowItalic";
@@ -18,55 +16,6 @@ const GEM_CUSTOM_PASTE_ALLOW_UNDERLINE_KEY = "gemCustomPasteAllowUnderline";
 const GEM_CUSTOM_PASTE_ALLOW_SUP_KEY = "gemCustomPasteAllowSuperscript";
 const GEM_CUSTOM_PASTE_ALLOW_ANCHOR_KEY = "gemCustomPasteAllowAnchor";
 const GEM_EMAIL_CAMPAIGN_LIST_LOAD_ALL_KEY = "gemEmailCampaignListLoadAll";
-
-let _gemEmailPreviewToolbarApplyQueued = false;
-
-function gemApplyEmailPreviewToolbarPositionClass() {
-  try {
-    const body = document.body;
-    if (!body) {
-      // settings-panel.js runs at document_start; body may not exist yet on fresh loads.
-      // Queue a one-time apply once body is available.
-      if (_gemEmailPreviewToolbarApplyQueued) return;
-      _gemEmailPreviewToolbarApplyQueued = true;
-
-      const tryApply = () => {
-        if (!document.body) return;
-        _gemEmailPreviewToolbarApplyQueued = false;
-        gemApplyEmailPreviewToolbarPositionClass();
-      };
-
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', tryApply, { once: true });
-      } else {
-        tryApply();
-      }
-
-      // Also observe in case body appears before DOMContentLoaded in some SPA flows.
-      const obs = new MutationObserver(() => {
-        if (!document.body) return;
-        obs.disconnect();
-        tryApply();
-      });
-      obs.observe(document.documentElement, { childList: true, subtree: true });
-      return;
-    }
-
-    const isExpanded = body.classList.contains('gem-expanded');
-    const key = isExpanded ? GEM_EMAIL_PREVIEW_TOOLBAR_EXPANDED_KEY : GEM_EMAIL_PREVIEW_TOOLBAR_NORMAL_KEY;
-    const defaultValue = isExpanded ? 'vertical' : 'horizontal';
-
-    chrome.storage.sync.get({ [key]: defaultValue }, (res) => {
-      try {
-        const next = (res && typeof res[key] === 'string') ? res[key] : defaultValue;
-        body.classList.toggle('gem-campaign-preview-toolbar-vertical', next === 'vertical');
-      } catch (_) { }
-    });
-  } catch (_) { }
-}
-
-// Make it callable from other scripts (expanded view toggles live elsewhere)
-window.gemApplyEmailPreviewToolbarPositionClass = gemApplyEmailPreviewToolbarPositionClass;
 
 function normalizeGemThemeMode(value) {
   if (value === "original") return "original";
@@ -818,27 +767,6 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         </div>
 
         <div class="gem-setting-section">
-          <h3>Email Preview Toolbar</h3>
-          <p class="gem-setting-info">
-            The email preview toolbar (that place that lets you click to see an Inbox or Contact preview) can be customized to show in a horizontal or vertical position next to your email. 
-          </p>
-          <div class="gem-setting" style="display: flex; gap: 12px; align-items: center;">
-            <label for="opt-email-preview-toolbar-position-normal" style="flex: 1;">Position in Normal View</label>
-            <select id="opt-email-preview-toolbar-position-normal">
-              <option value="horizontal">Horizontal</option>
-              <option value="vertical">Vertical</option>
-            </select>
-          </div>
-          <div class="gem-setting" style="display: flex; gap: 12px; align-items: center;">
-            <label for="opt-email-preview-toolbar-position-expanded" style="flex: 1;">Position in Expanded View</label>
-            <select id="opt-email-preview-toolbar-position-expanded">
-              <option value="horizontal">Horizontal</option>
-              <option value="vertical">Vertical</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="gem-setting-section">
           <h3>Rich Paste</h3>
           <div class="gem-setting">
             <label>
@@ -1000,8 +928,6 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         showCreatedColumn: true,
         showSizeColumn: true,
         showUserColumn: true,
-        [GEM_EMAIL_PREVIEW_TOOLBAR_NORMAL_KEY]: "horizontal",
-        [GEM_EMAIL_PREVIEW_TOOLBAR_EXPANDED_KEY]: "vertical",
         [GEM_CUSTOM_PASTE_ENABLED_KEY]: true,
         [GEM_CUSTOM_PASTE_ALLOW_BOLD_KEY]: true,
         [GEM_CUSTOM_PASTE_ALLOW_ITALIC_KEY]: true,
@@ -1037,11 +963,6 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
           settings.convertEslToTokens;
         const swapKeywordsSelect = document.getElementById("opt-swap-keywords");
         if (swapKeywordsSelect) swapKeywordsSelect.value = settings.swapKeywords || "always-show";
-
-        const toolbarPosNormal = document.getElementById("opt-email-preview-toolbar-position-normal");
-        if (toolbarPosNormal) toolbarPosNormal.value = settings[GEM_EMAIL_PREVIEW_TOOLBAR_NORMAL_KEY] || "horizontal";
-        const toolbarPosExpanded = document.getElementById("opt-email-preview-toolbar-position-expanded");
-        if (toolbarPosExpanded) toolbarPosExpanded.value = settings[GEM_EMAIL_PREVIEW_TOOLBAR_EXPANDED_KEY] || "vertical";
 
         document.getElementById("opt-custom-paste-enabled").checked =
           settings[GEM_CUSTOM_PASTE_ENABLED_KEY] !== false;
@@ -1151,10 +1072,6 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
           document.getElementById("opt-convert-esl-to-tokens")?.value ?? "always-show",
         swapKeywords:
           document.getElementById("opt-swap-keywords")?.value ?? "always-show",
-        [GEM_EMAIL_PREVIEW_TOOLBAR_NORMAL_KEY]:
-          document.getElementById("opt-email-preview-toolbar-position-normal")?.value ?? "horizontal",
-        [GEM_EMAIL_PREVIEW_TOOLBAR_EXPANDED_KEY]:
-          document.getElementById("opt-email-preview-toolbar-position-expanded")?.value ?? "vertical",
         [GEM_CUSTOM_PASTE_ENABLED_KEY]:
           document.getElementById("opt-custom-paste-enabled")?.checked ?? true,
         [GEM_CUSTOM_PASTE_ALLOW_BOLD_KEY]:
@@ -1232,8 +1149,6 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
       "opt-show-size-column",
       "opt-show-user-column",
       "opt-recently-seen-max",
-      "opt-email-preview-toolbar-position-normal",
-      "opt-email-preview-toolbar-position-expanded",
       "opt-custom-paste-enabled",
       "opt-custom-paste-bold",
       "opt-custom-paste-italic",
@@ -1969,9 +1884,6 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
 
   setupOpenSettingsPanelShortcut();
 
-  // Apply initial toolbar class once on load
-  gemApplyEmailPreviewToolbarPositionClass();
-
   // ------------------------------------------------------------
   // Keep dark theme in sync with storage changes
   // ------------------------------------------------------------
@@ -2025,17 +1937,6 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
     if (changes.swapKeywords) {
       const select = document.getElementById("opt-swap-keywords");
       if (select) select.value = changes.swapKeywords.newValue;
-    }
-
-    if (changes[GEM_EMAIL_PREVIEW_TOOLBAR_NORMAL_KEY]) {
-      const select = document.getElementById("opt-email-preview-toolbar-position-normal");
-      if (select) select.value = changes[GEM_EMAIL_PREVIEW_TOOLBAR_NORMAL_KEY].newValue;
-      gemApplyEmailPreviewToolbarPositionClass();
-    }
-    if (changes[GEM_EMAIL_PREVIEW_TOOLBAR_EXPANDED_KEY]) {
-      const select = document.getElementById("opt-email-preview-toolbar-position-expanded");
-      if (select) select.value = changes[GEM_EMAIL_PREVIEW_TOOLBAR_EXPANDED_KEY].newValue;
-      gemApplyEmailPreviewToolbarPositionClass();
     }
 
     // Paste behavior settings (just keep UI in sync; loader reacts via its own onChanged)

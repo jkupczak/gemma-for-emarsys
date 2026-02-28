@@ -6,17 +6,9 @@ None
 -----------------------------------------------
 # HOT
 
-Update expanded mode CSS to eliminate the spacing around the left column on the top, left, and bottom. Remove all borders except for the right border. Remove the border-radius. Add padding to the left so that the tab nav looks the same and not squished.
-
 Deprecate recently used tab and roll the functionality into recently seen. Recently seen images in storage should get a property for the used date. Images that were recently used should get some sort of visual highlight so that they stand out among the seen images that have not been used. Recently used images should not get pushed out as fast as unused recently seen image? Maybe they are part of a separate list that is capped at 100. Add a category grouping for Recently used by Day.
 
-The mobile image picker view retains the desktop image preview even if the mobile image is not set. This corrects itself after the user clicks away from the focus that is automatically applied to the URL field. Lets fix that.
-
 Grouping by "Last Seen" presents the images with the oldest at the top. Reverse this.
-
-When a search pill is deactivated, if the value in the search box is identical, clear the search box too.
-
-Alternative text input needs a snippet swap icon
 
 Sometimes i cant open the edit snippet modal
 
@@ -39,22 +31,15 @@ Add disabled placeholders for the language and version selectboxes so that the U
   </cb-version-selector>
   ```
 
-The image picker popups that show metadata should show a bigger preview of the image.
-
 Add Expanded Mode as a toggle in the settings panel
 
 In expanded mode, the hidden nav on the left should only open on click.
-
-When we modify a block with the block styles panel, sometimes the id (id="mce_8") of the contenteditable element changes (id="mce_9"). This throws off Gemma and the content block toolbar no longer loads in our custom buttons. Doesn't get fixed until the page refreshes.
 
 #Rich Paste: After rich pasting, MCPASTEBIN seems to be getting added and takes up space until the user blurs the block. Sometimes pasting into buttons creates a SECODN button in the mobile preview which suggests something else is getting pasted.
 
 #Rich Paste: Sometimes Rich Paste inserts the paste inside of the existing text even though we did CMD+A to select all of the existing text.
 
 Can I create "drag for padding" functionality? Would need to ask the user to designate an integere based variable for top and bottom padding in the settings panel.
-
------------------------------------------------
-# PENDING
 
 When the Block Style Settings panel is empty, it should close on its own.
 
@@ -66,9 +51,6 @@ add text highlighting to the subject line, preview text, and conditional text ed
 
 Add a red notification dot on the links panel for bad or missing links, or untracked links
  - '_blank' should be considered an invalid URL
-
-Allow users to resize the Emarsys nav panel. Keep track of the size they set each panel to and 
-use that size whenever they return to that panel
 
 Add a gear icon to the content block toolbar to open the settings panel and scroll to a new section
 where they can toggle icons on or off
@@ -82,17 +64,29 @@ Can I add a note to the content block about what block targeting is being done?
 
 ✗ Can I open the block /variable settings panel just because the user clicked on the block? - REMOVED: block-level-variables-opener.js removed
 
+Allow users to resize the Emarsys nav panel. Keep track of the size they set each panel to and 
+use that size whenever they return to that panel
 
 -----------------------------------------------
 # COMPLETE
+
+✓ The mobile image picker view retains the desktop image preview even if the mobile image is not set. This corrects itself after the user clicks away from the focus that is automatically applied to the URL field. Lets fix that.
 
 ✓ Search terms should get added as active pills when you hit enter/tab? Moved to a new line undernear the search bar. Clicking them deactivates them but keeps them there, clicking an X on them removes them entirely. Search results should take all active pills and the search box into account. For example, right now searching for 'e4 uk' would not return images with the filename uk_e4.png. But searching with pills should treat each search term separately. Results should include ALL search terms, just not necesarrily in any specific order.
 
 ✓ Add an "Export" button in the Snippet edit window so that users can share just one snippet at a time. Add an export option that introduces checkboxes to the full list so that the user can select multiple instead of exporting them all. Add a "select all/deselectall" button in this mode.
 
+✓ When a search pill is deactivated, if the value in the search box is identical, clear the search box too.
+
 ✓ Move the "group by" folder to the right, search box to the left
 
 ✓ Adjust the image thumbnail height in the image picker to be taller the fewer columns there are. Also allow two columns as the minimum.
+
+✓ Update expanded mode CSS to eliminate the spacing around the left column on the top, left, and bottom. Remove all borders except for the right border. Remove the border-radius. Add padding to the left so that the tab nav looks the same and not squished.
+
+✓ Alternative text input needs a snippet swap icon
+
+✓ The image picker popups that show metadata should show a bigger preview of the image.
 
 ✓ "Recently Seen" logging function doesn't work when the Media DB page is being viewed in thumbnail mode.
 
@@ -147,3 +141,5 @@ x Add a pinned folder dropdown to the media picker.
 ✓ Category tables should be collapsible. Collapsed tables should remain collapsed on subsequent page loads.
 ✓ Categories and snippets should be displayed alphabetically.
 ✓ Categories and snippets should be pinnable so that they stay at the top.
+
+✓ When we modify a block with the block styles panel, sometimes the id (id="mce_8") of the contenteditable element changes (id="mce_9"). This throws off Gemma and the content block toolbar no longer loads in our custom buttons. Doesn't get fixed until the page refreshes.
