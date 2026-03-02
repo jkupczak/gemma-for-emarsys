@@ -789,6 +789,9 @@ function initializeKeywordSwap() {
 console.log("[Gem-Keyword-Swap] Assigning initializeKeywordSwap to window");
 window.initializeKeywordSwap = initializeKeywordSwap;
 console.log("[Gem-Keyword-Swap] window.initializeKeywordSwap assigned:", typeof window.initializeKeywordSwap);
+try {
+  window.dispatchEvent(new CustomEvent('gem:keyword-swap-ready'));
+} catch (_) {}
 
 // Check if overlay-panel-controls has already been initialized and try to initialize immediately
 // This handles the case where keyword-swap.js loads after overlay-panel-controls.js

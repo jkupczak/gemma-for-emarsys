@@ -51,6 +51,11 @@ e-panel--links.css / e-panels.css          # Panel styles
 - Storage: Defaults in `background.js`; persisted in `chrome.storage.sync`.  
 - DOM readiness: Mutation observers ensure late-loading nav and block lists get enhancements.
 
+## Regression Harness
+
+- Run `node scripts/regression-harness.js` to execute lightweight source-level regression checks.
+- The harness validates key wiring/invariants (manifest injection order, expanded-mode settings wiring, event-driven waits) and runs `node --check` on edited extension scripts.
+
 ## Contributing
 
 1. Fork → branch → commit.  

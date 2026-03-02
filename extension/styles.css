@@ -91,6 +91,10 @@ cb-header.e-layout__header h1 {
     font-size: 14px !important
 }
 
+.gem-border-hover-primary-600:hover {
+    border-color: var(--token-primary-600) !important;
+}
+
 #gem-mobile-frame {
     margin: 0 12px;
     position: relative;

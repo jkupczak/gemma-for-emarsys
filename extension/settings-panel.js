@@ -16,6 +16,7 @@ const GEM_CUSTOM_PASTE_ALLOW_UNDERLINE_KEY = "gemCustomPasteAllowUnderline";
 const GEM_CUSTOM_PASTE_ALLOW_SUP_KEY = "gemCustomPasteAllowSuperscript";
 const GEM_CUSTOM_PASTE_ALLOW_ANCHOR_KEY = "gemCustomPasteAllowAnchor";
 const GEM_EMAIL_CAMPAIGN_LIST_LOAD_ALL_KEY = "gemEmailCampaignListLoadAll";
+const GEM_EXPANDED_MODE_STORAGE_KEY = "fullscreenActive";
 
 function normalizeGemThemeMode(value) {
   if (value === "original") return "original";
@@ -58,6 +59,16 @@ function applyGemThemeMode(mode, { persistLocal = false } = {}) {
     } catch (e) {
       // ignore
     }
+  }
+}
+
+function applyExpandedMode(enabled) {
+  try {
+    const body = document.body;
+    if (!body) return;
+    body.classList.toggle("gem-expanded", !!enabled);
+  } catch (_) {
+    // ignore
   }
 }
 
@@ -118,6 +129,11 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
   let isOpen = false;
   let _gemPasteUiSyncing = false;
   let _gemPasteLastAllowState = null;
+  let _gemSettingsListenersAttached = false;
+  let _gemSettingsBoundHandlers = null;
+  const _gemColorSwatchPendingWrites = new Map();
+  let _gemColorSwatchFlushTimer = null;
+  let _gemColorSwatchReloadAfterFlush = false;
 
   // ------------------------------------------------------------
   // Inject styles into page
@@ -173,6 +189,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
 
       .gem-setting-info {
         margin: 20px;
+        font-size: 16px;
       }
 
       .gem-setting-section .gem-setting {
@@ -191,6 +208,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         border: none;
         padding: 0;
         border-radius: 0;
+        margin: 20px;
       }
         .gem-setting-section > .gem-setting-condensed:hover {
           box-shadow: none;
@@ -209,7 +227,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         align-items: center;
         margin-bottom: 0;
         font-weight: 600;
-        font-size: 14px;
+        font-size: 16px;
         color: var(--token-font-default);
         cursor: pointer;
       }
@@ -433,9 +451,14 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
       }
 
       .gem-setting-section .sub-label {
+          font-size: 16px;
           font-weight: normal;
           margin-top:8px;
+          opacity: 0.8;
       }
+          .gem-setting-section .sub-label:last-child {
+            margin-bottom: 0;
+          }
 
       .color-swatch-input {
         flex: 1;
@@ -553,15 +576,20 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
       </div>
       <div id="gem-settings-body" class="gem-scrollable">
 
-        <div class="gem-setting gem-welcome-link" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-align: center; cursor: pointer; border: none;">
-          <div style="font-size: 16px; font-weight: 600; margin-bottom: 4px;">🎉 See what's new in Gemma!</div>
-          <div style="font-size: 14px; opacity: 0.9;">Click here to view all features and updates</div>
-        </div>
+        <div style="display: flex; flex-direction: row; gap: 12px;">
+          <div class="gem-welcome-link gem-border-hover-primary-600" style="border-radius: 8px; align-content: center; flex: 1; color: var(--token-text-default); text-align: center; cursor: pointer; border: 1px solid var(--token-box-default-border);">
+            <div style="font-size: 16px; font-weight: 600">
+              🎉&nbsp;&nbsp;See what's new!
+            </div>
+          </div>
 
-        <div class="gem-setting-section">
-          <button class="e-btn e-btn-secondary gem-keyboard-shortcuts-btn" type="button" style="width: 100%; height:auto; padding: 12px;">
-            ⌨️ Keyboard Shortcuts Reference
-          </button>
+          <div style="flex: 1;">
+            <button class="e-btn gem-keyboard-shortcuts-btn gem-border-hover-primary-600" type="button" style="border: 1px solid var(--token-box-default-border); background:transparent; color: var(--token-text-default); border-radius: 8px; width: 100%; text-align:center; height:auto; padding: 12px;">
+              <div style="font-size: 16px; font-weight: 600">
+                ⌨️&nbsp;&nbsp;Keyboard Shortcuts
+              </div>
+            </button>
+          </div>
         </div>
 
         <h2>General Settings</h2>
@@ -579,7 +607,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
                 <option value="original">Original Emarsys Theme</option>
               </select>
             </div>
-            <div style="font-size: 14px; color: var(--token-font-default); margin-top: 8px;">
+            <div class="sub-label">
               Choose from different Gemma color themes or use the original Emarsys UI.
             </div>
           </div>
@@ -588,25 +616,42 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         <h2>Email Editor Settings</h2>
 
         <div class="gem-setting-section">
-          <h3>Blocks Panel</h3>
-
+          <h3>Layout</h3>
           <div class="gem-setting">
-            <div style="display: flex; gap: 12px; align-items: center;">
-              <label for="opt-blocks-panel-layout" style="flex: 1;">Layout</label>
-              <select id="opt-blocks-panel-layout" style="width: 150px;">
-                <option value="1">1 per Row</option>
-                <option value="2" selected>2 per Row</option>
-                <option value="3">3 per Row</option>
+            <label>
+            <input type="checkbox" id="opt-enable-expanded-mode" />
+            Toggle expanded mode
+            </label>
+            <p class="sub-label">
+              An alternative layout that increases the total viewable area of your email by over 40%. Quickly toggle it using the keyboard shortcut CMD+SHIFT+F or CTRL+SHIFT+F
+            </p>
+          </div>
+          <div class="gem-setting">
+            <label>
+            <input type="checkbox" id="opt-enable-mobile-preview" />
+            Toggle mobile preview pane
+            </label>
+            <p class="sub-label">
+              Keep a mobile preview of your email visible next to your desktop view while you make edits.
+            </p>
+            <div class="gem-setting-condensed" style="display: flex; gap: 12px; align-items: center;">
+              <label for="opt-mobile-preview-width" style="flex: 1;">Width (px)</label>
+              <input type="number" id="opt-mobile-preview-width" min="200" max="800" step="1" style="width: 120px;" />
+            </div>
+            <div class="gem-setting-condensed" style="display: flex; gap: 12px; align-items: center;">
+              <label for="opt-mobile-preview-scale" style="flex: 1;">Scale</label>
+              <select id="opt-mobile-preview-scale" style="width: 120px;">
+                <option value="1">100%</option>
+                <option value="0.5">50%</option>
               </select>
             </div>
-            <div style="font-size: 14px; color: var(--token-font-default); margin-top: 8px;">Choose how many blocks to display per row in the blocks panel.</div>
           </div>
 
           <div class="gem-setting">
-            <button id="unhide-all-blocks-btn" style="background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%); color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: 500; transition: all 0.2s ease;">
-              Unhide All Blocks
-            </button>
-            <div style="font-size: 14px; color: var(--token-font-default); margin-top: 8px;">Permanently unhide all blocks that have been hidden. This action cannot be undone.</div>
+            <label>
+              <input type="checkbox" id="opt-show-finish-editing-btn" checked />
+              Show "Finish Editing" Button
+            </label>
           </div>
         </div>
 
@@ -706,27 +751,6 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         </div>
 
         <div class="gem-setting-section">
-          <h3>Mobile Preview Frame</h3>
-          <div class="gem-setting">
-            <label>
-            <input type="checkbox" id="opt-enable-mobile-preview" />
-            Toggle mobile preview pane
-            </label>
-          </div>
-          <div class="gem-setting gem-setting-condensed" style="display: flex; gap: 12px; align-items: center;">
-            <label for="opt-mobile-preview-width" style="flex: 1;">Width (px)</label>
-            <input type="number" id="opt-mobile-preview-width" min="200" max="800" step="1" style="width: 120px;" />
-          </div>
-          <div class="gem-setting gem-setting-condensed" style="display: flex; gap: 12px; align-items: center;">
-            <label for="opt-mobile-preview-scale" style="flex: 1;">Scale</label>
-            <select id="opt-mobile-preview-scale" style="width: 120px;">
-              <option value="1">100%</option>
-              <option value="0.5">50%</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="gem-setting-section">
           <h3>Color Swatch Management</h3>
           <p class="gem-setting-info">These colors will appear as the first row in the color picker. Add or remove any color you want (up to 8 total).</p>
           <div id="color-swatches-list">
@@ -734,13 +758,26 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
           </div>
         </div>
 
-        <div class="gem-setting-section">
-          <h3>Toggle Page Elements</h3>
+<div class="gem-setting-section">
+          <h3>Blocks Panel</h3>
+
           <div class="gem-setting">
-            <label>
-              <input type="checkbox" id="opt-show-finish-editing-btn" checked />
-              Show "Finish Editing" Button
-            </label>
+            <div style="display: flex; gap: 12px; align-items: center;">
+              <label for="opt-blocks-panel-layout" style="flex: 1;">Layout</label>
+              <select id="opt-blocks-panel-layout" style="width: 150px;">
+                <option value="1">1 per Row</option>
+                <option value="2" selected>2 per Row</option>
+                <option value="3">3 per Row</option>
+              </select>
+            </div>
+            <div class="sub-label">Choose how many blocks to display per row in the blocks panel.</div>
+          </div>
+
+          <div class="gem-setting">
+            <button id="unhide-all-blocks-btn" style="background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%); color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: 500; transition: all 0.2s ease;">
+              Unhide All Blocks
+            </button>
+            <div class="sub-label">Permanently unhide all blocks that have been hidden. This action cannot be undone.</div>
           </div>
         </div>
 
@@ -751,6 +788,9 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
             <input type="checkbox" id="opt-enable-highlighting" />
             Enable text highlighting overlays
           </label>
+          <p class="sub-label">
+            Creates overlays to help you quickly identify and highlight specific text in your email.
+          </p>
         </div>
           <div id="highlight-terms-list">
             <!-- Terms will be dynamically added here -->
@@ -813,7 +853,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
               <span>Recently Seen limit</span>
               <input type="number" id="opt-recently-seen-max" min="50" max="2000" step="1" value="300" style="width:120px;" />
             </label>
-            <div style="font-size: 14px; color: var(--token-font-default); margin-top: 8px;">
+            <div class="sub-label">
               Max number of images to keep in the Recently Seen list (50–2000).
             </div>
           </div>
@@ -936,7 +976,8 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         [GEM_CUSTOM_PASTE_ALLOW_SUP_KEY]: true,
         [GEM_CUSTOM_PASTE_ALLOW_ANCHOR_KEY]: true,
         [GEM_RECENTLY_SEEN_IMAGES_MAX_KEY]: 300,
-        [GEM_EMAIL_CAMPAIGN_LIST_LOAD_ALL_KEY]: false
+        [GEM_EMAIL_CAMPAIGN_LIST_LOAD_ALL_KEY]: false,
+        [GEM_EXPANDED_MODE_STORAGE_KEY]: false
       }, (settings) => {
         const themeSelect = document.getElementById("opt-theme-mode");
         if (themeSelect) {
@@ -990,6 +1031,13 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
             ? settings.mobileViewVisible
             : settings.enableMobilePreview;
 
+        const expandedModeToggle = document.getElementById("opt-enable-expanded-mode");
+        if (expandedModeToggle) {
+          expandedModeToggle.checked = settings[GEM_EXPANDED_MODE_STORAGE_KEY] === true;
+        }
+
+        applyExpandedMode(settings[GEM_EXPANDED_MODE_STORAGE_KEY] === true);
+
         const widthInput = document.getElementById("opt-mobile-preview-width");
         if (widthInput) widthInput.value = settings.mobilePreviewWidth || 414;
 
@@ -1038,93 +1086,117 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
   // Save settings when toggled
   // ------------------------------------------------------------
   function attachListeners() {
-    // Define handler functions
-    function saveSettingsHandler() {
-      // Keep Paste Behavior UI consistent before saving (and avoid invalid state)
-      syncPasteBehaviorUI();
-      const widthVal = parseInt(document.getElementById("opt-mobile-preview-width")?.value, 10);
-      const safeWidth = Number.isFinite(widthVal) && widthVal > 0 ? widthVal : 414;
+    if (_gemSettingsListenersAttached) return;
 
-      const scaleVal = parseFloat(document.getElementById("opt-mobile-preview-scale")?.value);
-      const safeScale = scaleVal === 1 ? 1 : 0.5;
+    if (!_gemSettingsBoundHandlers) {
+      _gemSettingsBoundHandlers = {
+        saveSettingsHandler() {
+          // Keep Paste Behavior UI consistent before saving (and avoid invalid state)
+          syncPasteBehaviorUI();
+          const widthVal = parseInt(document.getElementById("opt-mobile-preview-width")?.value, 10);
+          const safeWidth = Number.isFinite(widthVal) && widthVal > 0 ? widthVal : 414;
 
-      const mobileVisible =
-        document.getElementById("opt-enable-mobile-preview")?.checked ?? true;
+          const scaleVal = parseFloat(document.getElementById("opt-mobile-preview-scale")?.value);
+          const safeScale = scaleVal === 1 ? 1 : 0.5;
 
-      const settingsToSave = {
-        [GEM_THEME_MODE_STORAGE_KEY]:
-          normalizeGemThemeMode(document.getElementById("opt-theme-mode")?.value),
-        blocksPanelLayout:
-          document.getElementById("opt-blocks-panel-layout")?.value ?? "2",
-        manageOptionalContent:
-          document.getElementById("opt-manage-optional-content")?.value ?? "hide-if-disabled",
-        predictRecommendationSettings:
-          document.getElementById("opt-predict-recommendation")?.value ?? "hide-if-disabled",
-        productFinder:
-          document.getElementById("opt-product-finder")?.value ?? "always-show",
-        productSource:
-          document.getElementById("opt-product-source")?.value ?? "hide-if-disabled",
-        saveToReuse:
-          document.getElementById("opt-save-to-reuse")?.value ?? "always-show",
-        resetBlock:
-          document.getElementById("opt-reset-block")?.value ?? "always-show",
-        convertEslToTokens:
-          document.getElementById("opt-convert-esl-to-tokens")?.value ?? "always-show",
-        swapKeywords:
-          document.getElementById("opt-swap-keywords")?.value ?? "always-show",
-        [GEM_CUSTOM_PASTE_ENABLED_KEY]:
-          document.getElementById("opt-custom-paste-enabled")?.checked ?? true,
-        [GEM_CUSTOM_PASTE_ALLOW_BOLD_KEY]:
-          document.getElementById("opt-custom-paste-bold")?.checked ?? true,
-        [GEM_CUSTOM_PASTE_ALLOW_ITALIC_KEY]:
-          document.getElementById("opt-custom-paste-italic")?.checked ?? true,
-        [GEM_CUSTOM_PASTE_ALLOW_STRIKE_KEY]:
-          document.getElementById("opt-custom-paste-strike")?.checked ?? true,
-        [GEM_CUSTOM_PASTE_ALLOW_UNDERLINE_KEY]:
-          document.getElementById("opt-custom-paste-underline")?.checked ?? true,
-        [GEM_CUSTOM_PASTE_ALLOW_SUP_KEY]:
-          document.getElementById("opt-custom-paste-sup")?.checked ?? true,
-        [GEM_CUSTOM_PASTE_ALLOW_ANCHOR_KEY]:
-          document.getElementById("opt-custom-paste-anchor")?.checked ?? true,
-        [GEM_RECENTLY_SEEN_IMAGES_MAX_KEY]:
-          normalizeRecentlySeenMax(document.getElementById("opt-recently-seen-max")?.value),
-        enableHighlighting:
-          document.getElementById("opt-enable-highlighting")?.checked ?? true,
-        enableMobilePreview: mobileVisible,
-        mobileViewVisible: mobileVisible,
-        showFinishEditingBtn:
-          document.getElementById("opt-show-finish-editing-btn")?.checked ?? true,
-        [GEM_EMAIL_CAMPAIGN_LIST_LOAD_ALL_KEY]:
-          document.getElementById("opt-email-campaign-list-load-all")?.checked ?? false,
-        mobilePreviewWidth: safeWidth,
-        mobilePreviewScale: safeScale
+          const mobileVisible =
+            document.getElementById("opt-enable-mobile-preview")?.checked ?? true;
+          const expandedModeEnabled =
+            document.getElementById("opt-enable-expanded-mode")?.checked ?? false;
+
+          const settingsToSave = {
+            [GEM_THEME_MODE_STORAGE_KEY]:
+              normalizeGemThemeMode(document.getElementById("opt-theme-mode")?.value),
+            blocksPanelLayout:
+              document.getElementById("opt-blocks-panel-layout")?.value ?? "2",
+            manageOptionalContent:
+              document.getElementById("opt-manage-optional-content")?.value ?? "hide-if-disabled",
+            predictRecommendationSettings:
+              document.getElementById("opt-predict-recommendation")?.value ?? "hide-if-disabled",
+            productFinder:
+              document.getElementById("opt-product-finder")?.value ?? "always-show",
+            productSource:
+              document.getElementById("opt-product-source")?.value ?? "hide-if-disabled",
+            saveToReuse:
+              document.getElementById("opt-save-to-reuse")?.value ?? "always-show",
+            resetBlock:
+              document.getElementById("opt-reset-block")?.value ?? "always-show",
+            convertEslToTokens:
+              document.getElementById("opt-convert-esl-to-tokens")?.value ?? "always-show",
+            swapKeywords:
+              document.getElementById("opt-swap-keywords")?.value ?? "always-show",
+            [GEM_CUSTOM_PASTE_ENABLED_KEY]:
+              document.getElementById("opt-custom-paste-enabled")?.checked ?? true,
+            [GEM_CUSTOM_PASTE_ALLOW_BOLD_KEY]:
+              document.getElementById("opt-custom-paste-bold")?.checked ?? true,
+            [GEM_CUSTOM_PASTE_ALLOW_ITALIC_KEY]:
+              document.getElementById("opt-custom-paste-italic")?.checked ?? true,
+            [GEM_CUSTOM_PASTE_ALLOW_STRIKE_KEY]:
+              document.getElementById("opt-custom-paste-strike")?.checked ?? true,
+            [GEM_CUSTOM_PASTE_ALLOW_UNDERLINE_KEY]:
+              document.getElementById("opt-custom-paste-underline")?.checked ?? true,
+            [GEM_CUSTOM_PASTE_ALLOW_SUP_KEY]:
+              document.getElementById("opt-custom-paste-sup")?.checked ?? true,
+            [GEM_CUSTOM_PASTE_ALLOW_ANCHOR_KEY]:
+              document.getElementById("opt-custom-paste-anchor")?.checked ?? true,
+            [GEM_RECENTLY_SEEN_IMAGES_MAX_KEY]:
+              normalizeRecentlySeenMax(document.getElementById("opt-recently-seen-max")?.value),
+            enableHighlighting:
+              document.getElementById("opt-enable-highlighting")?.checked ?? true,
+            enableMobilePreview: mobileVisible,
+            mobileViewVisible: mobileVisible,
+            showFinishEditingBtn:
+              document.getElementById("opt-show-finish-editing-btn")?.checked ?? true,
+            [GEM_EMAIL_CAMPAIGN_LIST_LOAD_ALL_KEY]:
+              document.getElementById("opt-email-campaign-list-load-all")?.checked ?? false,
+            [GEM_EXPANDED_MODE_STORAGE_KEY]: expandedModeEnabled,
+            mobilePreviewWidth: safeWidth,
+            mobilePreviewScale: safeScale
+          };
+
+          // Apply immediately + cache synchronously for next page load
+          applyGemThemeMode(settingsToSave[GEM_THEME_MODE_STORAGE_KEY], { persistLocal: true });
+          applyExpandedMode(settingsToSave[GEM_EXPANDED_MODE_STORAGE_KEY]);
+
+          chrome.storage.sync.set(settingsToSave);
+
+          // If the limit was reduced, prune local recently seen immediately
+          try { pruneRecentlySeenToMax(settingsToSave[GEM_RECENTLY_SEEN_IMAGES_MAX_KEY]); } catch (_) { }
+
+          // Save MediaDB settings separately
+          const mediaDBSettings = {
+            showFileIcon: document.getElementById("opt-show-file-icon")?.checked ?? true,
+            showCreated: document.getElementById("opt-show-created-column")?.checked ?? true,
+            showSize: document.getElementById("opt-show-size-column")?.checked ?? true,
+            showUser: document.getElementById("opt-show-user-column")?.checked ?? true
+          };
+          chrome.storage.sync.set({ gemMediaDBColumnVisibility: mediaDBSettings });
+        },
+        syncPasteBehaviorHandler() {
+          syncPasteBehaviorUI();
+        },
+        exportHandler() {
+          showExportModal();
+        },
+        importHandler() {
+          showImportModal();
+        },
+        unhideAllBlocksHandler() {
+          if (!confirm("Are you sure you want to unhide all blocks? This will permanently show all blocks that were previously hidden.")) return;
+          chrome.storage.sync.set({ hiddenBlocks: [], showHiddenBlocks: false }, () => {
+            if (chrome.runtime.lastError) {
+              console.error("[Gem] Error clearing hidden blocks:", chrome.runtime.lastError);
+              alert("Failed to unhide blocks. Please try again.");
+            } else {
+              console.log("[Gem] All blocks have been unhidden");
+              alert("All blocks have been unhidden successfully!");
+            }
+          });
+        }
       };
-
-      // Apply immediately + cache synchronously for next page load
-      applyGemThemeMode(settingsToSave[GEM_THEME_MODE_STORAGE_KEY], { persistLocal: true });
-
-      chrome.storage.sync.set(settingsToSave);
-
-      // If the limit was reduced, prune local recently seen immediately
-      try { pruneRecentlySeenToMax(settingsToSave[GEM_RECENTLY_SEEN_IMAGES_MAX_KEY]); } catch (_) { }
-
-      // Save MediaDB settings separately
-      const mediaDBSettings = {
-        showFileIcon: document.getElementById("opt-show-file-icon")?.checked ?? true,
-        showCreated: document.getElementById("opt-show-created-column")?.checked ?? true,
-        showSize: document.getElementById("opt-show-size-column")?.checked ?? true,
-        showUser: document.getElementById("opt-show-user-column")?.checked ?? true
-      };
-      chrome.storage.sync.set({ gemMediaDBColumnVisibility: mediaDBSettings });
     }
 
-    function exportHandler() {
-      showExportModal();
-    }
-
-    function importHandler() {
-      showImportModal();
-    }
+    const handlers = _gemSettingsBoundHandlers;
 
     // Settings elements that trigger save
     const settingsIds = [
@@ -1139,6 +1211,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
       "opt-convert-esl-to-tokens",
       "opt-swap-keywords",
       "opt-enable-highlighting",
+      "opt-enable-expanded-mode",
       "opt-enable-mobile-preview",
       "opt-show-finish-editing-btn",
       "opt-email-campaign-list-load-all",
@@ -1158,13 +1231,10 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
       "opt-custom-paste-anchor"
     ];
 
-    // Remove existing listeners and add new ones
     settingsIds.forEach((id) => {
       const el = document.getElementById(id);
-      if (el) {
-        el.removeEventListener("change", saveSettingsHandler);
-        el.addEventListener("change", saveSettingsHandler);
-      }
+      if (!el) return;
+      el.addEventListener("change", handlers.saveSettingsHandler);
     });
 
     // Paste Behavior UI rules (enable/disable + auto-toggle)
@@ -1180,46 +1250,30 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
     pasteIds.forEach((id) => {
       const el = document.getElementById(id);
       if (!el) return;
-      el.addEventListener("change", () => syncPasteBehaviorUI());
+      el.addEventListener("change", handlers.syncPasteBehaviorHandler);
     });
 
-    // Add term button listener
     const addBtn = document.getElementById("add-term-btn");
     if (addBtn) {
       addBtn.addEventListener("click", addNewTerm);
     }
 
-    // Export highlight rules button listener - remove existing first
     const exportBtn = document.getElementById("export-highlight-btn");
     if (exportBtn) {
-      exportBtn.removeEventListener("click", exportHandler);
-      exportBtn.addEventListener("click", exportHandler);
+      exportBtn.addEventListener("click", handlers.exportHandler);
     }
 
-    // Import highlight rules button listener - remove existing first
     const importBtn = document.getElementById("import-highlight-btn");
     if (importBtn) {
-      importBtn.removeEventListener("click", importHandler);
-      importBtn.addEventListener("click", importHandler);
+      importBtn.addEventListener("click", handlers.importHandler);
     }
 
-    // Unhide all blocks button listener
     const unhideBtn = document.getElementById("unhide-all-blocks-btn");
     if (unhideBtn) {
-      unhideBtn.addEventListener("click", () => {
-        if (confirm("Are you sure you want to unhide all blocks? This will permanently show all blocks that were previously hidden.")) {
-          chrome.storage.sync.set({ hiddenBlocks: [], showHiddenBlocks: false }, () => {
-            if (chrome.runtime.lastError) {
-              console.error("[Gem] Error clearing hidden blocks:", chrome.runtime.lastError);
-              alert("Failed to unhide blocks. Please try again.");
-            } else {
-              console.log("[Gem] All blocks have been unhidden");
-              alert("All blocks have been unhidden successfully!");
-            }
-          });
-        }
-      });
+      unhideBtn.addEventListener("click", handlers.unhideAllBlocksHandler);
     }
+
+    _gemSettingsListenersAttached = true;
   }
 
   function syncPasteBehaviorUI({ fromLoad = false } = {}) {
@@ -1682,46 +1736,102 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
     const colorInput = item.querySelector("[data-color-swatch-color]");
     const clearBtn = item.querySelector(".color-swatch-clear");
 
-    const updateSwatch = () => {
-      const newColor = textInput.value.trim().toUpperCase();
-      colorInput.value = newColor || '#ffffff';
-      updateColorSwatch(number - 1, newColor);
+    const readColor = () => {
+      let v = textInput.value.trim().toUpperCase();
+      if (/^[0-9A-F]{6}$/.test(v)) v = `#${v}`;
+      return v;
     };
 
-    // For blank items, also trigger update when user starts typing
-    if (!color) {
-      textInput.addEventListener("input", () => {
-        if (textInput.value.trim()) {
-          updateSwatch();
-        }
-      });
-    }
+    const syncColorPickerFromText = () => {
+      const newColor = readColor();
+      if (!newColor) {
+        colorInput.value = "#ffffff";
+        return;
+      }
+      // Only push valid hex values into the native color input.
+      if (/^#([0-9A-F]{6})$/.test(newColor)) {
+        colorInput.value = newColor;
+      }
+    };
 
-    textInput.addEventListener("input", updateSwatch);
+    const commitSwatch = (delayMs = 250) => {
+      const newColor = readColor();
+      if (newColor && !/^#([0-9A-F]{6})$/.test(newColor)) return;
+      syncColorPickerFromText();
+      updateColorSwatch(number - 1, newColor, { delayMs, reload: true });
+    };
+
+    textInput.addEventListener("input", () => {
+      syncColorPickerFromText();
+      // Persist after typing pauses; avoids per-keystroke sync writes.
+      commitSwatch(350);
+    });
+    textInput.addEventListener("change", () => commitSwatch(0));
+    textInput.addEventListener("blur", () => commitSwatch(0));
+
     colorInput.addEventListener("input", () => {
       textInput.value = colorInput.value.toUpperCase();
-      updateSwatch();
+    });
+    colorInput.addEventListener("change", () => {
+      textInput.value = colorInput.value.toUpperCase();
+      commitSwatch(0);
     });
 
     clearBtn.addEventListener("click", () => {
       textInput.value = "";
       colorInput.value = "#ffffff";
-      updateColorSwatch(number - 1, "");
+      updateColorSwatch(number - 1, "", { delayMs: 0, reload: true });
     });
 
     return item;
   }
 
-  // Update a color swatch
-  function updateColorSwatch(index, color) {
+  function flushPendingColorSwatchUpdates() {
+    const pendingEntries = Array.from(_gemColorSwatchPendingWrites.entries());
+    _gemColorSwatchPendingWrites.clear();
+    _gemColorSwatchFlushTimer = null;
+    const shouldReload = _gemColorSwatchReloadAfterFlush;
+    _gemColorSwatchReloadAfterFlush = false;
+    if (pendingEntries.length === 0) return;
+
     chrome.storage.sync.get({ colorSwatches: window.DEFAULT_COLOR_SWATCHES }, (settings) => {
-      const updatedSwatches = [...settings.colorSwatches];
-      updatedSwatches[index] = color;
-      chrome.storage.sync.set({ colorSwatches: updatedSwatches }, () => {
-        // Reload the color swatches to update the UI
-        loadColorSwatches(updatedSwatches);
+      const current = Array.isArray(settings.colorSwatches)
+        ? [...settings.colorSwatches]
+        : [...window.DEFAULT_COLOR_SWATCHES];
+
+      pendingEntries.forEach(([index, color]) => {
+        if (index < 0) return;
+        if (index >= current.length) return;
+        current[index] = color;
+      });
+
+      chrome.storage.sync.set({ colorSwatches: current }, () => {
+        if (shouldReload) {
+          loadColorSwatches(current);
+        }
       });
     });
+  }
+
+  function queueColorSwatchUpdate(index, color, { delayMs = 250, reload = true } = {}) {
+    _gemColorSwatchPendingWrites.set(index, color);
+    if (reload) _gemColorSwatchReloadAfterFlush = true;
+    if (_gemColorSwatchFlushTimer) {
+      clearTimeout(_gemColorSwatchFlushTimer);
+      _gemColorSwatchFlushTimer = null;
+    }
+    if (delayMs <= 0) {
+      flushPendingColorSwatchUpdates();
+      return;
+    }
+    _gemColorSwatchFlushTimer = setTimeout(flushPendingColorSwatchUpdates, delayMs);
+  }
+
+  // Update a color swatch
+  function updateColorSwatch(index, color, options = {}) {
+    const delayMs = Number.isFinite(options.delayMs) ? options.delayMs : 250;
+    const reload = options.reload !== false;
+    queueColorSwatchUpdate(index, color, { delayMs, reload });
   }
 
   // ------------------------------------------------------------
@@ -2039,7 +2149,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
           ✕
         </button>
       </div>
-      <div class="gem-welcome-modal__body" style="max-height: 60vh; overflow-y: auto;">
+      <div class="gem-welcome-modal__body gem-scrollable" style="max-height: 60vh; overflow-y: auto;">
         <div style="margin-bottom: 24px;">
           <h3 style="margin: 0 0 16px 0; color: var(--token-accent-foreground);">General Shortcuts</h3>
           <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 8px; align-items: center;">

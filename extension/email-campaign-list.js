@@ -1,69 +1,3 @@
-(function initGemDebugLoggingGate() {
-  const GEM_DEBUG_STORAGE_KEY = 'gemDebugLogging';
-  try {
-    if (window.__gemDebugGateInstalled) return;
-    window.__gemDebugGateInstalled = true;
-
-    const state = { enabled: false };
-    const prefixRegex = /^\[(?:Gem(?:ma)?|gem(?:ma)?)(?:\]|-|\s)/;
-    const methods = ['log', 'info', 'debug', 'warn'];
-
-    methods.forEach((methodName) => {
-      const original = console[methodName];
-      if (typeof original !== 'function') return;
-      const bound = original.bind(console);
-      console[methodName] = (...args) => {
-        const first = args && args.length ? args[0] : null;
-        const isGemLog = typeof first === 'string' && prefixRegex.test(first);
-        if (!state.enabled && isGemLog) return;
-        bound(...args);
-      };
-    });
-
-    const applyDebugFlag = (enabled) => {
-      state.enabled = !!enabled;
-      window.GEM_DEBUG = state.enabled;
-    };
-
-    window.gemIsDebugLoggingEnabled = () => !!state.enabled;
-    window.gemSetDebugLogging = (enabled, persist = false) => {
-      applyDebugFlag(enabled);
-      if (!persist) return;
-      try {
-        chrome.storage.sync.set({ [GEM_DEBUG_STORAGE_KEY]: !!enabled });
-      } catch (_) {}
-    };
-
-    const logGemDebugHelpOnce = () => {
-      try {
-        if (window.__gemDebugHelpLogged) return;
-        window.__gemDebugHelpLogged = true;
-        console.log(
-          `Gemma debug logging is available. Default: OFF (suppresses Gemma console.log/info/debug/warn; errors remain). Enable: window.gemSetDebugLogging(true, true). Disable: window.gemSetDebugLogging(false, true). Current: ${state.enabled ? 'ON' : 'OFF'}.`
-        );
-      } catch (_) {}
-    };
-
-    applyDebugFlag(false);
-    logGemDebugHelpOnce();
-
-    try {
-      chrome.storage.sync.get({ [GEM_DEBUG_STORAGE_KEY]: false }, (res) => {
-        applyDebugFlag(!!(res && res[GEM_DEBUG_STORAGE_KEY]));
-      });
-    } catch (_) {}
-
-    try {
-      chrome.storage.onChanged.addListener((changes, namespace) => {
-        if (namespace !== 'sync' || !changes || !changes[GEM_DEBUG_STORAGE_KEY]) return;
-        applyDebugFlag(!!changes[GEM_DEBUG_STORAGE_KEY].newValue);
-      });
-    } catch (_) {}
-  } catch (_) {
-    window.GEM_DEBUG = false;
-  }
-})();
-
 (function() {
   const LOG_PREFIX = '[Gemma email-campaign-list]';
   const STORAGE_KEY = 'gemEmailCampaignListLoadAll';
@@ -110,7 +44,9 @@
     });
   }
 
-  function waitForEnabled(selector, callback) {
+  function waitForEnabled(selector, callback, options = {}) {
+    const timeoutMs = Number.isFinite(options.timeoutMs) ? options.timeoutMs : 15000;
+
     function isEnabled(el) {
       return el && !el.hasAttribute('disabled') && !el.disabled;
     }
@@ -122,15 +58,46 @@
       return;
     }
 
-    console.log(LOG_PREFIX, 'Element is disabled, polling until enabled...');
-    const interval = setInterval(() => {
+    console.log(LOG_PREFIX, 'Element is disabled, observing until enabled...');
+
+    let settled = false;
+    let timeoutId = null;
+    const root = document.body || document.documentElement;
+
+    const cleanup = () => {
+      observer.disconnect();
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+    };
+
+    const finish = (enabledEl, reason) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      console.log(LOG_PREFIX, `Element is now enabled (${reason})`);
+      callback(enabledEl);
+    };
+
+    const observer = new MutationObserver(() => {
       const current = document.querySelector(selector);
       if (isEnabled(current)) {
-        console.log(LOG_PREFIX, 'Element is now enabled');
-        clearInterval(interval);
-        callback(current);
+        finish(current, 'mutation');
       }
-    }, 100);
+    });
+
+    observer.observe(root, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['disabled', 'class']
+    });
+
+    timeoutId = setTimeout(() => {
+      cleanup();
+      console.log(LOG_PREFIX, `Timed out waiting for enabled element: ${selector}`);
+    }, timeoutMs);
   }
 
   function gemRunEmailCampaignListLoadAll() {

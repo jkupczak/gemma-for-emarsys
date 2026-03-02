@@ -129,7 +129,15 @@ function clickEmailToolButton(buttonType) {
 }
 
 function setupSaveButtonSync() {
+  if (setupSaveButtonSync._initialized) return;
+  setupSaveButtonSync._initialized = true;
+
   console.log('[Gem] Setting up save button synchronization');
+  let observedOriginalButton = null;
+  let observedOriginalLoading = null;
+  let buttonObserver = null;
+  let loadingObserver = null;
+  let syncScheduled = false;
 
   // Function to sync the disabled state
   function syncDisabledState() {
@@ -210,15 +218,25 @@ function setupSaveButtonSync() {
     }
   }
 
-  // Set up MutationObserver for the original button
-  const originalButton = document.querySelector('cb-draft-save-button button');
-  if (originalButton) {
-    const buttonObserver = new MutationObserver((mutations) => {
-      mutations.forEach((mutation) => {
-        if (mutation.type === 'attributes' && mutation.attributeName === 'disabled') {
-          syncDisabledState();
-        }
-      });
+  function attachButtonObserver() {
+    const originalButton = document.querySelector('cb-draft-save-button button');
+    if (observedOriginalButton === originalButton) return;
+
+    if (buttonObserver) {
+      buttonObserver.disconnect();
+      buttonObserver = null;
+    }
+
+    observedOriginalButton = originalButton || null;
+    if (!originalButton) return;
+
+    buttonObserver = new MutationObserver((mutations) => {
+      const disabledChanged = mutations.some((mutation) =>
+        mutation.type === 'attributes' && mutation.attributeName === 'disabled'
+      );
+      if (disabledChanged) {
+        scheduleSync();
+      }
     });
 
     buttonObserver.observe(originalButton, {
@@ -229,11 +247,20 @@ function setupSaveButtonSync() {
     console.log('[Gem] Set up observer for original save button disabled state');
   }
 
-  // Set up MutationObserver for the loading element
-  const originalLoading = document.querySelector('cb-draft-save-button button .e-btn__loading');
-  if (originalLoading) {
-    const loadingObserver = new MutationObserver(() => {
-      syncLoadingClasses();
+  function attachLoadingObserver() {
+    const originalLoading = document.querySelector('cb-draft-save-button button .e-btn__loading');
+    if (observedOriginalLoading === originalLoading) return;
+
+    if (loadingObserver) {
+      loadingObserver.disconnect();
+      loadingObserver = null;
+    }
+
+    observedOriginalLoading = originalLoading || null;
+    if (!originalLoading) return;
+
+    loadingObserver = new MutationObserver(() => {
+      scheduleSync();
     });
 
     loadingObserver.observe(originalLoading, {
@@ -244,17 +271,42 @@ function setupSaveButtonSync() {
     console.log('[Gem] Set up observer for original save button loading classes');
   }
 
-  // Initial sync
-  setTimeout(() => {
+  function runSync() {
+    attachButtonObserver();
+    attachLoadingObserver();
     syncDisabledState();
     syncLoadingClasses();
-  }, 100);
+  }
 
-  // Set up periodic sync as a fallback (in case observers miss something)
-  setInterval(() => {
-    syncDisabledState();
-    syncLoadingClasses();
-  }, 1000);
+  function scheduleSync() {
+    if (syncScheduled) return;
+    syncScheduled = true;
+    requestAnimationFrame(() => {
+      syncScheduled = false;
+      runSync();
+    });
+  }
+
+  const root = document.body || document.documentElement;
+  if (root) {
+    const rootObserver = new MutationObserver((mutations) => {
+      const hasStructuralChange = mutations.some((mutation) =>
+        mutation.type === 'childList' &&
+        (mutation.addedNodes.length > 0 || mutation.removedNodes.length > 0)
+      );
+      if (hasStructuralChange) {
+        scheduleSync();
+      }
+    });
+    rootObserver.observe(root, {
+      childList: true,
+      subtree: true
+    });
+  }
+
+  // Initial sync plus one delayed pass for late-rendered elements.
+  scheduleSync();
+  setTimeout(scheduleSync, 100);
 }
 
 
@@ -4177,45 +4229,69 @@ function initializeOverlayPanelControls() {
       console.log("[Gem] Image Properties modal modification complete");
     }
 
-    // Monitor for modal appearance
+    function scheduleImagePropertiesModalInit(modal, source = '') {
+      if (!modal || modal.nodeType !== Node.ELEMENT_NODE) return;
+      if (!isImagePropertiesModal(modal)) return;
+      if (modal._gemImagePropsModifyScheduled) return;
+      modal._gemImagePropsModifyScheduled = true;
+      if (source) {
+        console.log(`[Gem] Image Properties modal detected (${source})`);
+      } else {
+        console.log("[Gem] Image Properties modal detected");
+      }
+      setTimeout(() => {
+        try {
+          modal._gemImagePropsModifyScheduled = false;
+          if (!modal.isConnected) return;
+          modifyImagePropertiesModal(modal);
+        } catch (_) {
+          modal._gemImagePropsModifyScheduled = false;
+        }
+      }, 100);
+    }
+
+    function collectImagePropertiesModalCandidates(node) {
+      if (!node || node.nodeType !== Node.ELEMENT_NODE) return [];
+      const out = [];
+      const seen = new Set();
+      const add = (el) => {
+        if (!el || el.nodeType !== Node.ELEMENT_NODE) return;
+        if (seen.has(el)) return;
+        seen.add(el);
+        out.push(el);
+      };
+
+      if (node.matches && node.matches('.e-float-container-default')) {
+        add(node);
+      }
+      if (node.querySelectorAll) {
+        node.querySelectorAll('.e-float-container-default').forEach(add);
+      }
+
+      const titleNodes = [];
+      if (node.matches && node.matches('span.e-dialog__title')) {
+        titleNodes.push(node);
+      }
+      if (node.querySelectorAll) {
+        node.querySelectorAll('span.e-dialog__title').forEach((n) => titleNodes.push(n));
+      }
+      titleNodes.forEach((span) => {
+        if ((span.textContent || '').trim() !== 'Image Properties') return;
+        const modalElement = span.closest('.e-float-container-default') ||
+                             span.closest('.e-dialog-active') ||
+                             span.closest('[class*="dialog"]');
+        add(modalElement);
+      });
+
+      return out;
+    }
+
+    // Single deterministic watcher for Image Properties modal lifecycle.
     const observer = new MutationObserver((mutations) => {
       mutations.forEach((mutation) => {
         mutation.addedNodes.forEach((node) => {
-          if (node.nodeType === Node.ELEMENT_NODE) {
-            // Check if this is an Image Properties modal
-            if (isImagePropertiesModal(node)) {
-              console.log("[Gem] Image Properties modal detected");
-              // Use setTimeout to ensure the modal is fully rendered
-              setTimeout(() => modifyImagePropertiesModal(node), 100);
-            }
-
-            // Also check within added subtrees
-            const imagePropertiesModals = node.querySelectorAll ?
-              node.querySelectorAll('.e-float-container-default') : [];
-            imagePropertiesModals.forEach(modal => {
-              if (isImagePropertiesModal(modal)) {
-                console.log("[Gem] Image Properties modal detected in subtree");
-                setTimeout(() => modifyImagePropertiesModal(modal), 100);
-              }
-            });
-
-            // Also check for any element containing the title span
-            const titleSpans = node.querySelectorAll ?
-              node.querySelectorAll('span.e-dialog__title') : [];
-            titleSpans.forEach(span => {
-              if (span.textContent.trim() === 'Image Properties') {
-                console.log("[Gem] Found Image Properties title span, checking parent modal");
-                // Find the modal container (could be multiple levels up)
-                let modalElement = span.closest('.e-float-container-default') ||
-                                   span.closest('.e-dialog-active') ||
-                                   span.closest('[class*="dialog"]');
-                if (modalElement && isImagePropertiesModal(modalElement)) {
-                  console.log("[Gem] Image Properties modal detected via title span");
-                  setTimeout(() => modifyImagePropertiesModal(modalElement), 100);
-                }
-              }
-            });
-          }
+          const candidates = collectImagePropertiesModalCandidates(node);
+          candidates.forEach((candidate) => scheduleImagePropertiesModalInit(candidate, 'mutation'));
         });
       });
     });
@@ -4225,21 +4301,11 @@ function initializeOverlayPanelControls() {
       subtree: true
     });
 
-    // Fallback: periodically check for Image Properties modal
-    const checkInterval = setInterval(() => {
-      const existingModal = document.querySelector('.e-float-container-default');
-      if (existingModal && isImagePropertiesModal(existingModal)) {
-        console.log("[Gem] Image Properties modal found via periodic check");
-        modifyImagePropertiesModal(existingModal);
-        clearInterval(checkInterval); // Stop checking once found
-      }
-    }, 1000); // Check every second
-
-    // Stop checking after 30 seconds to avoid infinite checking
-    setTimeout(() => {
-      clearInterval(checkInterval);
-      console.log("[Gem] Stopped periodic checking for Image Properties modal");
-    }, 30000);
+    // Initial check for already-rendered modals (single pass; no interval polling).
+    try {
+      const existingModals = Array.from(document.querySelectorAll('.e-float-container-default'));
+      existingModals.forEach((modal) => scheduleImagePropertiesModalInit(modal, 'initial-scan'));
+    } catch (_) {}
 
     console.log("[Gem] Image Properties modal handler initialized");
   }
@@ -4338,17 +4404,26 @@ function initializeOverlayPanelControls() {
 
   // Try immediately
   if (!tryInitializeKeywordSwap()) {
-    // If not loaded yet, check periodically for up to 5 seconds
+    const readyEventName = 'gem:keyword-swap-ready';
+    const onKeywordSwapReady = () => {
+      tryInitializeKeywordSwap();
+    };
+    window.addEventListener(readyEventName, onKeywordSwapReady, { once: true });
+
+    // Fallback: if the ready event is missed, check periodically for up to 5 seconds.
     let attempts = 0;
+    const maxAttempts = 20; // 20 * 250ms = 5 seconds
     const checkInterval = setInterval(() => {
       attempts++;
       if (tryInitializeKeywordSwap()) {
+        window.removeEventListener(readyEventName, onKeywordSwapReady);
         clearInterval(checkInterval);
-      } else if (attempts >= 50) { // 50 * 100ms = 5 seconds
+      } else if (attempts >= maxAttempts) {
         console.log("[Gem] Keyword swap initialization timed out - function not found");
+        window.removeEventListener(readyEventName, onKeywordSwapReady);
         clearInterval(checkInterval);
       }
-    }, 100);
+    }, 250);
   }
 
   // Optional: Add debugging function
