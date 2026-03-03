@@ -12,9 +12,11 @@ chrome.storage.sync.get({ fullscreenActive: false }, (settings) => {
     waitForElement("main.e-layout__content", (contentElement) => {
       console.log("[Gem] Content element now available, activating fullscreen...");
       activateFullscreenMode();
+      updateNavToggleIcons();
     });
   } else {
     console.log("[Gem] Fullscreen was not active, skipping activation");
+    updateNavToggleIcons();
   }
 });
 
@@ -30,9 +32,11 @@ chrome.storage.sync.get({ mobileViewVisible: true }, (settings) => {
     waitForElement("#gem-mobile-frame", (mobileFrame) => {
       console.log("[Gem] Mobile frame found, hiding mobile view...");
       mobileFrame.style.display = "none";
+      updateNavToggleIcons();
     });
   } else {
     console.log("[Gem] Mobile view was visible, keeping default state");
+    updateNavToggleIcons();
   }
 });
 
@@ -41,17 +45,49 @@ chrome.storage.sync.get({ mobileViewVisible: true }, (settings) => {
 // Injects gear + expand icons into <e-verticalnav-menu>
 // ------------------------------------------------------------
 
-const EXPAND_SVG = `
-  <e-tooltip placement="right" content="Expand View (` + window.GEM_MOD_KEY + `+Shift+f)" role="tooltip" aria-description="Expand View">
-    <svg style="vertical-align:middle" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="var(--token-tab-selected-text)"><path d="M120-120v-240h80v104l124-124 56 56-124 124h104v80H120Zm480 0v-80h104L580-324l56-56 124 124v-104h80v240H600ZM324-580 200-704v104h-80v-240h240v80H256l124 124-56 56Zm312 0-56-56 124-124H600v-80h240v240h-80v-104L636-580Z"/></svg>
-  </e-tooltip>
-`;
+const EXPAND_ICON_OFF = '&#61658;';
+const EXPAND_ICON_ON = '&#61618;';
+const MOBILE_ICON_OFF = '&#61747;';
+const MOBILE_ICON_ON = '&#61746;';
 
-const MOBILE_SVG = `
-  <e-tooltip placement="right" content="Mobile View (` + window.GEM_MOD_KEY + `+/)" role="tooltip" aria-description="Mobile View">
-    <svg style="vertical-align:middle" xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="var(--token-tab-selected-text)"><path d="M280-40q-33 0-56.5-23.5T200-120v-720q0-33 23.5-56.5T280-920h400q33 0 56.5 23.5T760-840v124q18 7 29 22t11 34v80q0 19-11 34t-29 22v404q0 33-23.5 56.5T680-40H280Zm0-80h400v-720H280v720Zm0 0v-720 720Zm120-40h160q17 0 28.5-11.5T600-200q0-17-11.5-28.5T560-240H400q-17 0-28.5 11.5T360-200q0 17 11.5 28.5T400-160Z"/></svg>
-  </e-tooltip>
-`
+function getExpandSvg(iconEntity = EXPAND_ICON_OFF) {
+  return `
+    <div class="gem-e-verticalnavitem"><e-tooltip placement="right" content="Expanded View (` + window.GEM_MOD_KEY + `+Shift+F)" role="tooltip" aria-description="Expanded View">
+      <div class="e-verticalnavitem__icon e-svgclickfix">
+        <gem-e-icon icon="mediadb"><div aria-hidden="true" class="e-icon-wrapper"><div class="e-icon gem-expand-icon-glyph">${iconEntity}</div></div></gem-e-icon>
+      </div>
+    </e-tooltip></div>
+  `;
+}
+
+function getMobileSvg(iconEntity = MOBILE_ICON_OFF) {
+  return `
+    <div class="gem-e-verticalnavitem"><e-tooltip placement="right" content="Mobile View (` + window.GEM_MOD_KEY + `+/)" role="tooltip" aria-description="Mobile View">
+      <div class="e-verticalnavitem__icon e-svgclickfix">
+        <gem-e-icon icon="mediadb"><div aria-hidden="true" class="e-icon-wrapper"><div class="e-icon gem-mobile-icon-glyph">${iconEntity}</div></div></gem-e-icon>
+      </div>
+    </e-tooltip></div>
+  `;
+}
+
+function isMobileViewVisible() {
+  const mobileFrame = document.getElementById("gem-mobile-frame");
+  if (!mobileFrame) return true;
+  return mobileFrame.style.display !== "none";
+}
+
+function updateNavToggleIcons() {
+  const expandGlyph = document.querySelector('.gem-expand-icon-glyph');
+  if (expandGlyph) {
+    const isExpanded = !!(document.body && document.body.classList.contains("gem-expanded"));
+    expandGlyph.innerHTML = isExpanded ? EXPAND_ICON_ON : EXPAND_ICON_OFF;
+  }
+
+  const mobileGlyph = document.querySelector('.gem-mobile-icon-glyph');
+  if (mobileGlyph) {
+    mobileGlyph.innerHTML = isMobileViewVisible() ? MOBILE_ICON_ON : MOBILE_ICON_OFF;
+  }
+}
 
 // ------------------------------------------------------------
 // Utility: wait for an element to appear
@@ -71,6 +107,47 @@ function waitForElement(selector, callback) {
   obs.observe(document.documentElement, {
     childList: true,
     subtree: true
+  });
+}
+
+function setupNavToggleIconObservers() {
+  if (window.__gemNavToggleIconObserversInstalled) return;
+  window.__gemNavToggleIconObserversInstalled = true;
+
+  const body = document.body;
+  if (body) {
+    const bodyObserver = new MutationObserver((mutations) => {
+      const classChanged = mutations.some((mutation) =>
+        mutation.type === 'attributes' && mutation.attributeName === 'class'
+      );
+      if (classChanged) {
+        updateNavToggleIcons();
+      }
+    });
+
+    bodyObserver.observe(body, {
+      attributes: true,
+      attributeFilter: ['class']
+    });
+  }
+
+  waitForElement("#gem-mobile-frame", (mobileFrame) => {
+    updateNavToggleIcons();
+
+    const mobileFrameObserver = new MutationObserver((mutations) => {
+      const displayChanged = mutations.some((mutation) =>
+        mutation.type === 'attributes' &&
+        (mutation.attributeName === 'style' || mutation.attributeName === 'class')
+      );
+      if (displayChanged) {
+        updateNavToggleIcons();
+      }
+    });
+
+    mobileFrameObserver.observe(mobileFrame, {
+      attributes: true,
+      attributeFilter: ['style', 'class']
+    });
   });
 }
 
@@ -94,7 +171,7 @@ function createIconBar() {
     borderTop: "1px solid var(--token-box-default-border)",
   });
   const expand = document.createElement("div");
-  expand.innerHTML = EXPAND_SVG;
+  expand.innerHTML = getExpandSvg();
   Object.assign(expand.style, {
     cursor: "pointer",
     order: "3",
@@ -116,6 +193,7 @@ function createIconBar() {
 
       const isNowExpanded = content.classList.contains("gem-expanded");
       console.log("[Gem] Expand click - Now expanded:", isNowExpanded);
+      updateNavToggleIcons();
 
       // Store the fullscreen state
       chrome.storage.sync.set({ fullscreenActive: isNowExpanded }, () => {
@@ -128,7 +206,7 @@ function createIconBar() {
   });
 
   const mobile = document.createElement("div");
-  mobile.innerHTML = MOBILE_SVG;
+  mobile.innerHTML = getMobileSvg();
   Object.assign(mobile.style, {
     cursor: "pointer",
     order: "2",
@@ -150,6 +228,7 @@ function createIconBar() {
 
       const isNowVisible = mobileFrame.style.display !== "none";
       console.log("[Gem] Mobile click - Now visible:", isNowVisible);
+      updateNavToggleIcons();
 
       // Store the mobile view visibility state
       chrome.storage.sync.set({ mobileViewVisible: isNowVisible }, () => {
@@ -162,6 +241,7 @@ function createIconBar() {
 
   bar.appendChild(expand);
   bar.appendChild(mobile);
+  updateNavToggleIcons();
 
   return bar;
 }
@@ -195,6 +275,7 @@ function activateFullscreenMode() {
     if (!alreadyExpanded) {
       content.classList.add("gem-expanded");
       console.log("[Gem] Fullscreen mode activated - class added");
+      updateNavToggleIcons();
 
     } else {
       console.log("[Gem] Fullscreen mode already active - skipping");
@@ -217,6 +298,7 @@ function deactivateFullscreenMode() {
     if (isExpanded) {
       content.classList.remove("gem-expanded");
       console.log("[Gem] Fullscreen mode deactivated - class removed");
+      updateNavToggleIcons();
 
     } else {
       console.log("[Gem] Fullscreen mode already inactive - skipping");
@@ -336,6 +418,8 @@ function initializeBlockSearchMonitoring() {
 waitForElement("e-verticalnav-menu", (menu) => {
   console.log("[Gem] Navigation menu found, injecting icons");
   injectIcons(menu);
+  setupNavToggleIconObservers();
+  updateNavToggleIcons();
 
   // Also re-inject if the menu is replaced in DOM
   const obs = new MutationObserver(() => {
@@ -343,6 +427,7 @@ waitForElement("e-verticalnav-menu", (menu) => {
     if (newMenu && !newMenu.querySelector(".gem-nav-icons")) {
       console.log("[Gem] Navigation menu changed, re-injecting icons");
       injectIcons(newMenu);
+      updateNavToggleIcons();
     }
   });
 

@@ -18,7 +18,8 @@ if (!window.gemShowToast) {
   window.gemShowToast = function gemShowToast(message, opts = {}) {
     try {
       const type = opts.type || 'info'; // info | success | warn | error
-      const durationMs = typeof opts.durationMs === 'number' ? opts.durationMs : 2400;
+      const baseDurationMs = typeof opts.durationMs === 'number' ? opts.durationMs : 2400;
+      const durationMs = baseDurationMs * 2;
 
       let container = document.getElementById('gem-toast-container');
       if (!container) {

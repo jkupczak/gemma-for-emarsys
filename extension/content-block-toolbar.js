@@ -409,43 +409,17 @@ function blockHasEditableInPreviewIframe(eBlockId) {
   if (!doc) return false;
 
   try {
-    const blocks = Array.from(doc.querySelectorAll(`[e-block-id="${CSS.escape(eBlockId)}"]`));
-    if (!blocks.length) return false;
-    return blocks.some((blockEl) => getEditableElementsForBlockEl(blockEl).length > 0);
+    const block = doc.querySelector(`[e-block-id="${CSS.escape(eBlockId)}"]`);
+    if (!block) return false;
+    return !!block.querySelector('[contenteditable="true"]');
   } catch (e) {
     return false;
   }
 }
 
-function isEditableBlockElement(el) {
-  if (!el || el.nodeType !== Node.ELEMENT_NODE) return false;
-  const contentEditableAttr = (el.getAttribute('contenteditable') || '').toLowerCase();
-  if (contentEditableAttr === 'true' || contentEditableAttr === 'plaintext-only' || contentEditableAttr === '') {
-    return true;
-  }
-  // Emarsys often marks user-editable nodes with e-editable.
-  if (el.hasAttribute && el.hasAttribute('e-editable') && contentEditableAttr !== 'false') {
-    return true;
-  }
-  return !!el.isContentEditable;
-}
-
 function getEditableElementsForBlockEl(blockEl) {
   if (!blockEl || blockEl.nodeType !== Node.ELEMENT_NODE) return [];
-
-  const out = [];
-  if (isEditableBlockElement(blockEl)) {
-    out.push(blockEl);
-  }
-
-  const descendants = Array.from(blockEl.querySelectorAll('[contenteditable], [e-editable]'));
-  descendants.forEach((el) => {
-    if (!isEditableBlockElement(el)) return;
-    if (out.includes(el)) return;
-    out.push(el);
-  });
-
-  return out;
+  return Array.from(blockEl.querySelectorAll('[contenteditable="true"]'));
 }
 
 function hasAnySwapKeywordConfigured(callback) {

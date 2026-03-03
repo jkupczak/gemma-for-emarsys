@@ -170,6 +170,7 @@ cb-personalizable-input-with-context > vce-code-editor {
 }
 .gem-enhanced-image-properties-dialog #gem-image-properties-left-panel {
     border-left: 1px solid var(--token-box-default-border);
+    background: var(--token-box-alternate-background);
 }
 
 /* ------------------------------------------------------------------------------------------------ */
@@ -1304,3 +1305,17 @@ cb-campaign-preview > .e-section .e-section__header {
 .mce-widget.mce-tooltip.mce-tooltip-n {
     display: none !important;
 }
+
+.gem-e-verticalnavitem {
+    position: relative;
+}
+/* .gem-e-verticalnavitem:hover:before {
+    background-color: var(--token-tab-default-backgroundHover);
+    content: "";
+    border-radius: 8px;
+    width: 48px;
+    height: 40px;
+    position: absolute;
+    top: -6px;
+    left: 0; right: 0px;
+} */

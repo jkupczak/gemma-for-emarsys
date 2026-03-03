@@ -150,7 +150,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         right: -500px;
         width: 500px;
         height: 100vh;
-        background: #ffffff;
+        background: var(--token-background-faint);
         box-shadow: -4px 0 20px rgba(0,0,0,0.15);
         z-index: 9999;
         transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -180,7 +180,6 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         padding: 20px 10px 0 20px;
         overflow-y: auto;
         flex-grow: 1;
-        background: var(--token-background-faint);
       }
 
       #gem-settings-panel input[type="color"] {
@@ -479,6 +478,8 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
       #gem-settings-body h2 { 
         margin-top: 30px;
         margin-bottom: 10px;
+        border-top: 2px solid var(--token-box-default-background);
+        padding-top: 24px;
       }
 
       .color-swatch-color {
@@ -579,7 +580,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         <div style="display: flex; flex-direction: row; gap: 12px;">
           <div class="gem-welcome-link gem-border-hover-primary-600" style="border-radius: 8px; align-content: center; flex: 1; color: var(--token-text-default); text-align: center; cursor: pointer; border: 1px solid var(--token-box-default-border);">
             <div style="font-size: 16px; font-weight: 600">
-              🎉&nbsp;&nbsp;See what's new!
+              ✨&nbsp;&nbsp;Feature List
             </div>
           </div>
 
@@ -623,7 +624,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
             Toggle expanded mode
             </label>
             <p class="sub-label">
-              An alternative layout that increases the total viewable area of your email by over 40%. Quickly toggle it using the keyboard shortcut CMD+SHIFT+F or CTRL+SHIFT+F
+              An alternative layout that increases the total viewable area of your email by over 40%. You can turn it on here, via the <span class="gem-e-icon">&#61658;</span> icon next to your email, or use the keyboard shortcut CMD+/ or CTRL+/ at any time.
             </p>
           </div>
           <div class="gem-setting">
@@ -632,7 +633,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
             Toggle mobile preview pane
             </label>
             <p class="sub-label">
-              Keep a mobile preview of your email visible next to your desktop view while you make edits.
+              Keep a mobile preview of your email visible next to your desktop view while you make edits. You can turn it on here, via the <span class="gem-e-icon">&#61747;</span> icon next to your email, or use the keyboard shortcut CMD+SHIFT+F or CTRL+SHIFT+F at any time.
             </p>
             <div class="gem-setting-condensed" style="display: flex; gap: 12px; align-items: center;">
               <label for="opt-mobile-preview-width" style="flex: 1;">Width (px)</label>
