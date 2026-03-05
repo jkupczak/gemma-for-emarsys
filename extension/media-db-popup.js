@@ -9,9 +9,16 @@ function initializeRecentlySeenLogger() {
   const RECENTLY_USED_SYNC_KEY = 'gemRecentImages';
   const RECENTLY_SEEN_MAX_SETTING_KEY = 'gemRecentlySeenImagesMax';
   let recentlySeenMax = 300;
+  const isDebugEnabled = () => {
+    try {
+      if (window.gemIsDebugLoggingEnabled) return !!window.gemIsDebugLoggingEnabled();
+      if (typeof window.GEM_DEBUG === 'boolean') return window.GEM_DEBUG;
+    } catch (_) {}
+    return false;
+  };
   const dbg = (...args) => {
     try {
-      if (window.gemIsDebugLoggingEnabled && !window.gemIsDebugLoggingEnabled()) return;
+      if (!isDebugEnabled()) return;
       console.log('[Gem-Recently-Seen]', ...args);
     } catch (_) {}
   };
@@ -317,13 +324,13 @@ function initializeRecentlySeenLogger() {
 
     seenEls.forEach(hit);
 
-    if (DEBUG && (found > 0 || (Math.random() < 0.02))) {
+    if (isDebugEnabled() && (found > 0 || (Math.random() < 0.02))) {
       dbg(`Scan: found ${found} nodes, attempted ${used} upserts`, path ? `(path="${path}")` : '');
     }
   }
 
   function maybeLogCopyActionCount() {
-    if (!DEBUG) return;
+    if (!isDebugEnabled()) return;
     if (countLogT) return;
     countLogT = setTimeout(() => {
       countLogT = null;

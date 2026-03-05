@@ -174,17 +174,30 @@ function injectConvertButtonIntoToolbar(toolbarEl) {
   const actions = toolbarEl.querySelector(GEM_TOOLBAR_ACTIONS_SELECTOR);
   if (!actions) return { status: 'skipped', reason: 'no-actions-container' };
 
-  // Avoid duplicates per toolbar instance
-  if (actions.querySelector(`[block-toolbar-button="${GEM_CONVERT_BTN_ID}"]`)) {
-    return { status: 'skipped', reason: 'already-present' };
-  }
-
   const reorderBtn = toolbarEl.querySelector(GEM_REORDER_BTN_SELECTOR);
   if (!reorderBtn) return { status: 'skipped', reason: 'no-reorder-button' };
 
   const eBlockId = reorderBtn.getAttribute('e-block-id') || '';
   const blockTemplateName = reorderBtn.getAttribute('blocktemplatename') || '';
   const blockPosition = reorderBtn.getAttribute('blockposition') || '';
+
+  // Avoid duplicates per toolbar instance
+  const existingBtn = actions.querySelector(`[block-toolbar-button="${GEM_CONVERT_BTN_ID}"]`);
+  if (existingBtn) {
+    if (eBlockId) existingBtn.setAttribute('e-block-id', eBlockId);
+    else existingBtn.removeAttribute('e-block-id');
+    if (blockTemplateName) existingBtn.setAttribute('blocktemplatename', blockTemplateName);
+    else existingBtn.removeAttribute('blocktemplatename');
+    if (blockPosition) existingBtn.setAttribute('blockposition', blockPosition);
+    else existingBtn.removeAttribute('blockposition');
+    return {
+      status: 'skipped',
+      reason: 'already-present',
+      blockId: eBlockId,
+      blockTemplateName,
+      blockPosition
+    };
+  }
 
   // Only show this action if the target block contains contenteditable areas.
   // The toolbar is per-block and appears/disappears on hover, so we can gate injection here.
@@ -253,22 +266,35 @@ function injectTextSwapButtonIntoToolbar(toolbarEl) {
   const actions = toolbarEl.querySelector(GEM_TOOLBAR_ACTIONS_SELECTOR);
   if (!actions) return { status: 'skipped', reason: 'no-actions-container' };
 
-  // Respect settings: allow user to always hide this icon
-  if (document.body.classList.contains('gem-toolbar-swapKeywords-always-hide')) {
-    return { status: 'skipped', reason: 'always-hide-setting' };
-  }
-
-  // Avoid duplicates per toolbar instance
-  if (actions.querySelector(`[block-toolbar-button="${GEM_TEXT_SWAP_BTN_ID}"]`)) {
-    return { status: 'skipped', reason: 'already-present' };
-  }
-
   const reorderBtn = toolbarEl.querySelector(GEM_REORDER_BTN_SELECTOR);
   if (!reorderBtn) return { status: 'skipped', reason: 'no-reorder-button' };
 
   const eBlockId = reorderBtn.getAttribute('e-block-id') || '';
   const blockTemplateName = reorderBtn.getAttribute('blocktemplatename') || '';
   const blockPosition = reorderBtn.getAttribute('blockposition') || '';
+
+  // Respect settings: allow user to always hide this icon
+  if (document.body.classList.contains('gem-toolbar-swapKeywords-always-hide')) {
+    return { status: 'skipped', reason: 'always-hide-setting' };
+  }
+
+  // Avoid duplicates per toolbar instance
+  const existingBtn = actions.querySelector(`[block-toolbar-button="${GEM_TEXT_SWAP_BTN_ID}"]`);
+  if (existingBtn) {
+    if (eBlockId) existingBtn.setAttribute('e-block-id', eBlockId);
+    else existingBtn.removeAttribute('e-block-id');
+    if (blockTemplateName) existingBtn.setAttribute('blocktemplatename', blockTemplateName);
+    else existingBtn.removeAttribute('blocktemplatename');
+    if (blockPosition) existingBtn.setAttribute('blockposition', blockPosition);
+    else existingBtn.removeAttribute('blockposition');
+    return {
+      status: 'skipped',
+      reason: 'already-present',
+      blockId: eBlockId,
+      blockTemplateName,
+      blockPosition
+    };
+  }
 
   // Only show this action if the target block contains contenteditable areas.
   if (eBlockId && !blockHasEditableInPreviewIframe(eBlockId)) {
@@ -409,9 +435,13 @@ function blockHasEditableInPreviewIframe(eBlockId) {
   if (!doc) return false;
 
   try {
-    const block = doc.querySelector(`[e-block-id="${CSS.escape(eBlockId)}"]`);
-    if (!block) return false;
-    return !!block.querySelector('[contenteditable="true"]');
+    const blockEls = Array.from(doc.querySelectorAll(`[e-block-id="${CSS.escape(eBlockId)}"]`));
+    if (!blockEls.length) return false;
+    return blockEls.some((block) => {
+      if (!block || block.nodeType !== Node.ELEMENT_NODE) return false;
+      if (block.matches && block.matches('[contenteditable="true"]')) return true;
+      return !!(block.querySelector && block.querySelector('[contenteditable="true"]'));
+    });
   } catch (e) {
     return false;
   }
@@ -419,7 +449,14 @@ function blockHasEditableInPreviewIframe(eBlockId) {
 
 function getEditableElementsForBlockEl(blockEl) {
   if (!blockEl || blockEl.nodeType !== Node.ELEMENT_NODE) return [];
-  return Array.from(blockEl.querySelectorAll('[contenteditable="true"]'));
+  const out = [];
+  if (blockEl.matches && blockEl.matches('[contenteditable="true"]')) {
+    out.push(blockEl);
+  }
+  if (blockEl.querySelectorAll) {
+    out.push(...Array.from(blockEl.querySelectorAll('[contenteditable="true"]')));
+  }
+  return out;
 }
 
 function hasAnySwapKeywordConfigured(callback) {
@@ -546,10 +583,14 @@ function applyTextSwapForBlock(eBlockId) {
       let didChange = false;
       let swapCount = 0;
       const touchedEditables = new Set();
+      const processedEditables = new Set();
 
       blockEls.forEach((blockEl) => {
         const editables = getEditableElementsForBlockEl(blockEl);
         editables.forEach((editable) => {
+          if (!editable || processedEditables.has(editable)) return;
+          processedEditables.add(editable);
+
           const walker = doc.createTreeWalker(
             editable,
             NodeFilter.SHOW_TEXT,
@@ -774,10 +815,14 @@ function convertEslToTokensForBlock(eBlockId) {
 
   let didChange = false;
   const touchedEditables = new Set();
+  const processedEditables = new Set();
 
     blockEls.forEach((blockEl) => {
       const editables = getEditableElementsForBlockEl(blockEl);
       editables.forEach((editable) => {
+        if (!editable || processedEditables.has(editable)) return;
+        processedEditables.add(editable);
+
         const walker = doc.createTreeWalker(
           editable,
           NodeFilter.SHOW_TEXT,
