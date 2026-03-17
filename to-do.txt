@@ -39,6 +39,26 @@ In expanded mode, the hidden nav on the left should only open on click.
 
 #Rich Paste: Sometimes Rich Paste inserts the paste inside of the existing text even though we did CMD+A to select all of the existing text.
 
+gemRecentlySeenImageGroupCollapse in localstorage is holding onto the collapse status of Recently Seen groupings that are no longer visible to the user. Once a group is no longer available in Recently seen, the matching key in gemRecentlySeenImageGroupCollapse should be removed so that the log size does not get out of control.
+
+Move favorited images from local storage to sync storage
+
+Measure total space taken up by snippets in sync storage. Calculate how much space is left. Create a storage space UI indicator for the user.
+
+Search pills and input needs a regex option.
+
+Search pills should take two clicks to close.
+
+Search pills should be draggable to rearrange
+
+Add a shortcut to quickly cycle through languages, like CMD+SHIFT+arrow keys. When a new one is loaded, show a toast that says what language it is in case the language selector isn't currently visible.
+
+When users hover over images, show the ALT text. Make this a button in the toolbar that is on by default and its on/off status persists across pages. Font-size of the alt text should scale based on image size between 12px and 16px? Offset it above the image with a dark background. It should not be clickable, use pointer-events: none. Consider three toggles: Off, On with Hover, Always On.
+
+Hide the "Title" input in the Links dialog by default. Provide a toggle to turn it back but explain why it was hidden by default.
+
+Keep track of session IDs and which one is most recent. Detect if we have any pages open with a different session ID and throw up a notice that saving could be affected and recomend a page refresh before making further edits.
+
 Can I create "drag for padding" functionality? Would need to ask the user to designate an integere based variable for top and bottom padding in the settings panel.
 
 When the Block Style Settings panel is empty, it should close on its own.

@@ -11,8 +11,8 @@
 
 /* Compact Email Tools Dropdown */
 .gem-expanded .gem-compact-email-tools {
-    flex-direction: row-reverse;
-    justify-content: flex-end;
+    flex-direction: reverse;
+    justify-content: space-between;
     display: flex !important;
     gap: 16px;
     border-bottom: 1px solid var(--token-border-default) !important;

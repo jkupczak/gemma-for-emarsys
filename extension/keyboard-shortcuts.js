@@ -6,6 +6,130 @@ console.log("keyboard-shortcuts.js loaded");
 function initializeKeyboardShortcuts() {
   console.log("[Gem] Initializing keyboard shortcuts...");
 
+  function isTypingTarget(target) {
+    if (!target) return false;
+    const el = target.nodeType === Node.ELEMENT_NODE ? target : target.parentElement;
+    if (!el) return false;
+    const tag = (el.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select') return true;
+    if (el.isContentEditable) return true;
+    if (el.closest && el.closest('[contenteditable="true"]')) return true;
+    return false;
+  }
+
+  function getRootDocument() {
+    try {
+      return window.top && window.top.document ? window.top.document : document;
+    } catch (_) {
+      return document;
+    }
+  }
+
+  let languageShortcutMaskTimer = null;
+  let languageShortcutObserver = null;
+  let languageShortcutActive = false;
+
+  function ensureLanguageShortcutStyle(rootDoc) {
+    if (!rootDoc) return;
+    if (rootDoc.getElementById('gem-lang-shortcut-style')) return;
+    const style = rootDoc.createElement('style');
+    style.id = 'gem-lang-shortcut-style';
+    style.textContent = `
+      .gem-lang-shortcut-hide-popup e-float-container .e-actionlist-popover,
+      .gem-lang-shortcut-hide-popup e-float-container .e-actionlist,
+      .gem-lang-shortcut-hide-popup e-float-container .e-actionlist__itemscontainer {
+        opacity: 0 !important;
+        pointer-events: none !important;
+      }
+    `;
+    (rootDoc.head || rootDoc.documentElement || rootDoc.body).appendChild(style);
+  }
+
+  function hideLanguagePopovers(rootDoc) {
+    if (!rootDoc) return;
+    const floats = Array.from(rootDoc.querySelectorAll('e-float-container'));
+    let hiddenCount = 0;
+    floats.forEach((fc) => {
+      try {
+        if (!fc || fc.nodeType !== Node.ELEMENT_NODE) return;
+        const hasActionList = fc.querySelector && fc.querySelector('e-actionlist');
+        if (!hasActionList) return;
+        fc.dataset.gemLangShortcutHidden = 'true';
+        fc.style.visibility = 'hidden';
+        fc.style.opacity = '0';
+        hiddenCount += 1;
+      } catch (_) {}
+    });
+    if (hiddenCount > 0) {
+      console.log("[Gem] Language shortcut masked popovers:", hiddenCount);
+    }
+  }
+
+  function clearLanguagePopoverMask(rootDoc) {
+    if (!rootDoc) return;
+    const floats = Array.from(rootDoc.querySelectorAll('e-float-container[data-gem-lang-shortcut-hidden="true"]'));
+    floats.forEach((fc) => {
+      try {
+        fc.style.visibility = '';
+        fc.style.opacity = '';
+        delete fc.dataset.gemLangShortcutHidden;
+      } catch (_) {}
+    });
+  }
+
+  function setLanguageShortcutMask(enabled) {
+    const rootDoc = getRootDocument();
+    ensureLanguageShortcutStyle(rootDoc);
+    const root = rootDoc.documentElement || rootDoc.body;
+    if (!root) return;
+    if (enabled) {
+      root.classList.add('gem-lang-shortcut-hide-popup');
+      hideLanguagePopovers(rootDoc);
+    } else {
+      root.classList.remove('gem-lang-shortcut-hide-popup');
+      clearLanguagePopoverMask(rootDoc);
+    }
+  }
+
+  function scheduleLanguageShortcutMaskClear(delayMs = 150) {
+    if (languageShortcutMaskTimer) {
+      clearTimeout(languageShortcutMaskTimer);
+    }
+    languageShortcutMaskTimer = setTimeout(() => {
+      languageShortcutMaskTimer = null;
+      languageShortcutActive = false;
+      if (languageShortcutObserver) {
+        languageShortcutObserver.disconnect();
+        languageShortcutObserver = null;
+      }
+      setLanguageShortcutMask(false);
+    }, delayMs);
+  }
+
+  function setupLanguageShortcutObserver() {
+    if (languageShortcutObserver) return;
+    const rootDoc = getRootDocument();
+    if (!rootDoc || !rootDoc.body) return;
+    languageShortcutObserver = new MutationObserver((mutations) => {
+      if (!languageShortcutActive) return;
+      let sawFloat = false;
+      mutations.forEach((mutation) => {
+        mutation.addedNodes.forEach((node) => {
+          if (node.nodeType !== Node.ELEMENT_NODE) return;
+          if (node.matches && node.matches('e-float-container')) {
+            sawFloat = true;
+          } else if (node.querySelector && node.querySelector('e-float-container')) {
+            sawFloat = true;
+          }
+        });
+      });
+      if (sawFloat) {
+        hideLanguagePopovers(rootDoc);
+      }
+    });
+    languageShortcutObserver.observe(rootDoc.body, { childList: true, subtree: true });
+  }
+
   // Function to find and click the save button
   function triggerSave() {
     const saveButton = document.querySelector('cb-draft-save-button button.e-btn');
@@ -51,6 +175,205 @@ function initializeKeyboardShortcuts() {
     } catch (error) {
       console.error("[Gem] Error in toggleMobilePreview:", error);
     }
+  }
+
+  function getLanguageSelectorState() {
+    const rootDoc = getRootDocument();
+    const selector = rootDoc.querySelector('vce-languages-selector');
+    if (!selector) return { selector: null, options: [], currentValue: null, currentIndex: -1 };
+
+    const options = Array.from(selector.querySelectorAll('e-select-option'))
+      .filter((opt) => {
+        if (!opt || opt.nodeType !== Node.ELEMENT_NODE) return false;
+        const disabledAttr = opt.getAttribute && opt.getAttribute('disabled');
+        const ariaDisabled = opt.getAttribute && opt.getAttribute('aria-disabled');
+        return !disabledAttr && ariaDisabled !== 'true';
+      });
+
+    let currentValue = null;
+    try {
+      const hidden = selector.querySelector('input[type="hidden"]');
+      if (hidden && hidden.value) currentValue = hidden.value;
+    } catch (_) {}
+
+    let currentIndex = -1;
+    if (currentValue) {
+      currentIndex = options.findIndex((opt) => {
+        const val = opt.getAttribute && opt.getAttribute('value');
+        return val === currentValue || opt.id === currentValue;
+      });
+    }
+
+    if (currentIndex < 0) {
+      currentIndex = options.findIndex((opt) => {
+        if (!opt) return false;
+        const attr = opt.getAttribute ? opt.getAttribute('selected') : null;
+        if (attr === 'true' || attr === 'selected') return true;
+        if (attr === '' && opt.hasAttribute && opt.hasAttribute('selected')) return true;
+        if (typeof opt.selected === 'boolean') return opt.selected;
+        return false;
+      });
+    }
+
+    return { selector, options, currentValue, currentIndex, rootDoc };
+  }
+
+  function normalizeOptionText(text) {
+    return String(text || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function getActionListItems() {
+    const rootDoc = getRootDocument();
+    const containers = Array.from(rootDoc.querySelectorAll('e-float-container e-actionlist .e-actionlist__itemscontainer, e-actionlist .e-actionlist__itemscontainer'));
+    if (containers.length) {
+      console.log("[Gem] Action list containers found:", containers.length);
+    } else {
+      console.log("[Gem] Action list containers not found.");
+    }
+    return containers.map((container) => ({
+      container,
+      items: Array.from(container.querySelectorAll('.e-actionlist__item[role="option"]'))
+    }));
+  }
+
+  function getLanguageActionList(state) {
+    if (!state || !state.options || !state.options.length) return null;
+    const optionTexts = state.options.map((opt) => normalizeOptionText(opt.textContent || '')).filter(Boolean);
+    const optionTextSet = new Set(optionTexts);
+
+    const containers = getActionListItems();
+    if (!containers.length) return null;
+
+    let best = null;
+    containers.forEach(({ container, items }) => {
+      if (!items.length) return;
+      let matches = 0;
+      items.forEach((item) => {
+        const t = normalizeOptionText(item.textContent || '');
+        if (optionTextSet.has(t)) matches += 1;
+      });
+      const score = matches;
+      if (!best || score > best.score) {
+        best = { container, items, matches, score };
+      }
+    });
+
+    if (!best || best.matches === 0) {
+      console.log("[Gem] No language action list matched option texts.");
+      return null;
+    }
+
+    console.log("[Gem] Language action list matched items:", best.matches, "of", best.items.length);
+    return best;
+  }
+
+  function openLanguageSelectorDropdown(state) {
+    if (!state || !state.selector) return false;
+    const trigger =
+      state.selector.querySelector('.e-selectnew[role="button"]') ||
+      state.selector.querySelector('.e-selectnew__wrapper [role="button"]');
+    console.log("[Gem] Language selector trigger found:", !!trigger);
+    if (!trigger) return false;
+    try {
+      languageShortcutActive = true;
+      setupLanguageShortcutObserver();
+      setLanguageShortcutMask(true);
+      trigger.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+      trigger.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
+      trigger.click();
+      console.log("[Gem] Language selector trigger clicked.");
+      return true;
+    } catch (_) {
+      try {
+        languageShortcutActive = true;
+        setupLanguageShortcutObserver();
+        setLanguageShortcutMask(true);
+        trigger.click();
+        console.log("[Gem] Language selector trigger clicked (fallback).");
+      } catch (_) {}
+    }
+    return true;
+  }
+
+  function selectLanguageOption(state, targetIndex) {
+    if (!state || !state.selector || !state.options.length) return false;
+    const targetOption = state.options[targetIndex];
+    if (!targetOption) return false;
+
+    const targetText = normalizeOptionText(targetOption.textContent || '');
+    console.log("[Gem] Target option text:", targetText, "target index:", targetIndex);
+    const trySelect = () => {
+      const match = getLanguageActionList(state);
+      if (!match) return false;
+
+      let targetItem = match.items.find((item) => {
+        const itemText = normalizeOptionText(item.textContent || '');
+        return itemText === targetText && itemText.length > 0;
+      });
+
+      if (!targetItem) {
+        console.log("[Gem] Target action item not found.");
+        return false;
+      }
+      try {
+        console.log("[Gem] Clicking action list item.");
+        targetItem.click();
+        return true;
+      } catch (_) {
+        try {
+          const evt = new MouseEvent('click', { bubbles: true, cancelable: true, view: window });
+          targetItem.dispatchEvent(evt);
+          return true;
+        } catch (_) {}
+      }
+      return false;
+    };
+
+    if (trySelect()) {
+      scheduleLanguageShortcutMaskClear();
+      return true;
+    }
+
+    const opened = openLanguageSelectorDropdown(state);
+    console.log("[Gem] Language selector dropdown open attempt:", opened);
+    if (!opened) {
+      scheduleLanguageShortcutMaskClear();
+      return false;
+    }
+
+    hideLanguagePopovers(getRootDocument());
+
+    let attempts = 0;
+    const maxAttempts = 25;
+    const interval = setInterval(() => {
+      attempts += 1;
+      if (attempts === 1) {
+        console.log("[Gem] Waiting for action list... attempt", attempts);
+      }
+      if (trySelect()) {
+        clearInterval(interval);
+        console.log("[Gem] Action list selection succeeded after attempts:", attempts);
+        scheduleLanguageShortcutMaskClear();
+        return;
+      }
+      if (attempts >= maxAttempts) {
+        clearInterval(interval);
+        console.log("[Gem] Language selector action list not found after waiting.");
+        scheduleLanguageShortcutMaskClear();
+      }
+    }, 75);
+    return true;
+  }
+
+  function cycleLanguageSelector(direction) {
+    const state = getLanguageSelectorState();
+    if (!state.options || state.options.length < 2) return false;
+
+    const fromIndex = state.currentIndex >= 0 ? state.currentIndex : 0;
+    const nextIndex = (fromIndex + direction + state.options.length) % state.options.length;
+    if (nextIndex === fromIndex) return false;
+
+    return selectLanguageOption(state, nextIndex);
   }
 
   // Function to monitor iframes and inject keyboard shortcuts
@@ -148,6 +471,18 @@ function initializeKeyboardShortcuts() {
       !event.altKey &&
       (String(event.key || '').toLowerCase() === 'f');
 
+    const isLangPrevShortcut =
+      (event.metaKey || event.ctrlKey) &&
+      event.shiftKey &&
+      !event.altKey &&
+      (event.code === 'Comma' || event.key === ',' || event.key === '<');
+
+    const isLangNextShortcut =
+      (event.metaKey || event.ctrlKey) &&
+      event.shiftKey &&
+      !event.altKey &&
+      (event.code === 'Period' || event.key === '.' || event.key === '>');
+
     if (isSaveShortcut) {
       console.log("[Gem] Save shortcut detected:", event.metaKey ? 'CMD+S' : 'CTRL+S', "in context:", event.target.ownerDocument === document ? "main" : "iframe");
 
@@ -179,14 +514,7 @@ function initializeKeyboardShortcuts() {
 
       // Don't trigger while typing
       const ae = (event.target && event.target.ownerDocument ? event.target.ownerDocument.activeElement : document.activeElement);
-      if (ae) {
-        const tag = (ae.tagName || '').toLowerCase();
-        const isTypingTarget =
-          tag === 'input' ||
-          tag === 'textarea' ||
-          tag === 'select';
-        if (isTypingTarget) return;
-      }
+      if (isTypingTarget(ae || event.target)) return;
 
       // Prevent default browser find behavior
       event.preventDefault();
@@ -217,6 +545,40 @@ function initializeKeyboardShortcuts() {
         console.error("[Gem] Error toggling expanded mode:", error);
       }
 
+      return false;
+    } else if (isLangPrevShortcut || isLangNextShortcut) {
+      console.log("[Gem] Language cycle shortcut detected:", {
+        key: event.key,
+        code: event.code,
+        metaKey: event.metaKey,
+        ctrlKey: event.ctrlKey,
+        shiftKey: event.shiftKey,
+        altKey: event.altKey,
+        targetTag: event.target && event.target.tagName,
+        targetContentEditable: event.target && event.target.isContentEditable
+      });
+
+      const state = getLanguageSelectorState();
+      if (!state.selector) {
+        console.log("[Gem] Language selector not found in DOM.");
+        return;
+      }
+
+      console.log("[Gem] Language selector options found:", state.options.length);
+      if (state.options.length < 2) {
+        console.log("[Gem] Language selector has fewer than 2 options; skipping.");
+        return;
+      }
+
+      console.log("[Gem] Current language index:", state.currentIndex, "current value:", state.currentValue);
+
+      const didChange = cycleLanguageSelector(isLangNextShortcut ? 1 : -1);
+      console.log("[Gem] Language cycle applied:", didChange);
+      if (!didChange) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
       return false;
     }
   }

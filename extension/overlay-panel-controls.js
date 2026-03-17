@@ -1330,12 +1330,8 @@ function initializeOverlayPanelControls() {
             .filter(Boolean)
         );
         if (activeTerms.size === 0) return raw;
-        const remainingTokens = raw
-          .split(/\s+/)
-          .map((t) => t.trim())
-          .filter(Boolean)
-          .filter((t) => !activeTerms.has(t.toLowerCase()));
-        return remainingTokens.join(' ');
+        if (activeTerms.has(raw.toLowerCase())) return '';
+        return raw;
       }
 
       // Create picker container once
@@ -1367,7 +1363,7 @@ function initializeOverlayPanelControls() {
           const seenPillsRaw = result[GEM_IMAGE_PROPERTIES_SEARCH_PILLS_SEEN_KEY];
           const normalizePills = (arr) => (Array.isArray(arr) ? arr : []).map((p) =>
             (p && typeof p === 'object' && typeof p.term === 'string')
-              ? { term: String(p.term).trim(), active: !!p.active }
+              ? { term: String(p.term).trim(), active: !!p.active, isRegex: !!p.isRegex, label: (p.label && typeof p.label === 'string') ? p.label.trim() : '' }
               : null
           ).filter(Boolean);
           const favoritePills = normalizePills(favPillsRaw);
@@ -1411,6 +1407,26 @@ function initializeOverlayPanelControls() {
 
           // Delegate clicks for selecting
           picker.addEventListener('click', (e) => {
+            const settingsBtn = e.target.closest && e.target.closest('.gem-search-settings-btn');
+            if (settingsBtn) {
+              e.preventDefault();
+              e.stopPropagation();
+              if (window.openGemmaSettings) window.openGemmaSettings('saved-searches');
+              return;
+            }
+            const regexToggle = e.target.closest && e.target.closest('.gem-regex-toggle');
+            if (regexToggle) {
+              e.preventDefault();
+              e.stopPropagation();
+              const regexSource = regexToggle.getAttribute('data-regex-source') || '';
+              const dataKey = regexSource === 'favorites' ? 'gemFavRegex' : 'gemSeenRegex';
+              const isActive = picker.dataset[dataKey] === '1';
+              picker.dataset[dataKey] = isActive ? '0' : '1';
+              regexToggle.classList.toggle('gem-regex-toggle--active', !isActive);
+              regexToggle.setAttribute('aria-pressed', String(!isActive));
+              showRecentImagesPicker(modal, { contentOnly: true });
+              return;
+            }
             const removeBtn = e.target.closest && e.target.closest('.gem-search-pill-remove');
             if (removeBtn) {
               e.preventDefault();
@@ -1712,9 +1728,10 @@ function initializeOverlayPanelControls() {
           const raw = (searchInput.value || '').trim();
           if (!raw) return;
           e.preventDefault();
-          const tokens = raw.split(/\s+/).filter((t) => t && t.trim());
+          const tokens = [raw];
           if (tokens.length === 0) return;
           const isFav = !!favSearchInput;
+          const regexOn = picker.dataset[isFav ? 'gemFavRegex' : 'gemSeenRegex'] === '1';
           const pills = isFav ? (picker._gemFavoriteImagesSearchPills || []) : (picker._gemSeenImagesSearchPills || []);
           const existingTerms = new Set(pills.map((p) => (p.term || '').toLowerCase()));
           let changed = false;
@@ -1723,7 +1740,7 @@ function initializeOverlayPanelControls() {
             if (!term) continue;
             if (existingTerms.has(term.toLowerCase())) continue;
             existingTerms.add(term.toLowerCase());
-            pills.push({ term, active: true });
+            pills.push({ term, active: true, isRegex: regexOn });
             changed = true;
           }
           if (!changed) {
@@ -1963,19 +1980,27 @@ function initializeOverlayPanelControls() {
             const active = !!p.active;
             const term = (p && typeof p.term === 'string') ? p.term : '';
             if (!term) return '';
-            return `<span class="gem-search-pill ${active ? 'gem-search-pill--active' : ''}" data-term="${escape(term)}" data-index="${i}"><span class="gem-search-pill-remove" aria-label="Remove">×</span><span class="gem-search-pill-text">${escape(term)}</span></span>`;
+            const displayText = (p.label && p.isRegex) ? p.label : term;
+            const titleAttr = (p.label && p.isRegex) ? ` title="${escape(term)}"` : '';
+            const regexBadge = p.isRegex ? '<span class="gem-search-pill-regex" title="Regex">.*</span>' : '';
+            return `<span class="gem-search-pill ${active ? 'gem-search-pill--active' : ''}" data-term="${escape(term)}" data-index="${i}"${titleAttr}><span class="gem-search-pill-remove" aria-label="Remove">×</span><span class="gem-search-pill-text">${escape(displayText)}</span>${regexBadge}</span>`;
           }).filter(Boolean).join('');
+          const regexActive = source === 'favorites' ? picker.dataset.gemFavRegex === '1' : picker.dataset.gemSeenRegex === '1';
           const favSearch = (source === 'favorites' || source === 'seen')
             ? `
               <div id="gem-search-container" style="margin-top:8px;padding:0 16px;display:flex;gap:8px;align-items:flex-start;">
                 <div style="flex:1;display:flex;flex-direction:column;gap:8px;min-width:0;">
-                  <input class="e-input e-input-search gem-image-search ${source === 'favorites' ? 'gem-favorite-images-search' : 'gem-seen-images-search'}" placeholder="Search ${source === 'favorites' ? 'favorites' : 'recently seen'}" type="search" value="${escape(source === 'favorites' ? (picker.dataset.gemFavoriteImagesSearch || '') : (picker.dataset.gemSeenImagesSearch || ''))}">
+                  <div class="gem-search-input-wrap">
+                    <input class="e-input e-input-search gem-image-search ${source === 'favorites' ? 'gem-favorite-images-search' : 'gem-seen-images-search'}" placeholder="Search ${source === 'favorites' ? 'favorites' : 'recently seen'}" type="search" value="${escape(source === 'favorites' ? (picker.dataset.gemFavoriteImagesSearch || '') : (picker.dataset.gemSeenImagesSearch || ''))}">
+                    <button type="button" class="gem-regex-toggle ${regexActive ? 'gem-regex-toggle--active' : ''}" title="Use regular expression" aria-pressed="${regexActive ? 'true' : 'false'}" data-regex-source="${source}">.*</button>
+                  </div>
                   <div class="gem-search-pills" data-pills-source="${source}">
                     ${pillsHtml}
                   </div>
                 </div>
                 <div style="margin-left:12px;padding-left:12px;border-left:1px solid var(--token-box-default-border);display:flex;align-items:center;gap:8px;">
                   ${groupBySelect}
+                  <button type="button" class="gem-search-settings-btn" title="Manage saved searches">⚙</button>
                 </div>
               </div>
             `.trim()
@@ -2031,9 +2056,10 @@ function initializeOverlayPanelControls() {
           if (source === 'favorites') {
             const qRaw = String(picker.dataset.gemFavoriteImagesSearch || '').trim();
             const favPills = picker._gemFavoriteImagesSearchPills || [];
+            const favRegexOn = picker.dataset.gemFavRegex === '1';
             const terms = [
-              ...favPills.filter((p) => p.active).map((p) => (p.term || '').toLowerCase().trim()).filter(Boolean),
-              ...qRaw.split(/\s+/).filter(Boolean).map((t) => t.toLowerCase())
+              ...favPills.filter((p) => p.active).map((p) => ({ term: (p.term || '').toLowerCase().trim(), isRegex: !!p.isRegex })).filter((o) => o.term),
+              ...(qRaw ? [{ term: qRaw.toLowerCase(), isRegex: favRegexOn }] : [])
             ];
 
             // Build last-used map from recent images so we can sort missing-altText items by last used.
@@ -2057,10 +2083,15 @@ function initializeOverlayPanelControls() {
                 const matchesQuery = (it) => {
                   if (terms.length === 0) return true;
                   const hay = `${it.altText} ${it.language} ${it.translation} ${it.category} ${it.url}`.toLowerCase();
-                  return terms.every((t) => hay.includes(t));
+                  return terms.every((o) => {
+                    if (o.isRegex) {
+                      try { return new RegExp(o.term, 'i').test(hay); } catch (_) { /* fall through */ }
+                    }
+                    return hay.includes(o.term);
+                  });
                 };
                 const filtered = items.filter(matchesQuery);
-                const termsDisplay = terms.length > 0 ? terms.map((t) => `'${escape(t)}'`).join(', ') : '';
+                const termsDisplay = terms.length > 0 ? terms.map((o) => `'${escape(o.term)}'`).join(', ') : '';
                 const searchSummary = terms.length > 0 && filtered.length > 0
                   ? `<div style="padding:0 16px 16px 16px; opacity:0.7;">Found ${filtered.length} matches for ${termsDisplay}.</div>`
                   : '';
@@ -2278,7 +2309,10 @@ function initializeOverlayPanelControls() {
                       const active = !!p.active;
                       const term = (p && typeof p.term === 'string') ? p.term : '';
                       if (!term) return '';
-                      return `<span class="gem-search-pill ${active ? 'gem-search-pill--active' : ''}" data-term="${escape(term)}" data-index="${i}"><span class="gem-search-pill-remove" aria-label="Remove">×</span><span class="gem-search-pill-text">${escape(term)}</span></span>`;
+                      const displayText = (p.label && p.isRegex) ? p.label : term;
+                      const titleAttr = (p.label && p.isRegex) ? ` title="${escape(term)}"` : '';
+                      const regexBadge = p.isRegex ? '<span class="gem-search-pill-regex" title="Regex">.*</span>' : '';
+                      return `<span class="gem-search-pill ${active ? 'gem-search-pill--active' : ''}" data-term="${escape(term)}" data-index="${i}"${titleAttr}><span class="gem-search-pill-remove" aria-label="Remove">×</span><span class="gem-search-pill-text">${escape(displayText)}</span>${regexBadge}</span>`;
                     }).filter(Boolean).join('');
                   }
                 } else {
@@ -2301,9 +2335,10 @@ function initializeOverlayPanelControls() {
           if (source === 'seen') {
             const qRaw = String(picker.dataset.gemSeenImagesSearch || '').trim();
             const seenPills = picker._gemSeenImagesSearchPills || [];
+            const seenRegexOn = picker.dataset.gemSeenRegex === '1';
             const seenTerms = [
-              ...seenPills.filter((p) => p.active).map((p) => (p.term || '').toLowerCase().trim()).filter(Boolean),
-              ...qRaw.split(/\s+/).filter(Boolean).map((t) => t.toLowerCase())
+              ...seenPills.filter((p) => p.active).map((p) => ({ term: (p.term || '').toLowerCase().trim(), isRegex: !!p.isRegex })).filter((o) => o.term),
+              ...(qRaw ? [{ term: qRaw.toLowerCase(), isRegex: seenRegexOn }] : [])
             ];
 
             getRecentlySeenImageGroupCollapseMap((collapseMap) => {
@@ -2320,10 +2355,15 @@ function initializeOverlayPanelControls() {
               const matchesQuery = (it) => {
                 if (seenTerms.length === 0) return true;
                 const hay = `${it.friendlyFilename} ${it.path} ${it.url}`.toLowerCase();
-                return seenTerms.every((t) => hay.includes(t));
+                return seenTerms.every((o) => {
+                  if (o.isRegex) {
+                    try { return new RegExp(o.term, 'i').test(hay); } catch (_) { /* fall through */ }
+                  }
+                  return hay.includes(o.term);
+                });
               };
               const filtered = items.filter(matchesQuery);
-              const seenTermsDisplay = seenTerms.length > 0 ? seenTerms.map((t) => `'${escape(t)}'`).join(', ') : '';
+              const seenTermsDisplay = seenTerms.length > 0 ? seenTerms.map((o) => `'${escape(o.term)}'`).join(', ') : '';
               const searchSummary = seenTerms.length > 0 && filtered.length > 0
                 ? `<div style="padding:0 16px 16px 16px; opacity:0.7;">Found ${filtered.length} matches for ${seenTermsDisplay}.</div>`
                 : '';
@@ -2521,7 +2561,10 @@ function initializeOverlayPanelControls() {
                     const active = !!p.active;
                     const term = (p && typeof p.term === 'string') ? p.term : '';
                     if (!term) return '';
-                    return `<span class="gem-search-pill ${active ? 'gem-search-pill--active' : ''}" data-term="${escape(term)}" data-index="${i}"><span class="gem-search-pill-remove" aria-label="Remove">×</span><span class="gem-search-pill-text">${escape(term)}</span></span>`;
+                    const displayText = (p.label && p.isRegex) ? p.label : term;
+                    const titleAttr = (p.label && p.isRegex) ? ` title="${escape(term)}"` : '';
+                    const regexBadge = p.isRegex ? '<span class="gem-search-pill-regex" title="Regex">.*</span>' : '';
+                    return `<span class="gem-search-pill ${active ? 'gem-search-pill--active' : ''}" data-term="${escape(term)}" data-index="${i}"${titleAttr}><span class="gem-search-pill-remove" aria-label="Remove">×</span><span class="gem-search-pill-text">${escape(displayText)}</span>${regexBadge}</span>`;
                   }).filter(Boolean).join('');
                 }
               } else {
@@ -2545,7 +2588,7 @@ function initializeOverlayPanelControls() {
             const qRawUngrouped = String(picker.dataset.gemSeenImagesSearch || '').trim();
             seenTermsUngrouped = [
               ...seenPillsUngrouped.filter((p) => p.active).map((p) => (p.term || '').toLowerCase().trim()).filter(Boolean),
-              ...qRawUngrouped.split(/\s+/).filter(Boolean).map((t) => t.toLowerCase())
+              ...(qRawUngrouped ? [qRawUngrouped.toLowerCase()] : [])
             ];
             if (seenTermsUngrouped.length > 0) {
               filteredRows = rows.filter((r) => {

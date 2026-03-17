@@ -147,8 +147,8 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
       #gem-settings-panel {
         position: fixed;
         top: 0;
-        right: -500px;
-        width: 500px;
+        right: -580px;
+        width: 580px;
         height: 100vh;
         background: var(--token-background-faint);
         box-shadow: -4px 0 20px rgba(0,0,0,0.15);
@@ -163,7 +163,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
       #gem-settings-panel input, #gem-settings-panel select {
         background: var(--token-input-default-background);
         border: 2px solid var(--token-box-default-border);
-        padding: 8px 2px 8px 12px;
+        padding: 8px 4px 8px 4px;
         border-radius:6px;
       }
 
@@ -289,11 +289,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         display: flex;
         align-items: center;
         gap: 12px;
-        margin-bottom: 12px;
-        padding: 12px 16px;
-        background: var(--token-background-faint);
-        border: 1px solid var(--token-box-default-border);
-        border-radius: 8px;
+        padding: 3px 0;
         transition: all 0.2s ease;
       }
 
@@ -303,27 +299,48 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         gap: 8px;
       }
 
-      .highlight-term-regex {
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        font-size: 12px;
+      .gem-settings-regex-toggle {
+        background: none;
+        border: 1px solid var(--token-box-default-border);
+        border-radius: 4px;
+        font-family: monospace;
+        font-size: 13px;
+        font-weight: bold;
+        line-height: 1;
+        padding: 5px 7px;
+        cursor: pointer;
         color: #6b7280;
+        opacity: 0.6;
+        transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
       }
-
-      .highlight-term-regex input[type="checkbox"] {
-        width: 14px;
-        height: 14px;
-        margin: 0;
+      .gem-settings-regex-toggle:hover {
+        opacity: 1;
+        color: var(--token-font-default);
+      }
+      .gem-settings-regex-toggle--active {
+        opacity: 1;
+        color: white;
+        background: var(--token-button-highlight-background, #667eea);
+        border-color: var(--token-button-highlight-background, #667eea);
+      }
+      .gem-settings-regex-toggle--active:hover {
+        background: var(--token-button-highlight-backgroundHover, #5a67d8);
+        border-color: var(--token-button-highlight-backgroundHover, #5a67d8);
       }
 
       .highlight-term-item:last-child {
         margin-bottom: 0;
       }
 
-      .highlight-term-text {
+      .gem-settings-input-wrap {
+        position: relative;
         flex: 1;
-        padding: 8px 12px;
+        display: flex;
+      }
+
+      .gem-settings-input-wrap input[type="text"] {
+        flex: 1;
+        padding: 8px 40px 8px 12px;
         border: 2px solid var(--token-box-default-border);
         border-radius: 6px;
         font-size: 13px;
@@ -331,10 +348,17 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         transition: border-color 0.2s ease;
       }
 
-      .highlight-term-text:focus {
+      .gem-settings-input-wrap input[type="text"]:focus {
         outline: none;
         border-color: #667eea;
         box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+      }
+
+      .gem-settings-input-wrap .gem-settings-regex-toggle {
+        position: absolute;
+        right: 5px;
+        top: 50%;
+        transform: translateY(-50%);
       }
 
       .highlight-term-remove,
@@ -450,7 +474,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
       }
 
       .gem-setting-section .sub-label {
-          font-size: 16px;
+          font-size: 14px;
           font-weight: normal;
           margin-top:8px;
           opacity: 0.8;
@@ -473,6 +497,70 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         outline: none;
         border-color: #667eea;
         box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+      }
+
+      .gem-saved-search-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 3px 0;
+      }
+
+      .gem-saved-search-item input, .gem-saved-search-item select {
+        height:38px;
+      }
+
+      .gem-saved-search-label-row {
+        display: none;
+        align-items: center;
+        gap: 8px;
+        padding: 0;
+      }
+
+      .gem-saved-search-label-row.gem-saved-search-label-row--visible {
+        display: flex;
+      }
+
+      .gem-saved-search-label-row label {
+        font-size: 12px;
+        color: #6b7280;
+        white-space: nowrap;
+      }
+
+      .gem-saved-search-label-input {
+        flex: 1;
+        padding: 5px 10px;
+        border: 1px solid var(--token-box-default-border);
+        border-radius: 4px;
+        font-size: 12px;
+        font-family: inherit;
+      }
+
+      .gem-saved-search-label-input:focus {
+        outline: none;
+        border-color: #667eea;
+        box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+      }
+
+
+      .gem-saved-search-controls {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+
+      .gem-saved-search-source {
+        font-size: 12px;
+        padding: 4px 6px;
+        border: 2px solid var(--token-box-default-border);
+        border-radius: 6px;
+      }
+
+      .gem-saved-search-empty {
+        padding: 12px 0;
+        opacity: 0.6;
+        font-size: 13px;
       }
 
       #gem-settings-body h2 { 
@@ -884,6 +972,12 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
           </div>
         </div>
 
+        <div class="gem-setting-section" id="gem-settings-saved-searches">
+          <h3>Saved Searches</h3>
+          <p class="gem-setting-info">Manage saved search pills for the Favorites and Recently Seen image lists.</p>
+          <div id="gem-saved-searches-list"></div>
+        </div>
+
 
         <h2>Email Campaign List Settings</h2>
 
@@ -1079,6 +1173,9 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
 
         // Load highlight terms (using the resolved highlightTerms)
         loadHighlightTerms(highlightTerms);
+
+        // Load saved searches
+        loadSavedSearches();
       });
     });
   }
@@ -1359,6 +1456,146 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
     }
   }
 
+  // ------------------------------------------------------------
+  // Saved Searches management
+  // ------------------------------------------------------------
+  function saveSavedSearches() {
+    const container = document.getElementById("gem-saved-searches-list");
+    if (!container) return;
+    const favPills = [];
+    const seenPills = [];
+    container.querySelectorAll('.gem-saved-search-item').forEach((row) => {
+      const term = (row.querySelector('.gem-saved-search-text')?.value || '').trim();
+      if (!term) return;
+      const isRegex = !!row.querySelector('.gem-settings-regex-toggle')?.classList.contains('gem-settings-regex-toggle--active');
+      const label = (row.querySelector('.gem-saved-search-label-input')?.value || '').trim();
+      const source = row.querySelector('.gem-saved-search-source')?.value || 'both';
+      const activeFav = row.dataset.activeFav !== '0';
+      const activeSeen = row.dataset.activeSeen !== '0';
+      const pill = { term, active: true, isRegex };
+      if (label) pill.label = label;
+      if (source === 'favorites' || source === 'both') favPills.push({ ...pill, active: activeFav });
+      if (source === 'seen' || source === 'both') seenPills.push({ ...pill, active: activeSeen });
+    });
+    chrome.storage.sync.set({
+      gemImagePropertiesSearchPillsFavorites: favPills,
+      gemImagePropertiesSearchPillsSeen: seenPills
+    });
+  }
+
+  function createSavedSearchRow(pill) {
+    const item = document.createElement('div');
+    item.className = 'gem-saved-search-item';
+
+    const sourceVal = pill.source || 'both';
+    item.dataset.activeFav = pill.activeFav !== false ? '1' : '0';
+    item.dataset.activeSeen = pill.activeSeen !== false ? '1' : '0';
+
+    const labelVal = pill.label || '';
+
+    item.innerHTML = `
+      <div style="flex:1;display:flex;flex-direction:column;gap:0;min-width:0;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <div class="gem-settings-input-wrap">
+            <input type="text" class="gem-saved-search-text" value="${pill.term.replace(/"/g, '&quot;')}" />
+            <button type="button" class="gem-settings-regex-toggle ${pill.isRegex ? 'gem-settings-regex-toggle--active' : ''}" title="Use regular expression" aria-pressed="${pill.isRegex ? 'true' : 'false'}">.*</button>
+          </div>
+        <div class="gem-saved-search-label-row ${pill.isRegex ? 'gem-saved-search-label-row--visible' : ''}">
+          <input type="text" class="gem-saved-search-label-input" placeholder="Custom pill label" value="${labelVal.replace(/"/g, '&quot;')}" />
+        </div>
+          <div class="gem-saved-search-controls">
+            <select class="gem-saved-search-source">
+              <option value="favorites" ${sourceVal === 'favorites' ? 'selected' : ''}>Favorites</option>
+              <option value="seen" ${sourceVal === 'seen' ? 'selected' : ''}>Recently Seen</option>
+              <option value="both" ${sourceVal === 'both' ? 'selected' : ''}>Both</option>
+            </select>
+          </div>
+          <button class="highlight-term-remove gem-saved-search-remove">×</button>
+        </div>
+      </div>
+    `;
+
+    const textInput = item.querySelector('.gem-saved-search-text');
+    const regexBtn = item.querySelector('.gem-settings-regex-toggle');
+    const labelRow = item.querySelector('.gem-saved-search-label-row');
+    const labelInput = item.querySelector('.gem-saved-search-label-input');
+    const sourceSelect = item.querySelector('.gem-saved-search-source');
+    const removeBtn = item.querySelector('.gem-saved-search-remove');
+
+    textInput.addEventListener('keyup', saveSavedSearches);
+    labelInput.addEventListener('keyup', saveSavedSearches);
+    regexBtn.addEventListener('click', () => {
+      const nowActive = !regexBtn.classList.contains('gem-settings-regex-toggle--active');
+      regexBtn.classList.toggle('gem-settings-regex-toggle--active', nowActive);
+      regexBtn.setAttribute('aria-pressed', String(nowActive));
+      labelRow.classList.toggle('gem-saved-search-label-row--visible', nowActive);
+      if (!nowActive) labelInput.value = '';
+      saveSavedSearches();
+    });
+    sourceSelect.addEventListener('change', saveSavedSearches);
+    removeBtn.addEventListener('click', () => {
+      item.remove();
+      saveSavedSearches();
+    });
+
+    return item;
+  }
+
+  function loadSavedSearches() {
+    const container = document.getElementById("gem-saved-searches-list");
+    if (!container) return;
+
+    chrome.storage.sync.get({
+      gemImagePropertiesSearchPillsFavorites: [],
+      gemImagePropertiesSearchPillsSeen: []
+    }, (result) => {
+      const favPills = Array.isArray(result.gemImagePropertiesSearchPillsFavorites) ? result.gemImagePropertiesSearchPillsFavorites : [];
+      const seenPills = Array.isArray(result.gemImagePropertiesSearchPillsSeen) ? result.gemImagePropertiesSearchPillsSeen : [];
+
+      const merged = [];
+      const seen = new Set();
+
+      favPills.forEach((p) => {
+        if (!p || !p.term) return;
+        const key = p.term.toLowerCase();
+        const matchInSeen = seenPills.find((s) => s && s.term && s.term.toLowerCase() === key);
+        merged.push({
+          term: p.term,
+          isRegex: !!p.isRegex || !!(matchInSeen && matchInSeen.isRegex),
+          label: p.label || (matchInSeen && matchInSeen.label) || '',
+          source: matchInSeen ? 'both' : 'favorites',
+          activeFav: p.active !== false,
+          activeSeen: matchInSeen ? matchInSeen.active !== false : true
+        });
+        seen.add(key);
+      });
+
+      seenPills.forEach((p) => {
+        if (!p || !p.term) return;
+        if (seen.has(p.term.toLowerCase())) return;
+        merged.push({
+          term: p.term,
+          isRegex: !!p.isRegex,
+          label: p.label || '',
+          source: 'seen',
+          activeFav: true,
+          activeSeen: p.active !== false
+        });
+      });
+
+      container.innerHTML = '';
+
+      if (merged.length === 0) {
+        container.innerHTML = '<div class="gem-saved-search-empty">No saved searches yet. Use the search inputs in Favorites or Recently Seen to create pills.</div>';
+        return;
+      }
+
+      merged.forEach((pill) => {
+        container.appendChild(createSavedSearchRow(pill));
+      });
+    });
+  }
+
   // Load highlight terms into the UI
   function loadHighlightTerms(terms) {
     const container = document.getElementById("highlight-terms-list");
@@ -1382,36 +1619,40 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
     item.className = "highlight-term-item";
 
     item.innerHTML = `
-      <input type="text" class="highlight-term-text" value="${term}" />
+      <div class="gem-settings-input-wrap">
+        <input type="text" class="highlight-term-text" value="${term}" />
+        <button type="button" class="gem-settings-regex-toggle ${isRegex ? 'gem-settings-regex-toggle--active' : ''}" title="Use regular expression" aria-pressed="${isRegex ? 'true' : 'false'}">.*</button>
+      </div>
       <div class="highlight-term-controls">
         <input type="color" data-highlight-term-color class="color-swatch-color" value="${rgbaToHex(color)}" />
-        <label class="highlight-term-regex">
-          <input type="checkbox" ${isRegex ? 'checked' : ''} />
-          Regex
-        </label>
       </div>
       <button class="highlight-term-remove">×</button>
     `;
 
-    // Add event listeners
     const textInput = item.querySelector(".highlight-term-text");
     const colorInput = item.querySelector("[data-highlight-term-color]");
-    const regexCheckbox = item.querySelector(".highlight-term-regex input");
+    const regexBtn = item.querySelector(".gem-settings-regex-toggle");
     const removeBtn = item.querySelector(".highlight-term-remove");
 
     const updateTerm = () => {
       const newTerm = textInput.value.trim();
       const newColor = colorInput.value;
-      const newIsRegex = regexCheckbox.checked;
+      const newIsRegex = regexBtn.classList.contains('gem-settings-regex-toggle--active');
       if (newTerm) {
         updateHighlightTerm(term, newTerm, hexToRgba(newColor), newIsRegex);
-        term = newTerm; // Update the current term reference
+        term = newTerm;
       }
     };
 
+    regexBtn.addEventListener("click", () => {
+      const nowActive = !regexBtn.classList.contains('gem-settings-regex-toggle--active');
+      regexBtn.classList.toggle('gem-settings-regex-toggle--active', nowActive);
+      regexBtn.setAttribute('aria-pressed', String(nowActive));
+      updateTerm();
+    });
+
     textInput.addEventListener("change", updateTerm);
     colorInput.addEventListener("change", updateTerm);
-    regexCheckbox.addEventListener("change", updateTerm);
 
     removeBtn.addEventListener("click", () => {
       removeHighlightTerm(term);
@@ -1878,7 +2119,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
   function closePanel() {
     console.log("[gem] closePanel called, isOpen was:", isOpen);
     if (!panelEl) return;
-    panelEl.style.right = "-500px";
+    panelEl.style.right = "-580px";
     isOpen = false;
     console.log("[gem] Panel closed, isOpen now:", isOpen);
   }
@@ -1886,9 +2127,15 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
   // ------------------------------------------------------------
   // Expose function to open settings panel (for welcome modal)
   // ------------------------------------------------------------
-  window.openGemmaSettings = function () {
+  window.openGemmaSettings = function (scrollTo) {
     if (!isOpen) {
       openPanel();
+    }
+    if (scrollTo) {
+      requestAnimationFrame(() => {
+        const target = panelEl && panelEl.querySelector('#gem-settings-' + scrollTo);
+        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
     }
   };
 
@@ -2165,6 +2412,12 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
 
             <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">${window.GEM_MOD_KEY}+/</kbd>
             <span>Toggle the mobile email preview pane on and off</span>
+
+            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">${window.GEM_MOD_KEY}+SHIFT+,</kbd>
+            <span>Cycle to the previous language version (when language selector is available)</span>
+
+            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">${window.GEM_MOD_KEY}+SHIFT+.</kbd>
+            <span>Cycle to the next language version (when language selector is available)</span>
           </div>
         </div>
 
