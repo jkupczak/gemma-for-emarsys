@@ -495,6 +495,14 @@ function initializeOverlayPanelControls() {
     const GEM_IMAGE_PROPERTIES_SEARCH_PILLS_FAV_KEY = 'gemImagePropertiesSearchPillsFavorites';
     const GEM_IMAGE_PROPERTIES_SEARCH_PILLS_SEEN_KEY = 'gemImagePropertiesSearchPillsSeen';
 
+    function normalizePills(arr) {
+      return (Array.isArray(arr) ? arr : []).map((p) =>
+        (p && typeof p === 'object' && typeof p.term === 'string')
+          ? { term: String(p.term).trim(), active: !!p.active, isRegex: !!p.isRegex, label: (p.label && typeof p.label === 'string') ? p.label.trim() : '' }
+          : null
+      ).filter(Boolean);
+    }
+
     function normalizeRecentlySeenMax(value) {
       const n = (typeof value === 'number') ? value : parseInt(String(value ?? ''), 10);
       if (!Number.isFinite(n)) return 300;
@@ -1361,11 +1369,6 @@ function initializeOverlayPanelControls() {
 
           const favPillsRaw = result[GEM_IMAGE_PROPERTIES_SEARCH_PILLS_FAV_KEY];
           const seenPillsRaw = result[GEM_IMAGE_PROPERTIES_SEARCH_PILLS_SEEN_KEY];
-          const normalizePills = (arr) => (Array.isArray(arr) ? arr : []).map((p) =>
-            (p && typeof p === 'object' && typeof p.term === 'string')
-              ? { term: String(p.term).trim(), active: !!p.active, isRegex: !!p.isRegex, label: (p.label && typeof p.label === 'string') ? p.label.trim() : '' }
-              : null
-          ).filter(Boolean);
           const favoritePills = normalizePills(favPillsRaw);
           const seenPills = normalizePills(seenPillsRaw);
           picker._gemFavoriteImagesSearchPills = favoritePills;
@@ -3980,6 +3983,22 @@ function initializeOverlayPanelControls() {
             // Keep Recently Seen max setting in sync (source of truth is sync storage)
             if (namespace === 'sync' && changes && changes[GEM_RECENTLY_SEEN_IMAGES_MAX_SETTING_KEY]) {
               recentlySeenMax = normalizeRecentlySeenMax(changes[GEM_RECENTLY_SEEN_IMAGES_MAX_SETTING_KEY].newValue);
+            }
+
+            // Live-sync search pills when edited externally (e.g. settings panel)
+            if (namespace === 'sync' && changes) {
+              const favChanged = changes[GEM_IMAGE_PROPERTIES_SEARCH_PILLS_FAV_KEY];
+              const seenChanged = changes[GEM_IMAGE_PROPERTIES_SEARCH_PILLS_SEEN_KEY];
+              if (favChanged || seenChanged) {
+                if (!container._gemIsClosing && container.isConnected && modal.isConnected) {
+                  const picker = modal.querySelector('#gem-recent-images-picker');
+                  if (picker) {
+                    if (favChanged) picker._gemFavoriteImagesSearchPills = normalizePills(favChanged.newValue);
+                    if (seenChanged) picker._gemSeenImagesSearchPills = normalizePills(seenChanged.newValue);
+                    showRecentImagesPicker(modal, { contentOnly: true });
+                  }
+                }
+              }
             }
 
             if (!changes || !changes.gemRecentlySeenImages) return;

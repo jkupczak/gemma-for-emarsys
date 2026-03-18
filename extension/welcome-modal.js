@@ -32,10 +32,12 @@ function createWelcomeModalHTML() {
             <li>
               <b>Text Highlighting</b> Automatically highlight important text in the email editor preview. Edit what text is highlighted and what color the highlight is in the Settings panel.
             </li>
-            <li><b>Mobile Previews</b> See a mobile preview of your email right next to your desktop view while you make edits. This is turned on by default and can be toggled from the settings menu or the purple phone icon in the bottom left of the editor. You can also drag the mobile preview left and right to change the size. The settings panel lets you adjust the scaling too. <em>(You'll also see a mobile preview when you load a contact preview)</em></li>
+            <li><b>Mobile Previews</b> See a mobile preview of your email right next to your desktop view while you make edits. This is turned on by default and can be toggled from the settings menu or the <span class="gem-e-icon">&#xF133;</span> icon in the bottom left of the editor. You can also adjust width of it by dragging it or editing it in the settings panel.</li>
             <li><b>Custom Color Swatches</b> Custom color swatches are now permanent! Emarsys doesn't remember what colors you used when editing an email. But Gemma does. You can also add default presets that will always display at the top of the color picker (up to 8) from the settings panel.</li>
             </li>
             <li><b>Image Picker</b> When adding an image to your email you'll now get a preview of it right next to the image editor. Makes adding ALT text much easier! You can also see a list of your recently used images for quick selection.</li>
+            <li><b>Notes</b> Keep notes right in Emarsys! Find the Notes nav item in the vertical navigation and start taking notes right from any page.</li>
+            <li><b>ALT Text Preview</b> Make it easier to QA ALT text by showing it when you hover over images in the email editor preview.</li>
           </ul>
 
           <div style="margin-top: 40px;">

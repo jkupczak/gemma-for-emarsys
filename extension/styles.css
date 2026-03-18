@@ -1400,3 +1400,34 @@ cb-campaign-preview > .e-section .e-section__header {
     top: -6px;
     left: 0; right: 0px;
 } */
+
+.gem-e-switch-wrapper {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-weight: 600;
+    font-size: 16px;
+}
+.gem-e-switch--fat.e-switch {
+    margin:5px 0;
+}
+.gem-e-switch--fat.e-switch .e-switch__toggle {
+    width:52px;
+    height:26px;
+}
+
+.gem-e-switch--fat.e-switch .e-switch__toggle:before {
+    width:26px;
+    height:20px;
+    line-height: 20px !important;
+    font-size: 18px !important;
+    left: 3px;
+}
+
+.gem-e-switch--fat.e-switch .e-switch__input:checked+.e-switch__toggle:before {
+    transform: translate(20px, -50%);
+}
+
+#gem-nav-notes-item {
+    margin-top: auto;
+}

@@ -8,7 +8,6 @@ function buildItem() {
   const li = document.createElement("li");
   li.className = "e-navigation__menu_list_item";
   li.id = ITEM_ID;
-  li.style.marginTop = "auto";
   li.style.marginBottom = "20px";
 
   li.innerHTML = `

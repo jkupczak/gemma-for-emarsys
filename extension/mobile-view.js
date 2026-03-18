@@ -1117,8 +1117,8 @@ function setupCustomScrollbars(iframe, container) {
       tempDoc.querySelectorAll("e-vce-borderer-element").forEach(item => item.remove());
       tempDoc.querySelectorAll("e-vce-dropline").forEach(item => item.remove());
 
-      const highlightRemoved = tempDoc.querySelectorAll(".gem-text-highlight").length;
-      tempDoc.querySelectorAll(".gem-text-highlight").forEach(item => item.remove());
+      const highlightRemoved = tempDoc.querySelectorAll(".gem-text-highlight, #gem-alt-text-overlay-container").length;
+      tempDoc.querySelectorAll(".gem-text-highlight, #gem-alt-text-overlay-container").forEach(item => item.remove());
 
       console.log(LOG, "syncIframe: removed elements", { scriptsRemoved, vceBordererRemoved, vceBordererElRemoved, droplineRemoved, highlightRemoved });
 

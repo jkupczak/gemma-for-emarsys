@@ -705,21 +705,56 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         <h2>Email Editor Settings</h2>
 
         <div class="gem-setting-section">
+          <h3>ALT Text Preview</h3>
+          <div class="gem-setting">
+            <div class="gem-e-switch-wrapper">
+              <label for="opt-alt-text-preview-enabled">Toggle ALT Text Previews</label>
+              <div class="gem-e-switch--fat e-switch">
+                <input type="checkbox" class="e-switch__input" id="opt-alt-text-preview-enabled">
+                <label class="e-switch__toggle" for="opt-alt-text-preview-enabled"></label>
+              </div>
+            </div>
+            <p class="sub-label">
+              When enabled, ALT text will be displayed in a small preview box above your images.
+            </p>
+          </div>
+          <div class="gem-setting">
+            <div style="display: flex; gap: 12px; align-items: center;">
+              <label for="opt-alt-text-visibility" style="flex: 1;">ALT Text Visibility</label>
+              <select id="opt-alt-text-visibility" style="width: 150px;">
+                <option value="always-show" selected>Always Show</option>
+                <option value="show-on-hover">Show on Hover</option>
+              </select>
+            </div>
+            <p class="sub-label">
+              Decide whether to show the ALT text always or only when you hover over an image.
+            </p>
+          </div>
+        </div>
+
+        <div class="gem-setting-section">
           <h3>Layout</h3>
           <div class="gem-setting">
-            <label>
-            <input type="checkbox" id="opt-enable-expanded-mode" />
-            Toggle expanded mode
-            </label>
+            <div class="gem-e-switch-wrapper">
+              <label for="opt-enable-expanded-mode">Toggle expanded mode</label>
+              <div class="gem-e-switch--fat e-switch">
+                <input type="checkbox" class="e-switch__input" id="opt-enable-expanded-mode">
+                <label class="e-switch__toggle" for="opt-enable-expanded-mode"></label>
+              </div>
+            </div>
             <p class="sub-label">
               An alternative layout that increases the total viewable area of your email by over 40%. You can turn it on here, via the <span class="gem-e-icon">&#61658;</span> icon next to your email, or use the keyboard shortcut CMD+/ or CTRL+/ at any time.
             </p>
           </div>
           <div class="gem-setting">
-            <label>
-            <input type="checkbox" id="opt-enable-mobile-preview" />
-            Toggle mobile preview pane
-            </label>
+
+            <div class="gem-e-switch-wrapper">
+              <label for="opt-enable-mobile-preview">Toggle mobile preview pane</label>
+              <div class="gem-e-switch--fat e-switch">
+                <input type="checkbox" class="e-switch__input" id="opt-enable-mobile-preview">
+                <label class="e-switch__toggle" for="opt-enable-mobile-preview"></label>
+              </div>
+            </div>
             <p class="sub-label">
               Keep a mobile preview of your email visible next to your desktop view while you make edits. You can turn it on here, via the <span class="gem-e-icon">&#61747;</span> icon next to your email, or use the keyboard shortcut CMD+SHIFT+F or CTRL+SHIFT+F at any time.
             </p>
@@ -737,10 +772,13 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
           </div>
 
           <div class="gem-setting">
-            <label>
-              <input type="checkbox" id="opt-show-finish-editing-btn" checked />
-              Show "Finish Editing" Button
-            </label>
+            <div class="gem-e-switch-wrapper">
+              <label for="opt-show-finish-editing-btn">Show "Finish Editing" Button</label>
+              <div class="gem-e-switch--fat e-switch">
+                <input type="checkbox" class="e-switch__input" id="opt-show-finish-editing-btn" checked>
+                <label class="e-switch__toggle" for="opt-show-finish-editing-btn"></label>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -873,10 +911,13 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         <div class="gem-setting-section">
           <h3>Text Highlighting Configuration</h3>
         <div class="gem-setting">
-          <label>
-            <input type="checkbox" id="opt-enable-highlighting" />
-            Enable text highlighting overlays
-          </label>
+          <div class="gem-e-switch-wrapper">
+            <label for="opt-enable-highlighting">Enable text highlighting overlays</label>
+            <div class="gem-e-switch--fat e-switch">
+              <input type="checkbox" class="e-switch__input" id="opt-enable-highlighting">
+              <label class="e-switch__toggle" for="opt-enable-highlighting"></label>
+            </div>
+          </div>
           <p class="sub-label">
             Creates overlays to help you quickly identify and highlight specific text in your email.
           </p>
@@ -898,36 +939,59 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         <div class="gem-setting-section">
           <h3>Rich Paste</h3>
           <div class="gem-setting">
-            <label>
-              <input type="checkbox" id="opt-custom-paste-enabled" checked />
-              Enable Gemma's Rich Paste behavior
-            </label>
+
+            <div class="gem-e-switch-wrapper">
+              <label for="opt-custom-paste-enabled">Enable Gemma's Rich Paste behavior</label>
+              <div class="gem-e-switch--fat e-switch">
+                <input type="checkbox" class="e-switch__input" id="opt-custom-paste-enabled" checked>
+                <label class="e-switch__toggle" for="opt-custom-paste-enabled"></label>
+              </div>
+            </div>
             <p class="sub-label">Emarsys's normal plain text formatting is replaced with behavior that supports pasting common styles like bold and italic.</p>
             <div class="gem-setting-group">
-              <label>
-                <input type="checkbox" id="opt-custom-paste-bold" checked />
-                Allow bold formatting to be pasted
-              </label>
-              <label>
-                <input type="checkbox" id="opt-custom-paste-italic" checked />
-                Allow italic formatting to be pasted
-              </label>
-              <label>
-                <input type="checkbox" id="opt-custom-paste-strike" checked />
-                Allow strikethrough formatting to be pasted
-              </label>
-              <label>
-                <input type="checkbox" id="opt-custom-paste-underline" checked />
-                Allow underline formatting to be pasted
-              </label>
-              <label>
-                <input type="checkbox" id="opt-custom-paste-sup" checked />
-                Allow superscript formatting to be pasted
-              </label>
-              <label>
-                <input type="checkbox" id="opt-custom-paste-anchor" checked />
-                Allow links to be pasted
-              </label>
+
+              <div class="gem-e-switch-wrapper">
+                <label for="opt-custom-paste-bold">Allow bold formatting to be pasted</label>
+                <div class="gem-e-switch--fat e-switch">
+                  <input type="checkbox" class="e-switch__input" id="opt-custom-paste-bold" checked>
+                  <label class="e-switch__toggle" for="opt-custom-paste-bold"></label>
+                </div>
+              </div>
+              <div class="gem-e-switch-wrapper">
+                <label for="opt-custom-paste-italic">Allow italic formatting to be pasted</label>
+                <div class="gem-e-switch--fat e-switch">
+                  <input type="checkbox" class="e-switch__input" id="opt-custom-paste-italic" checked>
+                  <label class="e-switch__toggle" for="opt-custom-paste-italic"></label>
+                </div>
+              </div>
+              <div class="gem-e-switch-wrapper">
+                <label for="opt-custom-paste-strike">Allow strikethrough formatting to be pasted</label>
+                <div class="gem-e-switch--fat e-switch">
+                  <input type="checkbox" class="e-switch__input" id="opt-custom-paste-strike" checked>
+                  <label class="e-switch__toggle" for="opt-opt-custom-paste-strike"></label>
+                </div>
+              </div>
+              <div class="gem-e-switch-wrapper">
+                <label for="opt-custom-paste-underline">Allow underline formatting to be pasted</label>
+                <div class="gem-e-switch--fat e-switch">
+                  <input type="checkbox" class="e-switch__input" id="opt-custom-paste-underline" checked>
+                  <label class="e-switch__toggle" for="opt-custom-paste-underline"></label>
+                </div>
+              </div>
+              <div class="gem-e-switch-wrapper">
+                <label for="opt-custom-paste-sup">Allow superscript formatting to be pasted</label>
+                <div class="gem-e-switch--fat e-switch">
+                  <input type="checkbox" class="e-switch__input" id="opt-custom-paste-sup" checked>
+                  <label class="e-switch__toggle" for="opt-custom-paste-sup"></label>
+                </div>
+              </div>
+              <div class="gem-e-switch-wrapper">
+                <label for="opt-custom-paste-anchor">Allow links to be pasted</label>
+                <div class="gem-e-switch--fat e-switch">
+                  <input type="checkbox" class="e-switch__input" id="opt-custom-paste-anchor" checked>
+                  <label class="e-switch__toggle" for="opt-custom-paste-anchor"></label>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -946,29 +1010,35 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
               Max number of images to keep in the Recently Seen list (50–2000).
             </div>
           </div>
-          <div class="gem-setting gem-setting-condensed">
-            <label>
-              <input type="checkbox" id="opt-show-file-icon" checked />
-              Show filetype icons in media picker
-            </label>
-          </div>
-          <div class="gem-setting gem-setting-condensed">
-            <label>
-              <input type="checkbox" id="opt-show-created-column" checked />
-              Show 'Created' column in media picker
-            </label>
-          </div>
-          <div class="gem-setting gem-setting-condensed">
-            <label>
-              <input type="checkbox" id="opt-show-size-column" checked />
-              Show 'Size' column in media picker
-            </label>
-          </div>
-          <div class="gem-setting gem-setting-condensed">
-            <label>
-              <input type="checkbox" id="opt-show-user-column" checked />
-              Show 'User' column in media picker
-            </label>
+          <div class="gem-setting-group">
+            <div class="gem-e-switch-wrapper">
+              <label for="opt-show-file-icon">Show filetype icons in media picker</label>
+              <div class="gem-e-switch--fat e-switch">
+                <input type="checkbox" class="e-switch__input" id="opt-show-file-icon" checked>
+                <label class="e-switch__toggle" for="opt-show-file-icon"></label>
+              </div>
+            </div>
+            <div class="gem-e-switch-wrapper">
+              <label for="opt-show-created-column">Show 'Created' column in media picker</label>
+              <div class="gem-e-switch--fat e-switch">
+                <input type="checkbox" class="e-switch__input" id="opt-show-created-column" checked>
+                <label class="e-switch__toggle" for="opt-show-created-column"></label>
+              </div>
+            </div>
+            <div class="gem-e-switch-wrapper">
+              <label for="opt-show-size-column">Show 'Size' column in media picker</label>
+              <div class="gem-e-switch--fat e-switch">
+                <input type="checkbox" class="e-switch__input" id="opt-show-size-column" checked>
+                <label class="e-switch__toggle" for="opt-show-size-column"></label>
+              </div>
+            </div>
+            <div class="gem-e-switch-wrapper">
+              <label for="opt-show-user-column">Show 'User' column in media picker</label>
+              <div class="gem-e-switch--fat e-switch">
+                <input type="checkbox" class="e-switch__input" id="opt-show-user-column" checked>
+                <label class="e-switch__toggle" for="opt-show-user-column"></label>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -984,10 +1054,13 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         <div class="gem-setting-section">
           <h3>Filters</h3>
           <div class="gem-setting">
-            <label>
-              <input type="checkbox" id="opt-email-campaign-list-load-all" style="align-self: self-start; margin-top: 4px" />
-                Load all emails by default
-            </label>
+            <div class="gem-e-switch-wrapper">
+              <label for="opt-email-campaign-list-load-all">Load all emails by default</label>
+              <div class="gem-e-switch--fat e-switch">
+                <input type="checkbox" class="e-switch__input" id="opt-email-campaign-list-load-all">
+                <label class="e-switch__toggle" for="opt-email-campaign-list-load-all"></label>
+              </div>
+            </div>
             <p class="sub-label">
               The default 'Created' date filter is cleared automatically. Warning: This increases page load time.
             </p>
@@ -1072,7 +1145,9 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         [GEM_CUSTOM_PASTE_ALLOW_ANCHOR_KEY]: true,
         [GEM_RECENTLY_SEEN_IMAGES_MAX_KEY]: 300,
         [GEM_EMAIL_CAMPAIGN_LIST_LOAD_ALL_KEY]: false,
-        [GEM_EXPANDED_MODE_STORAGE_KEY]: false
+        [GEM_EXPANDED_MODE_STORAGE_KEY]: false,
+        gemAltTextPreviewEnabled: true,
+        gemAltTextVisibility: "always-show"
       }, (settings) => {
         const themeSelect = document.getElementById("opt-theme-mode");
         if (themeSelect) {
@@ -1132,6 +1207,12 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         }
 
         applyExpandedMode(settings[GEM_EXPANDED_MODE_STORAGE_KEY] === true);
+
+        const altTextEnabledEl = document.getElementById("opt-alt-text-preview-enabled");
+        if (altTextEnabledEl) altTextEnabledEl.checked = settings.gemAltTextPreviewEnabled !== false;
+
+        const altTextVisibilityEl = document.getElementById("opt-alt-text-visibility");
+        if (altTextVisibilityEl) altTextVisibilityEl.value = settings.gemAltTextVisibility || "always-show";
 
         const widthInput = document.getElementById("opt-mobile-preview-width");
         if (widthInput) widthInput.value = settings.mobilePreviewWidth || 414;
@@ -1249,7 +1330,11 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
               document.getElementById("opt-email-campaign-list-load-all")?.checked ?? false,
             [GEM_EXPANDED_MODE_STORAGE_KEY]: expandedModeEnabled,
             mobilePreviewWidth: safeWidth,
-            mobilePreviewScale: safeScale
+            mobilePreviewScale: safeScale,
+            gemAltTextPreviewEnabled:
+              document.getElementById("opt-alt-text-preview-enabled")?.checked ?? true,
+            gemAltTextVisibility:
+              document.getElementById("opt-alt-text-visibility")?.value ?? "always-show"
           };
 
           // Apply immediately + cache synchronously for next page load
@@ -1326,7 +1411,9 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
       "opt-custom-paste-strike",
       "opt-custom-paste-underline",
       "opt-custom-paste-sup",
-      "opt-custom-paste-anchor"
+      "opt-custom-paste-anchor",
+      "opt-alt-text-preview-enabled",
+      "opt-alt-text-visibility"
     ];
 
     settingsIds.forEach((id) => {

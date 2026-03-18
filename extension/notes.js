@@ -1,0 +1,252 @@
+console.log("[gem] notes.js loaded");
+
+const GEM_NOTES_STORAGE_KEY = "gemNotes";
+const GEM_NOTES_NAV_ID = "gem-nav-notes-item";
+const GEM_NOTES_PANEL_ID = "gem-notes-panel";
+const GEM_NOTES_BACKDROP_ID = "gem-notes-backdrop";
+
+let notesPanel = null;
+let notesBackdrop = null;
+let notesSaveTimeout = null;
+
+// ── Nav button ──────────────────────────────────────────────────────────
+
+function buildNotesNavItem() {
+  const li = document.createElement("li");
+  li.className = "e-navigation__menu_list_item";
+  li.id = GEM_NOTES_NAV_ID;
+  li.innerHTML = `
+    <button type="button" class="e-navigation__action" menu-item-id="notes">
+      <e-icon class="e-navigation__action_icon" color="inherit" icon="custom">
+        <div aria-hidden="true" class="e-icon-wrapper">
+          <div class="e-icon text-color-inherit"></div>
+        </div>
+      </e-icon>
+      <span class="e-navigation__action_text">Notes</span>
+    </button>
+  `;
+
+  li.querySelector("button").addEventListener("click", toggleNotesPanel);
+  return li;
+}
+
+function injectNotesNavItem(nav) {
+  if (!nav || nav.querySelector(`#${GEM_NOTES_NAV_ID}`)) return;
+
+  const settingsItem = nav.querySelector("#gem-nav-settings-item");
+  if (settingsItem) {
+    nav.insertBefore(buildNotesNavItem(), settingsItem);
+  }
+}
+
+function scanForNav(root = document) {
+  root.querySelectorAll("nav .e-navigation__menu_list").forEach(injectNotesNavItem);
+}
+
+function observeNav() {
+  const observer = new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      for (const node of mutation.addedNodes) {
+        if (node.nodeType !== 1) continue;
+
+        if (node.id === "gem-nav-settings-item") {
+          const nav = node.closest(".e-navigation__menu_list");
+          if (nav) injectNotesNavItem(nav);
+        } else if (node.querySelectorAll) {
+          const settingsItems = node.querySelectorAll("#gem-nav-settings-item");
+          settingsItems.forEach((si) => {
+            const nav = si.closest(".e-navigation__menu_list");
+            if (nav) injectNotesNavItem(nav);
+          });
+          scanForNav(node);
+        }
+      }
+    }
+  });
+
+  observer.observe(document.documentElement || document, {
+    childList: true,
+    subtree: true,
+  });
+}
+
+// ── Panel ───────────────────────────────────────────────────────────────
+
+function createNotesPanel() {
+  const backdrop = document.createElement("div");
+  backdrop.id = GEM_NOTES_BACKDROP_ID;
+  Object.assign(backdrop.style, {
+    position: "fixed",
+    inset: "0",
+    zIndex: "99998",
+    background: "rgba(0, 0, 0, 0.35)",
+    opacity: "0",
+    transition: "opacity 0.25s ease",
+    pointerEvents: "none",
+  });
+  backdrop.addEventListener("click", hideNotesPanel);
+
+  const panel = document.createElement("div");
+  panel.id = GEM_NOTES_PANEL_ID;
+  Object.assign(panel.style, {
+    position: "fixed",
+    top: "0",
+    left: "0",
+    width: "360px",
+    height: "100vh",
+    zIndex: "99999",
+    display: "flex",
+    flexDirection: "column",
+    background: "var(--token-box-default-background, #fff)",
+    borderRight: "1px solid var(--token-box-default-border, #ccc)",
+    boxShadow: "4px 0 24px rgba(0, 0, 0, 0.18)",
+    transform: "translateX(-100%)",
+    transition: "transform 0.25s ease",
+    boxSizing: "border-box",
+  });
+
+  const header = document.createElement("div");
+  Object.assign(header.style, {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "14px 16px",
+    borderBottom: "1px solid var(--token-box-default-border, #ccc)",
+    flexShrink: "0",
+  });
+
+  const title = document.createElement("span");
+  title.textContent = "Notes";
+  Object.assign(title.style, {
+    fontWeight: "600",
+    fontSize: "15px",
+    color: "var(--token-box-default-text, #333)",
+  });
+
+  const closeBtn = document.createElement("button");
+  closeBtn.textContent = "✕";
+  Object.assign(closeBtn.style, {
+    background: "none",
+    border: "none",
+    fontSize: "16px",
+    cursor: "pointer",
+    padding: "4px 8px",
+    lineHeight: "1",
+    color: "var(--token-box-default-text, #666)",
+    borderRadius: "4px",
+  });
+  closeBtn.addEventListener("click", hideNotesPanel);
+  closeBtn.addEventListener("mouseenter", () => {
+    closeBtn.style.background = "var(--token-action-selected-backgroundHover, #eee)";
+  });
+  closeBtn.addEventListener("mouseleave", () => {
+    closeBtn.style.background = "none";
+  });
+
+  header.appendChild(title);
+  header.appendChild(closeBtn);
+
+  const textarea = document.createElement("textarea");
+  textarea.id = "gem-notes-textarea";
+  textarea.placeholder = "Write your notes here…";
+  textarea.maxLength = 7500;
+  Object.assign(textarea.style, {
+    flex: "1",
+    width: "100%",
+    resize: "none",
+    border: "none",
+    outline: "none",
+    padding: "16px",
+    fontSize: "14px",
+    lineHeight: "1.6",
+    fontFamily: "inherit",
+    color: "var(--token-box-default-text, #333)",
+    background: "transparent",
+    boxSizing: "border-box",
+  });
+
+  const counter = document.createElement("div");
+  counter.id = "gem-notes-counter";
+  Object.assign(counter.style, {
+    padding: "6px 16px",
+    fontSize: "12px",
+    color: "var(--token-box-default-text, #999)",
+    opacity: "0.6",
+    textAlign: "right",
+    flexShrink: "0",
+    borderTop: "1px solid var(--token-box-default-border, #eee)",
+  });
+
+  function updateCounter() {
+    const remaining = 7500 - textarea.value.length;
+    counter.textContent = `${remaining.toLocaleString()} / 7,500`;
+  }
+  updateCounter();
+
+  textarea.addEventListener("input", () => {
+    updateCounter();
+    clearTimeout(notesSaveTimeout);
+    notesSaveTimeout = setTimeout(() => {
+      chrome.storage.sync.set({ [GEM_NOTES_STORAGE_KEY]: textarea.value });
+    }, 400);
+  });
+
+  panel.appendChild(header);
+  panel.appendChild(textarea);
+  panel.appendChild(counter);
+  document.body.appendChild(backdrop);
+  document.body.appendChild(panel);
+
+  notesBackdrop = backdrop;
+  notesPanel = panel;
+}
+
+function showNotesPanel() {
+  if (!notesPanel) createNotesPanel();
+
+  const textarea = notesPanel.querySelector("#gem-notes-textarea");
+  chrome.storage.sync.get(GEM_NOTES_STORAGE_KEY, (result) => {
+    if (textarea) {
+      textarea.value = result[GEM_NOTES_STORAGE_KEY] || "";
+      const counter = notesPanel.querySelector("#gem-notes-counter");
+      if (counter) {
+        const remaining = 7500 - textarea.value.length;
+        counter.textContent = `${remaining.toLocaleString()} / 7,500`;
+      }
+    }
+  });
+
+  requestAnimationFrame(() => {
+    notesBackdrop.style.opacity = "1";
+    notesBackdrop.style.pointerEvents = "auto";
+    notesPanel.style.transform = "translateX(0)";
+    if (textarea) textarea.focus();
+  });
+
+  document.addEventListener("keydown", onNotesEsc);
+}
+
+function hideNotesPanel() {
+  if (!notesPanel) return;
+  notesPanel.style.transform = "translateX(-100%)";
+  notesBackdrop.style.opacity = "0";
+  notesBackdrop.style.pointerEvents = "none";
+  document.removeEventListener("keydown", onNotesEsc);
+}
+
+function toggleNotesPanel() {
+  if (!notesPanel || notesPanel.style.transform === "translateX(-100%)") {
+    showNotesPanel();
+  } else {
+    hideNotesPanel();
+  }
+}
+
+function onNotesEsc(e) {
+  if (e.key === "Escape") hideNotesPanel();
+}
+
+// ── Init ────────────────────────────────────────────────────────────────
+
+scanForNav();
+observeNav();
