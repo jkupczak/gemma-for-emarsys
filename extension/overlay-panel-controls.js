@@ -745,8 +745,7 @@ function initializeOverlayPanelControls() {
 
     function getFavoriteImages(callback) {
       try {
-        chrome.storage.local.get({ [GEM_FAVORITE_IMAGES_CONSOLIDATED_KEY]: [] }, (result) => {
-          const consolidated = result && result[GEM_FAVORITE_IMAGES_CONSOLIDATED_KEY];
+        window.gemFavImages.read((consolidated) => {
           const raw = Array.isArray(consolidated) ? consolidated : [];
           const cleaned = raw
             .map((x) => {
@@ -768,9 +767,7 @@ function initializeOverlayPanelControls() {
 
     function saveFavoriteImages(list, callback) {
       try {
-        // Get existing consolidated data to preserve metadata
-        chrome.storage.local.get({ [GEM_FAVORITE_IMAGES_CONSOLIDATED_KEY]: [] }, (result) => {
-          const existing = result && result[GEM_FAVORITE_IMAGES_CONSOLIDATED_KEY];
+        window.gemFavImages.read((existing) => {
           const existingMap = new Map();
           if (Array.isArray(existing)) {
             existing.forEach(item => {
@@ -780,7 +777,6 @@ function initializeOverlayPanelControls() {
             });
           }
 
-          // Create new consolidated list with preserved metadata
           const consolidated = list.map(({ url, ts }) => {
             const existingItem = existingMap.get(url);
             return {
@@ -790,7 +786,7 @@ function initializeOverlayPanelControls() {
             };
           });
 
-          chrome.storage.local.set({ [GEM_FAVORITE_IMAGES_CONSOLIDATED_KEY]: consolidated }, () => {
+          window.gemFavImages.write(consolidated, () => {
             callback && callback();
           });
         });
@@ -861,8 +857,7 @@ function initializeOverlayPanelControls() {
 
     function getFavoriteImageMetaMap(callback) {
       try {
-        chrome.storage.local.get({ [GEM_FAVORITE_IMAGES_CONSOLIDATED_KEY]: [] }, (result) => {
-          const consolidated = result && result[GEM_FAVORITE_IMAGES_CONSOLIDATED_KEY];
+        window.gemFavImages.read((consolidated) => {
           const map = {};
           if (Array.isArray(consolidated)) {
             consolidated.forEach(item => {
@@ -880,9 +875,7 @@ function initializeOverlayPanelControls() {
 
     function saveFavoriteImageMetaMap(map, callback) {
       try {
-        // Get existing consolidated data
-        chrome.storage.local.get({ [GEM_FAVORITE_IMAGES_CONSOLIDATED_KEY]: [] }, (result) => {
-          const existing = result && result[GEM_FAVORITE_IMAGES_CONSOLIDATED_KEY];
+        window.gemFavImages.read((existing) => {
           const updated = [];
 
           if (Array.isArray(existing)) {
@@ -897,7 +890,7 @@ function initializeOverlayPanelControls() {
             });
           }
 
-          chrome.storage.local.set({ [GEM_FAVORITE_IMAGES_CONSOLIDATED_KEY]: updated }, () => {
+          window.gemFavImages.write(updated, () => {
             callback && callback();
           });
         });

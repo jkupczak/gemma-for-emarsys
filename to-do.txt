@@ -41,10 +41,6 @@ In expanded mode, the hidden nav on the left should only open on click.
 
 gemRecentlySeenImageGroupCollapse in localstorage is holding onto the collapse status of Recently Seen groupings that are no longer visible to the user. Once a group is no longer available in Recently seen, the matching key in gemRecentlySeenImageGroupCollapse should be removed so that the log size does not get out of control.
 
-Move favorited images from local storage to sync storage
-
-Measure total space taken up by snippets in sync storage. Calculate how much space is left. Create a storage space UI indicator for the user.
-
 Search pills should take two clicks to close.
 
 Search pills should be draggable to rearrange
@@ -133,6 +129,10 @@ use that size whenever they return to that panel
 ✓ The Recently Seen list should be categorized by Path. Categories should be sorted by most recently seen.
 
 ✓ When adding a Favorite Image, the Enter key closes the Image Props dialog instead of pressing OK on the favorite image modal.
+
+✓ Move favorited images from local storage to sync storage
+
+✓ Measure total space taken up by items stored in sync storage. Calculate how much space is left. Create a storage space UI indicator for the user.
 
 ✓ Search results from the media picker are being saved to Recently Seen in whatever the last seen folder is. Update it so that they get added to a "Searched" folder instead since we can't determine their actual folder.
 

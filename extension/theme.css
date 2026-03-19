@@ -2,6 +2,145 @@
    https://chatgpt.com/c/69487f1c-08ec-832a-9659-92c2b417d687
 */
 
+/* retheme the UI to the gem color scheme */
+html:root {
+  --token-sapphire-100: #ebf8ff;
+  --token-sapphire-200: #d1efff;
+  --token-sapphire-300: #a6e0ff;
+  --token-sapphire-400: #89d1ff;
+  --token-sapphire-500: #1b90ff;
+  --token-sapphire-600: #0070f2;
+  --token-sapphire-700: #0057d2;
+  --token-sapphire-800: #0040b0;
+  --token-sapphire-900: #002a86;
+  --token-sapphire-default: #0070f2;
+
+  --token-topaz-100: #fdf3e0;
+  --token-topaz-200: #f6ddb0;
+  --token-topaz-300: #eec46f;
+  --token-topaz-400: #e3ab2f;
+  --token-topaz-500: #d59610;
+  --token-topaz-600: #c58a00;
+  --token-topaz-700: #a57100;
+  --token-topaz-800: #7d5600;
+  --token-topaz-900: #2a2318;
+  --token-topaz-default: #c58a00;
+
+  --token-carnelian-100: #fff1ea;
+  --token-carnelian-200: #ffd4c2;
+  --token-carnelian-300: #ff9f73;
+  --token-carnelian-400: #ff8350;
+  --token-carnelian-500: #ff5a1a;
+  --token-carnelian-600: #fe4d01;
+  --token-carnelian-700: #d84200;
+  --token-carnelian-800: #a63200;
+  --token-carnelian-900: #2b201b;
+  --token-carnelian-default: #fe4d01;
+
+  --token-ruby-100: #fdeaf3;
+  --token-ruby-200: #f7c6de;
+  --token-ruby-300: #ef8fbf;
+  --token-ruby-400: #e45a9f;
+  --token-ruby-500: #db3b8b;
+  --token-ruby-600: #d11e7f;
+  --token-ruby-700: #b01868;
+  --token-ruby-800: #86124f;
+  --token-ruby-900: #2b1f24;
+  --token-ruby-default: #d11e7f;
+
+  --token-turquoise-100: #e6fbf6;
+  --token-turquoise-200: #c9f4ea;
+  --token-turquoise-300: #9be8d7;
+  --token-turquoise-400: #43c7ab;
+  --token-turquoise-500: #1cc09d;
+  --token-turquoise-600: #02ba91;
+  --token-turquoise-700: #019a78;
+  --token-turquoise-800: #017a5f;
+  --token-turquoise-900: #015245;
+  --token-turquoise-default: #02ba91;
+
+  --token-amethyst-100: #f0edff;
+  --token-amethyst-200: #dcd6ff;
+  --token-amethyst-300: #b9adff;
+  --token-amethyst-400: #8f80ff;
+  --token-amethyst-500: #6b5aff;
+  --token-amethyst-600: #523ae6;
+  --token-amethyst-700: #4330c2;
+  --token-amethyst-800: #332493;
+  --token-amethyst-900: #282635;
+  --token-amethyst-default: #523ae6;
+}
+
+/* Darkmode retheme the UI to the gem color scheme */
+html.FLIPPER-theme-eveningHorizon:root {
+
+  --token-sapphire-100: #002a86;
+  --token-sapphire-200: #0040b0;
+  --token-sapphire-300: #0057d2;
+  --token-sapphire-400: #0070f2;
+  --token-sapphire-500: #1b90ff;
+  --token-sapphire-600: #89d1ff;
+  --token-sapphire-700: #a6dfff;
+  --token-sapphire-800: #d1efff;
+  --token-sapphire-900: #ebf8ff;
+  --token-sapphire-default: #89d1ff;
+
+  --token-topaz-100: #2a2318;
+  --token-topaz-200: #7d5600;
+  --token-topaz-300: #a57100;
+  --token-topaz-400: #c58a00;
+  --token-topaz-500: #d59610;
+  --token-topaz-600: #e3ab2f;
+  --token-topaz-700: #eec46f;
+  --token-topaz-800: #f6ddb0;
+  --token-topaz-900: #fdf3e0;
+  --token-topaz-default: #e3ab2f;
+
+  --token-carnelian-100: #2b201b;
+  --token-carnelian-200: #a63200;
+  --token-carnelian-300: #d84200;
+  --token-carnelian-400: #fe4d01;
+  --token-carnelian-500: #ff5a1a;
+  --token-carnelian-600: #ff8350;
+  --token-carnelian-700: #ff9f73;
+  --token-carnelian-800: #ffd4c2;
+  --token-carnelian-900: #fff1ea;
+  --token-carnelian-default: #ff8350;
+
+  --token-ruby-100: #2b1f24;
+  --token-ruby-200: #86124f;
+  --token-ruby-300: #b01868;
+  --token-ruby-400: #d11e7f;
+  --token-ruby-500: #db3b8b;
+  --token-ruby-600: #e45a9f;
+  --token-ruby-700: #ef8fbf;
+  --token-ruby-800: #f7c6de;
+  --token-ruby-900: #fdeaf3;
+  --token-ruby-default: #e45a9f;
+
+  --token-turquoise-100: #015245;
+  --token-turquoise-200: #017a5f;
+  --token-turquoise-300: #019a78;
+  --token-turquoise-400: #02ba91;
+  --token-turquoise-500: #1cc09d;
+  --token-turquoise-600: #43c7ab;
+  --token-turquoise-700: #9be8d7;
+  --token-turquoise-800: #c9f4ea;
+  --token-turquoise-900: #e6fbf6;
+  --token-turquoise-default: #43c7ab;
+
+  --token-amethyst-100: #282635;
+  --token-amethyst-200: #332493;
+  --token-amethyst-300: #4330c2;
+  --token-amethyst-400: #523ae6;
+  --token-amethyst-500: #6b5aff;
+  --token-amethyst-600: #8f80ff;
+  --token-amethyst-700: #b9adff;
+  --token-amethyst-800: #dcd6ff;
+  --token-amethyst-900: #f0edff;
+  --token-amethyst-default: #8f80ff;
+}
+
 /* global variables */
 :root { 
   --gemma: #523ae6; 
@@ -1174,11 +1313,11 @@ html.FLIPPER-theme-eveningHorizon.gem-theme-ruby:root {
 
 
 /* ------------------------------------------------------------ */
-/* Gemma Topaz Theme */
+/* Gemma Carnelian Theme */
 /* ------------------------------------------------------------ */
 
 /* retheme the UI to the gem color scheme */
-html.gem-theme-topaz:root {
+html.gem-theme-carnelian:root {
 
   --token-blue-100: #fff1ea;
   --token-blue-200: #ffd4c2;
@@ -1350,7 +1489,7 @@ html.gem-theme-topaz:root {
 }
 
 /* Darkmode retheme the UI to the gem color scheme */
-html.FLIPPER-theme-eveningHorizon.gem-theme-topaz:root {
+html.FLIPPER-theme-eveningHorizon.gem-theme-carnelian:root {
 
   --token-blue-100: #2b201b;
   --token-blue-200: #a63200;
@@ -1516,6 +1655,357 @@ html.FLIPPER-theme-eveningHorizon.gem-theme-topaz:root {
   --token-navigationItem-selected-backgroundActive: #2b201b;
   --token-navigationItem-selected-backgroundActiveHover: #a63200;
   --token-navigationItem-default-backgroundHover: #2b201b;
+  --token-input-default-underline: #7a4f43;
+
+  --token-box-strong-border: #7d5b52;
+  --token-separator-text: #7d5b52;
+}
+
+
+
+/* ------------------------------------------------------------ */
+/* Gemma Topax Theme */
+/* ------------------------------------------------------------ */
+
+/* retheme the UI to the gem color scheme */
+html.gem-theme-topaz:root {
+
+  --token-blue-100: #fdf3e0;
+  --token-blue-200: #f6ddb0;
+  --token-blue-300: #eec46f;
+  --token-blue-400: #e3ab2f;
+  --token-blue-500: #d59610;
+  --token-blue-600: #c58a00;
+  --token-blue-700: #a57100;
+  --token-blue-800: #7d5600;
+  --token-blue-900: #2a2318;
+  
+  --token-azure-100: #fdf3e0;
+  --token-azure-200: #f6ddb0;
+  --token-azure-300: #eec46f;
+  --token-azure-400: #e3ab2f;
+  --token-azure-500: #d59610;
+  --token-azure-600: #c58a00;
+  --token-azure-700: #a57100;
+  --token-azure-800: #7d5600;
+  --token-azure-900: #2a2318;
+  
+  --token-chart-01-100: #fdf3e0;
+  --token-chart-01-200: #f6ddb0;
+  --token-chart-01-300: #eec46f;
+  --token-chart-01-400: #e3ab2f;
+  --token-chart-01-500: #d59610;
+  --token-chart-01-600: #c58a00;
+  --token-chart-01-700: #a57100;
+  --token-chart-01-800: #7d5600;
+  --token-chart-01-900: #2a2318;
+  --token-chart-01-default: #c58a00;
+  
+  --token-chart-09-100: #fdf3e0;
+  --token-chart-09-200: #f6ddb0;
+  --token-chart-09-300: #eec46f;
+  --token-chart-09-400: #e3ab2f;
+  --token-chart-09-500: #d59610;
+  --token-chart-09-600: #c58a00;
+  --token-chart-09-700: #a57100;
+  --token-chart-09-800: #7d5600;
+  --token-chart-09-900: #2a2318;
+  --token-chart-09-default: #c58a00;
+  
+  --token-info-100: #fdf3e0;
+  --token-info-200: #f6ddb0;
+  --token-info-300: #eec46f;
+  --token-info-400: #e3ab2f;
+  --token-info-500: #d59610;
+  --token-info-600: #c58a00;
+  --token-info-700: #a57100;
+  --token-info-800: #7d5600;
+  --token-info-900: #2a2318;
+  --token-info-default: #c58a00;
+  
+  --token-highlight-100: #fdf3e0;
+  --token-highlight-200: #f6ddb0;
+  --token-highlight-300: #eec46f;
+  --token-highlight-400: #e3ab2f;
+  --token-highlight-500: #d59610;
+  --token-highlight-600: #c58a00;
+  --token-highlight-700: #a57100;
+  --token-highlight-800: #7d5600;
+  --token-highlight-900: #2a2318;
+  --token-highlight-default: #c58a00;
+  
+  --token-primary-100: #fdf3e0;
+  --token-primary-200: #f6ddb0;
+  --token-primary-300: #eec46f;
+  --token-primary-400: #e3ab2f;
+  --token-primary-500: #d59610;
+  --token-primary-600: #c58a00;
+  --token-primary-700: #a57100;
+  --token-primary-800: #7d5600;
+  --token-primary-900: #2a2318;
+  --token-primary-default: #c58a00;
+  
+  --token-outline-focus: #c58a00;
+  --token-text-highlight: #c58a00;
+  
+  --token-link-default-text: #c58a00;
+  --token-link-default-textHover: #a57100;
+  --token-link-default-textActive: #eec46f;
+  --token-link-visited-text: #c58a00;
+  --token-link-visited-textHover: #a57100;
+  --token-link-visited-textActive: #eec46f;
+  
+  --token-slider-bar: #c58a00;
+  --token-slider-handleActive: #c58a00;
+  --token-slider-bubble: #c58a00;
+  
+  --token-switch-on-background: #c58a00;
+  --token-switch-on-backgroundHover: #a57100;
+  --token-switch-on-toggleBorder: #d59610;
+  
+  --token-box-highlight-background: #fdf3e0;
+  --token-box-highlight-border: #c58a00;
+  --token-box-highlight-icon: #c58a00;
+  
+  --token-action-selected-background: #f6ddb0;
+  --token-action-selected-backgroundHover: #eec46f;
+  --token-action-selected-bullet: #eec46f;
+  --token-action-selected-bulletHover: #e3ab2f;
+  --token-action-selected-marker: #c58a00;
+  --token-action-selected-text: #c58a00;
+  
+  --token-button-default-text: #c58a00;
+  --token-button-default-textActive: #c58a00;
+  --token-button-default-borderActive: #c58a00;
+  
+  --token-button-highlight-background: #c58a00;
+  --token-button-highlight-backgroundHover: #a57100;
+  --token-button-highlight-borderActive: #c58a00;
+  --token-button-highlight-textActive: #c58a00;
+  
+  --token-progressBar-notification-bar: #c58a00;
+  --token-progressBar-info-bar: #c58a00;
+  --token-progressBar-info-background: #eec46f;
+  
+  --token-radio-default-borderFocus: #c58a00;
+  --token-radio-default-colorFocus: #c58a00;
+  --token-radio-default-marker: #c58a00;
+  
+  --token-radio-info-border: #c58a00;
+  --token-radio-info-borderFocus: #c58a00;
+  --token-radio-info-colorFocus: #c58a00;
+  --token-radio-info-marker: #c58a00;
+  --token-radio-info-text: #c58a00;
+
+  --token-ruleBuilder-variant2-autoLabel: #eec46f;
+  --token-ruleBuilder-variant2-background: #fdf3e0;
+  --token-ruleBuilder-variant2-backgroundHover: #f6ddb0;
+  --token-ruleBuilder-variant2-border: #e3ab2f;
+  --token-ruleBuilder-variant2-buttonFocus: #eec46f;
+  --token-ruleBuilder-variant2-buttonHover: #e3ab2f;
+  --token-ruleBuilder-variant2-buttonTextHover: #a57100;
+  --token-ruleBuilder-variant2-text: #d59610;
+
+  --token-navigationItem-selected-marker: #c58a00;
+  --token-navigationItem-selected-text: #c58a00;
+
+  --token-tab-selected-marker: #c58a00;
+  --token-tab-selected-text: #c58a00;
+
+  --token-tableCell-selected-background: #fdf3e0;
+  --token-tableCell-selected-backgroundActive: #fdf3e0;
+  --token-tableCell-selected-backgroundHover: #f6ddb0;
+  --token-tableCell-selected-backgroundActiveHover: #fdf3e0;
+  --token-tableCell-selected-border: #c58a00;
+
+  --token-button-toolbar-borderActive: #e3ab2f;
+  --token-button-toolbar-text: #e3ab2f;
+  --token-button-toolbar-textActive: #e3ab2f;
+  --token-input-default-borderActive: #e3ab2f;
+  --token-input-default-borderHover: #fdf3e0;
+  --token-input-default-underlineHover: #e3ab2f;
+  --token-button-default-backgroundActiveHover: #fdf3e0;
+  --token-label-highlight-background: #c58a00;
+  --token-label-highlight-backgroundHover: #7d5600;
+  --token-label-highlight-border: #c58a00;
+  --token-navigationItem-default-backgroundActive: #f6ddb0;
+  --token-navigationItem-default-backgroundActiveHover: #fdf3e0;
+  --token-navigationItem-selected-backgroundActive: #f6ddb0;
+  --token-navigationItem-selected-backgroundActiveHover: #fdf3e0;
+
+  --token-navigationItem-default-backgroundHover: #eec46f;
+  --token-input-default-underline: #7a4f43;
+  --token-box-strong-border: #7d5b52;
+  --token-separator-text: #7d5b52;
+}
+
+/* Darkmode retheme the UI to the gem color scheme */
+html.FLIPPER-theme-eveningHorizon.gem-theme-topaz:root {
+
+  --token-blue-100: #2a2318;
+  --token-blue-200: #7d5600;
+  --token-blue-300: #a57100;
+  --token-blue-400: #c58a00;
+  --token-blue-500: #d59610;
+  --token-blue-600: #e3ab2f;
+  --token-blue-700: #eec46f;
+  --token-blue-800: #f6ddb0;
+  --token-blue-900: #fdf3e0;
+
+  --token-azure-100: #2a2318;
+  --token-azure-200: #7d5600;
+  --token-azure-300: #a57100;
+  --token-azure-400: #c58a00;
+  --token-azure-500: #d59610;
+  --token-azure-600: #e3ab2f;
+  --token-azure-700: #eec46f;
+  --token-azure-800: #f6ddb0;
+  --token-azure-900: #fdf3e0;
+
+  --token-chart-01-100: #2a2318;
+  --token-chart-01-200: #7d5600;
+  --token-chart-01-300: #a57100;
+  --token-chart-01-400: #c58a00;
+  --token-chart-01-500: #d59610;
+  --token-chart-01-600: #e3ab2f;
+  --token-chart-01-700: #eec46f;
+  --token-chart-01-800: #f6ddb0;
+  --token-chart-01-900: #fdf3e0;
+  --token-chart-01-default: #e3ab2f;
+
+  --token-chart-09-100: #2a2318;
+  --token-chart-09-200: #7d5600;
+  --token-chart-09-300: #a57100;
+  --token-chart-09-400: #c58a00;
+  --token-chart-09-500: #d59610;
+  --token-chart-09-600: #e3ab2f;
+  --token-chart-09-700: #eec46f;
+  --token-chart-09-800: #f6ddb0;
+  --token-chart-09-900: #fdf3e0;
+  --token-chart-09-default: #e3ab2f;
+
+  --token-info-100: #2a2318;
+  --token-info-200: #7d5600;
+  --token-info-300: #a57100;
+  --token-info-400: #c58a00;
+  --token-info-500: #d59610;
+  --token-info-600: #e3ab2f;
+  --token-info-700: #eec46f;
+  --token-info-800: #f6ddb0;
+  --token-info-900: #fdf3e0;
+  --token-info-default: #e3ab2f;
+
+  --token-highlight-100: #2a2318;
+  --token-highlight-200: #7d5600;
+  --token-highlight-300: #a57100;
+  --token-highlight-400: #c58a00;
+  --token-highlight-500: #d59610;
+  --token-highlight-600: #e3ab2f;
+  --token-highlight-700: #eec46f;
+  --token-highlight-800: #f6ddb0;
+  --token-highlight-900: #fdf3e0;
+  --token-highlight-default: #e3ab2f;
+
+  --token-primary-100: #2a2318;
+  --token-primary-200: #7d5600;
+  --token-primary-300: #a57100;
+  --token-primary-400: #c58a00;
+  --token-primary-500: #d59610;
+  --token-primary-600: #e3ab2f;
+  --token-primary-700: #eec46f;
+  --token-primary-800: #f6ddb0;
+  --token-primary-900: #fdf3e0;
+  --token-primary-default: #e3ab2f;
+
+  --token-outline-focus: #e3ab2f;
+  --token-text-highlight: #e3ab2f;
+
+  --token-link-default-text: #e3ab2f;
+  --token-link-default-textHover: #eec46f;
+  --token-link-default-textActive: #a57100;
+  --token-link-visited-text: #e3ab2f;
+  --token-link-visited-textHover: #eec46f;
+  --token-link-visited-textActive: #a57100;
+
+  --token-slider-bar: #e3ab2f;
+  --token-slider-handleActive: #e3ab2f;
+  --token-slider-bubble: #e3ab2f;
+
+  --token-switch-on-background: #d59610;
+  --token-switch-on-backgroundHover: #e3ab2f;
+  --token-switch-on-toggleBorder: #d59610;
+
+  --token-box-highlight-background: #2a2318;
+  --token-box-highlight-border: #e3ab2f;
+  --token-box-highlight-icon: #e3ab2f;
+
+  --token-action-selected-background: #2a2318;
+  --token-action-selected-backgroundDisabled: #7d5600;
+  --token-action-selected-backgroundHover: #7d5600;
+  --token-action-selected-bullet: #7d5600;
+  --token-action-selected-bulletHover: #a57100;
+  --token-action-selected-marker: #e3ab2f;
+  --token-action-selected-text: #e3ab2f;
+
+  --token-button-default-borderActive: #e3ab2f;
+  --token-button-default-text: #e3ab2f;
+  --token-button-default-textActive: #e3ab2f;
+
+  --token-button-highlight-background: #c58a00;
+  --token-button-highlight-backgroundHover: #a57100;
+  --token-button-highlight-borderActive: #e3ab2f;
+  --token-button-highlight-textActive: #e3ab2f;
+
+  --token-progressBar-notification-bar: #e3ab2f;
+  --token-progressBar-info-bar: #e3ab2f;
+  --token-progressBar-info-background: #a57100;
+
+  --token-radio-default-borderFocus: #e3ab2f;
+  --token-radio-default-colorFocus: #e3ab2f;
+  --token-radio-default-marker: #e3ab2f;
+
+  --token-radio-info-border: #e3ab2f;
+  --token-radio-info-borderFocus: #e3ab2f;
+  --token-radio-info-colorFocus: #e3ab2f;
+  --token-radio-info-marker: #e3ab2f;
+  --token-radio-info-text: #e3ab2f;
+
+  --token-navigationItem-selected-marker: #e3ab2f;
+  --token-navigationItem-selected-text: #e3ab2f;
+
+  --token-tab-selected-marker: #e3ab2f;
+  --token-tab-selected-text: #e3ab2f;
+
+  --token-tableCell-selected-background: #2a2318;
+  --token-tableCell-selected-backgroundActive: #2a2318;
+  --token-tableCell-selected-backgroundHover: #7d5600;
+  --token-tableCell-selected-backgroundActiveHover: #7d5600;
+  --token-tableCell-selected-border: #e3ab2f;
+
+  --token-ruleBuilder-variant2-autoLabel: #a57100;
+  --token-ruleBuilder-variant2-background: #2a2318;
+  --token-ruleBuilder-variant2-backgroundHover: #7d5600;
+  --token-ruleBuilder-variant2-border: #c58a00;
+  --token-ruleBuilder-variant2-buttonFocus: #a57100;
+  --token-ruleBuilder-variant2-buttonHover: #c58a00;
+  --token-ruleBuilder-variant2-buttonTextHover: #eec46f;
+  --token-ruleBuilder-variant2-text: #d59610;
+
+  --token-button-toolbar-borderActive: #e3ab2f;
+  --token-button-toolbar-text: #e3ab2f;
+  --token-button-toolbar-textActive: #e3ab2f;
+  --token-input-default-borderActive: #e3ab2f;
+  --token-input-default-borderHover: #7d5600;
+  --token-input-default-underlineHover: #e3ab2f;
+  --token-button-default-backgroundActiveHover: #7d5600;
+  --token-label-highlight-background: #e3ab2f;
+  --token-label-highlight-backgroundHover: #7d5600;
+  --token-label-highlight-border: #e3ab2f;
+  --token-navigationItem-default-backgroundActive: #2a2318;
+  --token-navigationItem-default-backgroundActiveHover: #7d5600;
+  --token-navigationItem-selected-backgroundActive: #2a2318;
+  --token-navigationItem-selected-backgroundActiveHover: #7d5600;
+  --token-navigationItem-default-backgroundHover: #2a2318;
   --token-input-default-underline: #7a4f43;
 
   --token-box-strong-border: #7d5b52;

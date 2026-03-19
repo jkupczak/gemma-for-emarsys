@@ -24,6 +24,7 @@ function normalizeGemThemeMode(value) {
   if (value === "gemma-ruby") return "gemma-ruby";
   if (value === "gemma-turquoise") return "gemma-turquoise";
   if (value === "gemma-topaz") return "gemma-topaz";
+  if (value === "gemma-carnelian") return "gemma-carnelian";
   return "gemma-amethyst"; // default
 }
 
@@ -33,7 +34,7 @@ function applyGemThemeMode(mode, { persistLocal = false } = {}) {
   if (!html) return;
 
   // Remove all theme classes first
-  html.classList.remove("gem--retheme-inactive", "gem-theme-active", "gem-theme-amethyst", "gem-theme-ruby", "gem-theme-turquoise", "gem-theme-topaz");
+  html.classList.remove("gem--retheme-inactive", "gem-theme-active", "gem-theme-amethyst", "gem-theme-ruby", "gem-theme-turquoise", "gem-theme-topaz", "gem-theme-carnelian");
 
   if (normalized === "original") {
     html.classList.add("gem--retheme-inactive");
@@ -50,6 +51,8 @@ function applyGemThemeMode(mode, { persistLocal = false } = {}) {
       html.classList.add("gem-theme-topaz");
     } else if (normalized === "gemma-turquoise") {
       html.classList.add("gem-theme-turquoise");
+    } else if (normalized === "gemma-carnelian") {
+      html.classList.add("gem-theme-carnelian");
     }
   }
 
@@ -135,487 +138,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
   let _gemColorSwatchFlushTimer = null;
   let _gemColorSwatchReloadAfterFlush = false;
 
-  // ------------------------------------------------------------
-  // Inject styles into page
-  // ------------------------------------------------------------
-  function injectStyles() {
-    if (document.getElementById("gem-settings-style")) return;
-
-    const style = document.createElement("style");
-    style.id = "gem-settings-style";
-    style.textContent = `
-      #gem-settings-panel {
-        position: fixed;
-        top: 0;
-        right: -580px;
-        width: 580px;
-        height: 100vh;
-        background: var(--token-background-faint);
-        box-shadow: -4px 0 20px rgba(0,0,0,0.15);
-        z-index: 9999;
-        transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-        display: flex;
-        flex-direction: column;
-        border-radius: 8px 0 0 8px;
-      }
-
-      #gem-settings-panel input, #gem-settings-panel select {
-        background: var(--token-input-default-background);
-        border: 2px solid var(--token-box-default-border);
-        padding: 8px 4px 8px 4px;
-        border-radius:6px;
-      }
-
-      #gem-settings-header {
-        padding: 20px 24px;
-        font-size: 18px;
-        font-weight: 700;
-        background: var(--token-box-default-border);
-        color: var(--token-text-default);
-        border-radius: 8px 0 0 0;
-      }
-
-      #gem-settings-body {
-        padding: 20px 10px 0 20px;
-        overflow-y: auto;
-        flex-grow: 1;
-      }
-
-      #gem-settings-panel input[type="color"] {
-        padding: 5px !important;
-      }
-
-      .gem-setting-info {
-        margin: 20px;
-        font-size: 16px;
-      }
-
-      .gem-setting-section .gem-setting {
-        margin: 20px;
-      }
-      .gem-setting {
-        margin-bottom:20px;
-        background: var(--token-box-default-background);
-        padding: 16px;
-        border-radius: 8px;
-        border: 1px solid var(--token-box-default-border);
-        transition: all 0.2s ease;
-      }
-
-      .gem-setting-section > .gem-setting-condensed {
-        border: none;
-        padding: 0;
-        border-radius: 0;
-        margin: 20px;
-      }
-        .gem-setting-section > .gem-setting-condensed:hover {
-          box-shadow: none;
-        }
-
-      .gem-setting label + label { padding: 12px 0 0 }
-      [data-gem-paste-allow-disabled] { display: none; }
-      p:has(+ [data-gem-paste-allow-disabled]) { margin-bottom: 0 !important; }
-      .gem-setting:hover {
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        border-color: var(--token-blue-700);
-      }
-
-      .gem-setting label {
-        display: flex;
-        align-items: center;
-        margin-bottom: 0;
-        font-weight: 600;
-        font-size: 16px;
-        color: var(--token-font-default);
-        cursor: pointer;
-      }
-
-      .gem-setting input[type="checkbox"] {
-        width: 18px;
-        height: 18px;
-        margin-right: 12px;
-        cursor: pointer;
-        accent-color: var(--token-primary-600);
-        border-radius: 4px;
-      }
-
-      #gem-settings-close {
-        position: absolute;
-        top: 16px;
-        right: 16px;
-        font-size: 20px;
-        cursor: pointer;
-        color: white;
-        opacity: 0.8;
-        transition: opacity 0.2s ease;
-        width: 32px;
-        height: 32px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border-radius: 6px;
-        background: rgba(255,255,255,0.1);
-      }
-
-      #gem-settings-close:hover {
-        opacity: 1;
-        background: rgba(255,255,255,0.2);
-      }
-
-      .gem-setting-section {
-        margin: 15px 0 30px;
-        background: var(--token-box-default-background);
-        border-radius: 12px;
-        border: 1px solid var(--token-box-default-border);
-        overflow: hidden;
-      }
-
-      .gem-setting-section h3 {
-        margin: 0;
-        padding: 16px 20px;
-        font-size: 16px;
-        font-weight: 700;
-        color: var(--token-text-default);
-        background: var(--token-box-default-border);
-        border-bottom: 1px solid var(--token-box-default-border);
-      }
-
-      .gem-setting-section > div {
-        margin: 20px;
-      }
-
-      .highlight-term-item {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        padding: 3px 0;
-        transition: all 0.2s ease;
-      }
-
-      .highlight-term-controls {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      }
-
-      .gem-settings-regex-toggle {
-        background: none;
-        border: 1px solid var(--token-box-default-border);
-        border-radius: 4px;
-        font-family: monospace;
-        font-size: 13px;
-        font-weight: bold;
-        line-height: 1;
-        padding: 5px 7px;
-        cursor: pointer;
-        color: #6b7280;
-        opacity: 0.6;
-        transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
-      }
-      .gem-settings-regex-toggle:hover {
-        opacity: 1;
-        color: var(--token-font-default);
-      }
-      .gem-settings-regex-toggle--active {
-        opacity: 1;
-        color: white;
-        background: var(--token-button-highlight-background, #667eea);
-        border-color: var(--token-button-highlight-background, #667eea);
-      }
-      .gem-settings-regex-toggle--active:hover {
-        background: var(--token-button-highlight-backgroundHover, #5a67d8);
-        border-color: var(--token-button-highlight-backgroundHover, #5a67d8);
-      }
-
-      .highlight-term-item:last-child {
-        margin-bottom: 0;
-      }
-
-      .gem-settings-input-wrap {
-        position: relative;
-        flex: 1;
-        display: flex;
-      }
-
-      .gem-settings-input-wrap input[type="text"] {
-        flex: 1;
-        padding: 8px 40px 8px 12px;
-        border: 2px solid var(--token-box-default-border);
-        border-radius: 6px;
-        font-size: 13px;
-        font-family: inherit;
-        transition: border-color 0.2s ease;
-      }
-
-      .gem-settings-input-wrap input[type="text"]:focus {
-        outline: none;
-        border-color: #667eea;
-        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-      }
-
-      .gem-settings-input-wrap .gem-settings-regex-toggle {
-        position: absolute;
-        right: 5px;
-        top: 50%;
-        transform: translateY(-50%);
-      }
-
-      .highlight-term-remove,
-      .color-swatch-clear {
-        border: none;
-        background: var(--token-box-default-border);
-        color: #6b7280;
-        border-radius: 6px;
-        padding: 6px 10px;
-        cursor: pointer;
-        font-size: 16px;
-        font-weight: 600;
-        transition: all 0.2s ease;
-        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-        width: 32px;
-        height: 32px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        line-height: 1;
-      }
-
-      .highlight-term-remove:hover,
-      .color-swatch-clear:hover {
-        background: #e5e7eb;
-        border-color: #9ca3af;
-        color: var(--token-font-default);
-        transform: translateY(-1px);
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-      }
-
-      .gem-add-term {
-        display: flex;
-        gap: 12px;
-        align-items: center;
-        margin: 0 20px 20px;
-        padding: 16px;
-        border: 2px dashed var(--token-box-default-border);
-        border-radius: 8px;
-        transition: all 0.2s ease;
-      }
-
-      .gem-add-term input[type="text"] {
-        flex: 1;
-        padding: 10px 14px;
-        border: 2px solid var(--token-box-default-border);
-        border-radius: 6px;
-        font-size: 13px;
-        font-family: inherit;
-        transition: border-color 0.2s ease;
-      }
-
-      .gem-add-term input[type="text"]:focus {
-        outline: none;
-        border-color: #667eea;
-        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-      }
-
-      .gem-add-term input[type="color"] {
-        width: 56px;
-        height: 40px;
-        border: 2px solid var(--token-box-default-border);
-        border-radius: 6px;
-        cursor: pointer;
-        transition: border-color 0.2s ease;
-      }
-
-      .gem-add-term input[type="color"]:hover {
-        border-color: #667eea;
-      }
-
-      .gem-setting-section-content-block-toolbar e-icon, 
-      .gem-setting-section-content-block-toolbar gem-e-icon {
-        margin-right: 4px;
-        transform: scale(0.9);
-      }
-
-      .gem-add-term button {
-        padding: 10px 16px;
-        background: var(--token-button-highlight-background);
-        color: white;
-        border: none;
-        border-radius: 6px;
-        cursor: pointer;
-        font-size: 13px;
-        font-weight: 600;
-        transition: all 0.2s ease;
-        box-shadow: 0 2px 4px rgba(102, 126, 234, 0.3);
-      }
-
-      .gem-add-term button:hover {
-        background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%);
-        transform: translateY(-1px);
-        box-shadow: 0 4px 8px rgba(102, 126, 234, 0.4);
-      }
-
-      .color-swatch-item {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        margin-bottom: 12px;
-        padding: 12px 16px;
-        background: var(--token-background-faint);
-        border: 1px solid var(--token-box-default-border);
-        border-radius: 8px;
-        transition: all 0.2s ease;
-      }
-
-      .color-swatch-number {
-        font-weight: 600;
-        color: var(--token-font-default);
-        min-width: 60px;
-      }
-
-      .gem-setting-section .sub-label {
-          font-size: 14px;
-          font-weight: normal;
-          margin-top:8px;
-          opacity: 0.8;
-      }
-          .gem-setting-section .sub-label:last-child {
-            margin-bottom: 0;
-          }
-
-      .color-swatch-input {
-        flex: 1;
-        padding: 8px 12px;
-        border: 2px solid var(--token-box-default-border);
-        border-radius: 6px;
-        font-size: 13px;
-        font-family: inherit;
-        transition: border-color 0.2s ease;
-      }
-
-      .color-swatch-input:focus {
-        outline: none;
-        border-color: #667eea;
-        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-      }
-
-      .gem-saved-search-item {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        padding: 3px 0;
-      }
-
-      .gem-saved-search-item input, .gem-saved-search-item select {
-        height:38px;
-      }
-
-      .gem-saved-search-label-row {
-        display: none;
-        align-items: center;
-        gap: 8px;
-        padding: 0;
-      }
-
-      .gem-saved-search-label-row.gem-saved-search-label-row--visible {
-        display: flex;
-      }
-
-      .gem-saved-search-label-row label {
-        font-size: 12px;
-        color: #6b7280;
-        white-space: nowrap;
-      }
-
-      .gem-saved-search-label-input {
-        flex: 1;
-        padding: 5px 10px;
-        border: 1px solid var(--token-box-default-border);
-        border-radius: 4px;
-        font-size: 12px;
-        font-family: inherit;
-      }
-
-      .gem-saved-search-label-input:focus {
-        outline: none;
-        border-color: #667eea;
-        box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
-      }
-
-
-      .gem-saved-search-controls {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      }
-
-
-      .gem-saved-search-source {
-        font-size: 12px;
-        padding: 4px 6px;
-        border: 2px solid var(--token-box-default-border);
-        border-radius: 6px;
-      }
-
-      .gem-saved-search-empty {
-        padding: 12px 0;
-        opacity: 0.6;
-        font-size: 13px;
-      }
-
-      #gem-settings-body h2 { 
-        margin-top: 30px;
-        margin-bottom: 10px;
-        border-top: 2px solid var(--token-box-default-background);
-        padding-top: 24px;
-      }
-
-      .color-swatch-color {
-        min-width:36px;
-        width: 36px;
-        height: 36px;
-        border: 0;
-        border-radius: 6px;
-        cursor: pointer;
-        transition: border-color 0.2s ease;
-        background: none;
-        padding: 0;
-        appearance: none;
-        -webkit-appearance: none;
-        -moz-appearance: none;
-      }
-
-      .color-swatch-color:hover {
-        border-color: #667eea;
-      }
-
-      /* Ensure color input displays as a box on all browsers */
-      .color-swatch-color::-webkit-color-swatch-wrapper {
-        padding: 0;
-      }
-
-      .color-swatch-color::-webkit-color-swatch {
-        border: none;
-        border-radius: 4px;
-      }
-
-      .color-swatch-color::-moz-color-swatch {
-        border: none;
-        border-radius: 4px;
-      }
-
-
-      .gem-info {
-      padding-bottom:0;
-      }
-
-      .gem-info small {
-        font-size: 12px;
-        line-height: 1.2;
-      }
-    `;
-    document.head.appendChild(style);
-  }
+  // Styles are now loaded from settings-panel.css via manifest
 
   function normalizeRecentlySeenMax(value) {
     const n = (typeof value === 'number') ? value : parseInt(String(value ?? ''), 10);
@@ -654,8 +177,6 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
   function createPanel() {
     if (panelEl) return panelEl;
 
-    injectStyles();
-
     panelEl = document.createElement("div");
     panelEl.id = "gem-settings-panel";
     panelEl.innerHTML = `
@@ -689,11 +210,12 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
             <div style="display: flex; gap: 12px; align-items: center;">
               <label for="opt-theme-mode" style="flex: 1;">Theme</label>
               <select id="opt-theme-mode" style="width: 220px;">
-                <option value="gemma-amethyst" selected>Gemma Amethyst</option>
-                <option value="gemma-ruby">Gemma Ruby</option>
-                <option value="gemma-turquoise">Gemma Turquoise</option>
-                <option value="gemma-topaz">Gemma Topaz</option>
-                <option value="original">Original Emarsys Theme</option>
+                <option value="original">Sapphire (default Emarsys theme)</option>
+                <option value="gemma-amethyst" selected>Amethyst</option>
+                <option value="gemma-ruby">Ruby</option>
+                <option value="gemma-turquoise">Turquoise</option>
+                <option value="gemma-topaz">Topaz</option>
+                <option value="gemma-carnelian">Carnelian</option>
               </select>
             </div>
             <div class="sub-label">
@@ -1067,6 +589,8 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
           </div>
         </div>
 
+        <div id="gem-storage-meter-mount"></div>
+
       </div>
     `;
 
@@ -1089,7 +613,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
     // Keyboard shortcuts button
     const shortcutsBtn = panelEl.querySelector(".gem-keyboard-shortcuts-btn");
     if (shortcutsBtn) {
-      shortcutsBtn.addEventListener("click", showKeyboardShortcutsModal);
+      shortcutsBtn.addEventListener("click", window.showGemKeyboardShortcutsModal);
     }
 
     return panelEl;
@@ -1253,7 +777,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         loadColorSwatches(settings.colorSwatches);
 
         // Load highlight terms (using the resolved highlightTerms)
-        loadHighlightTerms(highlightTerms);
+        window.GemHighlightTerms.load(highlightTerms);
 
         // Load saved searches
         loadSavedSearches();
@@ -1359,10 +883,10 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
           syncPasteBehaviorUI();
         },
         exportHandler() {
-          showExportModal();
+          window.GemHighlightTerms.showExportModal();
         },
         importHandler() {
-          showImportModal();
+          window.GemHighlightTerms.showImportModal();
         },
         unhideAllBlocksHandler() {
           if (!confirm("Are you sure you want to unhide all blocks? This will permanently show all blocks that were previously hidden.")) return;
@@ -1440,7 +964,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
 
     const addBtn = document.getElementById("add-term-btn");
     if (addBtn) {
-      addBtn.addEventListener("click", addNewTerm);
+      addBtn.addEventListener("click", window.GemHighlightTerms.addNew);
     }
 
     const exportBtn = document.getElementById("export-highlight-btn");
@@ -1684,341 +1208,8 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
   }
 
   // Load highlight terms into the UI
-  function loadHighlightTerms(terms) {
-    const container = document.getElementById("highlight-terms-list");
-    if (!container) return;
-
-    container.innerHTML = "";
-
-    Object.entries(terms).forEach(([term, termData]) => {
-      const termItem = createTermItem(term, termData);
-      container.appendChild(termItem);
-    });
-  }
-
-  // Create a term item element
-  function createTermItem(term, termData) {
-    // Handle both old format (string) and new format (object)
-    const color = typeof termData === 'string' ? termData : termData.color;
-    const isRegex = typeof termData === 'object' ? termData.isRegex : false;
-
-    const item = document.createElement("div");
-    item.className = "highlight-term-item";
-
-    item.innerHTML = `
-      <div class="gem-settings-input-wrap">
-        <input type="text" class="highlight-term-text" value="${term}" />
-        <button type="button" class="gem-settings-regex-toggle ${isRegex ? 'gem-settings-regex-toggle--active' : ''}" title="Use regular expression" aria-pressed="${isRegex ? 'true' : 'false'}">.*</button>
-      </div>
-      <div class="highlight-term-controls">
-        <input type="color" data-highlight-term-color class="color-swatch-color" value="${rgbaToHex(color)}" />
-      </div>
-      <button class="highlight-term-remove">×</button>
-    `;
-
-    const textInput = item.querySelector(".highlight-term-text");
-    const colorInput = item.querySelector("[data-highlight-term-color]");
-    const regexBtn = item.querySelector(".gem-settings-regex-toggle");
-    const removeBtn = item.querySelector(".highlight-term-remove");
-
-    const updateTerm = () => {
-      const newTerm = textInput.value.trim();
-      const newColor = colorInput.value;
-      const newIsRegex = regexBtn.classList.contains('gem-settings-regex-toggle--active');
-      if (newTerm) {
-        updateHighlightTerm(term, newTerm, hexToRgba(newColor), newIsRegex);
-        term = newTerm;
-      }
-    };
-
-    regexBtn.addEventListener("click", () => {
-      const nowActive = !regexBtn.classList.contains('gem-settings-regex-toggle--active');
-      regexBtn.classList.toggle('gem-settings-regex-toggle--active', nowActive);
-      regexBtn.setAttribute('aria-pressed', String(nowActive));
-      updateTerm();
-    });
-
-    textInput.addEventListener("change", updateTerm);
-    colorInput.addEventListener("change", updateTerm);
-
-    removeBtn.addEventListener("click", () => {
-      removeHighlightTerm(term);
-      item.remove();
-    });
-
-    return item;
-  }
-
-  // ------------------------------------------------------------
-  // Show export modal
-  // ------------------------------------------------------------
-  function showExportModal() {
-    const modal = document.createElement('div');
-    modal.style.cssText = `
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(0, 0, 0, 0.7);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 10001;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    `;
-
-    modal.innerHTML = `
-      <div style="background: var(--token-box-default-background, #ffffff); border-radius: 12px; padding: 20px; max-width: 600px; width: 90%; max-height: 80vh; display: flex; flex-direction: column;">
-        <h3 style="margin: 0 0 15px 0; color: var(--token-font-default, #333333);">Export Highlight Rules</h3>
-        <p style="margin: 0 0 15px 0; color: var(--token-font-default, #666666); font-size: 14px;">Copy the JSON below to backup or share your text highlighting rules:</p>
-        <textarea id="export-json" readonly style="width: 100%; height: 200px; padding: 10px; border: 1px solid var(--token-box-default-border, #e0e0e0); border-radius: 4px; font-family: monospace; font-size: 12px; resize: vertical; margin-bottom: 15px;"></textarea>
-        <div style="display: flex; gap: 10px; justify-content: flex-end;">
-          <button id="copy-export-btn" style="padding: 8px 16px; background: #10b981; color: white; border: none; border-radius: 4px; cursor: pointer;">Copy to Clipboard</button>
-          <button id="close-export-btn" style="padding: 8px 16px; background: #6b7280; color: white; border: none; border-radius: 4px; cursor: pointer;">Close</button>
-        </div>
-      </div>
-    `;
-
-    document.body.appendChild(modal);
-
-    // Get current highlight terms
-    chrome.storage.sync.get(['highlightTerms'], (result) => {
-      const highlightTerms = result.highlightTerms || {};
-      const exportTextarea = modal.querySelector('#export-json');
-      exportTextarea.value = JSON.stringify(highlightTerms, null, 2);
-    });
-
-    // Copy button
-    modal.querySelector('#copy-export-btn').addEventListener('click', async () => {
-      const exportTextarea = modal.querySelector('#export-json');
-      try {
-        await navigator.clipboard.writeText(exportTextarea.value);
-        const btn = modal.querySelector('#copy-export-btn');
-        btn.textContent = 'Copied!';
-        btn.style.background = '#059669';
-        setTimeout(() => {
-          btn.textContent = 'Copy to Clipboard';
-          btn.style.background = '#10b981';
-        }, 2000);
-      } catch (err) {
-        console.error('Failed to copy:', err);
-        alert('Failed to copy to clipboard. Please select and copy manually.');
-      }
-    });
-
-    // Close button
-    modal.querySelector('#close-export-btn').addEventListener('click', () => {
-      modal.remove();
-    });
-
-    // ESC key to close
-    const handleEscape = (e) => {
-      if (e.key === 'Escape') {
-        modal.remove();
-        document.removeEventListener('keydown', handleEscape);
-      }
-    };
-    document.addEventListener('keydown', handleEscape);
-
-    // Click outside to close
-    modal.addEventListener('click', (e) => {
-      if (e.target === modal) {
-        modal.remove();
-      }
-    });
-  }
-
-  // ------------------------------------------------------------
-  // Show import modal
-  // ------------------------------------------------------------
-  function showImportModal() {
-    const modal = document.createElement('div');
-    modal.style.cssText = `
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(0, 0, 0, 0.7);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 10001;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    `;
-
-    modal.innerHTML = `
-      <div style="background: var(--token-box-default-background, #ffffff); border-radius: 12px; padding: 20px; max-width: 600px; width: 90%; max-height: 80vh; display: flex; flex-direction: column;">
-        <h3 style="margin: 0 0 15px 0; color: var(--token-font-default, #333333);">Import Highlight Rules</h3>
-        <p style="margin: 0 0 15px 0; color: var(--token-font-default, #666666); font-size: 14px;">Paste JSON from an exported rules file below. New rules will be added and duplicates will be replaced:</p>
-        <textarea id="import-json" placeholder="Paste your JSON here..." style="width: 100%; height: 200px; padding: 10px; border: 1px solid var(--token-box-default-border, #e0e0e0); border-radius: 4px; font-family: monospace; font-size: 12px; resize: vertical; margin-bottom: 15px;"></textarea>
-        <div style="display: flex; gap: 10px; justify-content: flex-end;">
-          <button id="import-rules-btn" style="padding: 8px 16px; background: #10b981; color: white; border: none; border-radius: 4px; cursor: pointer;">Import Rules</button>
-          <button id="close-import-btn" style="padding: 8px 16px; background: #6b7280; color: white; border: none; border-radius: 4px; cursor: pointer;">Cancel</button>
-        </div>
-      </div>
-    `;
-
-    document.body.appendChild(modal);
-
-    // Import button
-    modal.querySelector('#import-rules-btn').addEventListener('click', () => {
-      const importTextarea = modal.querySelector('#import-json');
-      const jsonText = importTextarea.value.trim();
-
-      if (!jsonText) {
-        alert('Please paste some JSON to import.');
-        return;
-      }
-
-      try {
-        const importedRules = JSON.parse(jsonText);
-
-        // Validate that it's an object
-        if (typeof importedRules !== 'object' || importedRules === null) {
-          throw new Error('Invalid format: must be a JSON object');
-        }
-
-        // Get current rules and merge
-        chrome.storage.sync.get(['highlightTerms'], (result) => {
-          const currentRules = result.highlightTerms || {};
-
-          // Merge imported rules (imported rules override duplicates)
-          const mergedRules = { ...currentRules, ...importedRules };
-
-          // Save merged rules
-          chrome.storage.sync.set({ highlightTerms: mergedRules }, () => {
-            if (chrome.runtime.lastError) {
-              console.error('Error saving imported rules:', chrome.runtime.lastError);
-              alert('Error saving imported rules.');
-              return;
-            }
-
-            // Refresh the UI
-            loadSettings();
-
-            // Close modal
-            modal.remove();
-
-            // Show success message
-            alert(`Successfully imported ${Object.keys(importedRules).length} highlight rules!`);
-          });
-        });
-
-      } catch (err) {
-        console.error('Error parsing JSON:', err);
-        alert('Invalid JSON format. Please check your input and try again.');
-      }
-    });
-
-    // Cancel button
-    modal.querySelector('#close-import-btn').addEventListener('click', () => {
-      modal.remove();
-    });
-
-    // ESC key to close
-    const handleEscape = (e) => {
-      if (e.key === 'Escape') {
-        modal.remove();
-        document.removeEventListener('keydown', handleEscape);
-      }
-    };
-    document.addEventListener('keydown', handleEscape);
-
-    // Click outside to close
-    modal.addEventListener('click', (e) => {
-      if (e.target === modal) {
-        modal.remove();
-      }
-    });
-  }
-
-  // Add a new term
-  function addNewTerm() {
-    const textInput = document.getElementById("new-term-text");
-    const colorInput = document.getElementById("new-term-color");
-
-    if (!textInput || !colorInput) return;
-
-    const newTerm = textInput.value.trim();
-    const newColor = hexToRgba(colorInput.value);
-    const newIsRegex = false; // Default to false for new terms
-
-    if (newTerm) {
-      // Get current terms and add the new one
-      chrome.storage.sync.get({ highlightTerms: {} }, (settings) => {
-        const updatedTerms = { ...settings.highlightTerms };
-        updatedTerms[newTerm] = { color: newColor, isRegex: newIsRegex };
-
-        chrome.storage.sync.set({ highlightTerms: updatedTerms }, () => {
-          // Add to UI
-          const container = document.getElementById("highlight-terms-list");
-          const termItem = createTermItem(newTerm, { color: newColor, isRegex: newIsRegex });
-          container.appendChild(termItem);
-
-          // Clear inputs
-          textInput.value = "";
-        });
-      });
-    }
-  }
-
-  // Update an existing term
-  function updateHighlightTerm(oldTerm, newTerm, newColor, newIsRegex) {
-    chrome.storage.sync.get({ highlightTerms: {} }, (settings) => {
-      const updatedTerms = { ...settings.highlightTerms };
-
-      // Remove old term if key changed
-      if (oldTerm !== newTerm) {
-        delete updatedTerms[oldTerm];
-      }
-
-      // Handle both old format (string) and new format (object)
-      const existingTermData = updatedTerms[newTerm];
-      if (typeof existingTermData === 'string') {
-        // Convert old format to new format
-        updatedTerms[newTerm] = { color: existingTermData, isRegex: false };
-      }
-
-      // Update with new data
-      updatedTerms[newTerm] = { color: newColor, isRegex: newIsRegex };
-      chrome.storage.sync.set({ highlightTerms: updatedTerms });
-    });
-  }
-
-  // Remove a term
-  function removeHighlightTerm(term) {
-    chrome.storage.sync.get({ highlightTerms: {} }, (settings) => {
-      const updatedTerms = { ...settings.highlightTerms };
-      delete updatedTerms[term];
-      chrome.storage.sync.set({ highlightTerms: updatedTerms });
-    });
-  }
-
-  // Convert RGBA to hex color
-  function rgbaToHex(rgba) {
-    const match = rgba.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\)/);
-    if (!match) return "#ffff00"; // Default yellow
-
-    const r = parseInt(match[1]);
-    const g = parseInt(match[2]);
-    const b = parseInt(match[3]);
-
-    return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
-  }
-
-  // Convert hex to RGBA (keeping alpha at 0.4 for consistency)
-  function hexToRgba(hex) {
-    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-    if (!result) return "rgba(255, 255, 0, 0.40)"; // Default yellow
-
-    const r = parseInt(result[1], 16);
-    const g = parseInt(result[2], 16);
-    const b = parseInt(result[3], 16);
-
-    return `rgba(${r}, ${g}, ${b}, 0.40)`;
-  }
+  // Highlight terms management is now in highlight-terms-settings.js
+  // (window.GemHighlightTerms.load / .addNew / .showExportModal / .showImportModal)
 
   // Load color swatches into the UI
   function loadColorSwatches(swatches) {
@@ -2468,96 +1659,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
     }
   });
 
-  function showKeyboardShortcutsModal() {
-    // Remove any existing modal
-    const existing = document.getElementById('gem-keyboard-shortcuts-modal');
-    if (existing) existing.remove();
-
-    const modal = document.createElement('div');
-    modal.id = 'gem-keyboard-shortcuts-modal';
-    modal.className = 'gem-welcome-modal';
-    modal.innerHTML = `
-    <div class="gem-welcome-modal__panel" role="dialog" aria-modal="true">
-      <div class="gem-welcome-modal__header">
-        <div style="font-weight:600;">Gemma Keyboard Shortcuts</div>
-        <button class="e-btn e-btn-borderless e-btn-onlyicon gem-welcome-modal__close" type="button" aria-label="Close">
-          ✕
-        </button>
-      </div>
-      <div class="gem-welcome-modal__body gem-scrollable" style="max-height: 60vh; overflow-y: auto;">
-        <div style="margin-bottom: 24px;">
-          <h3 style="margin: 0 0 16px 0; color: var(--token-accent-foreground);">General Shortcuts</h3>
-          <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 8px; align-items: center;">
-            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">${window.GEM_MOD_KEY}+G</kbd>
-            <span>Open/Close Gemma Settings Panel</span>
-
-            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">${window.GEM_MOD_KEY}+SHIFT+F</kbd>
-            <span>Toggle Expanded View Mode</span>
-
-            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">${window.GEM_MOD_KEY}+S</kbd>
-            <span>Save the current email</span>
-
-            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">${window.GEM_MOD_KEY}+/</kbd>
-            <span>Toggle the mobile email preview pane on and off</span>
-
-            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">${window.GEM_MOD_KEY}+SHIFT+,</kbd>
-            <span>Cycle to the previous language version (when language selector is available)</span>
-
-            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">${window.GEM_MOD_KEY}+SHIFT+.</kbd>
-            <span>Cycle to the next language version (when language selector is available)</span>
-          </div>
-        </div>
-
-        <div style="margin-bottom: 24px;">
-          <h3 style="margin: 0 0 16px 0; color: var(--token-accent-foreground);">Image Properties Dialog</h3>
-          <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 8px; align-items: center;">
-            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">Enter</kbd>
-            <span>Accept changes (clicks the OK button)</span>
-
-            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">${window.GEM_MOD_KEY}+D</kbd>
-            <span>Toggle between Desktop and Mobile tabs</span>
-          </div>
-        </div>
-
-        <div style="margin-bottom: 24px;">
-          <h3 style="margin: 0 0 16px 0; color: var(--token-accent-foreground);">Block Editing</h3>
-          <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 8px; align-items: center;">
-            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">${window.GEM_MOD_KEY}+SHIFT+V</kbd>
-            <span>Paste plain text from the clipboard (without Rich Paste formatting)</span>
-
-            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">Double-click</kbd>
-            <span>on an editable image to open the Image Properties dialog</span>
-
-            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">Double-click</kbd>
-            <span>on an ESL token to open the ESL snippet dialog</span>
-          </div>
-        </div>
-
-      </div>
-      <div class="gem-welcome-modal__footer">
-        <button class="e-btn e-btn-primary gem-keyboard-shortcuts-close" type="button">Close</button>
-      </div>
-    </div>
-  `;
-
-    document.body.appendChild(modal);
-
-    // Event handlers
-    const closeModal = () => modal.remove();
-
-    modal.addEventListener('click', (e) => {
-      if (e.target === modal || e.target.classList.contains('gem-welcome-modal__close') || e.target.classList.contains('gem-keyboard-shortcuts-close')) {
-        closeModal();
-      }
-    });
-
-    modal.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        closeModal();
-        e.preventDefault();
-        e.stopPropagation();
-      }
-    });
-  }
+  // Keyboard shortcuts modal is now in keyboard-shortcuts-modal.js
+  // (window.showGemKeyboardShortcutsModal)
 
 })();

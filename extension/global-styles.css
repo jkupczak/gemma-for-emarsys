@@ -122,7 +122,7 @@ ul.e-navigation__menu_list {
 
 /* Gemma Themed Navigation Menu */
 .e-navigation__panel > nav.e-navigation__menu {
-    background-image: linear-gradient(to top, var(--gemma-primary-600) 0%, color-mix(in srgb, var(--gemma-primary-600) 15%, transparent) 15%, transparent 30%);
+    background-image: linear-gradient(to top, var(--token-primary-600) 0%, color-mix(in srgb, var(--token-primary-600) 15%, transparent) 15%, transparent 30%);
     transition: background-image 2s ease-out;
 }
 
