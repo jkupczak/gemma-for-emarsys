@@ -77,8 +77,8 @@
       if (!persist) return;
       persistLocal(!!enabled);
       try {
-        if (chrome && chrome.storage && chrome.storage.sync) {
-          chrome.storage.sync.set({ [GEM_DEBUG_STORAGE_KEY]: !!enabled });
+        if (chrome && chrome.storage && chrome.storage.local) {
+          chrome.storage.local.set({ [GEM_DEBUG_STORAGE_KEY]: !!enabled });
         }
       } catch (_) {}
     });
@@ -129,8 +129,8 @@
     } catch (_) {}
 
     try {
-      if (chrome && chrome.storage && chrome.storage.sync) {
-        chrome.storage.sync.get({ [GEM_DEBUG_STORAGE_KEY]: false }, (res) => {
+      if (chrome && chrome.storage && chrome.storage.local) {
+        chrome.storage.local.get({ [GEM_DEBUG_STORAGE_KEY]: false }, (res) => {
           const persisted = !!(res && res[GEM_DEBUG_STORAGE_KEY]);
           applyDebugFlag(persisted);
           persistLocal(persisted);
@@ -144,7 +144,7 @@
     try {
       if (chrome && chrome.storage && chrome.storage.onChanged) {
         chrome.storage.onChanged.addListener((changes, namespace) => {
-          if (namespace !== 'sync' || !changes || !changes[GEM_DEBUG_STORAGE_KEY]) return;
+          if (namespace !== 'local' || !changes || !changes[GEM_DEBUG_STORAGE_KEY]) return;
           const next = !!changes[GEM_DEBUG_STORAGE_KEY].newValue;
           applyDebugFlag(next);
           persistLocal(next);

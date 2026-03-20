@@ -1,10 +1,7 @@
-# URGENT BUGS
-
-None
-
-
 -----------------------------------------------
-# HOT
+# TO-DO
+
+Can I add a note to the content block about what block targeting is being done?
 
 Deprecate recently used tab and roll the functionality into recently seen. Recently seen images in storage should get a property for the used date. Images that were recently used should get some sort of visual highlight so that they stand out among the seen images that have not been used. Recently used images should not get pushed out as fast as unused recently seen image? Maybe they are part of a separate list that is capped at 100. Add a category grouping for Recently used by Day.
 
@@ -31,15 +28,11 @@ Add disabled placeholders for the language and version selectboxes so that the U
   </cb-version-selector>
   ```
 
-Add Expanded Mode as a toggle in the settings panel
-
 In expanded mode, the hidden nav on the left should only open on click.
 
 #Rich Paste: After rich pasting, MCPASTEBIN seems to be getting added and takes up space until the user blurs the block. Sometimes pasting into buttons creates a SECODN button in the mobile preview which suggests something else is getting pasted.
 
 #Rich Paste: Sometimes Rich Paste inserts the paste inside of the existing text even though we did CMD+A to select all of the existing text.
-
-gemRecentlySeenImageGroupCollapse in localstorage is holding onto the collapse status of Recently Seen groupings that are no longer visible to the user. Once a group is no longer available in Recently seen, the matching key in gemRecentlySeenImageGroupCollapse should be removed so that the log size does not get out of control.
 
 Search pills should take two clicks to close.
 
@@ -62,12 +55,7 @@ add text highlighting to the subject line, preview text, and conditional text ed
 Add a red notification dot on the links panel for bad or missing links, or untracked links
  - '_blank' should be considered an invalid URL
 
-Add a gear icon to the content block toolbar to open the settings panel and scroll to a new section
-where they can toggle icons on or off
-
-Use the Emarsys icon font
-
-Can I add a note to the content block about what block targeting is being done?
+Add a gear icon to the content block toolbar to open the settings panel and scroll to a new section where they can toggle icons on or off
 
 -----------------------------------------------
 # NO 
@@ -163,3 +151,7 @@ x Add a pinned folder dropdown to the media picker.
 ✓ Categories and snippets should be pinnable so that they stay at the top.
 
 ✓ When we modify a block with the block styles panel, sometimes the id (id="mce_8") of the contenteditable element changes (id="mce_9"). This throws off Gemma and the content block toolbar no longer loads in our custom buttons. Doesn't get fixed until the page refreshes.
+
+✓ gemRecentlySeenImageGroupCollapse in localstorage is holding onto the collapse status of Recently Seen groupings that are no longer visible to the user. Once a group is no longer available in Recently seen, the matching key in gemRecentlySeenImageGroupCollapse should be removed so that the log size does not get out of control.
+
+✓ Add Expanded Mode as a toggle in the settings panel

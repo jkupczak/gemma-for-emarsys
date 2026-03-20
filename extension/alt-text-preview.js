@@ -16,7 +16,6 @@ console.log("[Gem] alt-text-preview.js loaded");
   let lifecycleObserver = null;
   let currentIframe = null;
   let debounceTimer = null;
-  let scrollHandler = null;
   let hoverHandler = null;
   let hoverLeaveHandler = null;
   let hoveredImgId = null;
@@ -147,7 +146,6 @@ console.log("[Gem] alt-text-preview.js loaded");
       iframeMutationObserver.disconnect();
       iframeMutationObserver = null;
     }
-    removeScrollListener();
     removeHoverListeners();
     clearOverlays();
     hoveredImgId = null;
@@ -363,26 +361,23 @@ console.log("[Gem] alt-text-preview.js loaded");
     });
   }
 
-  // ── Scroll listener ───────────────────────────────────
-
-  function attachScrollListener(iframe) {
-    removeScrollListener();
-
-    const doc = iframe.contentDocument;
-    if (!doc) return;
-
-    scrollHandler = () => debounce(() => renderOverlays(iframe));
-    doc.addEventListener("scroll", scrollHandler, true);
+  function isGemElement(el) {
+    if (el.id && el.id.startsWith("gem-")) return true;
+    if (el.classList) {
+      for (const cls of el.classList) {
+        if (cls.startsWith("gem-")) return true;
+      }
+    }
+    return false;
   }
 
-  function removeScrollListener() {
-    if (scrollHandler && currentIframe) {
-      try {
-        const doc = currentIframe.contentDocument;
-        if (doc) doc.removeEventListener("scroll", scrollHandler, true);
-      } catch (_) {}
+  function isInsideGemOverlay(node) {
+    let el = node.nodeType === 1 ? node : node.parentElement;
+    while (el) {
+      if (el.id && el.id.startsWith("gem-")) return true;
+      el = el.parentElement;
     }
-    scrollHandler = null;
+    return false;
   }
 
   // ── Bind to iframe ────────────────────────────────────
@@ -395,8 +390,6 @@ console.log("[Gem] alt-text-preview.js loaded");
 
     debounce(() => renderOverlays(iframe));
 
-    attachScrollListener(iframe);
-
     if (iframeMutationObserver) {
       iframeMutationObserver.disconnect();
       iframeMutationObserver = null;
@@ -407,30 +400,19 @@ console.log("[Gem] alt-text-preview.js loaded");
 
       let onlyOverlayChanges = true;
       for (const m of mutations) {
-        const target = m.target;
-        const targetIsOverlay =
-          overlayContainer &&
-          (target === overlayContainer || overlayContainer.contains(target));
+        if (isInsideGemOverlay(m.target)) continue;
 
-        if (!targetIsOverlay) {
-          const hasNonOverlayNodes = (nodes) =>
-            Array.from(nodes).some((node) => {
-              if (node.nodeType !== 1) return false;
-              if (node === overlayContainer) return false;
-              if (overlayContainer && overlayContainer.contains(node)) return false;
-              if (node.classList?.contains("gem-alt-text-overlay")) return false;
-              return true;
-            });
+        const hasNonGemNode = (nodes) =>
+          Array.from(nodes).some((n) => n.nodeType === 1 && !isGemElement(n));
 
-          if (
-            hasNonOverlayNodes(m.addedNodes) ||
-            hasNonOverlayNodes(m.removedNodes) ||
-            (m.type === "characterData" && !targetIsOverlay) ||
-            (m.type === "attributes" && !targetIsOverlay)
-          ) {
-            onlyOverlayChanges = false;
-            break;
-          }
+        if (
+          hasNonGemNode(m.addedNodes) ||
+          hasNonGemNode(m.removedNodes) ||
+          m.type === "characterData" ||
+          m.type === "attributes"
+        ) {
+          onlyOverlayChanges = false;
+          break;
         }
       }
 
@@ -467,7 +449,6 @@ console.log("[Gem] alt-text-preview.js loaded");
           iframeMutationObserver.disconnect();
           iframeMutationObserver = null;
         }
-        removeScrollListener();
         removeHoverListeners();
       }
 

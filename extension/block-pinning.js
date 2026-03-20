@@ -118,9 +118,9 @@ function initializeBlockPinning() {
     }
 
     try {
-      chrome.storage.sync.get({ [SHOW_HIDDEN_BLOCKS_KEY]: false }, (result) => {
+      chrome.storage.local.get({ [SHOW_HIDDEN_BLOCKS_KEY]: false }, (result) => {
         // Check again if chrome APIs are still available after async call
-        if (!chrome || !chrome.storage || !chrome.storage.sync) {
+        if (!chrome || !chrome.storage || !chrome.storage.local) {
           console.warn("[Gem] Chrome storage API became unavailable during async call");
           callback(false); // Return false as fallback
           return;
@@ -144,7 +144,7 @@ function initializeBlockPinning() {
     }
 
     try {
-      chrome.storage.sync.set({ [SHOW_HIDDEN_BLOCKS_KEY]: showHidden }, () => {
+      chrome.storage.local.set({ [SHOW_HIDDEN_BLOCKS_KEY]: showHidden }, () => {
         // Check if there was an error
         if (chrome.runtime.lastError) {
           console.error("[Gem] Error saving show hidden blocks:", chrome.runtime.lastError);
@@ -539,7 +539,14 @@ function initializeBlockPinning() {
           updateAllPinIcons();
           applyPinnedClasses();
         }
-        if (changes[HIDDEN_BLOCKS_KEY] || changes[SHOW_HIDDEN_BLOCKS_KEY]) {
+        if (changes[HIDDEN_BLOCKS_KEY]) {
+          updateAllHideIcons();
+          applyHiddenClasses();
+          updateShowHiddenToggleButton();
+        }
+      }
+      if (namespace === 'local') {
+        if (changes[SHOW_HIDDEN_BLOCKS_KEY]) {
           updateAllHideIcons();
           applyHiddenClasses();
           updateShowHiddenToggleButton();

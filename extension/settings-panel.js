@@ -890,7 +890,8 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         },
         unhideAllBlocksHandler() {
           if (!confirm("Are you sure you want to unhide all blocks? This will permanently show all blocks that were previously hidden.")) return;
-          chrome.storage.sync.set({ hiddenBlocks: [], showHiddenBlocks: false }, () => {
+          chrome.storage.local.set({ showHiddenBlocks: false });
+          chrome.storage.sync.set({ hiddenBlocks: [] }, () => {
             if (chrome.runtime.lastError) {
               console.error("[Gem] Error clearing hidden blocks:", chrome.runtime.lastError);
               alert("Failed to unhide blocks. Please try again.");
@@ -1073,25 +1074,26 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
   function saveSavedSearches() {
     const container = document.getElementById("gem-saved-searches-list");
     if (!container) return;
-    const favPills = [];
-    const seenPills = [];
+    const pills = [];
+    const activeMap = {};
     container.querySelectorAll('.gem-saved-search-item').forEach((row) => {
       const term = (row.querySelector('.gem-saved-search-text')?.value || '').trim();
       if (!term) return;
       const isRegex = !!row.querySelector('.gem-settings-regex-toggle')?.classList.contains('gem-settings-regex-toggle--active');
       const label = (row.querySelector('.gem-saved-search-label-input')?.value || '').trim();
       const source = row.querySelector('.gem-saved-search-source')?.value || 'both';
-      const activeFav = row.dataset.activeFav !== '0';
-      const activeSeen = row.dataset.activeSeen !== '0';
-      const pill = { term, active: true, isRegex };
-      if (label) pill.label = label;
-      if (source === 'favorites' || source === 'both') favPills.push({ ...pill, active: activeFav });
-      if (source === 'seen' || source === 'both') seenPills.push({ ...pill, active: activeSeen });
+      const ctx = source === 'favorites' ? 2 : source === 'seen' ? 1 : 3;
+      const mp = { t: term, c: ctx };
+      if (isRegex) mp.r = 1;
+      if (label) mp.l = label;
+      pills.push(mp);
+      const active = source === 'favorites' ? row.dataset.activeFav !== '0'
+        : source === 'seen' ? row.dataset.activeSeen !== '0'
+        : (row.dataset.activeFav !== '0' && row.dataset.activeSeen !== '0');
+      if (!active) activeMap[`${term}:${ctx}`] = 0;
     });
-    chrome.storage.sync.set({
-      gemImagePropertiesSearchPillsFavorites: favPills,
-      gemImagePropertiesSearchPillsSeen: seenPills
-    });
+    chrome.storage.sync.set({ gemSearchPills: pills });
+    chrome.storage.local.set({ gemSearchPillActive: activeMap });
   }
 
   function createSavedSearchRow(pill) {
@@ -1156,43 +1158,25 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
     const container = document.getElementById("gem-saved-searches-list");
     if (!container) return;
 
-    chrome.storage.sync.get({
-      gemImagePropertiesSearchPillsFavorites: [],
-      gemImagePropertiesSearchPillsSeen: []
-    }, (result) => {
-      const favPills = Array.isArray(result.gemImagePropertiesSearchPillsFavorites) ? result.gemImagePropertiesSearchPillsFavorites : [];
-      const seenPills = Array.isArray(result.gemImagePropertiesSearchPillsSeen) ? result.gemImagePropertiesSearchPillsSeen : [];
+    chrome.storage.sync.get({ gemSearchPills: [] }, (syncResult) => {
+      chrome.storage.local.get({ gemSearchPillActive: {} }, (localResult) => {
+      const rawPills = Array.isArray(syncResult.gemSearchPills) ? syncResult.gemSearchPills : [];
+      const activeMap = localResult.gemSearchPillActive || {};
 
-      const merged = [];
-      const seen = new Set();
-
-      favPills.forEach((p) => {
-        if (!p || !p.term) return;
-        const key = p.term.toLowerCase();
-        const matchInSeen = seenPills.find((s) => s && s.term && s.term.toLowerCase() === key);
-        merged.push({
-          term: p.term,
-          isRegex: !!p.isRegex || !!(matchInSeen && matchInSeen.isRegex),
-          label: p.label || (matchInSeen && matchInSeen.label) || '',
-          source: matchInSeen ? 'both' : 'favorites',
-          activeFav: p.active !== false,
-          activeSeen: matchInSeen ? matchInSeen.active !== false : true
-        });
-        seen.add(key);
-      });
-
-      seenPills.forEach((p) => {
-        if (!p || !p.term) return;
-        if (seen.has(p.term.toLowerCase())) return;
-        merged.push({
-          term: p.term,
-          isRegex: !!p.isRegex,
-          label: p.label || '',
-          source: 'seen',
-          activeFav: true,
-          activeSeen: p.active !== false
-        });
-      });
+      const merged = rawPills.map((mp) => {
+        if (!mp || !mp.t) return null;
+        const ctx = mp.c || 3;
+        const compositeKey = `${mp.t}:${ctx}`;
+        const isActive = !(compositeKey in activeMap) || !!activeMap[compositeKey];
+        return {
+          term: String(mp.t).trim(),
+          isRegex: !!mp.r,
+          label: mp.l ? String(mp.l).trim() : '',
+          source: ctx === 2 ? 'favorites' : ctx === 1 ? 'seen' : 'both',
+          activeFav: isActive,
+          activeSeen: isActive
+        };
+      }).filter(Boolean);
 
       container.innerHTML = '';
 
@@ -1204,7 +1188,8 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
       merged.forEach((pill) => {
         container.appendChild(createSavedSearchRow(pill));
       });
-    });
+      }); // local.get
+    }); // sync.get
   }
 
   // Load highlight terms into the UI

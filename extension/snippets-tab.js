@@ -602,7 +602,7 @@ function initializeSnippetsTab() {
   }
 
   function getSnippetCategoryCollapseState(callback) {
-    chrome.storage.sync.get({ [SNIPPET_CATEGORY_COLLAPSE_STORAGE_KEY]: {} }, (result) => {
+    chrome.storage.local.get({ [SNIPPET_CATEGORY_COLLAPSE_STORAGE_KEY]: {} }, (result) => {
       callback(result[SNIPPET_CATEGORY_COLLAPSE_STORAGE_KEY] || {});
     });
   }
@@ -610,7 +610,7 @@ function initializeSnippetsTab() {
   function setSnippetCategoryCollapsed(categoryKey, collapsed, callback) {
     getSnippetCategoryCollapseState((state) => {
       const next = { ...state, [categoryKey]: !!collapsed };
-      chrome.storage.sync.set({ [SNIPPET_CATEGORY_COLLAPSE_STORAGE_KEY]: next }, () => {
+      chrome.storage.local.set({ [SNIPPET_CATEGORY_COLLAPSE_STORAGE_KEY]: next }, () => {
         if (callback) callback(next);
       });
     });
@@ -700,11 +700,9 @@ function initializeSnippetsTab() {
           delete nextState[oldKey];
         }
 
+        chrome.storage.local.set({ [SNIPPET_CATEGORY_COLLAPSE_STORAGE_KEY]: nextState });
         chrome.storage.sync.set(
-          {
-            [SNIPPETS_STORAGE_KEY]: updatedSnippets,
-            [SNIPPET_CATEGORY_COLLAPSE_STORAGE_KEY]: nextState
-          },
+          { [SNIPPETS_STORAGE_KEY]: updatedSnippets },
           () => {
             refreshSnippetsDisplay();
           }

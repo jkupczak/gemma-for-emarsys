@@ -491,17 +491,133 @@ function initializeOverlayPanelControls() {
     const GEM_RECENTLY_SEEN_IMAGE_GROUP_COLLAPSE_KEY = 'gemRecentlySeenImageGroupCollapse';
     const GEM_RECENT_IMAGES_BTN_CLASS = 'gem-recent-images-btn';
     const GEM_RECENT_IMAGES_PICKER_PREFS_KEY = 'gemRecentImagesPickerPrefs';
-    const GEM_IMAGE_PROPERTIES_SEARCH_KEY = 'gemImagePropertiesSearch';
-    const GEM_IMAGE_PROPERTIES_SEARCH_PILLS_FAV_KEY = 'gemImagePropertiesSearchPillsFavorites';
-    const GEM_IMAGE_PROPERTIES_SEARCH_PILLS_SEEN_KEY = 'gemImagePropertiesSearchPillsSeen';
+    const GEM_SEARCH_PILLS_KEY = 'gemSearchPills';
+    const GEM_SEARCH_PILL_ACTIVE_KEY = 'gemSearchPillActive';
+    const GEM_IMAGE_SEARCH_TEXT_KEY = 'gemImageSearchText';
 
-    function normalizePills(arr) {
-      return (Array.isArray(arr) ? arr : []).map((p) =>
-        (p && typeof p === 'object' && typeof p.term === 'string')
-          ? { term: String(p.term).trim(), active: !!p.active, isRegex: !!p.isRegex, label: (p.label && typeof p.label === 'string') ? p.label.trim() : '' }
-          : null
-      ).filter(Boolean);
+    const PILL_CTX_SEEN = 1;
+    const PILL_CTX_FAV = 2;
+    const PILL_CTX_BOTH = 3;
+
+    function toMinifiedPill(p) {
+      const mp = { t: p.term, c: p.context || PILL_CTX_BOTH };
+      if (p.isRegex) mp.r = 1;
+      if (p.label) mp.l = p.label;
+      return mp;
     }
+
+    function fromMinifiedPill(mp) {
+      return {
+        term: String(mp.t || '').trim(),
+        isRegex: !!mp.r,
+        label: mp.l ? String(mp.l).trim() : '',
+        context: mp.c || PILL_CTX_BOTH,
+        active: true
+      };
+    }
+
+    function pillCompositeKey(p) {
+      const term = p.term || p.t || '';
+      const ctx = p.context || p.c || PILL_CTX_BOTH;
+      return `${term}:${ctx}`;
+    }
+
+    function hydratePills(minifiedArr, activeMap) {
+      return (Array.isArray(minifiedArr) ? minifiedArr : []).map((mp) => {
+        if (!mp || typeof mp !== 'object') return null;
+        const pill = fromMinifiedPill(mp);
+        if (!pill.term) return null;
+        const key = pillCompositeKey(pill);
+        if (activeMap && key in activeMap) pill.active = !!activeMap[key];
+        return pill;
+      }).filter(Boolean);
+    }
+
+    function pillsForContext(pills, ctx) {
+      return (pills || [])
+        .map((p, i) => ({ ...p, _idx: i }))
+        .filter((p) => p.context === ctx || p.context === PILL_CTX_BOTH);
+    }
+
+    function buildActiveMap(pills) {
+      const map = {};
+      (pills || []).forEach((p) => {
+        if (!p.active) map[pillCompositeKey(p)] = 0;
+      });
+      return map;
+    }
+
+    function saveSearchPills(pills) {
+      chrome.storage.sync.set({ [GEM_SEARCH_PILLS_KEY]: (pills || []).map(toMinifiedPill) });
+      chrome.storage.local.set({ [GEM_SEARCH_PILL_ACTIVE_KEY]: buildActiveMap(pills) });
+    }
+
+    // One-time migration from old pill format to new consolidated format
+    (function migrateSearchPills() {
+      try {
+        chrome.storage.sync.get({
+          gemImagePropertiesSearchPillsFavorites: null,
+          gemImagePropertiesSearchPillsSeen: null,
+          gemImagePropertiesSearch: null,
+          [GEM_SEARCH_PILLS_KEY]: null
+        }, (result) => {
+          if (result[GEM_SEARCH_PILLS_KEY] !== null) return;
+          const oldFav = result.gemImagePropertiesSearchPillsFavorites;
+          const oldSeen = result.gemImagePropertiesSearchPillsSeen;
+          if (!oldFav && !oldSeen) return;
+
+          const pills = [];
+          const activeMap = {};
+          const seen = new Set();
+
+          (Array.isArray(oldFav) ? oldFav : []).forEach((p) => {
+            if (!p || !p.term) return;
+            const key = p.term.toLowerCase();
+            const matchInSeen = (Array.isArray(oldSeen) ? oldSeen : []).find(
+              (s) => s && s.term && s.term.toLowerCase() === key
+            );
+            const ctx = matchInSeen ? PILL_CTX_BOTH : PILL_CTX_FAV;
+            const mp = { t: p.term, c: ctx };
+            if (p.isRegex || (matchInSeen && matchInSeen.isRegex)) mp.r = 1;
+            const label = p.label || (matchInSeen && matchInSeen.label) || '';
+            if (label) mp.l = label;
+            pills.push(mp);
+            const active = p.active !== false && (!matchInSeen || matchInSeen.active !== false);
+            if (!active) activeMap[`${p.term}:${ctx}`] = 0;
+            seen.add(key);
+          });
+
+          (Array.isArray(oldSeen) ? oldSeen : []).forEach((p) => {
+            if (!p || !p.term) return;
+            if (seen.has(p.term.toLowerCase())) return;
+            const mp = { t: p.term, c: PILL_CTX_SEEN };
+            if (p.isRegex) mp.r = 1;
+            if (p.label) mp.l = p.label;
+            pills.push(mp);
+            if (p.active === false) activeMap[`${p.term}:${PILL_CTX_SEEN}`] = 0;
+          });
+
+          chrome.storage.sync.set({ [GEM_SEARCH_PILLS_KEY]: pills });
+          chrome.storage.local.set({ [GEM_SEARCH_PILL_ACTIVE_KEY]: activeMap });
+
+          const oldSearch = result.gemImagePropertiesSearch;
+          if (oldSearch && typeof oldSearch === 'object') {
+            chrome.storage.local.set({
+              [GEM_IMAGE_SEARCH_TEXT_KEY]: {
+                favorites: oldSearch.favorites || '',
+                seen: oldSearch.seen || ''
+              }
+            });
+          }
+
+          chrome.storage.sync.remove([
+            'gemImagePropertiesSearchPillsFavorites',
+            'gemImagePropertiesSearchPillsSeen',
+            'gemImagePropertiesSearch'
+          ]);
+        });
+      } catch (_) {}
+    })();
 
     function normalizeRecentlySeenMax(value) {
       const n = (typeof value === 'number') ? value : parseInt(String(value ?? ''), 10);
@@ -518,7 +634,7 @@ function initializeOverlayPanelControls() {
 
     function getRecentImagesPickerPrefs(callback) {
       try {
-        chrome.storage.sync.get(
+        chrome.storage.local.get(
           {
             [GEM_RECENT_IMAGES_PICKER_PREFS_KEY]: {
               view: 'table',
@@ -562,7 +678,7 @@ function initializeOverlayPanelControls() {
           prefs && (prefs.favGroupBy === 'language' ? 'language' : (prefs.favGroupBy === 'translation' ? 'translation' : 'category'));
         const seenGroupBy =
           prefs && (prefs.seenGroupBy === 'date' ? 'date' : 'path');
-        chrome.storage.sync.set({
+        chrome.storage.local.set({
           [GEM_RECENT_IMAGES_PICKER_PREFS_KEY]: { view, density, source, gridCols, favGroupBy, seenGroupBy }
         });
       } catch (_) {}
@@ -1348,40 +1464,33 @@ function initializeOverlayPanelControls() {
         picker.style.background = 'var(--token-box-alternate-background)';
         picker.style.overflowY = 'scroll';
         picker.style.boxSizing = 'border-box';
-        picker._gemFavoriteImagesSearchPills = [];
-        picker._gemSeenImagesSearchPills = [];
+        picker._gemSearchPills = [];
         leftPanelContainer.appendChild(picker);
 
         // Load persistent search values and pills, set up picker
-        chrome.storage.sync.get({
-          [GEM_IMAGE_PROPERTIES_SEARCH_KEY]: {},
-          [GEM_IMAGE_PROPERTIES_SEARCH_PILLS_FAV_KEY]: [],
-          [GEM_IMAGE_PROPERTIES_SEARCH_PILLS_SEEN_KEY]: []
-        }, (result) => {
-          const searches = result[GEM_IMAGE_PROPERTIES_SEARCH_KEY] || {};
+        chrome.storage.sync.get({ [GEM_SEARCH_PILLS_KEY]: [] }, (syncResult) => {
+          chrome.storage.local.get({
+            [GEM_SEARCH_PILL_ACTIVE_KEY]: {},
+            [GEM_IMAGE_SEARCH_TEXT_KEY]: {}
+          }, (localResult) => {
+          const activeMap = localResult[GEM_SEARCH_PILL_ACTIVE_KEY] || {};
+          const allPills = hydratePills(syncResult[GEM_SEARCH_PILLS_KEY], activeMap);
+          picker._gemSearchPills = allPills;
 
-          const favPillsRaw = result[GEM_IMAGE_PROPERTIES_SEARCH_PILLS_FAV_KEY];
-          const seenPillsRaw = result[GEM_IMAGE_PROPERTIES_SEARCH_PILLS_SEEN_KEY];
-          const favoritePills = normalizePills(favPillsRaw);
-          const seenPills = normalizePills(seenPillsRaw);
-          picker._gemFavoriteImagesSearchPills = favoritePills;
-          picker._gemSeenImagesSearchPills = seenPills;
+          const searches = localResult[GEM_IMAGE_SEARCH_TEXT_KEY] || {};
+          const favPills = pillsForContext(allPills, PILL_CTX_FAV);
+          const seenPills = pillsForContext(allPills, PILL_CTX_SEEN);
 
-          // Restore search values, but avoid duplicating terms already active as pills.
           const favoriteSearchRaw = searches.favorites || '';
           const seenSearchRaw = searches.seen || '';
-          const nextFavoriteSearch = sanitizeSearchAgainstActivePills(favoriteSearchRaw, favoritePills);
+          const nextFavoriteSearch = sanitizeSearchAgainstActivePills(favoriteSearchRaw, favPills);
           const nextSeenSearch = sanitizeSearchAgainstActivePills(seenSearchRaw, seenPills);
           picker.dataset.gemFavoriteImagesSearch = nextFavoriteSearch;
           picker.dataset.gemSeenImagesSearch = nextSeenSearch;
 
           if (nextFavoriteSearch !== String(favoriteSearchRaw || '').trim() || nextSeenSearch !== String(seenSearchRaw || '').trim()) {
-            chrome.storage.sync.set({
-              [GEM_IMAGE_PROPERTIES_SEARCH_KEY]: {
-                ...searches,
-                favorites: nextFavoriteSearch,
-                seen: nextSeenSearch
-              }
+            chrome.storage.local.set({
+              [GEM_IMAGE_SEARCH_TEXT_KEY]: { favorites: nextFavoriteSearch, seen: nextSeenSearch }
             });
           }
 
@@ -1399,7 +1508,8 @@ function initializeOverlayPanelControls() {
             picker.dataset.gemCollapseExpandAction = 'collapse'; // collapse | expand
           }
 
-          }); // Close chrome.storage.sync.get callback
+          }); // Close chrome.storage.local.get callback
+        }); // Close chrome.storage.sync.get callback
 
           // Delegate clicks for selecting
           picker.addEventListener('click', (e) => {
@@ -1430,15 +1540,11 @@ function initializeOverlayPanelControls() {
               const pillEl = removeBtn.closest && removeBtn.closest('.gem-search-pill');
               if (!pillEl) return;
               const idx = parseInt(pillEl.getAttribute('data-index') || '-1', 10);
-              const sourceAttr = (pillEl.closest && pillEl.closest('.gem-search-pills'))?.getAttribute('data-pills-source') || '';
-              const isFav = sourceAttr === 'favorites';
-              const pills = isFav ? (picker._gemFavoriteImagesSearchPills || []) : (picker._gemSeenImagesSearchPills || []);
+              const pills = picker._gemSearchPills || [];
               if (idx < 0 || idx >= pills.length) return;
               pills.splice(idx, 1);
-              if (isFav) picker._gemFavoriteImagesSearchPills = pills;
-              else picker._gemSeenImagesSearchPills = pills;
-              const key = isFav ? GEM_IMAGE_PROPERTIES_SEARCH_PILLS_FAV_KEY : GEM_IMAGE_PROPERTIES_SEARCH_PILLS_SEEN_KEY;
-              chrome.storage.sync.set({ [key]: pills });
+              picker._gemSearchPills = pills;
+              saveSearchPills(pills);
               showRecentImagesPicker(modal, { contentOnly: true });
               return;
             }
@@ -1447,15 +1553,11 @@ function initializeOverlayPanelControls() {
               e.preventDefault();
               e.stopPropagation();
               const idx2 = parseInt(pillEl2.getAttribute('data-index') || '-1', 10);
-              const sourceAttr2 = (pillEl2.closest && pillEl2.closest('.gem-search-pills'))?.getAttribute('data-pills-source') || '';
-              const isFav2 = sourceAttr2 === 'favorites';
-              const pills2 = isFav2 ? (picker._gemFavoriteImagesSearchPills || []) : (picker._gemSeenImagesSearchPills || []);
+              const pills2 = picker._gemSearchPills || [];
               if (idx2 < 0 || idx2 >= pills2.length) return;
               pills2[idx2].active = !pills2[idx2].active;
-              if (isFav2) picker._gemFavoriteImagesSearchPills = pills2;
-              else picker._gemSeenImagesSearchPills = pills2;
-              const key2 = isFav2 ? GEM_IMAGE_PROPERTIES_SEARCH_PILLS_FAV_KEY : GEM_IMAGE_PROPERTIES_SEARCH_PILLS_SEEN_KEY;
-              chrome.storage.sync.set({ [key2]: pills2 });
+              picker._gemSearchPills = pills2;
+              chrome.storage.local.set({ [GEM_SEARCH_PILL_ACTIVE_KEY]: buildActiveMap(pills2) });
               showRecentImagesPicker(modal, { contentOnly: true });
               return;
             }
@@ -1728,39 +1830,26 @@ function initializeOverlayPanelControls() {
           if (tokens.length === 0) return;
           const isFav = !!favSearchInput;
           const regexOn = picker.dataset[isFav ? 'gemFavRegex' : 'gemSeenRegex'] === '1';
-          const pills = isFav ? (picker._gemFavoriteImagesSearchPills || []) : (picker._gemSeenImagesSearchPills || []);
-          const existingTerms = new Set(pills.map((p) => (p.term || '').toLowerCase()));
+          const ctx = isFav ? PILL_CTX_FAV : PILL_CTX_SEEN;
+          const pills = picker._gemSearchPills || [];
+          const contextPills = pillsForContext(pills, ctx);
+          const existingTerms = new Set(contextPills.map((p) => (p.term || '').toLowerCase()));
           let changed = false;
           for (const t of tokens) {
             const term = String(t).trim();
             if (!term) continue;
             if (existingTerms.has(term.toLowerCase())) continue;
             existingTerms.add(term.toLowerCase());
-            pills.push({ term, active: true, isRegex: regexOn });
+            pills.push({ term, active: true, isRegex: regexOn, label: '', context: ctx });
             changed = true;
           }
-          if (!changed) {
-            searchInput.value = '';
-            picker.dataset[isFav ? 'gemFavoriteImagesSearch' : 'gemSeenImagesSearch'] = '';
-            chrome.storage.sync.get({ [GEM_IMAGE_PROPERTIES_SEARCH_KEY]: {} }, (result) => {
-              const searches = result[GEM_IMAGE_PROPERTIES_SEARCH_KEY] || {};
-              searches[isFav ? 'favorites' : 'seen'] = '';
-              chrome.storage.sync.set({ [GEM_IMAGE_PROPERTIES_SEARCH_KEY]: searches });
-            });
-            showRecentImagesPicker(modal, { contentOnly: true });
-            return;
-          }
-          if (isFav) picker._gemFavoriteImagesSearchPills = pills;
-          else picker._gemSeenImagesSearchPills = pills;
-          const key = isFav ? GEM_IMAGE_PROPERTIES_SEARCH_PILLS_FAV_KEY : GEM_IMAGE_PROPERTIES_SEARCH_PILLS_SEEN_KEY;
-          chrome.storage.sync.set({ [key]: pills });
           searchInput.value = '';
           picker.dataset[isFav ? 'gemFavoriteImagesSearch' : 'gemSeenImagesSearch'] = '';
-          chrome.storage.sync.get({ [GEM_IMAGE_PROPERTIES_SEARCH_KEY]: {} }, (result) => {
-            const searches = result[GEM_IMAGE_PROPERTIES_SEARCH_KEY] || {};
-            searches[isFav ? 'favorites' : 'seen'] = '';
-            chrome.storage.sync.set({ [GEM_IMAGE_PROPERTIES_SEARCH_KEY]: searches });
-          });
+          chrome.storage.local.set({ [GEM_IMAGE_SEARCH_TEXT_KEY]: { favorites: picker.dataset.gemFavoriteImagesSearch || '', seen: picker.dataset.gemSeenImagesSearch || '' } });
+          if (changed) {
+            picker._gemSearchPills = pills;
+            saveSearchPills(pills);
+          }
           showRecentImagesPicker(modal, { contentOnly: true });
         }, true);
 
@@ -1778,11 +1867,11 @@ function initializeOverlayPanelControls() {
             // Update dataset for immediate UI feedback
             picker.dataset[isFavSearch ? 'gemFavoriteImagesSearch' : 'gemSeenImagesSearch'] = searchValue;
 
-            // Save to persistent storage
-            chrome.storage.sync.get({ [GEM_IMAGE_PROPERTIES_SEARCH_KEY]: {} }, (result) => {
-              const searches = result[GEM_IMAGE_PROPERTIES_SEARCH_KEY] || {};
-              searches[searchKey] = searchValue;
-              chrome.storage.sync.set({ [GEM_IMAGE_PROPERTIES_SEARCH_KEY]: searches });
+            chrome.storage.local.set({
+              [GEM_IMAGE_SEARCH_TEXT_KEY]: {
+                favorites: picker.dataset.gemFavoriteImagesSearch || '',
+                seen: picker.dataset.gemSeenImagesSearch || ''
+              }
             });
 
             picker._gemSearchFocus = {
@@ -1971,15 +2060,16 @@ function initializeOverlayPanelControls() {
             `.trim()
             : '';
 
-          const pillsForSource = source === 'favorites' ? (picker._gemFavoriteImagesSearchPills || []) : (picker._gemSeenImagesSearchPills || []);
-          const pillsHtml = pillsForSource.map((p, i) => {
+          const ctx = source === 'favorites' ? PILL_CTX_FAV : PILL_CTX_SEEN;
+          const pillsForSource = pillsForContext(picker._gemSearchPills, ctx);
+          const pillsHtml = pillsForSource.map((p) => {
             const active = !!p.active;
             const term = (p && typeof p.term === 'string') ? p.term : '';
             if (!term) return '';
             const displayText = (p.label && p.isRegex) ? p.label : term;
             const titleAttr = (p.label && p.isRegex) ? ` title="${escape(term)}"` : '';
             const regexBadge = p.isRegex ? '<span class="gem-search-pill-regex" title="Regex">.*</span>' : '';
-            return `<span class="gem-search-pill ${active ? 'gem-search-pill--active' : ''}" data-term="${escape(term)}" data-index="${i}"${titleAttr}><span class="gem-search-pill-remove" aria-label="Remove">×</span><span class="gem-search-pill-text">${escape(displayText)}</span>${regexBadge}</span>`;
+            return `<span class="gem-search-pill ${active ? 'gem-search-pill--active' : ''}" data-term="${escape(term)}" data-index="${p._idx}"${titleAttr}><span class="gem-search-pill-remove" aria-label="Remove">×</span><span class="gem-search-pill-text">${escape(displayText)}</span>${regexBadge}</span>`;
           }).filter(Boolean).join('');
           const regexActive = source === 'favorites' ? picker.dataset.gemFavRegex === '1' : picker.dataset.gemSeenRegex === '1';
           const favSearch = (source === 'favorites' || source === 'seen')
@@ -2051,7 +2141,7 @@ function initializeOverlayPanelControls() {
           // Favorites view: group by category OR language, collapsible, searchable, sorted.
           if (source === 'favorites') {
             const qRaw = String(picker.dataset.gemFavoriteImagesSearch || '').trim();
-            const favPills = picker._gemFavoriteImagesSearchPills || [];
+            const favPills = pillsForContext(picker._gemSearchPills, PILL_CTX_FAV);
             const favRegexOn = picker.dataset.gemFavRegex === '1';
             const terms = [
               ...favPills.filter((p) => p.active).map((p) => ({ term: (p.term || '').toLowerCase().trim(), isRegex: !!p.isRegex })).filter((o) => o.term),
@@ -2110,6 +2200,25 @@ function initializeOverlayPanelControls() {
                   if (!bb) return -1;
                   return aa.localeCompare(bb);
                 });
+
+                if (terms.length === 0) {
+                  const validKeys = new Set(groupKeys.map(gKey => `${groupBy}:${gKey || ''}`));
+                  const pruned = {};
+                  let changed = false;
+                  for (const [k, v] of Object.entries(collapse)) {
+                    const matchesPrefix = k.startsWith(`${groupBy}:`);
+                    const isLegacyCategory = groupBy === 'category' && !k.includes(':');
+                    if ((matchesPrefix && !validKeys.has(k)) ||
+                        (isLegacyCategory && !validKeys.has(`category:${k}`))) {
+                      changed = true;
+                    } else {
+                      pruned[k] = v;
+                    }
+                  }
+                  if (changed) {
+                    saveFavoriteCategoryCollapseMap(pruned);
+                  }
+                }
 
                 const renderGroupHeader = (gKey, count) => {
                   const label = gKey
@@ -2300,15 +2409,15 @@ function initializeOverlayPanelControls() {
                   }
                   const pillsContainerFav = picker.querySelector('.gem-search-pills[data-pills-source="favorites"]');
                   if (pillsContainerFav) {
-                    const favPillsForUpdate = picker._gemFavoriteImagesSearchPills || [];
-                    pillsContainerFav.innerHTML = favPillsForUpdate.map((p, i) => {
+                    const favPillsForUpdate = pillsForContext(picker._gemSearchPills, PILL_CTX_FAV);
+                    pillsContainerFav.innerHTML = favPillsForUpdate.map((p) => {
                       const active = !!p.active;
                       const term = (p && typeof p.term === 'string') ? p.term : '';
                       if (!term) return '';
                       const displayText = (p.label && p.isRegex) ? p.label : term;
                       const titleAttr = (p.label && p.isRegex) ? ` title="${escape(term)}"` : '';
                       const regexBadge = p.isRegex ? '<span class="gem-search-pill-regex" title="Regex">.*</span>' : '';
-                      return `<span class="gem-search-pill ${active ? 'gem-search-pill--active' : ''}" data-term="${escape(term)}" data-index="${i}"${titleAttr}><span class="gem-search-pill-remove" aria-label="Remove">×</span><span class="gem-search-pill-text">${escape(displayText)}</span>${regexBadge}</span>`;
+                      return `<span class="gem-search-pill ${active ? 'gem-search-pill--active' : ''}" data-term="${escape(term)}" data-index="${p._idx}"${titleAttr}><span class="gem-search-pill-remove" aria-label="Remove">×</span><span class="gem-search-pill-text">${escape(displayText)}</span>${regexBadge}</span>`;
                     }).filter(Boolean).join('');
                   }
                 } else {
@@ -2330,7 +2439,7 @@ function initializeOverlayPanelControls() {
           // Recently Seen view: group by path OR date, collapsible, searchable, sorted.
           if (source === 'seen') {
             const qRaw = String(picker.dataset.gemSeenImagesSearch || '').trim();
-            const seenPills = picker._gemSeenImagesSearchPills || [];
+            const seenPills = pillsForContext(picker._gemSearchPills, PILL_CTX_SEEN);
             const seenRegexOn = picker.dataset.gemSeenRegex === '1';
             const seenTerms = [
               ...seenPills.filter((p) => p.active).map((p) => ({ term: (p.term || '').toLowerCase().trim(), isRegex: !!p.isRegex })).filter((o) => o.term),
@@ -2397,6 +2506,23 @@ function initializeOverlayPanelControls() {
                 const bb = (b || '').toLowerCase();
                 return aa.localeCompare(bb);
               });
+
+              if (seenTerms.length === 0) {
+                const prefix = `seen:${seenGroupBy}:`;
+                const validKeys = new Set(groupKeys.map(gKey => `${prefix}${gKey || ''}`));
+                const pruned = {};
+                let changed = false;
+                for (const [k, v] of Object.entries(collapse)) {
+                  if (k.startsWith(prefix) && !validKeys.has(k)) {
+                    changed = true;
+                  } else {
+                    pruned[k] = v;
+                  }
+                }
+                if (changed) {
+                  saveRecentlySeenImageGroupCollapseMap(pruned);
+                }
+              }
 
               const renderGroupHeader = (gKey, count) => {
                 const label = gKey
@@ -2552,15 +2678,15 @@ function initializeOverlayPanelControls() {
                 }
                 const pillsContainerSeen = picker.querySelector('.gem-search-pills[data-pills-source="seen"]');
                 if (pillsContainerSeen) {
-                  const seenPillsForUpdate = picker._gemSeenImagesSearchPills || [];
-                  pillsContainerSeen.innerHTML = seenPillsForUpdate.map((p, i) => {
+                  const seenPillsForUpdate = pillsForContext(picker._gemSearchPills, PILL_CTX_SEEN);
+                  pillsContainerSeen.innerHTML = seenPillsForUpdate.map((p) => {
                     const active = !!p.active;
                     const term = (p && typeof p.term === 'string') ? p.term : '';
                     if (!term) return '';
                     const displayText = (p.label && p.isRegex) ? p.label : term;
                     const titleAttr = (p.label && p.isRegex) ? ` title="${escape(term)}"` : '';
                     const regexBadge = p.isRegex ? '<span class="gem-search-pill-regex" title="Regex">.*</span>' : '';
-                    return `<span class="gem-search-pill ${active ? 'gem-search-pill--active' : ''}" data-term="${escape(term)}" data-index="${i}"${titleAttr}><span class="gem-search-pill-remove" aria-label="Remove">×</span><span class="gem-search-pill-text">${escape(displayText)}</span>${regexBadge}</span>`;
+                    return `<span class="gem-search-pill ${active ? 'gem-search-pill--active' : ''}" data-term="${escape(term)}" data-index="${p._idx}"${titleAttr}><span class="gem-search-pill-remove" aria-label="Remove">×</span><span class="gem-search-pill-text">${escape(displayText)}</span>${regexBadge}</span>`;
                   }).filter(Boolean).join('');
                 }
               } else {
@@ -2580,7 +2706,7 @@ function initializeOverlayPanelControls() {
           let filteredRows = rows;
           let seenTermsUngrouped = [];
           if (source === 'seen') {
-            const seenPillsUngrouped = picker._gemSeenImagesSearchPills || [];
+            const seenPillsUngrouped = pillsForContext(picker._gemSearchPills, PILL_CTX_SEEN);
             const qRawUngrouped = String(picker.dataset.gemSeenImagesSearch || '').trim();
             seenTermsUngrouped = [
               ...seenPillsUngrouped.filter((p) => p.active).map((p) => (p.term || '').toLowerCase().trim()).filter(Boolean),
@@ -3979,17 +4105,19 @@ function initializeOverlayPanelControls() {
             }
 
             // Live-sync search pills when edited externally (e.g. settings panel)
-            if (namespace === 'sync' && changes) {
-              const favChanged = changes[GEM_IMAGE_PROPERTIES_SEARCH_PILLS_FAV_KEY];
-              const seenChanged = changes[GEM_IMAGE_PROPERTIES_SEARCH_PILLS_SEEN_KEY];
-              if (favChanged || seenChanged) {
-                if (!container._gemIsClosing && container.isConnected && modal.isConnected) {
-                  const picker = modal.querySelector('#gem-recent-images-picker');
-                  if (picker) {
-                    if (favChanged) picker._gemFavoriteImagesSearchPills = normalizePills(favChanged.newValue);
-                    if (seenChanged) picker._gemSeenImagesSearchPills = normalizePills(seenChanged.newValue);
-                    showRecentImagesPicker(modal, { contentOnly: true });
-                  }
+            if (changes && (
+              (namespace === 'sync' && changes[GEM_SEARCH_PILLS_KEY]) ||
+              (namespace === 'local' && changes[GEM_SEARCH_PILL_ACTIVE_KEY])
+            )) {
+              if (!container._gemIsClosing && container.isConnected && modal.isConnected) {
+                const picker = modal.querySelector('#gem-recent-images-picker');
+                if (picker) {
+                  chrome.storage.sync.get({ [GEM_SEARCH_PILLS_KEY]: [] }, (sr) => {
+                    chrome.storage.local.get({ [GEM_SEARCH_PILL_ACTIVE_KEY]: {} }, (lr) => {
+                      picker._gemSearchPills = hydratePills(sr[GEM_SEARCH_PILLS_KEY], lr[GEM_SEARCH_PILL_ACTIVE_KEY]);
+                      showRecentImagesPicker(modal, { contentOnly: true });
+                    });
+                  });
                 }
               }
             }

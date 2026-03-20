@@ -166,6 +166,7 @@ function ensureOverlayContainer(doc) {
   }
 
   overlayContainer = doc.createElement("div");
+  overlayContainer.id = "gem-text-highlight-container";
   overlayContainer.style.position = "absolute";
   overlayContainer.style.left = "0";
   overlayContainer.style.top = "0";
@@ -203,8 +204,7 @@ function highlightMatchesInIframe(iframe) {
         if (!node.nodeValue || !node.nodeValue.trim()) {
           return NodeFilter.FILTER_REJECT;
         }
-        // Never consider text inside our overlay container (defensive)
-        if (overlayContainer && overlayContainer.contains(node.parentNode)) {
+        if (isInsideGemOverlay(node)) {
           return NodeFilter.FILTER_REJECT;
         }
         return NodeFilter.FILTER_ACCEPT;
@@ -333,6 +333,25 @@ function waitForIframeReady(callback) {
   });
 }
 
+function isGemElement(el) {
+  if (el.id && el.id.startsWith("gem-")) return true;
+  if (el.classList) {
+    for (const cls of el.classList) {
+      if (cls.startsWith("gem-")) return true;
+    }
+  }
+  return false;
+}
+
+function isInsideGemOverlay(node) {
+  let el = node.nodeType === 1 ? node : node.parentElement;
+  while (el) {
+    if (el.id && el.id.startsWith("gem-")) return true;
+    el = el.parentElement;
+  }
+  return false;
+}
+
 // Called when iframe is found or re-added
 function bindToIframe(iframe) {
   currentIframe = iframe;
@@ -342,13 +361,6 @@ function bindToIframe(iframe) {
 
   // Initial highlight
   debounce(() => highlightMatchesInIframe(iframe));
-
-  // Rehighlight on scroll (throttled via debounce)
-  doc.addEventListener(
-    "scroll",
-    () => debounce(() => highlightMatchesInIframe(iframe)),
-    true
-  );
 
   // Rehighlight on DOM changes inside iframe
   if (iframeMutationObserver) {
@@ -364,44 +376,19 @@ function bindToIframe(iframe) {
     let onlyOverlayChanges = true;
 
     for (const m of mutations) {
-      const target = m.target;
+      if (isInsideGemOverlay(m.target)) continue;
 
-      const targetIsOverlay =
-        overlayContainer &&
-        (target === overlayContainer || overlayContainer.contains(target));
+      const hasNonGemNode = (nodes) =>
+        Array.from(nodes).some((n) => n.nodeType === 1 && !isGemElement(n));
 
-      if (!targetIsOverlay) {
-        // Check added nodes
-        const nonOverlayAdded = Array.from(m.addedNodes).some((node) => {
-          if (node.nodeType !== 1) return false;
-          const el = node;
-          if (el === overlayContainer) return false;
-          if (overlayContainer && overlayContainer.contains(el)) return false;
-          if (el.classList?.contains("gem-text-highlight")) return false;
-          return true;
-        });
-
-        // Check removed nodes
-        const nonOverlayRemoved = Array.from(m.removedNodes).some((node) => {
-          if (node.nodeType !== 1) return false;
-          const el = node;
-          if (el === overlayContainer) return false;
-          if (overlayContainer && overlayContainer.contains(el)) return false;
-          if (el.classList?.contains("gem-text-highlight")) return false;
-          return true;
-        });
-
-        const isCharData =
-          m.type === "characterData" &&
-          !(overlayContainer && overlayContainer.contains(target));
-
-        const isNonOverlayAttributes =
-          m.type === "attributes" && !targetIsOverlay;
-
-        if (nonOverlayAdded || nonOverlayRemoved || isCharData || isNonOverlayAttributes) {
-          onlyOverlayChanges = false;
-          break;
-        }
+      if (
+        hasNonGemNode(m.addedNodes) ||
+        hasNonGemNode(m.removedNodes) ||
+        m.type === "characterData" ||
+        m.type === "attributes"
+      ) {
+        onlyOverlayChanges = false;
+        break;
       }
     }
 

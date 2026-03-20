@@ -13,16 +13,12 @@ console.log("[gem] storage-measurement.js loaded");
         key === "sm" ||
         key === "s_meta" ||
         key === "gemSnippets" ||
-        key === "gemSnippetCategoryCollapseState" ||
         /^s\d+$/.test(key),
     },
     {
       name: "Saved Searches",
       color: "var(--token-sapphire-400)",
-      match: (key) =>
-        key === "gemImagePropertiesSearchPillsFavorites" ||
-        key === "gemImagePropertiesSearchPillsSeen" ||
-        key === "gemImagePropertiesSearch",
+      match: (key) => key === "gemSearchPills",
     },
     {
       name: "Text Highlighting",
@@ -34,8 +30,7 @@ console.log("[gem] storage-measurement.js loaded");
       color: "var(--token-turquoise-400)",
       match: (key) =>
         key === "pinnedBlocks" ||
-        key === "hiddenBlocks" ||
-        key === "showHiddenBlocks",
+        key === "hiddenBlocks",
     },
     {
       name: "Notes",

@@ -7,23 +7,25 @@ const DEFAULT_CUSTOM_COLOR = "#FE4D01";
 
 // Load custom colors and user color swatches from storage
 function loadCustomColors() {
-  chrome.storage.sync.get({
-    customColors: [DEFAULT_CUSTOM_COLOR], // Start with our default color
-    colorSwatches: window.DEFAULT_COLOR_SWATCHES // 8 user-defined color swatches
-  }, (settings) => {
-    customColors = settings.customColors;
-    userColorSwatches = settings.colorSwatches;
+  chrome.storage.local.get({
+    customColors: [DEFAULT_CUSTOM_COLOR]
+  }, (localSettings) => {
+    customColors = localSettings.customColors;
     console.log("[Gem] Loaded custom colors:", customColors);
-    console.log("[Gem] Loaded user color swatches:", userColorSwatches);
 
-    // Apply colors to any existing color pickers
-    applyCustomColorsToPickers();
+    chrome.storage.sync.get({
+      colorSwatches: window.DEFAULT_COLOR_SWATCHES
+    }, (syncSettings) => {
+      userColorSwatches = syncSettings.colorSwatches;
+      console.log("[Gem] Loaded user color swatches:", userColorSwatches);
+      applyCustomColorsToPickers();
+    });
   });
 }
 
 // Save custom colors to storage
 function saveCustomColors() {
-  chrome.storage.sync.set({ customColors: customColors }, () => {
+  chrome.storage.local.set({ customColors: customColors }, () => {
     console.log("[Gem] Saved custom colors:", customColors);
   });
 }
@@ -292,17 +294,15 @@ function initializeColorSwatchManager() {
 
   // Listen for storage changes (in case colors are updated from other tabs)
   chrome.storage.onChanged.addListener((changes, namespace) => {
-    if (namespace === 'sync') {
-      if (changes.customColors) {
-        customColors = changes.customColors.newValue;
-        console.log("[Gem] Custom colors updated from storage:", customColors);
-        applyCustomColorsToPickers();
-      }
-      if (changes.colorSwatches) {
-        userColorSwatches = changes.colorSwatches.newValue;
-        console.log("[Gem] User color swatches updated from storage:", userColorSwatches);
-        applyCustomColorsToPickers();
-      }
+    if (namespace === 'local' && changes.customColors) {
+      customColors = changes.customColors.newValue;
+      console.log("[Gem] Custom colors updated from storage:", customColors);
+      applyCustomColorsToPickers();
+    }
+    if (namespace === 'sync' && changes.colorSwatches) {
+      userColorSwatches = changes.colorSwatches.newValue;
+      console.log("[Gem] User color swatches updated from storage:", userColorSwatches);
+      applyCustomColorsToPickers();
     }
   });
 }
