@@ -42,27 +42,24 @@ console.log("[Gem] alt-text-preview.js loaded");
   chrome.storage.onChanged.addListener((changes, namespace) => {
     if (namespace !== "sync") return;
 
-    let changed = false;
     if (changes.gemAltTextPreviewEnabled) {
       settingEnabled = changes.gemAltTextPreviewEnabled.newValue !== false;
-      changed = true;
+      if (settingEnabled && !isActive) {
+        isActive = true;
+        if (buttonEl) buttonEl.classList.add("e-btn-active");
+        enable();
+      } else if (!settingEnabled && isActive) {
+        disable();
+        isActive = false;
+        if (buttonEl) buttonEl.classList.remove("e-btn-active");
+      }
     }
+
     if (changes.gemAltTextVisibility) {
       settingVisibility = changes.gemAltTextVisibility.newValue || "always-show";
-      changed = true;
     }
 
-    if (!changed) return;
-
-    if (settingEnabled && !isActive) {
-      isActive = true;
-      if (buttonEl) buttonEl.classList.add("e-btn-active");
-      enable();
-    } else if (!settingEnabled && isActive) {
-      disable();
-      isActive = false;
-      if (buttonEl) buttonEl.classList.remove("e-btn-active");
-    } else if (isActive && settingEnabled && currentIframe) {
+    if (changes.gemAltTextVisibility && isActive && settingEnabled && currentIframe) {
       renderOverlays(currentIframe);
     }
   });
@@ -95,6 +92,10 @@ console.log("[Gem] alt-text-preview.js loaded");
       toggle();
     });
 
+    if (settingEnabled && isActive) {
+      buttonEl.classList.add("e-btn-active");
+    }
+
     console.log("[Gem] ALT Text Preview button injected");
   }
 
@@ -117,7 +118,12 @@ console.log("[Gem] alt-text-preview.js loaded");
   // ── Toggle ────────────────────────────────────────────
 
   function toggle() {
-    if (!settingEnabled) return;
+    if (!settingEnabled) {
+      try {
+        chrome.storage.sync.set({ gemAltTextPreviewEnabled: true });
+      } catch (_) {}
+      return;
+    }
 
     isActive = !isActive;
 
@@ -466,6 +472,10 @@ console.log("[Gem] alt-text-preview.js loaded");
   // ── Init ──────────────────────────────────────────────
 
   loadSettings(() => {
+    if (settingEnabled) {
+      isActive = true;
+      enable();
+    }
     waitForButtonGroup();
   });
 })();

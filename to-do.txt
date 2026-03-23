@@ -58,14 +58,6 @@ Add a red notification dot on the links panel for bad or missing links, or untra
 Add a gear icon to the content block toolbar to open the settings panel and scroll to a new section where they can toggle icons on or off
 
 -----------------------------------------------
-# NO 
-
-✗ Can I open the block /variable settings panel just because the user clicked on the block? - REMOVED: block-level-variables-opener.js removed
-
-Allow users to resize the Emarsys nav panel. Keep track of the size they set each panel to and 
-use that size whenever they return to that panel
-
------------------------------------------------
 # COMPLETE
 
 ✓ The mobile image picker view retains the desktop image preview even if the mobile image is not set. This corrects itself after the user clicks away from the focus that is automatically applied to the URL field. Lets fix that.

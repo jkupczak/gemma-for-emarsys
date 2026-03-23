@@ -34,10 +34,10 @@ function applyGemThemeMode(mode, { persistLocal = false } = {}) {
   if (!html) return;
 
   // Remove all theme classes first
-  html.classList.remove("gem--retheme-inactive", "gem-theme-active", "gem-theme-amethyst", "gem-theme-ruby", "gem-theme-turquoise", "gem-theme-topaz", "gem-theme-carnelian");
+  html.classList.remove("gem-theme-sapphire", "gem-theme-active", "gem-theme-amethyst", "gem-theme-ruby", "gem-theme-turquoise", "gem-theme-topaz", "gem-theme-carnelian");
 
   if (normalized === "original") {
-    html.classList.add("gem--retheme-inactive");
+    html.classList.add("gem-theme-sapphire");
   } else {
     // Apply gem theme active class for all gemma themes
     html.classList.add("gem-theme-active");
@@ -228,7 +228,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
 
         <div class="gem-setting-section">
           <h3>ALT Text Preview</h3>
-          <div class="gem-setting">
+          <div class="gem-setting gem-setting-condensed">
             <div class="gem-e-switch-wrapper">
               <label for="opt-alt-text-preview-enabled">Toggle ALT Text Previews</label>
               <div class="gem-e-switch--fat e-switch">
@@ -237,10 +237,10 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
               </div>
             </div>
             <p class="sub-label">
-              When enabled, ALT text will be displayed in a small preview box above your images.
+              When enabled, ALT text will be displayed in a small preview box above your images. You can also toggle this from the email preview toolbar.
             </p>
           </div>
-          <div class="gem-setting">
+          <div class="gem-setting gem-setting-condensed">
             <div style="display: flex; gap: 12px; align-items: center;">
               <label for="opt-alt-text-visibility" style="flex: 1;">ALT Text Visibility</label>
               <select id="opt-alt-text-visibility" style="width: 150px;">
@@ -250,6 +250,34 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
             </div>
             <p class="sub-label">
               Decide whether to show the ALT text always or only when you hover over an image.
+            </p>
+          </div>
+        </div>
+
+        <div class="gem-setting-section">
+          <h3>Block Targeting Preview</h3>
+          <div class="gem-setting gem-setting-condensed">
+            <div class="gem-e-switch-wrapper">
+              <label for="opt-block-targeting-preview-enabled">Toggle Block Targeting Previews</label>
+              <div class="gem-e-switch--fat e-switch">
+                <input type="checkbox" class="e-switch__input" id="opt-block-targeting-preview-enabled" checked>
+                <label class="e-switch__toggle" for="opt-block-targeting-preview-enabled"></label>
+              </div>
+            </div>
+            <p class="sub-label">
+              When enabled, blocks with targeting rules show a visual preview in the email canvas. You can also toggle this from the email preview toolbar.
+            </p>
+          </div>
+          <div class="gem-setting gem-setting-condensed">
+            <div style="display: flex; gap: 12px; align-items: center;">
+              <label for="opt-block-targeting-visibility" style="flex: 1;">Block Targeting Visibility</label>
+              <select id="opt-block-targeting-visibility" style="width: 150px;">
+                <option value="always-show" selected>Always Show</option>
+                <option value="show-on-hover">Show on Hover</option>
+              </select>
+            </div>
+            <p class="sub-label">
+              Decide whether targeting previews are always visible or only when you hover over a block.
             </p>
           </div>
         </div>
@@ -671,7 +699,9 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         [GEM_EMAIL_CAMPAIGN_LIST_LOAD_ALL_KEY]: false,
         [GEM_EXPANDED_MODE_STORAGE_KEY]: false,
         gemAltTextPreviewEnabled: true,
-        gemAltTextVisibility: "always-show"
+        gemAltTextVisibility: "always-show",
+        gemBlockTargetingPreviewEnabled: true,
+        gemBlockTargetingVisibility: "always-show"
       }, (settings) => {
         const themeSelect = document.getElementById("opt-theme-mode");
         if (themeSelect) {
@@ -737,6 +767,12 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
 
         const altTextVisibilityEl = document.getElementById("opt-alt-text-visibility");
         if (altTextVisibilityEl) altTextVisibilityEl.value = settings.gemAltTextVisibility || "always-show";
+
+        const blockTargetingEnabledEl = document.getElementById("opt-block-targeting-preview-enabled");
+        if (blockTargetingEnabledEl) blockTargetingEnabledEl.checked = settings.gemBlockTargetingPreviewEnabled !== false;
+
+        const blockTargetingVisibilityEl = document.getElementById("opt-block-targeting-visibility");
+        if (blockTargetingVisibilityEl) blockTargetingVisibilityEl.value = settings.gemBlockTargetingVisibility || "always-show";
 
         const widthInput = document.getElementById("opt-mobile-preview-width");
         if (widthInput) widthInput.value = settings.mobilePreviewWidth || 414;
@@ -858,7 +894,11 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
             gemAltTextPreviewEnabled:
               document.getElementById("opt-alt-text-preview-enabled")?.checked ?? true,
             gemAltTextVisibility:
-              document.getElementById("opt-alt-text-visibility")?.value ?? "always-show"
+              document.getElementById("opt-alt-text-visibility")?.value ?? "always-show",
+            gemBlockTargetingPreviewEnabled:
+              document.getElementById("opt-block-targeting-preview-enabled")?.checked ?? true,
+            gemBlockTargetingVisibility:
+              document.getElementById("opt-block-targeting-visibility")?.value ?? "always-show"
           };
 
           // Apply immediately + cache synchronously for next page load
@@ -938,7 +978,9 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
       "opt-custom-paste-sup",
       "opt-custom-paste-anchor",
       "opt-alt-text-preview-enabled",
-      "opt-alt-text-visibility"
+      "opt-alt-text-visibility",
+      "opt-block-targeting-preview-enabled",
+      "opt-block-targeting-visibility"
     ];
 
     settingsIds.forEach((id) => {
@@ -1609,6 +1651,15 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
       if (mobileToggle) {
         mobileToggle.checked = changes.mobileViewVisible.newValue;
       }
+    }
+
+    if (changes.gemBlockTargetingPreviewEnabled) {
+      const el = document.getElementById("opt-block-targeting-preview-enabled");
+      if (el) el.checked = changes.gemBlockTargetingPreviewEnabled.newValue !== false;
+    }
+    if (changes.gemBlockTargetingVisibility) {
+      const el = document.getElementById("opt-block-targeting-visibility");
+      if (el) el.value = changes.gemBlockTargetingVisibility.newValue || "always-show";
     }
   });
 

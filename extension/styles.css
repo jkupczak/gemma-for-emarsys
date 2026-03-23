@@ -1390,3 +1390,16 @@ cb-campaign-preview > .e-section .e-section__header {
 .gem-e-verticalnavitem {
     position: relative;
 }
+
+cb-device-preview .e-section .e-section__content { padding:0 !important }
+vce-iframe { display: flex; height:100%; }
+cb-content-preview, cb-content-preview > div { display: block; height:100%; }
+.e-layout__section.e-contentblocks-preview_section { display:flex; }
+cb-campaign-preview { width: 100% }
+.e-contentblocks-preview { position:static !important; height:100% !important; z-index: unset !important; top: unset !important; }
+cb-device-preview > .e-section > .e-section__content { overflow: hidden }
+#gem-frame-handle:before { content: ""; display: block; background: var(--token-box-default-border); position:absolute; top: 0; bottom: 0; left: 0; right: 0; width: 20%; max-width:6px; height: 66%; border-radius: 999px; margin: auto; }
+#gem-frame-handle:hover:before { background: var(--token-primary-500); }
+#gem-frame-handle.gem-frame-handle--active:before { background: var(--token-primary-800); }
+.gem-frame-size-details-item { width: auto; font-size:16px; line-height:20px }
+.gem-frame-size-details-item label { display:block; font-size: 10px; line-height: 14px; text-transform: uppercase; }

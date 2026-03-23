@@ -603,32 +603,12 @@ function setupClonedIframe(originalIframe) {
     position: "static",
   });
 
-
   // Only insert if this is a newly created wrapper
   if (!existingWrapper) {
     const insertTarget = document.querySelector("section.e-layout__section.e-contentblocks-preview_section");
     console.log(LOG, "setupClonedIframe: insert target", insertTarget ? "found" : "NOT FOUND", "(selector: section.e-layout__section.e-contentblocks-preview_section)");
     document.querySelector("section.e-layout__section.e-contentblocks-preview_section").insertAdjacentElement("afterend", wrapperDiv);
   }
-
-  containerDiv.insertAdjacentHTML(
-    "afterend",
-    `<style id="gem-styles">
-      cb-device-preview .e-section .e-section__content { padding:0 !important }
-      vce-iframe { display: flex; height:100%; }
-      cb-content-preview, cb-content-preview > div { display: block; height:100%; }
-    .e-layout__section.e-contentblocks-preview_section { display:flex; }
-    cb-campaign-preview { width: 100% }
-    .e-contentblocks-preview { position:static; height:100%; z-index: unset; top: unset; }
-    cb-device-preview > .e-section > .e-section__content { overflow: hidden }
-    #gem-frame-handle:before { content: ""; display: block; background: var(--token-box-default-border); position:absolute; top: 0; bottom: 0; left: 0; right: 0; width: 20%; max-width:6px; height: 66%; border-radius: 999px; margin: auto; }
-    #gem-frame-handle:hover:before { background: var(--token-ai-500); }
-    #gem-frame-handle.gem-frame-handle--active:before { background: var(--token-ai-800); }
-    .gem-frame-size-details-item { width: auto; font-size:16px; line-height:20px }
-    .gem-frame-size-details-item label { display:block; font-size: 10px; line-height: 14px; text-transform: uppercase; }
-    </style>`
-  );
-
 
   //----------------------------------------------------------
   // Break long words inside the clone
@@ -1117,8 +1097,10 @@ function setupCustomScrollbars(iframe, container) {
       tempDoc.querySelectorAll("e-vce-borderer-element").forEach(item => item.remove());
       tempDoc.querySelectorAll("e-vce-dropline").forEach(item => item.remove());
 
-      const highlightRemoved = tempDoc.querySelectorAll(".gem-text-highlight, #gem-alt-text-overlay-container").length;
-      tempDoc.querySelectorAll(".gem-text-highlight, #gem-alt-text-overlay-container").forEach(item => item.remove());
+      const excludedFromMobileClone =
+        "#gem-text-highlight-container, #gem-alt-text-overlay-container, #gem-block-targeting-styles, #gem-block-targeting-settings-styles";
+      const highlightRemoved = tempDoc.querySelectorAll(excludedFromMobileClone).length;
+      tempDoc.querySelectorAll(excludedFromMobileClone).forEach((item) => item.remove());
 
       console.log(LOG, "syncIframe: removed elements", { scriptsRemoved, vceBordererRemoved, vceBordererElRemoved, droplineRemoved, highlightRemoved });
 

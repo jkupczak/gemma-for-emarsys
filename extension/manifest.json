@@ -1,6 +1,6 @@
 {
   "name": "Gemma for Emarsys",
-  "version": "9.0.1",
+  "version": "10.0.0",
   "manifest_version": 3,
   "description": "Enhances the Emarsys email editor with a settings panel and more!",
   "permissions": ["storage", "tabs", "activeTab"],
@@ -15,7 +15,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["img/*", "custom-paste.js", "debug-logging-page-bridge.js"],
+      "resources": ["img/*", "custom-paste.js", "debug-logging-page-bridge.js", "campaign-draft-data.js"],
       "matches": ["https://*.emarsys.net/*"]
     }
   ],      
@@ -42,7 +42,7 @@
         "https://*.emarsys.net/bootstrap.php?*r=contentBlocks/campaign*", 
         "https://*.emarsys.net//bootstrap.php?*r=contentBlocks/campaign*"
       ],
-      "js": ["alt-text-preview.js", "verticalnav-enhancer.js", "mobile-view.js", "textarea-expand.js", "text-highlighting.js", "color-swatch-manager.js", "keyboard-shortcuts.js", "language-load-overlay.js", "toggle-page-elements.js", "page-title-updater.js", "condensed-blocks-panel.js", "mobile-contact-preview.js", "lz-string.min.js", "snippet-storage.js", "favorite-image-storage.js", "content-block-toolbar.js", "header-copy-icon.js", "block-pinning.js", "overlay-panel-controls.js", "expanded-view.js", "snippets-tab.js", "keyword-swap.js", "custom-paste-loader.js"],
+      "js": ["alt-text-preview.js", "verticalnav-enhancer.js", "mobile-view.js", "textarea-expand.js", "text-highlighting.js", "color-swatch-manager.js", "keyboard-shortcuts.js", "language-load-overlay.js", "toggle-page-elements.js", "page-title-updater.js", "condensed-blocks-panel.js", "mobile-contact-preview.js", "lz-string.min.js", "snippet-storage.js", "favorite-image-storage.js", "content-block-toolbar.js", "header-copy-icon.js", "block-pinning.js", "overlay-panel-controls.js", "expanded-view.js", "snippets-tab.js", "keyword-swap.js", "custom-paste-loader.js", "campaign-draft-data-loader.js", "campaign-block-targeting.js"],
       "css": ["styles.css", "e-panels.css", "expanded-view.css"]
     }
   ]

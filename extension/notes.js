@@ -148,6 +148,7 @@ function createNotesPanel() {
 
   const textarea = document.createElement("textarea");
   textarea.id = "gem-notes-textarea";
+  textarea.className = "gem-scrollable";
   textarea.placeholder = "Write your notes here…";
   textarea.maxLength = 7500;
   Object.assign(textarea.style, {

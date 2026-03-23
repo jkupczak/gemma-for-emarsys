@@ -9,7 +9,8 @@
   const LEGACY_KEY = 'gemSnippets';
   const META_KEY = 'sm';
   const META_KEY_LEGACY = 's_meta';
-  const CHUNK_SIZE = 7000;
+  // Per sync item ~8190 UTF-8 bytes (key+value); keys like s512 ≤4 chars; margin for safety.
+  const CHUNK_SIZE = 8180;
   const MAX_CHUNKS = 16;
   const FORMAT_VERSION = 2;
 
@@ -204,7 +205,7 @@
       const packed = pack(snippets);
       const json = JSON.stringify(packed);
       const compressed = typeof LZString !== 'undefined'
-        ? LZString.compressToUTF16(json)
+        ? LZString.compressToBase64(json)
         : json;
       const chunks = chunk(compressed || json, CHUNK_SIZE);
       if (chunks.length === 0) chunks.push('');
@@ -214,6 +215,7 @@
         return;
       }
       const meta = { v: FORMAT_VERSION, c: chunks.length };
+      if (typeof LZString !== 'undefined') meta.enc = 'b64';
       const toSet = { [META_KEY]: meta };
       chunks.forEach((ch, i) => {
         toSet[`s${i}`] = ch;
@@ -260,9 +262,14 @@
           }
           combined += ch;
         }
-        const decompressed = typeof LZString !== 'undefined'
-          ? LZString.decompressFromUTF16(combined)
-          : combined;
+        let decompressed;
+        if (typeof LZString !== 'undefined') {
+          decompressed = meta.enc === 'b64'
+            ? LZString.decompressFromBase64(combined)
+            : LZString.decompressFromUTF16(combined);
+        } else {
+          decompressed = combined;
+        }
         if (!decompressed) {
           callback([]);
           return;
