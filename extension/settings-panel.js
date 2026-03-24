@@ -28,6 +28,27 @@ function normalizeGemThemeMode(value) {
   return "gemma-amethyst"; // default
 }
 
+// Order matches theme.css :root --token-*-default (lines 7-12)
+const GEM_THEME_SWATCHES = [
+  { mode: "original", label: "Sapphire (Emarsys default)", color: "var(--token-sapphire-default)" },
+  { mode: "gemma-topaz", label: "Topaz", color: "var(--token-topaz-default)" },
+  { mode: "gemma-carnelian", label: "Carnelian", color: "var(--token-carnelian-default)" },
+  { mode: "gemma-ruby", label: "Ruby", color: "var(--token-ruby-default)" },
+  { mode: "gemma-turquoise", label: "Turquoise", color: "var(--token-turquoise-default)" },
+  { mode: "gemma-amethyst", label: "Amethyst", color: "var(--token-amethyst-default)" }
+];
+
+function syncThemeSwatchUI(mode) {
+  const normalized = normalizeGemThemeMode(mode);
+  const hidden = document.getElementById("opt-theme-mode");
+  if (hidden) hidden.value = normalized;
+  document.querySelectorAll("#gem-theme-swatches .gem-theme-swatch").forEach((btn) => {
+    const active = btn.getAttribute("data-theme-mode") === normalized;
+    btn.setAttribute("aria-pressed", active ? "true" : "false");
+    btn.classList.toggle("gem-theme-swatch--selected", active);
+  });
+}
+
 function applyGemThemeMode(mode, { persistLocal = false } = {}) {
   const normalized = normalizeGemThemeMode(mode);
   const html = document.documentElement;
@@ -146,6 +167,59 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
     return Math.min(2000, Math.max(50, Math.trunc(n)));
   }
 
+  const LAST_USED_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+
+  function pruneRecentlySeenImagesToLimit(list, limit, nowMs) {
+    const now = typeof nowMs === 'number' ? nowMs : Date.now();
+    if (!Array.isArray(list) || list.length <= limit) return list;
+    const next = [...list];
+    function isProtectedEntry(x) {
+      const lu = x && typeof x.lastUsed === 'number' ? x.lastUsed : null;
+      return lu != null && (now - lu) <= LAST_USED_RETENTION_MS;
+    }
+    function removeOneSmallestTsUnprotected() {
+      let bestIdx = -1;
+      let bestTs = Infinity;
+      for (let i = 0; i < next.length; i++) {
+        const x = next[i];
+        if (isProtectedEntry(x)) continue;
+        const t = (x && typeof x.ts === 'number') ? x.ts : 0;
+        if (t < bestTs) {
+          bestTs = t;
+          bestIdx = i;
+        }
+      }
+      if (bestIdx >= 0) {
+        next.splice(bestIdx, 1);
+        return true;
+      }
+      return false;
+    }
+    function removeOneSmallestTsAny() {
+      let bestIdx = -1;
+      let bestTs = Infinity;
+      for (let i = 0; i < next.length; i++) {
+        const x = next[i];
+        const t = (x && typeof x.ts === 'number') ? x.ts : 0;
+        if (t < bestTs) {
+          bestTs = t;
+          bestIdx = i;
+        }
+      }
+      if (bestIdx >= 0) {
+        next.splice(bestIdx, 1);
+        return true;
+      }
+      return false;
+    }
+    while (next.length > limit) {
+      if (!removeOneSmallestTsUnprotected()) {
+        if (!removeOneSmallestTsAny()) break;
+      }
+    }
+    return next;
+  }
+
   function pruneRecentlySeenToMax(max) {
     const limit = normalizeRecentlySeenMax(max);
     try {
@@ -160,12 +234,15 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
               const ts = (x && typeof x.ts === 'number') ? x.ts : 0;
               const path = (x && typeof x.path === 'string') ? x.path : '';
               const friendlyFilename = (x && typeof x.friendlyFilename === 'string') ? x.friendlyFilename : '';
-              return { url, ts, path, friendlyFilename };
+              const lastUsed = (x && typeof x.lastUsed === 'number') ? x.lastUsed : undefined;
+              const row = { url, ts, path, friendlyFilename };
+              if (lastUsed != null) row.lastUsed = lastUsed;
+              return row;
             })
             .filter(Boolean);
           cleaned.sort((a, b) => (a.ts || 0) - (b.ts || 0));
-          while (cleaned.length > limit) cleaned.shift();
-          chrome.storage.local.set({ [GEM_RECENTLY_SEEN_IMAGES_STORAGE_KEY]: cleaned });
+          const pruned = pruneRecentlySeenImagesToLimit(cleaned, limit, Date.now());
+          chrome.storage.local.set({ [GEM_RECENTLY_SEEN_IMAGES_STORAGE_KEY]: pruned });
         } catch (_) { }
       });
     } catch (_) { }
@@ -206,21 +283,26 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
 
         <div class="gem-setting-section">
           <h3>Theme</h3>
-          <div class="gem-setting">
-            <div style="display: flex; gap: 12px; align-items: center;">
-              <label for="opt-theme-mode" style="flex: 1;">Theme</label>
-              <select id="opt-theme-mode" style="width: 220px;">
-                <option value="original">Sapphire (default Emarsys theme)</option>
-                <option value="gemma-amethyst" selected>Amethyst</option>
-                <option value="gemma-ruby">Ruby</option>
-                <option value="gemma-turquoise">Turquoise</option>
-                <option value="gemma-topaz">Topaz</option>
-                <option value="gemma-carnelian">Carnelian</option>
-              </select>
+          <div class="gem-setting gem-setting-condensed">
+            <div style="display: flex; flex-direction: row; gap: 12px;">
+              <div>
+                <label id="gem-theme-label" for="opt-theme-mode">Accent Color</label>
+                <div class="sub-label">
+                  Pick from these available accent colors to theme your Emarsys experience.
+                </div>
+              </div>
+              <input type="hidden" id="opt-theme-mode" value="gemma-amethyst">
+              <div id="gem-theme-swatches" class="gem-theme-swatches" role="group" aria-labelledby="gem-theme-label">
+                ${GEM_THEME_SWATCHES.map(({ mode, label, color }) => {
+                  const safe = String(label)
+                    .replace(/&/g, "&amp;")
+                    .replace(/"/g, "&quot;")
+                    .replace(/</g, "&lt;");
+                  return `<button type="button" class="gem-theme-swatch" data-theme-mode="${mode}" style="background-color:${color}" aria-label="${safe}" title="${safe}" aria-pressed="false"></button>`;
+                }).join("")}
+              </div>
             </div>
-            <div class="sub-label">
-              Choose from different Gemma color themes or use the original Emarsys UI.
-            </div>
+
           </div>
         </div>
 
@@ -553,11 +635,11 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
           <h3>General</h3>
           <div class="gem-setting">
             <label style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
-              <span>Recently Seen limit</span>
+              <span>Recent Images limit</span>
               <input type="number" id="opt-recently-seen-max" min="50" max="2000" step="1" value="300" style="width:120px;" />
             </label>
             <div class="sub-label">
-              Max number of images to keep in the Recently Seen list (50–2000).
+              Max number of images to keep in the Recent Images list (50–2000).
             </div>
           </div>
           <div class="gem-setting-group">
@@ -594,7 +676,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
 
         <div class="gem-setting-section" id="gem-settings-saved-searches">
           <h3>Saved Searches</h3>
-          <p class="gem-setting-info">Manage saved search pills for the Favorites and Recently Seen image lists.</p>
+          <p class="gem-setting-info">Manage saved search pills for the Favorite Images and Recent Images lists.</p>
           <div id="gem-saved-searches-list"></div>
         </div>
 
@@ -623,6 +705,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
     `;
 
     document.body.appendChild(panelEl);
+    syncThemeSwatchUI(document.getElementById("opt-theme-mode")?.value || "gemma-amethyst");
 
     // Close button
     panelEl.querySelector("#gem-settings-close")
@@ -703,10 +786,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         gemBlockTargetingPreviewEnabled: true,
         gemBlockTargetingVisibility: "always-show"
       }, (settings) => {
-        const themeSelect = document.getElementById("opt-theme-mode");
-        if (themeSelect) {
-          themeSelect.value = normalizeGemThemeMode(settings[GEM_THEME_MODE_STORAGE_KEY]);
-        }
+        syncThemeSwatchUI(settings[GEM_THEME_MODE_STORAGE_KEY]);
 
         document.getElementById("opt-blocks-panel-layout").value =
           settings.blocksPanelLayout;
@@ -989,6 +1069,19 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
       el.addEventListener("change", handlers.saveSettingsHandler);
     });
 
+    const themeSwatches = document.getElementById("gem-theme-swatches");
+    if (themeSwatches) {
+      themeSwatches.addEventListener("click", (e) => {
+        const btn = e.target && e.target.closest && e.target.closest(".gem-theme-swatch");
+        if (!btn || !themeSwatches.contains(btn)) return;
+        const mode = btn.getAttribute("data-theme-mode");
+        if (!mode) return;
+        syncThemeSwatchUI(mode);
+        const hidden = document.getElementById("opt-theme-mode");
+        if (hidden) hidden.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+    }
+
     // Paste Behavior UI rules (enable/disable + auto-toggle)
     const pasteIds = [
       "opt-custom-paste-enabled",
@@ -1160,8 +1253,8 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         </div>
           <div class="gem-saved-search-controls">
             <select class="gem-saved-search-source">
-              <option value="favorites" ${sourceVal === 'favorites' ? 'selected' : ''}>Favorites</option>
-              <option value="seen" ${sourceVal === 'seen' ? 'selected' : ''}>Recently Seen</option>
+              <option value="favorites" ${sourceVal === 'favorites' ? 'selected' : ''}>Favorite Images</option>
+              <option value="seen" ${sourceVal === 'seen' ? 'selected' : ''}>Recent Images</option>
               <option value="both" ${sourceVal === 'both' ? 'selected' : ''}>Both</option>
             </select>
           </div>
@@ -1223,7 +1316,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
       container.innerHTML = '';
 
       if (merged.length === 0) {
-        container.innerHTML = '<div class="gem-saved-search-empty">No saved searches yet. Use the search inputs in Favorites or Recently Seen to create pills.</div>';
+        container.innerHTML = '<div class="gem-saved-search-empty">No saved searches yet. Use the search inputs in Favorite Images or Recent Images to create pills.</div>';
         return;
       }
 
@@ -1554,9 +1647,8 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
     if (namespace !== "sync") return;
 
     if (changes[GEM_THEME_MODE_STORAGE_KEY]) {
-      const themeSelect = document.getElementById("opt-theme-mode");
       const newMode = normalizeGemThemeMode(changes[GEM_THEME_MODE_STORAGE_KEY].newValue);
-      if (themeSelect) themeSelect.value = newMode;
+      syncThemeSwatchUI(newMode);
       applyGemThemeMode(newMode, { persistLocal: true });
     }
 

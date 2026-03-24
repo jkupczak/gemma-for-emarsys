@@ -31,14 +31,14 @@ function createWelcomeModalHTML() {
               <b>Block Targeting Previews</b> Quickly see at a glance whether a block is targeting a specific audience or not with handly overlays that wrap around your blocks. You can also toggle this from the email preview toolbar.
             </li>
             <li><b>Rich Paste</b> Bold? Italics? You got it! Normally styled text that you copy and paste into your emails are reformatted to plain text. But not anymore! Gemma preserves bold, italics, underlines, links and more when copying and pasting from outside sources, or even from one content block to another.</li>
-            <li><b>Image Picker</b> When adding an image to your email you'll now get a preview of it right next to the image editor. Makes adding ALT text much easier! You can also see a list of your recently seen, used, and favorited images for quick selection.</li>
+            <li><b>Image Picker</b> When adding an image to your email you'll now get a preview of it right next to the image editor. Makes adding ALT text much easier! You can also browse Recent Images and Favorite Images; last-used times appear in Image Details.</li>
             <li>
               <b>Text Highlighting</b> Automatically highlight important text in the email editor preview. Edit what text is highlighted and what color the highlight is in the Settings panel.
             </li>
             <li><b>Mobile Previews</b> See a mobile preview of your email right next to your desktop view while you make edits. This is turned on by default and can be toggled from the settings menu or the <span class="gem-e-icon">&#xF133;</span> icon in the bottom left of the editor. You can also adjust width of it by dragging it or editing it in the settings panel.</li>
             <li><b>Custom Color Swatches</b> Custom color swatches are now permanent! Emarsys doesn't remember what colors you used when editing an email. But Gemma does. You can also add default presets that will always display at the top of the color picker (up to 8) from the settings panel.</li>
             </li>
-            <li><b>Image Picker</b> When adding an image to your email you'll now get a preview of it right next to the image editor. Makes adding ALT text much easier! You can also see a list of your recently used images for quick selection.</li>
+            <li><b>Image Picker</b> When adding an image to your email you'll now get a preview of it right next to the image editor. Makes adding ALT text much easier! You can also browse Recent Images and Favorite Images for quick selection.</li>
             <li><b>Notes</b> Keep notes right in Emarsys! Find the Notes nav item in the vertical navigation and start taking notes right from any page.</li>
             <li><b>ALT Text Preview</b> Make it easier to QA ALT text by showing it when you hover over images in the email editor preview.</li>
           </ul>
@@ -91,14 +91,14 @@ function createWelcomeModalHTML() {
               <li>The dialog has been expanded to fullscreen to allow for a new image selection panel.</li>
               <ul>
                 <li>Images can now be quickly selected without opening the Media DB popup window.</li>
-                <li>Images are listed in one of three views: "Recently Used", "Recently Seen", or "Favorites".</li>
+                <li>Images are listed in two views: "Recent Images" or "Favorite Images".</li>
                   <ul>
                     <li>Images can be favorited to keep them in a separate list for quick access.</li>
-                    <li>Images that you have recently used are logged in a "Recently Used" list.</li>
-                    <li>Images that you have recently seen in the Media DB are logged in a "Recently Seen" list.</li>
+                    <li>Recent Images combines images you have seen in the Media DB with last-used timestamps when you insert an image in the editor.</li>
+                    <li>Image Details shows Last Seen and Last Used for each recent image.</li>
                   </ul>
                 <li>Images are displayed in either a table or customizable grid view.</li>
-                <li>Recently Seen and Favorites can be searched by name, url, path, and more.</li>
+                <li>Recent Images and Favorite Images can be searched by name, url, path, and more.</li>
                 <li>Favorites are grouped by category, translation, or language.</li>
                 <li>Favorites can be enriched with metadata: search keyword, category, language, translation, alt text, and width. The latter two will be automatically inserted for you if you choose the image.</li>
                 <li>Shortcut: Pressing 'Enter' now initiates a click on the "OK" button to accept your changes and close the dialog.</li>

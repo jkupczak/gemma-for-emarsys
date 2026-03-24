@@ -73,81 +73,81 @@ html:root {
 
   /* ------------------------------------------------------------ */
   /* Neutrals */ 
-  --token-sapphire-neutral-100: #12171c;
-  --token-sapphire-neutral-200: #1d232a;
-  --token-sapphire-neutral-300: #232b33;
-  --token-sapphire-neutral-400: #2e3b47;
+  --token-sapphire-neutral-100: #f5f6f7;
+  --token-sapphire-neutral-200: #eaecee;
+  --token-sapphire-neutral-300: #d5dadd;
+  --token-sapphire-neutral-400: #a9b4be;
   --token-sapphire-neutral-500: #5b738b;
-  --token-sapphire-neutral-600: #8396a8;
-  --token-sapphire-neutral-700: #a9b4be;
-  --token-sapphire-neutral-800: #b8c1c9;
-  --token-sapphire-neutral-900: #eaecee;
+  --token-sapphire-neutral-600: #475e75;
+  --token-sapphire-neutral-700: #354a5f;
+  --token-sapphire-neutral-800: #223548;
+  --token-sapphire-neutral-900: #1a2733;
   --token-sapphire-neutral-999: #ffffff;
   --token-sapphire-neutral-000: #000000;
   --token-sapphire-neutral-default: #5b738b;
 
   /* TOPAZ (warm yellow-brown neutral) */
-  --token-topaz-neutral-100: #1c1812;
-  --token-topaz-neutral-200: #2a241d;
-  --token-topaz-neutral-300: #332c23;
-  --token-topaz-neutral-400: #473c2e;
+  --token-topaz-neutral-100: #eeecea;
+  --token-topaz-neutral-200: #c9c1b8;
+  --token-topaz-neutral-300: #beb4a9;
+  --token-topaz-neutral-400: #a89a83;
   --token-topaz-neutral-500: #8b7a5b;
-  --token-topaz-neutral-600: #a89a83;
-  --token-topaz-neutral-700: #beb4a9;
-  --token-topaz-neutral-800: #c9c1b8;
-  --token-topaz-neutral-900: #eeecea;
+  --token-topaz-neutral-600: #473c2e;
+  --token-topaz-neutral-700: #332c23;
+  --token-topaz-neutral-800: #2a241d;
+  --token-topaz-neutral-900: #1c1812;
   --token-topaz-neutral-000: #000000;
   --token-topaz-neutral-default: #8b7a5b;
 
   /* CARNELIAN (muted clay / warm red neutral) */
-  --token-carnelian-neutral-100: #1c1412;
-  --token-carnelian-neutral-200: #2a1f1d;
-  --token-carnelian-neutral-300: #332523;
-  --token-carnelian-neutral-400: #47342e;
+  --token-carnelian-neutral-100: #eeeaea;
+  --token-carnelian-neutral-200: #c9bdb8;
+  --token-carnelian-neutral-300: #beb0a9;
+  --token-carnelian-neutral-400: #a88b83;
   --token-carnelian-neutral-500: #8b655b;
-  --token-carnelian-neutral-600: #a88b83;
-  --token-carnelian-neutral-700: #beb0a9;
-  --token-carnelian-neutral-800: #c9bdb8;
-  --token-carnelian-neutral-900: #eeeaea;
+  --token-carnelian-neutral-600: #47342e;
+  --token-carnelian-neutral-700: #332523;
+  --token-carnelian-neutral-800: #2a1f1d;
+  --token-carnelian-neutral-900: #1c1412;
   --token-carnelian-neutral-000: #000000;
   --token-carnelian-neutral-default: #8b655b;
 
   /* RUBY (dusty pink neutral) */
-  --token-ruby-neutral-100: #1c1217;
-  --token-ruby-neutral-200: #2a1d23;
-  --token-ruby-neutral-300: #33232b;
-  --token-ruby-neutral-400: #472e3b;
+  --token-ruby-neutral-100: #eeeaec;
+  --token-ruby-neutral-200: #c9b8c1;
+  --token-ruby-neutral-300: #bea9b4;
+  --token-ruby-neutral-400: #a88396;
   --token-ruby-neutral-500: #8b5b73;
-  --token-ruby-neutral-600: #a88396;
-  --token-ruby-neutral-700: #bea9b4;
-  --token-ruby-neutral-800: #c9b8c1;
-  --token-ruby-neutral-900: #eeeaec;
+  --token-ruby-neutral-600: #472e3b;
+  --token-ruby-neutral-700: #33232b;
+  --token-ruby-neutral-800: #2a1d23;
+  --token-ruby-neutral-900: #1c1217;
   --token-ruby-neutral-000: #000000;
   --token-ruby-neutral-default: #8b5b73;
 
   /* TURQUOISE (cool teal neutral) */
-  --token-turquoise-neutral-100: #121c1a;
-  --token-turquoise-neutral-200: #1d2a27;
-  --token-turquoise-neutral-300: #233332;
-  --token-turquoise-neutral-400: #2e4743;
+  --token-turquoise-neutral-100: #eaeeed;
+  --token-turquoise-neutral-200: #b8c9c5;
+  --token-turquoise-neutral-300: #a9beb8;
+  --token-turquoise-neutral-400: #83a8a0;
   --token-turquoise-neutral-500: #5b8b80;
-  --token-turquoise-neutral-600: #83a8a0;
-  --token-turquoise-neutral-700: #a9beb8;
-  --token-turquoise-neutral-800: #b8c9c5;
-  --token-turquoise-neutral-900: #eaeeed;
+  --token-turquoise-neutral-600: #2e4743;
+  --token-turquoise-neutral-700: #262727;
+  --token-turquoise-neutral-800: #1d2a27;
+  --token-turquoise-neutral-900: #121c1a;
   --token-turquoise-neutral-000: #000000;
   --token-turquoise-neutral-default: #5b8b80;
 
   /* AMETHYST (muted purple neutral) */
-  --token-amethyst-neutral-100: #14121c;
-  --token-amethyst-neutral-200: #201d2a;
-  --token-amethyst-neutral-300: #262333;
-  --token-amethyst-neutral-400: #352e47;
+  --token-amethyst-neutral-100: #eceaee;
+  --token-amethyst-neutral-200: #c1b8c9;
+  --token-amethyst-neutral-300: #b2a9be;
+  --token-amethyst-neutral-400: #9183a8;
   --token-amethyst-neutral-500: #6b5b8b;
-  --token-amethyst-neutral-600: #9183a8;
-  --token-amethyst-neutral-700: #b2a9be;
-  --token-amethyst-neutral-800: #c1b8c9;
-  --token-amethyst-neutral-900: #eceaee;
+  --token-amethyst-neutral-600: #352e47;
+  --token-amethyst-neutral-700: #262333;
+  --token-amethyst-neutral-800: #201d2a;
+  --token-amethyst-neutral-900: #14121c;
   --token-amethyst-neutral-000: #000000;
   --token-amethyst-neutral-default: #6b5b8b;
 }
@@ -220,6 +220,87 @@ html.FLIPPER-theme-eveningHorizon:root {
   --token-amethyst-800: #dcd6ff;
   --token-amethyst-900: #f0edff;
   --token-amethyst-default: #8f80ff;
+
+  /* ------------------------------------------------------------ */
+  /* Neutrals */ 
+  --token-sapphire-neutral-100: #1a2733;
+  --token-sapphire-neutral-200: #223548;
+  --token-sapphire-neutral-300: #354a5f;
+  --token-sapphire-neutral-400: #475e75;
+  --token-sapphire-neutral-500: #5b738b;
+  --token-sapphire-neutral-600: #a9b4be;
+  --token-sapphire-neutral-700: #d5dadd;
+  --token-sapphire-neutral-800: #eaecee;
+  --token-sapphire-neutral-900: #f5f6f7;
+  --token-sapphire-neutral-999: #ffffff;
+  --token-sapphire-neutral-000: #000000;
+  --token-sapphire-neutral-default: #5b738b;
+
+  /* TOPAZ (warm yellow-brown neutral) */
+  --token-topaz-neutral-100: #1c1812;
+  --token-topaz-neutral-200: #2a241d;
+  --token-topaz-neutral-300: #332c23;
+  --token-topaz-neutral-400: #473c2e;
+  --token-topaz-neutral-500: #8b7a5b;
+  --token-topaz-neutral-600: #a89a83;
+  --token-topaz-neutral-700: #beb4a9;
+  --token-topaz-neutral-800: #c9c1b8;
+  --token-topaz-neutral-900: #eeecea;
+  --token-topaz-neutral-000: #000000;
+  --token-topaz-neutral-default: #8b7a5b;
+
+  /* CARNELIAN (muted clay / warm red neutral) */
+  --token-carnelian-neutral-100: #1c1412;
+  --token-carnelian-neutral-200: #2a1f1d;
+  --token-carnelian-neutral-300: #332523;
+  --token-carnelian-neutral-400: #47342e;
+  --token-carnelian-neutral-500: #8b655b;
+  --token-carnelian-neutral-600: #a88b83;
+  --token-carnelian-neutral-700: #beb0a9;
+  --token-carnelian-neutral-800: #c9bdb8;
+  --token-carnelian-neutral-900: #eeeaea;
+  --token-carnelian-neutral-000: #000000;
+  --token-carnelian-neutral-default: #8b655b;
+
+  /* RUBY (dusty pink neutral) */
+  --token-ruby-neutral-100: #1c1217;
+  --token-ruby-neutral-200: #2a1d23;
+  --token-ruby-neutral-300: #33232b;
+  --token-ruby-neutral-400: #472e3b;
+  --token-ruby-neutral-500: #8b5b73;
+  --token-ruby-neutral-600: #a88396;
+  --token-ruby-neutral-700: #bea9b4;
+  --token-ruby-neutral-800: #c9b8c1;
+  --token-ruby-neutral-900: #eeeaec;
+  --token-ruby-neutral-000: #000000;
+  --token-ruby-neutral-default: #8b5b73;
+
+  /* TURQUOISE (cool teal neutral) */
+  --token-turquoise-neutral-100: #121c1a;
+  --token-turquoise-neutral-200: #1d2a27;
+  --token-turquoise-neutral-300: #233332;
+  --token-turquoise-neutral-400: #2e4743;
+  --token-turquoise-neutral-500: #5b8b80;
+  --token-turquoise-neutral-600: #83a8a0;
+  --token-turquoise-neutral-700: #a9beb8;
+  --token-turquoise-neutral-800: #b8c9c5;
+  --token-turquoise-neutral-900: #eaeeed;
+  --token-turquoise-neutral-000: #000000;
+  --token-turquoise-neutral-default: #5b8b80;
+
+  /* AMETHYST (muted purple neutral) */
+  --token-amethyst-neutral-100: #14121c;
+  --token-amethyst-neutral-200: #201d2a;
+  --token-amethyst-neutral-300: #262333;
+  --token-amethyst-neutral-400: #352e47;
+  --token-amethyst-neutral-500: #6b5b8b;
+  --token-amethyst-neutral-600: #9183a8;
+  --token-amethyst-neutral-700: #b2a9be;
+  --token-amethyst-neutral-800: #c1b8c9;
+  --token-amethyst-neutral-900: #eceaee;
+  --token-amethyst-neutral-000: #000000;
+  --token-amethyst-neutral-default: #6b5b8b;
+
 }
 
 html {
@@ -235,7 +316,17 @@ html {
     --token-primary-900: var(--token-sapphire-900);
     --token-primary-default: var(--token-sapphire-default);
 
+    --token-primary-neutral-100: var(--token-sapphire-neutral-100);
+    --token-primary-neutral-200: var(--token-sapphire-neutral-200);
+    --token-primary-neutral-300: var(--token-sapphire-neutral-300);
+    --token-primary-neutral-400: var(--token-sapphire-neutral-400);
+    --token-primary-neutral-500: var(--token-sapphire-neutral-500);
     --token-primary-neutral-600: var(--token-sapphire-neutral-600);
+    --token-primary-neutral-700: var(--token-sapphire-neutral-700);
+    --token-primary-neutral-800: var(--token-sapphire-neutral-800);
+    --token-primary-neutral-900: var(--token-sapphire-neutral-900);
+    --token-primary-neutral-999: var(--token-sapphire-neutral-999);
+    --token-primary-neutral-000: var(--token-sapphire-neutral-000);
     --token-primary-neutral-default: var(--token-sapphire-neutral-default);
 
     --token-static-100: var(--token-sapphire-100);
@@ -260,7 +351,17 @@ html {
     --token-primary-900: var(--token-carnelian-900);
     --token-primary-default: var(--token-carnelian-default);
 
+    --token-primary-neutral-100: var(--token-carnelian-neutral-100);
+    --token-primary-neutral-200: var(--token-carnelian-neutral-200);
+    --token-primary-neutral-300: var(--token-carnelian-neutral-300);
+    --token-primary-neutral-400: var(--token-carnelian-neutral-400);
+    --token-primary-neutral-500: var(--token-carnelian-neutral-500);
     --token-primary-neutral-600: var(--token-carnelian-neutral-600);
+    --token-primary-neutral-700: var(--token-carnelian-neutral-700);
+    --token-primary-neutral-800: var(--token-carnelian-neutral-800);
+    --token-primary-neutral-900: var(--token-carnelian-neutral-900);
+    --token-primary-neutral-999: var(--token-carnelian-neutral-999);
+    --token-primary-neutral-000: var(--token-carnelian-neutral-000);
     --token-primary-neutral-default: var(--token-carnelian-neutral-default);
 
     --token-static-100: var(--token-carnelian-100);
@@ -285,7 +386,17 @@ html {
     --token-primary-900: var(--token-topaz-900);
     --token-primary-default: var(--token-topaz-default);
 
+    --token-primary-neutral-100: var(--token-topaz-neutral-100);
+    --token-primary-neutral-200: var(--token-topaz-neutral-200);
+    --token-primary-neutral-300: var(--token-topaz-neutral-300);
+    --token-primary-neutral-400: var(--token-topaz-neutral-400);
+    --token-primary-neutral-500: var(--token-topaz-neutral-500);
     --token-primary-neutral-600: var(--token-topaz-neutral-600);
+    --token-primary-neutral-700: var(--token-topaz-neutral-700);
+    --token-primary-neutral-800: var(--token-topaz-neutral-800);
+    --token-primary-neutral-900: var(--token-topaz-neutral-900);
+    --token-primary-neutral-999: var(--token-topaz-neutral-999);
+    --token-primary-neutral-000: var(--token-topaz-neutral-000);
     --token-primary-neutral-default: var(--token-topaz-neutral-default);
 
     --token-static-100: var(--token-topaz-100);
@@ -310,7 +421,17 @@ html {
     --token-primary-900: var(--token-ruby-900);
     --token-primary-default: var(--token-ruby-default);
 
+    --token-primary-neutral-100: var(--token-ruby-neutral-100);
+    --token-primary-neutral-200: var(--token-ruby-neutral-200);
+    --token-primary-neutral-300: var(--token-ruby-neutral-300);
+    --token-primary-neutral-400: var(--token-ruby-neutral-400); 
+    --token-primary-neutral-500: var(--token-ruby-neutral-500);
     --token-primary-neutral-600: var(--token-ruby-neutral-600);
+    --token-primary-neutral-700: var(--token-ruby-neutral-700);
+    --token-primary-neutral-800: var(--token-ruby-neutral-800);
+    --token-primary-neutral-900: var(--token-ruby-neutral-900);
+    --token-primary-neutral-999: var(--token-ruby-neutral-999);
+    --token-primary-neutral-000: var(--token-ruby-neutral-000);
     --token-primary-neutral-default: var(--token-ruby-neutral-default);
 
     --token-static-100: var(--token-ruby-100);
@@ -335,7 +456,17 @@ html {
     --token-primary-900: var(--token-turquoise-900);
     --token-primary-default: var(--token-turquoise-default);
 
+    --token-primary-neutral-100: var(--token-turquoise-neutral-100);
+    --token-primary-neutral-200: var(--token-turquoise-neutral-200);
+    --token-primary-neutral-300: var(--token-turquoise-neutral-300);
+    --token-primary-neutral-400: var(--token-turquoise-neutral-400);
+    --token-primary-neutral-500: var(--token-turquoise-neutral-500);
     --token-primary-neutral-600: var(--token-turquoise-neutral-600);
+    --token-primary-neutral-700: var(--token-turquoise-neutral-700);
+    --token-primary-neutral-800: var(--token-turquoise-neutral-800);
+    --token-primary-neutral-900: var(--token-turquoise-neutral-900);
+    --token-primary-neutral-999: var(--token-turquoise-neutral-999);
+    --token-primary-neutral-000: var(--token-turquoise-neutral-000);
     --token-primary-neutral-default: var(--token-turquoise-neutral-default);
 
     --token-static-100: var(--token-turquoise-100);
@@ -360,7 +491,18 @@ html {
     --token-primary-900: var(--token-amethyst-900);
     --token-primary-default: var(--token-amethyst-default);
     
+    --token-primary-neutral-100: var(--token-amethyst-neutral-100);
+    --token-primary-neutral-200: var(--token-amethyst-neutral-200);
+    --token-primary-neutral-300: var(--token-amethyst-neutral-300);
+    --token-primary-neutral-400: var(--token-amethyst-neutral-400);
+    --token-primary-neutral-500: var(--token-amethyst-neutral-500);
+    --token-primary-neutral-300: var(--token-amethyst-neutral-300);
     --token-primary-neutral-600: var(--token-amethyst-neutral-600);
+    --token-primary-neutral-700: var(--token-amethyst-neutral-700);
+    --token-primary-neutral-800: var(--token-amethyst-neutral-800);
+    --token-primary-neutral-900: var(--token-amethyst-neutral-900);
+    --token-primary-neutral-999: var(--token-amethyst-neutral-999);
+    --token-primary-neutral-000: var(--token-amethyst-neutral-000);
     --token-primary-neutral-default: var(--token-amethyst-neutral-default);
 
     --token-static-100: var(--token-amethyst-100);
@@ -610,7 +752,7 @@ html:root {
   --token-progressBar-default-bar: var(--token-primary-neutral-default);
   --token-label-default-backgroundHover: var(--token-primary-neutral-default);
   --token-radio-default-border: var(--token-primary-neutral-default);
-  --token-label-default-border: var(--token-primary-neutral-default);
+  --token-label-default-border: var(--token-primary-neutral-300);
   --token-input-default-underline: var(--token-primary-neutral-default);
   --token-box-strong-border: var(--token-primary-neutral-default);
   --token-action-default-marker: var(--token-primary-neutral-default);

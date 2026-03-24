@@ -6,8 +6,8 @@
 
 function initializeRecentlySeenLogger() {
   const STORAGE_KEY = 'gemRecentlySeenImages';
-  const RECENTLY_USED_SYNC_KEY = 'gemRecentImages';
   const RECENTLY_SEEN_MAX_SETTING_KEY = 'gemRecentlySeenImagesMax';
+  const LAST_USED_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
   let recentlySeenMax = 300;
   const isDebugEnabled = () => {
     try {
@@ -36,6 +36,57 @@ function initializeRecentlySeenLogger() {
     const n = (typeof value === 'number') ? value : parseInt(String(value ?? ''), 10);
     if (!Number.isFinite(n)) return 300;
     return Math.min(2000, Math.max(50, Math.trunc(n)));
+  }
+
+  function pruneRecentlySeenImagesToLimit(list, limit, nowMs) {
+    const now = typeof nowMs === 'number' ? nowMs : Date.now();
+    if (!Array.isArray(list) || list.length <= limit) return list;
+    const next = [...list];
+    function isProtectedEntry(x) {
+      const lu = x && typeof x.lastUsed === 'number' ? x.lastUsed : null;
+      return lu != null && (now - lu) <= LAST_USED_RETENTION_MS;
+    }
+    function removeOneSmallestTsUnprotected() {
+      let bestIdx = -1;
+      let bestTs = Infinity;
+      for (let i = 0; i < next.length; i++) {
+        const x = next[i];
+        if (isProtectedEntry(x)) continue;
+        const t = (x && typeof x.ts === 'number') ? x.ts : 0;
+        if (t < bestTs) {
+          bestTs = t;
+          bestIdx = i;
+        }
+      }
+      if (bestIdx >= 0) {
+        next.splice(bestIdx, 1);
+        return true;
+      }
+      return false;
+    }
+    function removeOneSmallestTsAny() {
+      let bestIdx = -1;
+      let bestTs = Infinity;
+      for (let i = 0; i < next.length; i++) {
+        const x = next[i];
+        const t = (x && typeof x.ts === 'number') ? x.ts : 0;
+        if (t < bestTs) {
+          bestTs = t;
+          bestIdx = i;
+        }
+      }
+      if (bestIdx >= 0) {
+        next.splice(bestIdx, 1);
+        return true;
+      }
+      return false;
+    }
+    while (next.length > limit) {
+      if (!removeOneSmallestTsUnprotected()) {
+        if (!removeOneSmallestTsAny()) break;
+      }
+    }
+    return next;
   }
 
   // Load + live-update the max from sync settings
@@ -125,7 +176,11 @@ function initializeRecentlySeenLogger() {
             const ts = (x && typeof x.ts === 'number') ? x.ts : 0;
             const pp = (x && typeof x.path === 'string') ? x.path : '';
             const ffp = (x && typeof x.friendlyFilename === 'string') ? x.friendlyFilename : '';
-            return (uu && looksLikeImageUrl(uu)) ? { url: uu, ts, path: pp, friendlyFilename: ffp } : null;
+            const lastUsed = (x && typeof x.lastUsed === 'number') ? x.lastUsed : undefined;
+            if (!uu || !looksLikeImageUrl(uu)) return null;
+            const row = { url: uu, ts, path: pp, friendlyFilename: ffp };
+            if (lastUsed != null) row.lastUsed = lastUsed;
+            return row;
           })
           .filter(Boolean);
 
@@ -139,12 +194,14 @@ function initializeRecentlySeenLogger() {
           const cur = byUrl.get(p.url);
           if (cur) {
             updated += 1;
-            byUrl.set(p.url, {
+            const row = {
               url: p.url,
               ts: p.ts || Date.now(),
               path: p.path || cur.path || '',
               friendlyFilename: p.friendlyFilename || cur.friendlyFilename || ''
-            });
+            };
+            if (typeof cur.lastUsed === 'number') row.lastUsed = cur.lastUsed;
+            byUrl.set(p.url, row);
           } else {
             added += 1;
             byUrl.set(p.url, {
@@ -156,46 +213,20 @@ function initializeRecentlySeenLogger() {
           }
         });
 
-        const next = Array.from(byUrl.values());
+        let next = Array.from(byUrl.values());
         next.sort((a, b) => (a.ts || 0) - (b.ts || 0));
-        while (next.length > recentlySeenMax) next.shift();
+        next = pruneRecentlySeenImagesToLimit(next, recentlySeenMax, Date.now());
 
         STORE.set({ [STORAGE_KEY]: next }, () => {
           dbg(`Flush complete: added=${added}, updated=${updated}, stored=${next.length}`);
           flushInFlight = false;
           if (pendingMap.size) scheduleFlush();
-          // If these URLs already exist in Recently Used, copy friendlyFilename into that list.
-          try { syncCopyFriendlyFilenameToRecentlyUsed(pending); } catch (_) {}
         });
       });
     } catch (e) {
       dbg('Flush error:', e);
       flushInFlight = false;
     }
-  }
-
-  function syncCopyFriendlyFilenameToRecentlyUsed(pending) {
-    const map = new Map();
-    (pending || []).forEach((p) => {
-      if (p && p.url && p.friendlyFilename) map.set(p.url, p.friendlyFilename);
-    });
-    if (!map.size) return;
-
-    chrome.storage.sync.get({ [RECENTLY_USED_SYNC_KEY]: [] }, (res) => {
-      const list = Array.isArray(res && res[RECENTLY_USED_SYNC_KEY]) ? res[RECENTLY_USED_SYNC_KEY] : [];
-      let changed = 0;
-      const next = list.map((x) => {
-        const url = x && x.url;
-        if (!url) return x;
-        const ff = map.get(url);
-        if (!ff) return x;
-        if (x.friendlyFilename === ff) return x;
-        changed += 1;
-        return { ...(x || {}), friendlyFilename: ff };
-      });
-      if (!changed) return;
-      chrome.storage.sync.set({ [RECENTLY_USED_SYNC_KEY]: next });
-    });
   }
 
   function enqueueRecentlySeen(url, path, friendlyFilename) {

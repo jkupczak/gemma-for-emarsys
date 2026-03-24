@@ -477,9 +477,9 @@ function initializeOverlayPanelControls() {
     // Debug sequence for image preview tracing
     let gemImagePreviewDebugSeq = 0;
 
-    const GEM_RECENT_IMAGES_STORAGE_KEY = 'gemRecentlyUsedImages';
-    const GEM_RECENT_IMAGES_MAX = 100;
+    const GEM_LEGACY_RECENT_IMAGES_STORAGE_KEY = 'gemRecentlyUsedImages';
     const GEM_RECENTLY_SEEN_IMAGES_STORAGE_KEY = 'gemRecentlySeenImages';
+    const LAST_USED_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
     const GEM_RECENTLY_SEEN_IMAGES_MAX_SETTING_KEY = 'gemRecentlySeenImagesMax';
     let recentlySeenMax = 300;
     const GEM_FAVORITE_IMAGES_STORAGE_KEY = 'gemFavoriteImages';
@@ -717,6 +717,57 @@ function initializeOverlayPanelControls() {
       return Math.min(2000, Math.max(50, Math.trunc(n)));
     }
 
+    function pruneRecentlySeenImagesToLimit(list, limit, nowMs) {
+      const now = typeof nowMs === 'number' ? nowMs : Date.now();
+      if (!Array.isArray(list) || list.length <= limit) return list;
+      const next = [...list];
+      function isProtectedEntry(x) {
+        const lu = x && typeof x.lastUsed === 'number' ? x.lastUsed : null;
+        return lu != null && (now - lu) <= LAST_USED_RETENTION_MS;
+      }
+      function removeOneSmallestTsUnprotected() {
+        let bestIdx = -1;
+        let bestTs = Infinity;
+        for (let i = 0; i < next.length; i++) {
+          const x = next[i];
+          if (isProtectedEntry(x)) continue;
+          const t = (x && typeof x.ts === 'number') ? x.ts : 0;
+          if (t < bestTs) {
+            bestTs = t;
+            bestIdx = i;
+          }
+        }
+        if (bestIdx >= 0) {
+          next.splice(bestIdx, 1);
+          return true;
+        }
+        return false;
+      }
+      function removeOneSmallestTsAny() {
+        let bestIdx = -1;
+        let bestTs = Infinity;
+        for (let i = 0; i < next.length; i++) {
+          const x = next[i];
+          const t = (x && typeof x.ts === 'number') ? x.ts : 0;
+          if (t < bestTs) {
+            bestTs = t;
+            bestIdx = i;
+          }
+        }
+        if (bestIdx >= 0) {
+          next.splice(bestIdx, 1);
+          return true;
+        }
+        return false;
+      }
+      while (next.length > limit) {
+        if (!removeOneSmallestTsUnprotected()) {
+          if (!removeOneSmallestTsAny()) break;
+        }
+      }
+      return next;
+    }
+
     // Load the setting once; keep it updated via the storage change handler below.
     try {
       chrome.storage.sync.get({ [GEM_RECENTLY_SEEN_IMAGES_MAX_SETTING_KEY]: recentlySeenMax }, (res) => {
@@ -731,30 +782,32 @@ function initializeOverlayPanelControls() {
             [GEM_RECENT_IMAGES_PICKER_PREFS_KEY]: {
               view: 'grid',
               density: 'small',
-              source: 'recent', // recent | favorites | seen
-              gridCols: 6, // grid columns (2-10)
-              favGroupBy: 'category', // category | language | translation
-              seenGroupBy: 'path' // path | date
+              source: 'seen',
+              gridCols: 6,
+              favGroupBy: 'category',
+              seenGroupBy: 'path'
             }
           },
           (result) => {
             const prefs = result && result[GEM_RECENT_IMAGES_PICKER_PREFS_KEY];
             const view = prefs && (prefs.view === 'grid' ? 'grid' : 'table');
             const density = prefs && (prefs.density === 'medium' || prefs.density === 'large' ? prefs.density : 'small');
+            const rawSource = prefs && prefs.source;
             const source =
-              prefs && (prefs.source === 'favorites' ? 'favorites' : (prefs.source === 'seen' ? 'seen' : 'recent'));
+              rawSource === 'favorites' ? 'favorites' : 'seen';
             const gridColsRaw = prefs && Number(prefs.gridCols);
             const gridCols =
               Number.isFinite(gridColsRaw) ? Math.min(10, Math.max(2, Math.round(gridColsRaw))) : 6;
           const favGroupBy =
             prefs && (prefs.favGroupBy === 'language' ? 'language' : (prefs.favGroupBy === 'translation' ? 'translation' : 'category'));
+          const sg = prefs && prefs.seenGroupBy;
           const seenGroupBy =
-            prefs && (prefs.seenGroupBy === 'date' ? 'date' : 'path');
+            sg === 'date' ? 'date' : (sg === 'lastUsed' ? 'lastUsed' : 'path');
             callback({ view, density, source, gridCols, favGroupBy, seenGroupBy });
           }
         );
       } catch (e) {
-        callback({ view: 'grid', density: 'small', source: 'recent', gridCols: 6, favGroupBy: 'category', seenGroupBy: 'path' });
+        callback({ view: 'grid', density: 'small', source: 'seen', gridCols: 6, favGroupBy: 'category', seenGroupBy: 'path' });
       }
     }
 
@@ -762,14 +815,16 @@ function initializeOverlayPanelControls() {
       try {
         const view = prefs && (prefs.view === 'grid' ? 'grid' : 'table');
         const density = prefs && (prefs.density === 'medium' || prefs.density === 'large' ? prefs.density : 'small');
+        const rawSource = prefs && prefs.source;
         const source =
-          prefs && (prefs.source === 'favorites' ? 'favorites' : (prefs.source === 'seen' ? 'seen' : 'recent'));
+          rawSource === 'favorites' ? 'favorites' : 'seen';
         const gridColsRaw = prefs && Number(prefs.gridCols);
         const gridCols = Number.isFinite(gridColsRaw) ? Math.min(10, Math.max(2, Math.round(gridColsRaw))) : 6;
         const favGroupBy =
           prefs && (prefs.favGroupBy === 'language' ? 'language' : (prefs.favGroupBy === 'translation' ? 'translation' : 'category'));
+        const sg = prefs && prefs.seenGroupBy;
         const seenGroupBy =
-          prefs && (prefs.seenGroupBy === 'date' ? 'date' : 'path');
+          sg === 'date' ? 'date' : (sg === 'lastUsed' ? 'lastUsed' : 'path');
         chrome.storage.local.set({
           [GEM_RECENT_IMAGES_PICKER_PREFS_KEY]: { view, density, source, gridCols, favGroupBy, seenGroupBy }
         });
@@ -809,6 +864,69 @@ function initializeOverlayPanelControls() {
       return /\.(png|jpe?g|gif|webp|svg|avif|bmp|tiff?)(\?|#|$)/i.test(s);
     }
 
+    (function migrateRecentlyUsedIntoRecentlySeen() {
+      try {
+        chrome.storage.sync.get({ [GEM_RECENTLY_SEEN_IMAGES_MAX_SETTING_KEY]: 300 }, (syncRes) => {
+          const max = normalizeRecentlySeenMax(syncRes && syncRes[GEM_RECENTLY_SEEN_IMAGES_MAX_SETTING_KEY]);
+          chrome.storage.local.get(
+            {
+              [GEM_LEGACY_RECENT_IMAGES_STORAGE_KEY]: null,
+              [GEM_RECENTLY_SEEN_IMAGES_STORAGE_KEY]: []
+            },
+            (res) => {
+              const legacy = res && res[GEM_LEGACY_RECENT_IMAGES_STORAGE_KEY];
+              if (!legacy || !Array.isArray(legacy) || legacy.length === 0) return;
+              const seenRaw = res && res[GEM_RECENTLY_SEEN_IMAGES_STORAGE_KEY];
+              const seen = Array.isArray(seenRaw) ? seenRaw : [];
+              const byUrl = new Map();
+              seen.forEach((x) => {
+                const url = normalizeRecentImageUrlCandidate(x && x.url);
+                if (!url || !looksLikeImageUrl(url)) return;
+                const ts = (x && typeof x.ts === 'number') ? x.ts : 0;
+                const path = (x && typeof x.path === 'string') ? x.path : '';
+                const friendlyFilename = (x && typeof x.friendlyFilename === 'string') ? x.friendlyFilename : '';
+                const lastUsed = (x && typeof x.lastUsed === 'number') ? x.lastUsed : undefined;
+                const row = { url, ts, path, friendlyFilename };
+                if (lastUsed != null) row.lastUsed = lastUsed;
+                byUrl.set(url, row);
+              });
+              legacy.forEach((old) => {
+                const url = normalizeRecentImageUrlCandidate(old && old.url);
+                if (!url || !looksLikeImageUrl(url)) return;
+                const migratedTs = (old && typeof old.ts === 'number') ? old.ts : Date.now();
+                const ff = (old && typeof old.friendlyFilename === 'string') ? old.friendlyFilename : '';
+                const cur = byUrl.get(url);
+                if (cur) {
+                  const curLu = typeof cur.lastUsed === 'number' ? cur.lastUsed : 0;
+                  const merged = {
+                    ...cur,
+                    lastUsed: Math.max(curLu, migratedTs)
+                  };
+                  byUrl.set(url, merged);
+                } else {
+                  byUrl.set(url, {
+                    url,
+                    ts: migratedTs,
+                    lastUsed: migratedTs,
+                    path: '',
+                    friendlyFilename: ff
+                  });
+                }
+              });
+              let next = Array.from(byUrl.values());
+              next.sort((a, b) => (a.ts || 0) - (b.ts || 0));
+              next = pruneRecentlySeenImagesToLimit(next, max, Date.now());
+              chrome.storage.local.set({ [GEM_RECENTLY_SEEN_IMAGES_STORAGE_KEY]: next }, () => {
+                try {
+                  chrome.storage.local.remove(GEM_LEGACY_RECENT_IMAGES_STORAGE_KEY);
+                } catch (_) {}
+              });
+            }
+          );
+        });
+      } catch (_) {}
+    })();
+
     // Use the same normalization rules for the preview, so we don't keep "changing" URLs
     // due to invisible characters or formatting differences.
     function normalizePreviewImageUrl(raw) {
@@ -827,68 +945,6 @@ function initializeOverlayPanelControls() {
       }
     }
 
-    function getRecentImages(callback) {
-      try {
-        chrome.storage.local.get({ [GEM_RECENT_IMAGES_STORAGE_KEY]: [] }, (result) => {
-          const list = result && result[GEM_RECENT_IMAGES_STORAGE_KEY];
-          const raw = Array.isArray(list) ? list : [];
-          // Prune invalid entries (e.g., ZeroWidthSpace) on read
-          const cleaned = raw
-            .map((x) => {
-              const url = normalizeRecentImageUrlCandidate(x && x.url);
-              const ts = (x && typeof x.ts === 'number') ? x.ts : 0;
-              const friendlyFilename = (x && typeof x.friendlyFilename === 'string') ? x.friendlyFilename : '';
-              return url ? { url, ts, friendlyFilename } : null;
-            })
-            .filter(Boolean);
-          if (cleaned.length !== raw.length) {
-            console.log('[Gem][RecentImages] Pruned invalid recent image entries:', raw.length - cleaned.length);
-            saveRecentImages(cleaned);
-          }
-          callback(cleaned);
-        });
-      } catch (e) {
-        callback([]);
-      }
-    }
-
-    function saveRecentImages(list, callback) {
-      try {
-        chrome.storage.local.set({ [GEM_RECENT_IMAGES_STORAGE_KEY]: list }, () => {
-          callback && callback();
-        });
-      } catch (e) {
-        callback && callback();
-      }
-    }
-
-    function upsertRecentImageUrl(url) {
-      const u = normalizeRecentImageUrlCandidate(url);
-      if (!u) {
-        if (url) console.log('[Gem][RecentImages] Ignoring non-image/invalid URL candidate:', url);
-        return;
-      }
-
-      const now = Date.now();
-      getRecentImages((list) => {
-        const next = Array.isArray(list) ? [...list] : [];
-        const idx = next.findIndex((x) => x && typeof x.url === 'string' && x.url === u);
-        if (idx >= 0) {
-          console.log('[Gem][RecentImages] URL already exists, bumping timestamp:', u);
-          next[idx] = { url: u, ts: now, friendlyFilename: (next[idx] && next[idx].friendlyFilename) || '' };
-        } else {
-          console.log('[Gem][RecentImages] Adding new URL:', u);
-          next.push({ url: u, ts: now, friendlyFilename: '' });
-        }
-
-        // Keep max size by trimming oldest
-        next.sort((a, b) => (a.ts || 0) - (b.ts || 0));
-        while (next.length > GEM_RECENT_IMAGES_MAX) next.shift();
-
-        saveRecentImages(next);
-      });
-    }
-
     // ------------------------------------------------------------
     // Recently Seen (Media DB)
     // ------------------------------------------------------------
@@ -904,7 +960,11 @@ function initializeOverlayPanelControls() {
               const ts = (x && typeof x.ts === 'number') ? x.ts : 0;
               const path = (x && typeof x.path === 'string') ? x.path : '';
               const friendlyFilename = (x && typeof x.friendlyFilename === 'string') ? x.friendlyFilename : '';
-              return (url && looksLikeImageUrl(url)) ? { url, ts, path, friendlyFilename } : null;
+              const lastUsed = (x && typeof x.lastUsed === 'number') ? x.lastUsed : undefined;
+              if (!url || !looksLikeImageUrl(url)) return null;
+              const row = { url, ts, path, friendlyFilename };
+              if (lastUsed != null) row.lastUsed = lastUsed;
+              return row;
             })
             .filter(Boolean);
           if (cleaned.length !== raw.length) {
@@ -937,13 +997,50 @@ function initializeOverlayPanelControls() {
         const next = Array.isArray(list) ? [...list] : [];
         const idx = next.findIndex((x) => x && x.url === u);
         if (idx >= 0) {
-          next[idx] = { url: u, ts: now, path: p || (next[idx] && next[idx].path) || '' };
+          const prev = next[idx];
+          const row = {
+            url: u,
+            ts: now,
+            path: p || (prev && prev.path) || '',
+            friendlyFilename: (prev && prev.friendlyFilename) || ''
+          };
+          if (typeof prev.lastUsed === 'number') row.lastUsed = prev.lastUsed;
+          next[idx] = row;
         } else {
           next.push({ url: u, ts: now, path: p || '' });
         }
         next.sort((a, b) => (a.ts || 0) - (b.ts || 0));
-        while (next.length > recentlySeenMax) next.shift();
-        saveRecentlySeenImages(next);
+        const pruned = pruneRecentlySeenImagesToLimit(next, recentlySeenMax, now);
+        saveRecentlySeenImages(pruned);
+      });
+    }
+
+    function recordImageLastUsed(url) {
+      const u = normalizeRecentImageUrlCandidate(url);
+      if (!u) {
+        if (url) console.log('[Gem][RecentImages] Ignoring non-image/invalid URL candidate:', url);
+        return;
+      }
+      if (!looksLikeImageUrl(u)) return;
+      const now = Date.now();
+      getRecentlySeenImages((list) => {
+        const next = Array.isArray(list) ? [...list] : [];
+        const idx = next.findIndex((x) => x && x.url === u);
+        if (idx >= 0) {
+          const prev = next[idx];
+          next[idx] = {
+            url: u,
+            ts: prev.ts || now,
+            path: prev.path || '',
+            friendlyFilename: prev.friendlyFilename || '',
+            lastUsed: now
+          };
+        } else {
+          next.push({ url: u, ts: now, lastUsed: now, path: '', friendlyFilename: '' });
+        }
+        next.sort((a, b) => (a.ts || 0) - (b.ts || 0));
+        const pruned = pruneRecentlySeenImagesToLimit(next, recentlySeenMax, now);
+        saveRecentlySeenImages(pruned);
       });
     }
 
@@ -1591,7 +1688,7 @@ function initializeOverlayPanelControls() {
 
           // Default source view
           if (!picker.dataset.gemRecentImagesSource) {
-            picker.dataset.gemRecentImagesSource = 'recent'; // recent | favorites
+            picker.dataset.gemRecentImagesSource = 'seen';
           }
           if (!picker.dataset.gemFavoriteImagesGroupBy) {
             picker.dataset.gemFavoriteImagesGroupBy = 'category'; // category | language | translation
@@ -1688,9 +1785,16 @@ function initializeOverlayPanelControls() {
             const seenGroupByAttr = header.getAttribute('data-seen-groupby') || 'path';
             getRecentlySeenImages((list) => {
               const raw = Array.isArray(list) ? list : [];
+              const SEEN_LAST_USED_NONE = '__gem_last_used_none__';
               const filtered = raw.filter((item) => {
                 if (seenGroupByAttr === 'date') {
                   return formatRecentImageDate(item.ts || 0).split(',')[0] !== gKey;
+                }
+                if (seenGroupByAttr === 'lastUsed') {
+                  if (gKey === SEEN_LAST_USED_NONE) {
+                    return typeof item.lastUsed === 'number' && item.lastUsed > 0;
+                  }
+                  return formatRecentImageDate(item.lastUsed || 0).split(',')[0] !== gKey;
                 }
                 return (item.path || '') !== gKey;
               });
@@ -1717,7 +1821,7 @@ function initializeOverlayPanelControls() {
             e.preventDefault();
             e.stopPropagation();
             const tabValue = sourceTab.getAttribute('data-tab') || '';
-            const v = (tabValue === 'favorites') ? 'favorites' : (tabValue === 'seen' ? 'seen' : 'recent');
+            const v = tabValue === 'favorites' ? 'favorites' : 'seen';
             picker.dataset.gemRecentImagesSource = v;
             saveRecentImagesPickerPrefs({
               view: picker.dataset.gemRecentImagesView || 'grid',
@@ -1735,7 +1839,7 @@ function initializeOverlayPanelControls() {
           if (collapseExpandAllBtn) {
             e.preventDefault();
             e.stopPropagation();
-            const currentSource = picker.dataset.gemRecentImagesSource || 'recent';
+            const currentSource = picker.dataset.gemRecentImagesSource || 'seen';
 
             // Determine the appropriate action based on current group states
             const determineAction = (collapseMap, groupHeaders) => {
@@ -1908,7 +2012,7 @@ function initializeOverlayPanelControls() {
             }
             applyMetaSideEffects();
           }
-          upsertRecentImageUrl(url);
+          recordImageLastUsed(url);
         });
 
         // Enter/Tab on search input: add terms as pills
@@ -1997,7 +2101,7 @@ function initializeOverlayPanelControls() {
             saveRecentImagesPickerPrefs({
               view: picker.dataset.gemRecentImagesView || 'grid',
               density: picker.dataset.gemRecentImagesGridDensity || 'small',
-              source: picker.dataset.gemRecentImagesSource || 'recent',
+              source: picker.dataset.gemRecentImagesSource || 'seen',
               gridCols: Number(picker.dataset.gemRecentImagesGridCols || 6),
               favGroupBy: v,
               seenGroupBy: picker.dataset.gemSeenImagesGroupBy || 'path'
@@ -2008,12 +2112,14 @@ function initializeOverlayPanelControls() {
 
           const seenGroupSel = e.target && e.target.closest && e.target.closest('.gem-seen-groupby-select');
           if (seenGroupSel) {
-            const v = seenGroupSel.value === 'date' ? 'date' : 'path';
+            const v =
+              seenGroupSel.value === 'date' ? 'date' :
+              (seenGroupSel.value === 'lastUsed' ? 'lastUsed' : 'path');
             picker.dataset.gemSeenImagesGroupBy = v;
             saveRecentImagesPickerPrefs({
               view: picker.dataset.gemRecentImagesView || 'grid',
               density: picker.dataset.gemRecentImagesGridDensity || 'small',
-              source: picker.dataset.gemRecentImagesSource || 'recent',
+              source: picker.dataset.gemRecentImagesSource || 'seen',
               gridCols: Number(picker.dataset.gemRecentImagesGridCols || 6),
               seenGroupBy: v
             });
@@ -2029,7 +2135,7 @@ function initializeOverlayPanelControls() {
             saveRecentImagesPickerPrefs({
               view: picker.dataset.gemRecentImagesView || 'grid',
               density: picker.dataset.gemRecentImagesGridDensity || 'small',
-              source: picker.dataset.gemRecentImagesSource || 'recent',
+              source: picker.dataset.gemRecentImagesSource || 'seen',
               gridCols: v,
               favGroupBy: picker.dataset.gemFavoriteImagesGroupBy || 'category',
               seenGroupBy: picker.dataset.gemSeenImagesGroupBy || 'path'
@@ -2045,7 +2151,7 @@ function initializeOverlayPanelControls() {
           saveRecentImagesPickerPrefs({
             view: picker.dataset.gemRecentImagesView,
             density: picker.dataset.gemRecentImagesGridDensity || 'small',
-            source: picker.dataset.gemRecentImagesSource || 'recent',
+            source: picker.dataset.gemRecentImagesSource || 'seen',
             gridCols: Number(picker.dataset.gemRecentImagesGridCols || 6),
             favGroupBy: picker.dataset.gemFavoriteImagesGroupBy || 'category',
             seenGroupBy: picker.dataset.gemSeenImagesGroupBy || 'path'
@@ -2073,14 +2179,11 @@ function initializeOverlayPanelControls() {
 
       // Render
       const source =
-        picker.dataset.gemRecentImagesSource === 'favorites' ? 'favorites' :
-        picker.dataset.gemRecentImagesSource === 'seen' ? 'seen' :
-        'recent';
+        picker.dataset.gemRecentImagesSource === 'favorites' ? 'favorites' : 'seen';
 
       const getList = (cb) => {
         if (source === 'favorites') return getFavoriteImages(cb);
-        if (source === 'seen') return getRecentlySeenImages(cb);
-        return getRecentImages(cb);
+        return getRecentlySeenImages(cb);
       };
 
       // We always need favorites to render star state in the Recent list.
@@ -2111,22 +2214,18 @@ function initializeOverlayPanelControls() {
           picker.style.setProperty('--gem-recent-grid-cols', String(gridCols));
 
           const title =
-            source === 'favorites' ? 'Favorites' :
-            source === 'seen' ? 'Recently Seen' :
-            'Recently Used';
+            source === 'favorites' ? 'Favorite Images' :
+            'Recent Images';
           const addFavoriteBtn = source === 'favorites'
             ? `<button class="e-btn gem-favorite-images-add-btn" type="button">Add</button>`
             : '';
 
           const sourceTabs = `
-              <div class="e-tabs__title ${source === 'recent' ? 'e-tabs__title-active' : ''}" data-tab="recent">
-                <div class="e-tabs__separator">Recently Used</div>
-              </div>
               <div class="e-tabs__title ${source === 'seen' ? 'e-tabs__title-active' : ''}" data-tab="seen">
-                <div class="e-tabs__separator">Recently Seen</div>
+                <div class="e-tabs__separator">Recent Images</div>
               </div>
               <div class="e-tabs__title ${source === 'favorites' ? 'e-tabs__title-active' : ''}" data-tab="favorites">
-                <div class="e-tabs__separator">Favorites</div>
+                <div class="e-tabs__separator">Favorite Images</div>
               </div>
           `.trim();
 
@@ -2134,8 +2233,9 @@ function initializeOverlayPanelControls() {
             (picker.dataset.gemFavoriteImagesGroupBy === 'language') ? 'language' :
             (picker.dataset.gemFavoriteImagesGroupBy === 'translation') ? 'translation' :
             'category';
+          const sgRaw = picker.dataset.gemSeenImagesGroupBy;
           const seenGroupBy =
-            (picker.dataset.gemSeenImagesGroupBy === 'date') ? 'date' : 'path';
+            sgRaw === 'date' ? 'date' : (sgRaw === 'lastUsed' ? 'lastUsed' : 'path');
           const groupBySelect = (source === 'favorites')
             ? `
               <label style="font-size:12px; opacity:0.75; white-space:nowrap;">Group by</label>
@@ -2151,6 +2251,7 @@ function initializeOverlayPanelControls() {
               <select class="e-select gem-seen-groupby-select" style="height:36px; width:auto;">
                 <option value="path" ${seenGroupBy === 'path' ? 'selected' : ''}>Folder Path</option>
                 <option value="date" ${seenGroupBy === 'date' ? 'selected' : ''}>Last Seen</option>
+                <option value="lastUsed" ${seenGroupBy === 'lastUsed' ? 'selected' : ''}>Last Used</option>
               </select>
             `.trim()
             : '';
@@ -2172,7 +2273,7 @@ function initializeOverlayPanelControls() {
               <div id="gem-search-container" style="margin-top:8px;padding:0 16px;display:flex;gap:8px;align-items:flex-start;">
                 <div style="flex:1;display:flex;flex-direction:column;gap:8px;min-width:0;">
                   <div class="gem-search-input-wrap">
-                    <input class="e-input e-input-search gem-image-search ${source === 'favorites' ? 'gem-favorite-images-search' : 'gem-seen-images-search'}" placeholder="Search ${source === 'favorites' ? 'favorites' : 'recently seen'}" type="search" value="${escape(source === 'favorites' ? (picker.dataset.gemFavoriteImagesSearch || '') : (picker.dataset.gemSeenImagesSearch || ''))}">
+                    <input class="e-input e-input-search gem-image-search ${source === 'favorites' ? 'gem-favorite-images-search' : 'gem-seen-images-search'}" placeholder="Search ${source === 'favorites' ? 'favorite images' : 'recent images'}" type="search" value="${escape(source === 'favorites' ? (picker.dataset.gemFavoriteImagesSearch || '') : (picker.dataset.gemSeenImagesSearch || ''))}">
                     <button type="button" class="gem-regex-toggle ${regexActive ? 'gem-regex-toggle--active' : ''}" title="Use regular expression" aria-pressed="${regexActive ? 'true' : 'false'}" data-regex-source="${source}">.*</button>
                   </div>
                   <div class="gem-search-pills" data-pills-source="${source}">
@@ -2223,15 +2324,11 @@ function initializeOverlayPanelControls() {
 
           const empty = rows.length === 0
             ? (source === 'favorites'
-              ? '<div style="margin-top:10px; padding:0 16px 16px 16px; opacity:0.7;">No favorites yet. Favorite an image from "Recently Used" or "Recently Seen".</div>'
-              : (source === 'seen'
-                ? '<div style="margin-top:10px; padding:0 16px 16px 16px; opacity:0.7;">No recently seen images yet. Browse Media DB images to start collecting them.</div>'
-                : '<div style="margin-top:10px; padding:0 16px 16px 16px; opacity:0.7;">No recently used images yet. Open an image properties dialog with an image URL to start collecting them.</div>'))
+              ? '<div style="margin-top:10px; padding:0 16px 16px 16px; opacity:0.7;">No favorites yet. Favorite an image from Recent Images or add one here.</div>'
+              : '<div style="margin-top:10px; padding:0 16px 16px 16px; opacity:0.7;">No recent images yet. Browse Media DB images or use an image in the editor to start collecting them.</div>')
             : '';
 
-          const dateLabel =
-            source === 'seen' ? 'Last Seen' :
-            'Last Used';
+          const dateLabel = 'Last Seen';
 
           // Favorites view: group by category OR language, collapsible, searchable, sorted.
           if (source === 'favorites') {
@@ -2244,8 +2341,13 @@ function initializeOverlayPanelControls() {
             ];
 
             // Build last-used map from recent images so we can sort missing-altText items by last used.
-            getRecentImages((recentList) => {
-              const lastUsedMap = new Map((Array.isArray(recentList) ? recentList : []).map((x) => [x.url, x.ts || 0]));
+            getRecentlySeenImages((seenForLu) => {
+              const lastUsedMap = new Map();
+              (Array.isArray(seenForLu) ? seenForLu : []).forEach((x) => {
+                if (!x || !x.url) return;
+                const lu = typeof x.lastUsed === 'number' ? x.lastUsed : 0;
+                lastUsedMap.set(x.url, lu);
+              });
 
               getFavoriteCategoryCollapseMap((collapseMap) => {
                 const collapse = collapseMap || {};
@@ -2546,12 +2648,14 @@ function initializeOverlayPanelControls() {
             getRecentlySeenImageGroupCollapseMap((collapseMap) => {
               const collapse = collapseMap || {};
 
+              const SEEN_LAST_USED_NONE = '__gem_last_used_none__';
               const items = rows.map((r) => {
                 const url = r.url || '';
                 const ts = r.ts || 0;
                 const path = (r.path || '').trim();
                 const friendlyFilename = (r.friendlyFilename || '').trim();
-                return { url, ts, path, friendlyFilename };
+                const lastUsed = (typeof r.lastUsed === 'number') ? r.lastUsed : undefined;
+                return { url, ts, path, friendlyFilename, lastUsed };
               });
 
               const matchesQuery = (it) => {
@@ -2572,37 +2676,54 @@ function initializeOverlayPanelControls() {
 
               const groupMap = new Map();
               filtered.forEach((it) => {
-                const g = seenGroupBy === 'date'
-                  ? formatRecentImageDate(it.ts).split(',')[0] // Group by date part only (e.g., "January 12, 2026" -> "January 12")
-                  : (it.path || '');
+                let g;
+                if (seenGroupBy === 'lastUsed') {
+                  g = (typeof it.lastUsed === 'number' && it.lastUsed > 0)
+                    ? formatRecentImageDate(it.lastUsed).split(',')[0]
+                    : SEEN_LAST_USED_NONE;
+                } else if (seenGroupBy === 'date') {
+                  g = formatRecentImageDate(it.ts).split(',')[0];
+                } else {
+                  g = it.path || '';
+                }
                 if (!groupMap.has(g)) groupMap.set(g, []);
                 groupMap.get(g).push(it);
               });
 
-              const groupKeys = Array.from(groupMap.keys());
-              groupKeys.sort((a, b) => {
-                // Handle empty groups - they should be last
-                const aEmpty = !a || (a || '').trim() === '';
-                const bEmpty = !b || (b || '').trim() === '';
-
-                if (aEmpty && bEmpty) return 0;
-                if (aEmpty) return 1;
-                if (bEmpty) return -1;
-
-                // For path grouping, sort by most recent timestamp in the group
-                if (seenGroupBy === 'path') {
+              let groupKeys = Array.from(groupMap.keys());
+              if (seenGroupBy === 'lastUsed') {
+                const dated = groupKeys.filter((k) => k !== SEEN_LAST_USED_NONE);
+                dated.sort((a, b) => {
                   const aItems = groupMap.get(a) || [];
                   const bItems = groupMap.get(b) || [];
-                  const aMaxTs = Math.max(...aItems.map(item => item.ts || 0));
-                  const bMaxTs = Math.max(...bItems.map(item => item.ts || 0));
-                  return bMaxTs - aMaxTs; // Most recent first
-                }
+                  const aMax = Math.max(...aItems.map((item) => item.lastUsed || 0));
+                  const bMax = Math.max(...bItems.map((item) => item.lastUsed || 0));
+                  return bMax - aMax;
+                });
+                groupKeys = dated;
+                if (groupMap.has(SEEN_LAST_USED_NONE)) groupKeys.push(SEEN_LAST_USED_NONE);
+              } else {
+                groupKeys.sort((a, b) => {
+                  const aEmpty = !a || (a || '').trim() === '';
+                  const bEmpty = !b || (b || '').trim() === '';
 
-                // For date grouping, sort alphabetically
-                const aa = (a || '').toLowerCase();
-                const bb = (b || '').toLowerCase();
-                return aa.localeCompare(bb);
-              });
+                  if (aEmpty && bEmpty) return 0;
+                  if (aEmpty) return 1;
+                  if (bEmpty) return -1;
+
+                  if (seenGroupBy === 'path') {
+                    const aItems = groupMap.get(a) || [];
+                    const bItems = groupMap.get(b) || [];
+                    const aMaxTs = Math.max(...aItems.map(item => item.ts || 0));
+                    const bMaxTs = Math.max(...bItems.map(item => item.ts || 0));
+                    return bMaxTs - aMaxTs;
+                  }
+
+                  const aa = (a || '').toLowerCase();
+                  const bb = (b || '').toLowerCase();
+                  return aa.localeCompare(bb);
+                });
+              }
 
               if (seenTerms.length === 0) {
                 const prefix = `seen:${seenGroupBy}:`;
@@ -2622,10 +2743,12 @@ function initializeOverlayPanelControls() {
               }
 
               const renderGroupHeader = (gKey, count) => {
-                const label = gKey
-                  ? (seenGroupBy === 'date' ? gKey : gKey)
-                  : (seenGroupBy === 'date' ? 'Unknown Date' : 'No Path');
-                const storageKey = `seen:${seenGroupBy}:${gKey || ''}`;
+                const label = gKey === SEEN_LAST_USED_NONE
+                  ? 'Not Used Recently'
+                  : (gKey
+                    ? ((seenGroupBy === 'date' || seenGroupBy === 'lastUsed') ? gKey : gKey)
+                    : ((seenGroupBy === 'date' || seenGroupBy === 'lastUsed') ? 'Unknown Date' : 'No Path'));
+                const storageKey = `seen:${seenGroupBy}:${gKey === SEEN_LAST_USED_NONE ? SEEN_LAST_USED_NONE : (gKey || '')}`;
                 const isCollapsedRaw = !!collapse[storageKey];
                 const isCollapsed = isCollapsedRaw;
                 const caret = isCollapsed ? '▸' : '▾';
@@ -2650,6 +2773,18 @@ function initializeOverlayPanelControls() {
                 const star = isFav ? '★' : '☆';
                 const starTitle = isFav ? 'Unfavorite' : 'Favorite';
                 const friendlyFilename = it.friendlyFilename || '';
+                let usedNoticeHtml = '';
+                if (typeof it.lastUsed === 'number' && it.lastUsed > 0) {
+                  const lu = new Date(it.lastUsed);
+                  const now = new Date();
+                  const luDay = new Date(lu.getFullYear(), lu.getMonth(), lu.getDate()).getTime();
+                  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+                  const dayDiff = Math.round((today - luDay) / (24 * 60 * 60 * 1000));
+                  const usedLabel = dayDiff <= 0 ? 'Used today' : `Used ${dayDiff} day${dayDiff === 1 ? '' : 's'} ago`;
+                  usedNoticeHtml = `
+                    <div class="gem-recent-image-used-notice">${escape(usedLabel)}</div>
+                  `.trim();
+                }
                 return `
                   <div class="gem-recent-image-tile">
                     <button class="gem-recent-image-info-btn" type="button" data-url="${escape(url)}" aria-label="View image details" title="View image details">
@@ -2659,6 +2794,7 @@ function initializeOverlayPanelControls() {
                       ${star}
                     </button>
                     <img class="gem-recent-image-thumb gem-checkered-canvas" src="${escape(url)}" alt="" />
+                    ${usedNoticeHtml}
                     <div class="gem-recent-image-overlay">
                       <button class="e-btn e-btn-primary gem-recent-image-use-btn" type="button" data-url="${escape(url)}">
                         Insert
@@ -2705,11 +2841,15 @@ function initializeOverlayPanelControls() {
               const buildCategorySections = () => {
                 return groupKeys.map((gKey) => {
                   const catItems = groupMap.get(gKey) || [];
-                  // Sort by timestamp (most recent first)
-                  catItems.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+                  catItems.sort((a, b) => {
+                    if (seenGroupBy === 'lastUsed' && gKey !== SEEN_LAST_USED_NONE) {
+                      return (b.lastUsed || 0) - (a.lastUsed || 0);
+                    }
+                    return (b.ts || 0) - (a.ts || 0);
+                  });
 
                   const headerHtml = renderGroupHeader(gKey, catItems.length);
-                  const storageKey = `seen:${seenGroupBy}:${gKey || ''}`;
+                  const storageKey = `seen:${seenGroupBy}:${gKey === SEEN_LAST_USED_NONE ? SEEN_LAST_USED_NONE : (gKey || '')}`;
                   const isCollapsedRaw = !!collapse[storageKey];
                   const isCollapsed = isCollapsedRaw;
                   if (viewMode === 'grid') {
@@ -2801,185 +2941,9 @@ function initializeOverlayPanelControls() {
             return;
           }
 
-          // Filter rows for seen source if searching (ungrouped / fallback view)
-          let filteredRows = rows;
-          let seenTermsUngrouped = [];
-          if (source === 'seen') {
-            const seenPillsUngrouped = pillsForContext(picker._gemSearchPills, PILL_CTX_SEEN);
-            const qRawUngrouped = String(picker.dataset.gemSeenImagesSearch || '').trim();
-            seenTermsUngrouped = [
-              ...seenPillsUngrouped.filter((p) => p.active).map((p) => (p.term || '').toLowerCase().trim()).filter(Boolean),
-              ...(qRawUngrouped ? [qRawUngrouped.toLowerCase()] : [])
-            ];
-            if (seenTermsUngrouped.length > 0) {
-              filteredRows = rows.filter((r) => {
-                const friendlyFilename = (r && typeof r.friendlyFilename === 'string') ? r.friendlyFilename : '';
-                const path = (r && typeof r.path === 'string') ? r.path : '';
-                const url = r.url || '';
-                const hay = `${friendlyFilename} ${path} ${url}`.toLowerCase();
-                return seenTermsUngrouped.every((t) => hay.includes(t));
-              });
-            }
-          }
-
-          // Existing behavior for Recent list (ungrouped)
-          const seenTermsForSummary = source === 'seen' ? seenTermsUngrouped : [];
-          const seenTermsDisplaySummary = seenTermsForSummary.length > 0 ? seenTermsForSummary.map((t) => `'${escape(t)}'`).join(', ') : '';
-          const seenMatchesSummary = source === 'seen' && seenTermsForSummary.length > 0 && filteredRows.length > 0
-            ? `<div style="opacity:0.7; margin-top:10px;">Found ${filteredRows.length} matches for ${seenTermsDisplaySummary}.</div>`
-            : '';
-          const noMatches = source === 'seen' && seenTermsForSummary.length > 0 && filteredRows.length === 0
-            ? `<div style="opacity:0.7; margin-top:10px;">No matches found for ${seenTermsDisplaySummary}.</div>`
-            : '';
-
-          // For content-only updates (search changes), preserve header and update only content
-          const contentHtml = viewMode === 'grid'
-            ? `
-                ${seenMatchesSummary}
-                ${noMatches}
-                <div class="gem-recent-images-grid">
-                  ${filteredRows.map((r) => {
-                    const url = r.url || '';
-                    const ts = r.ts || 0;
-                    const friendlyFilename = (r && typeof r.friendlyFilename === 'string') ? r.friendlyFilename : '';
-                    const isFav = favSet.has(url);
-                    const star = isFav ? '★' : '☆';
-                    const starTitle = isFav ? 'Unfavorite' : 'Favorite';
-                    return `
-                      <div class="gem-recent-image-tile">
-                        ${source === 'seen' ? `
-                          <button class="gem-recent-image-info-btn" type="button" data-url="${escape(url)}" aria-label="View image details" title="View image details">
-                            ℹ
-                          </button>
-                        ` : ''}
-                        <button class="gem-recent-image-fav-btn ${isFav ? 'gem-recent-image-fav-btn--active' : ''}" type="button" data-url="${escape(url)}" aria-label="${starTitle}" title="${starTitle}">
-                          ${star}
-                        </button>
-                        <img class="gem-recent-image-thumb gem-checkered-canvas" src="${escape(url)}" alt="" />
-                        <div class="gem-recent-image-overlay">
-                          <button class="e-btn e-btn-primary gem-recent-image-use-btn" type="button" data-url="${escape(url)}">
-                            Insert
-                          </button>
-                        </div>
-                        <div class="gem-recent-image-meta">
-                          ${source === 'seen'
-                            ? `<div class="gem-recent-image-date" title="${escape(friendlyFilename || url)}">${escape(friendlyFilename || url)}</div>`
-                            : (source === 'recent' && friendlyFilename
-                              ? `<div class="gem-recent-image-date" title="${escape(friendlyFilename)}">${escape(friendlyFilename)}</div>`
-                              : '')}
-                        </div>
-                      </div>
-                    `;
-                  }).join('')}
-                </div>
-                ${empty}
-              `.trim()
-            : `
-                ${seenMatchesSummary}
-                ${noMatches}
-                <div style="padding:0 16px 16px">
-                <table data-e-version="2" class="e-table e-table-bordered gem-recent-images-table" style="width:100%; font-size: 14 px;">
-                  <thead>
-                    <tr>
-                      <th style="width:140px;">Preview</th>
-                      <th>${source === 'seen' ? 'Filename' : (source === 'recent' ? 'Name' : 'URL')}</th>
-                      <th style="width:160px;">${escape(dateLabel)}</th>
-                      <th style="width:160px; text-align:right;">Use</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${filteredRows.map((r) => {
-                      const url = r.url || '';
-                      const ts = r.ts || 0;
-                      const friendlyFilename = (r && typeof r.friendlyFilename === 'string') ? r.friendlyFilename : '';
-                      const isFav = favSet.has(url);
-                      const star = isFav ? '★' : '☆';
-                      const starTitle = isFav ? 'Unfavorite' : 'Favorite';
-                      return `
-                        <tr>
-                          <td style="padding:6px; width:140px; vertical-align:middle; position:relative;">
-                            <img class="gem-checkered-canvas" src="${escape(url)}" style="display:block; width:128px; height:70px; object-fit:contain; border-radius:4px;" />
-                            ${source === 'seen' ? `
-                              <button class="gem-recent-image-info-btn gem-recent-image-info-btn--table" type="button" data-url="${escape(url)}" aria-label="View image details" title="View image details" style="position:absolute; top:8px; left:8px; background:rgba(255,255,255,0.9); border:1px solid #ccc; border-radius:50%; width:20px; height:20px; display:flex; align-items:center; justify-content:center; font-size:12px; cursor:pointer;">
-                                ℹ
-                              </button>
-                            ` : ''}
-                          </td>
-                          <td style="padding:6px; vertical-align:middle; word-break:break-word;">${escape(source === 'seen' ? (friendlyFilename || url) : (source === 'recent' ? (friendlyFilename || url) : url))}</td>
-                          <td style="padding:6px; vertical-align:middle;">${escape(formatRecentImageDate(ts))}</td>
-                          <td style="padding:6px; vertical-align:middle; text-align:right; white-space:nowrap;">
-                            <button class="e-btn e-btn-borderless e-btn-onlyicon gem-recent-image-fav-btn gem-recent-image-fav-btn--table ${isFav ? 'gem-recent-image-fav-btn--active' : ''}" type="button" data-url="${escape(url)}" aria-label="${starTitle}" title="${starTitle}">
-                              ${star}
-                            </button>
-                            <button class="e-btn e-btn-primary gem-recent-image-use-btn" type="button" data-url="${escape(url)}">
-                              Use
-                            </button>
-                          </td>
-                        </tr>
-                      `;
-                    }).join('')}
-                  </tbody>
-                </table>
-                </div>
-              `.trim();
-
-          if (opts.contentOnly && picker.querySelector('#gem-image-list-header')) {
-            // Replace everything after the header
-            const header = picker.querySelector('#gem-image-list-header');
-            if (header) {
-              // Remove all siblings after header
-              let nextSibling = header.nextSibling;
-              while (nextSibling) {
-                const toRemove = nextSibling;
-                nextSibling = nextSibling.nextSibling;
-                toRemove.remove();
-              }
-              // Add new content
-              const contentContainer = document.createElement('div');
-              contentContainer.innerHTML = contentHtml;
-              while (contentContainer.firstChild) {
-                picker.appendChild(contentContainer.firstChild);
-              }
-            }
-          } else {
-            picker.innerHTML = `
-              ${header}
-              ${contentHtml}
-            `.trim();
-          }
-          scheduleGemSearchPillSortableRefresh(picker, modal);
           }; // render
 
-          if (source !== 'recent') {
-            render(list);
-            return;
-          }
-
-          // Before displaying Recently Used, enrich it from Recently Seen (copy friendlyFilename where available).
-          getRecentlySeenImages((seenList) => {
-            const seenMap = new Map(
-              (Array.isArray(seenList) ? seenList : [])
-                .filter((x) => x && x.url && x.friendlyFilename)
-                .map((x) => [x.url, x.friendlyFilename])
-            );
-            if (!seenMap.size) {
-              render(list);
-              return;
-            }
-
-            let changed = 0;
-            const merged = (Array.isArray(list) ? list : []).map((r) => {
-              const url = r && r.url;
-              if (!url) return r;
-              const ff = seenMap.get(url);
-              if (!ff) return r;
-              if (r.friendlyFilename === ff) return r;
-              changed += 1;
-              return { ...(r || {}), friendlyFilename: ff };
-            });
-            if (changed) saveRecentImages(merged);
-            render(merged);
-          });
+          render(list);
           });
         });
       });
@@ -3168,6 +3132,7 @@ function initializeOverlayPanelControls() {
           const friendlyFilename = (seenItem.friendlyFilename || '');
           const path = (seenItem.path || '');
           const ts = seenItem.ts || 0;
+          const lastUsedTs = typeof seenItem.lastUsed === 'number' ? seenItem.lastUsed : null;
 
           const bodyHtml = `
             <div class="gem-image-modal__metadata">
@@ -3190,6 +3155,10 @@ function initializeOverlayPanelControls() {
               <div class="e-field">
                 <label class="e-field__label">Last Seen</label>
                 <div>${formatRecentImageDate(ts)}</div>
+              </div>
+              <div class="e-field">
+                <label class="e-field__label">Last Used</label>
+                <div>${lastUsedTs != null ? formatRecentImageDate(lastUsedTs) : '—'}</div>
               </div>
             </div>
           `.trim();
@@ -3253,7 +3222,7 @@ function initializeOverlayPanelControls() {
             }
             applyMetaSideEffects();
           }
-          upsertRecentImageUrl(u);
+          recordImageLastUsed(u);
           closeModal();
         });
 
@@ -4288,7 +4257,7 @@ function initializeOverlayPanelControls() {
         const imageUrl = normalizePreviewImageUrl(htmlEditor.getAttribute('html'));
         updateImageInPreviewCanvas(imageUrl, inferPreviewTabFromEditor(htmlEditor));
         // Collect recent image immediately on open
-        if (imageUrl) upsertRecentImageUrl(imageUrl);
+        if (imageUrl) recordImageLastUsed(imageUrl);
       }
 
       // Set up observer to watch for vce-html-editor element changes
@@ -4332,7 +4301,7 @@ function initializeOverlayPanelControls() {
                 // If not disabled and has URL, update image
                 updateImageInPreviewCanvas(newImageUrl, tabContext);
                 // Collect into recent images list
-                upsertRecentImageUrl(newImageUrl);
+                recordImageLastUsed(newImageUrl);
               } else if (tabContext === 'mobile') {
                 // Keep mobile preview aligned with radio state even when no direct URL is present.
                 syncMobilePreviewSourceFromControls();
@@ -4353,7 +4322,7 @@ function initializeOverlayPanelControls() {
         if (!htmlEditor.classList.contains('e-input-disabled')) {
           const currentImageUrl = normalizePreviewImageUrl(htmlEditor.getAttribute('html'));
           updateImageInPreviewCanvas(currentImageUrl, inferPreviewTabFromEditor(htmlEditor));
-          if (currentImageUrl) upsertRecentImageUrl(currentImageUrl);
+          if (currentImageUrl) recordImageLastUsed(currentImageUrl);
         }
 
         console.log("[Gem] Set up attribute observer for vce-html-editor");
@@ -4490,12 +4459,12 @@ function initializeOverlayPanelControls() {
           if (!cmEl) return;
           if (cmEl && container._gemLastSeenImageUrlCmEl !== cmEl) {
             container._gemLastSeenImageUrlCmEl = cmEl;
-            if (value) upsertRecentImageUrl(value);
+            if (value) recordImageLastUsed(value);
           } else if (cmEl && value) {
             // Also upsert if value changed (best-effort)
             if (container._gemLastSeenImageUrlValue !== value) {
               container._gemLastSeenImageUrlValue = value;
-              upsertRecentImageUrl(value);
+              recordImageLastUsed(value);
             }
           }
         });
@@ -4506,7 +4475,7 @@ function initializeOverlayPanelControls() {
       setTimeout(() => {
         const { value } = getActiveImageUrlCodeMirror(modal);
         console.log('[Gem][RecentImages] Initial CodeMirror URL value:', value);
-        if (value) upsertRecentImageUrl(value);
+        if (value) recordImageLastUsed(value);
       }, 150);
 
       console.log("[Gem] Image Properties modal modification complete");
