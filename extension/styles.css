@@ -323,6 +323,19 @@ e-float-container .gem-enhanced-image-properties-dialog {
 .gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-search-pill:hover {
     opacity: 1;
 }
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-search-pills .gem-search-pill {
+    cursor: grab;
+}
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-search-pill--sortable-chosen {
+    cursor: grabbing;
+    opacity: 0.9;
+}
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-search-pill--sortable-ghost {
+    opacity: 0.45;
+}
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-search-pill--sortable-drag {
+    opacity: 0.92;
+}
 .gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-search-pill-text {
     flex: 0 1 auto;
     font-size: 13px;
@@ -331,6 +344,9 @@ e-float-container .gem-enhanced-image-properties-dialog {
     left:-13px;
     padding-left: 13px;
     z-index:1;
+}
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-search-pills .gem-search-pill .gem-search-pill-text {
+    cursor: grab;
 }
 .gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-search-pill--active .gem-search-pill-text,
 .gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-search-pill--active .gem-search-pill-remove {

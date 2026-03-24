@@ -539,6 +539,98 @@ function initializeOverlayPanelControls() {
         .filter((p) => p.context === ctx || p.context === PILL_CTX_BOTH);
     }
 
+    function matchIndicesForContext(full, ctx) {
+      const indices = [];
+      (full || []).forEach((p, i) => {
+        if (p && (p.context === ctx || p.context === PILL_CTX_BOTH)) indices.push(i);
+      });
+      return indices;
+    }
+
+    function mergeReorderedSubset(full, ctx, orderedSubsetGlobalIndices) {
+      const fullArr = Array.isArray(full) ? [...full] : [];
+      const matchIndices = matchIndicesForContext(fullArr, ctx);
+      if (orderedSubsetGlobalIndices.length !== matchIndices.length) return fullArr;
+      const matchSet = new Set(matchIndices);
+      for (let k = 0; k < orderedSubsetGlobalIndices.length; k++) {
+        if (!matchSet.has(orderedSubsetGlobalIndices[k])) return fullArr;
+      }
+      const set = new Set(matchIndices);
+      const reorderedSubset = orderedSubsetGlobalIndices.map((i) => fullArr[i]);
+      let j = 0;
+      return fullArr.map((p, i) => (set.has(i) ? reorderedSubset[j++] : p));
+    }
+
+    function destroyGemSearchPillSortables(picker) {
+      if (!picker || !picker._gemPillSortables) return;
+      picker._gemPillSortables.forEach((s) => {
+        try {
+          s.destroy();
+        } catch (_) {}
+      });
+      picker._gemPillSortables = [];
+    }
+
+    function initGemSearchPillSortables(picker, modal) {
+      if (!picker || !picker.isConnected || typeof Sortable === 'undefined') return;
+      destroyGemSearchPillSortables(picker);
+      picker._gemPillSortables = [];
+      picker.querySelectorAll('.gem-search-pills').forEach((container) => {
+        const src = container.getAttribute('data-pills-source') || '';
+        if (src !== 'favorites' && src !== 'seen') return;
+        if (!container.querySelector('.gem-search-pill')) return;
+        const sortable = Sortable.create(container, {
+          animation: 150,
+          draggable: '.gem-search-pill',
+          filter: '.gem-search-pill-remove',
+          preventOnFilter: false,
+          ghostClass: 'gem-search-pill--sortable-ghost',
+          chosenClass: 'gem-search-pill--sortable-chosen',
+          dragClass: 'gem-search-pill--sortable-drag',
+          onEnd: (evt) => {
+            if (evt.oldIndex === evt.newIndex) return;
+            const sourceAttr = evt.to.getAttribute('data-pills-source') || '';
+            const ctx =
+              sourceAttr === 'favorites' ? PILL_CTX_FAV : sourceAttr === 'seen' ? PILL_CTX_SEEN : null;
+            if (ctx == null) return;
+            const orderedSubsetGlobalIndices = Array.from(evt.to.querySelectorAll('.gem-search-pill'))
+              .map((el) => parseInt(el.getAttribute('data-index') || '-1', 10))
+              .filter((i) => i >= 0);
+            const full = picker._gemSearchPills || [];
+            const merged = mergeReorderedSubset(full, ctx, orderedSubsetGlobalIndices);
+            picker._gemSearchPills = merged;
+            saveSearchPills(merged);
+            showRecentImagesPicker(modal, { contentOnly: true });
+          }
+        });
+        picker._gemPillSortables.push(sortable);
+      });
+    }
+
+    function scheduleGemSearchPillSortableRefresh(picker, modal) {
+      if (!picker || !modal) return;
+      if (picker._gemPillSortableRafId != null) {
+        try {
+          cancelAnimationFrame(picker._gemPillSortableRafId);
+        } catch (_) {}
+        picker._gemPillSortableRafId = null;
+      }
+      picker._gemPillSortableRafId = requestAnimationFrame(() => {
+        picker._gemPillSortableRafId = null;
+        initGemSearchPillSortables(picker, modal);
+      });
+    }
+
+    function clearGemSearchPillRemoveConfirmState(picker) {
+      if (!picker) return;
+      picker._gemPillRemovePendingIndex = null;
+      picker.querySelectorAll('.gem-search-pill-remove--confirm').forEach((btn) => {
+        btn.classList.remove('gem-search-pill-remove--confirm');
+        btn.setAttribute('aria-label', 'Remove');
+        btn.removeAttribute('title');
+      });
+    }
+
     function buildActiveMap(pills) {
       const map = {};
       (pills || []).forEach((p) => {
@@ -637,7 +729,7 @@ function initializeOverlayPanelControls() {
         chrome.storage.local.get(
           {
             [GEM_RECENT_IMAGES_PICKER_PREFS_KEY]: {
-              view: 'table',
+              view: 'grid',
               density: 'small',
               source: 'recent', // recent | favorites | seen
               gridCols: 6, // grid columns (2-10)
@@ -662,7 +754,7 @@ function initializeOverlayPanelControls() {
           }
         );
       } catch (e) {
-        callback({ view: 'table', density: 'small', source: 'recent', gridCols: 6, favGroupBy: 'category', seenGroupBy: 'path' });
+        callback({ view: 'grid', density: 'small', source: 'recent', gridCols: 6, favGroupBy: 'category', seenGroupBy: 'path' });
       }
     }
 
@@ -1437,6 +1529,9 @@ function initializeOverlayPanelControls() {
       const leftPanelContainer = modal.querySelector('#gem-image-properties-left-panel');
       if (!leftPanelContainer) return;
 
+      let pickerPre = leftPanelContainer.querySelector('#gem-recent-images-picker');
+      if (pickerPre) destroyGemSearchPillSortables(pickerPre);
+
       function sanitizeSearchAgainstActivePills(rawValue, pills) {
         const raw = String(rawValue || '').trim();
         if (!raw) return '';
@@ -1625,7 +1720,7 @@ function initializeOverlayPanelControls() {
             const v = (tabValue === 'favorites') ? 'favorites' : (tabValue === 'seen' ? 'seen' : 'recent');
             picker.dataset.gemRecentImagesSource = v;
             saveRecentImagesPickerPrefs({
-              view: picker.dataset.gemRecentImagesView || 'table',
+              view: picker.dataset.gemRecentImagesView || 'grid',
               density: picker.dataset.gemRecentImagesGridDensity || 'small',
               source: v,
               gridCols: Number(picker.dataset.gemRecentImagesGridCols || 6),
@@ -1900,7 +1995,7 @@ function initializeOverlayPanelControls() {
             const v = groupSel.value === 'language' ? 'language' : (groupSel.value === 'translation' ? 'translation' : 'category');
             picker.dataset.gemFavoriteImagesGroupBy = v;
             saveRecentImagesPickerPrefs({
-              view: picker.dataset.gemRecentImagesView || 'table',
+              view: picker.dataset.gemRecentImagesView || 'grid',
               density: picker.dataset.gemRecentImagesGridDensity || 'small',
               source: picker.dataset.gemRecentImagesSource || 'recent',
               gridCols: Number(picker.dataset.gemRecentImagesGridCols || 6),
@@ -1916,7 +2011,7 @@ function initializeOverlayPanelControls() {
             const v = seenGroupSel.value === 'date' ? 'date' : 'path';
             picker.dataset.gemSeenImagesGroupBy = v;
             saveRecentImagesPickerPrefs({
-              view: picker.dataset.gemRecentImagesView || 'table',
+              view: picker.dataset.gemRecentImagesView || 'grid',
               density: picker.dataset.gemRecentImagesGridDensity || 'small',
               source: picker.dataset.gemRecentImagesSource || 'recent',
               gridCols: Number(picker.dataset.gemRecentImagesGridCols || 6),
@@ -1932,7 +2027,7 @@ function initializeOverlayPanelControls() {
             picker.dataset.gemRecentImagesGridCols = String(v);
             picker.style.setProperty('--gem-recent-grid-cols', String(v));
             saveRecentImagesPickerPrefs({
-              view: picker.dataset.gemRecentImagesView || 'table',
+              view: picker.dataset.gemRecentImagesView || 'grid',
               density: picker.dataset.gemRecentImagesGridDensity || 'small',
               source: picker.dataset.gemRecentImagesSource || 'recent',
               gridCols: v,
@@ -2430,6 +2525,8 @@ function initializeOverlayPanelControls() {
                   `.trim();
                 }
 
+                scheduleGemSearchPillSortableRefresh(picker, modal);
+
                 // Focus restoration no longer needed since header is preserved during content-only updates
               });
             });
@@ -2698,6 +2795,8 @@ function initializeOverlayPanelControls() {
                   ${seenTerms.length === 0 ? empty : ''}
                 `.trim();
               }
+
+              scheduleGemSearchPillSortableRefresh(picker, modal);
             });
             return;
           }
@@ -2848,6 +2947,7 @@ function initializeOverlayPanelControls() {
               ${contentHtml}
             `.trim();
           }
+          scheduleGemSearchPillSortableRefresh(picker, modal);
           }; // render
 
           if (source !== 'recent') {
