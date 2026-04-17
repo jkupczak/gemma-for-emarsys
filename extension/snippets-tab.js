@@ -528,7 +528,7 @@ function initializeSnippetsTab() {
     <div class="gem-snippet-row-actions" style="display:flex; justify-content:flex-end; align-items:center">
       ${swapBtn}
       <e-tooltip width="200" content="Copy" permission="false">
-      <button class="e-datagrid__item_action gem-copy-snippet-btn" type="button" data-snippet-id="${snippetIdAttr}" title="Copy snippet" style="min-width: unset; padding: 2px;">
+      <button class="e-datagrid__item_action gem-borderless-btn gem-copy-snippet-btn" type="button" data-snippet-id="${snippetIdAttr}" title="Copy snippet" style="min-width: unset; padding: 2px;">
         <gem-e-icon icon="edit" color="inherit">
           <div aria-hidden="true" class="e-icon-wrapper">
             <div class="e-icon e-icon-table text-color-inherit">&#xF0C9;</div>
@@ -537,7 +537,7 @@ function initializeSnippetsTab() {
       </button>
       </e-tooltip>
       <e-tooltip width="200" content="Edit" permission="false">
-      <button class="e-datagrid__item_action gem-edit-snippet-btn" type="button" data-snippet-id="${snippetIdAttr}" title="Edit snippet" style="min-width: unset; padding: 2px;">
+      <button class="e-datagrid__item_action gem-borderless-btn gem-edit-snippet-btn" type="button" data-snippet-id="${snippetIdAttr}" title="Edit snippet" style="min-width: unset; padding: 2px;">
         <gem-e-icon icon="edit" color="inherit">
           <div aria-hidden="true" class="e-icon-wrapper">
             <div class="e-icon e-icon-table text-color-inherit">&#xF0CE;</div>

@@ -17,6 +17,13 @@ const GEM_CUSTOM_PASTE_ALLOW_SUP_KEY = "gemCustomPasteAllowSuperscript";
 const GEM_CUSTOM_PASTE_ALLOW_ANCHOR_KEY = "gemCustomPasteAllowAnchor";
 const GEM_EMAIL_CAMPAIGN_LIST_LOAD_ALL_KEY = "gemEmailCampaignListLoadAll";
 const GEM_EXPANDED_MODE_STORAGE_KEY = "fullscreenActive";
+const GEM_PREFLIGHT_TOTAL_IMAGE_WEIGHT_THRESHOLD_VALUE_KEY = 'gemPreflightTotalImageWeightThresholdValue';
+const GEM_PREFLIGHT_TOTAL_IMAGE_WEIGHT_THRESHOLD_UNIT_KEY = 'gemPreflightTotalImageWeightThresholdUnit';
+const GEM_PREFLIGHT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_VALUE_KEY = 'gemPreflightSingularImageWeightThresholdValue';
+const GEM_PREFLIGHT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_UNIT_KEY = 'gemPreflightSingularImageWeightThresholdUnit';
+const GEM_PREFLIGHT_DEFAULT_TOTAL_IMAGE_WEIGHT_THRESHOLD_VALUE = 3;
+const GEM_PREFLIGHT_DEFAULT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_VALUE = 2;
+const GEM_PREFLIGHT_DEFAULT_IMAGE_WEIGHT_THRESHOLD_UNIT = 'MB';
 
 function normalizeGemThemeMode(value) {
   if (value === "original") return "original";
@@ -516,6 +523,33 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
           </div>
         </div>
 
+        <h2>Preflight Settings</h2>
+
+        <div class="gem-setting-section" id="gem-settings-preflight-settings">
+          <h3>Image Alerts</h3>
+          <div class="gem-setting gem-setting-condensed" style="display:flex; gap:12px; align-items:center;">
+            <label for="opt-preflight-total-image-weight-threshold-value" style="flex:1;">Total Image Weight Threshold</label>
+            <input type="number" id="opt-preflight-total-image-weight-threshold-value" min="0.1" step="0.1" style="width:100px;" value="3" />
+            <select id="opt-preflight-total-image-weight-threshold-unit" style="width:90px;">
+              <option value="KB">KB</option>
+              <option value="MB" selected>MB</option>
+            </select>
+          </div>
+          <div class="gem-setting gem-setting-condensed" style="display:flex; gap:12px; align-items:center;">
+            <label for="opt-preflight-singular-image-weight-threshold-value" style="flex:1;">Singular Image Weight Threshold</label>
+            <input type="number" id="opt-preflight-singular-image-weight-threshold-value" min="0.1" step="0.1" style="width:100px;" value="2" />
+            <select id="opt-preflight-singular-image-weight-threshold-unit" style="width:90px;">
+              <option value="KB">KB</option>
+              <option value="MB" selected>MB</option>
+            </select>
+          </div>
+          <div class="gem-setting gem-setting-condensed">
+            <p class="sub-label">
+              When enabled, blocks with targeting rules show a visual preview in the email canvas. You can also toggle this from the email preview toolbar.
+            </p>
+          </div>
+        </div>
+
 <div class="gem-setting-section">
           <h3>Blocks Panel</h3>
 
@@ -783,7 +817,11 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         gemAltTextPreviewEnabled: true,
         gemAltTextVisibility: "always-show",
         gemBlockTargetingPreviewEnabled: true,
-        gemBlockTargetingVisibility: "always-show"
+        gemBlockTargetingVisibility: "always-show",
+        [GEM_PREFLIGHT_TOTAL_IMAGE_WEIGHT_THRESHOLD_VALUE_KEY]: GEM_PREFLIGHT_DEFAULT_TOTAL_IMAGE_WEIGHT_THRESHOLD_VALUE,
+        [GEM_PREFLIGHT_TOTAL_IMAGE_WEIGHT_THRESHOLD_UNIT_KEY]: GEM_PREFLIGHT_DEFAULT_IMAGE_WEIGHT_THRESHOLD_UNIT,
+        [GEM_PREFLIGHT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_VALUE_KEY]: GEM_PREFLIGHT_DEFAULT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_VALUE,
+        [GEM_PREFLIGHT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_UNIT_KEY]: GEM_PREFLIGHT_DEFAULT_IMAGE_WEIGHT_THRESHOLD_UNIT
       }, (settings) => {
         syncThemeSwatchUI(settings[GEM_THEME_MODE_STORAGE_KEY]);
 
@@ -852,6 +890,15 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
 
         const blockTargetingVisibilityEl = document.getElementById("opt-block-targeting-visibility");
         if (blockTargetingVisibilityEl) blockTargetingVisibilityEl.value = settings.gemBlockTargetingVisibility || "always-show";
+
+        const preflightTotalValueEl = document.getElementById("opt-preflight-total-image-weight-threshold-value");
+        if (preflightTotalValueEl) preflightTotalValueEl.value = String(settings[GEM_PREFLIGHT_TOTAL_IMAGE_WEIGHT_THRESHOLD_VALUE_KEY] ?? GEM_PREFLIGHT_DEFAULT_TOTAL_IMAGE_WEIGHT_THRESHOLD_VALUE);
+        const preflightTotalUnitEl = document.getElementById("opt-preflight-total-image-weight-threshold-unit");
+        if (preflightTotalUnitEl) preflightTotalUnitEl.value = (settings[GEM_PREFLIGHT_TOTAL_IMAGE_WEIGHT_THRESHOLD_UNIT_KEY] || GEM_PREFLIGHT_DEFAULT_IMAGE_WEIGHT_THRESHOLD_UNIT) === 'KB' ? 'KB' : 'MB';
+        const preflightSingularValueEl = document.getElementById("opt-preflight-singular-image-weight-threshold-value");
+        if (preflightSingularValueEl) preflightSingularValueEl.value = String(settings[GEM_PREFLIGHT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_VALUE_KEY] ?? GEM_PREFLIGHT_DEFAULT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_VALUE);
+        const preflightSingularUnitEl = document.getElementById("opt-preflight-singular-image-weight-threshold-unit");
+        if (preflightSingularUnitEl) preflightSingularUnitEl.value = (settings[GEM_PREFLIGHT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_UNIT_KEY] || GEM_PREFLIGHT_DEFAULT_IMAGE_WEIGHT_THRESHOLD_UNIT) === 'KB' ? 'KB' : 'MB';
 
         const widthInput = document.getElementById("opt-mobile-preview-width");
         if (widthInput) widthInput.value = settings.mobilePreviewWidth || 414;
@@ -977,7 +1024,15 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
             gemBlockTargetingPreviewEnabled:
               document.getElementById("opt-block-targeting-preview-enabled")?.checked ?? true,
             gemBlockTargetingVisibility:
-              document.getElementById("opt-block-targeting-visibility")?.value ?? "always-show"
+              document.getElementById("opt-block-targeting-visibility")?.value ?? "always-show",
+            [GEM_PREFLIGHT_TOTAL_IMAGE_WEIGHT_THRESHOLD_VALUE_KEY]:
+              Math.max(0.1, parseFloat(document.getElementById("opt-preflight-total-image-weight-threshold-value")?.value || String(GEM_PREFLIGHT_DEFAULT_TOTAL_IMAGE_WEIGHT_THRESHOLD_VALUE)) || GEM_PREFLIGHT_DEFAULT_TOTAL_IMAGE_WEIGHT_THRESHOLD_VALUE),
+            [GEM_PREFLIGHT_TOTAL_IMAGE_WEIGHT_THRESHOLD_UNIT_KEY]:
+              (document.getElementById("opt-preflight-total-image-weight-threshold-unit")?.value === 'KB') ? 'KB' : 'MB',
+            [GEM_PREFLIGHT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_VALUE_KEY]:
+              Math.max(0.1, parseFloat(document.getElementById("opt-preflight-singular-image-weight-threshold-value")?.value || String(GEM_PREFLIGHT_DEFAULT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_VALUE)) || GEM_PREFLIGHT_DEFAULT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_VALUE),
+            [GEM_PREFLIGHT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_UNIT_KEY]:
+              (document.getElementById("opt-preflight-singular-image-weight-threshold-unit")?.value === 'KB') ? 'KB' : 'MB'
           };
 
           // Apply immediately + cache synchronously for next page load
@@ -1059,7 +1114,11 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
       "opt-alt-text-preview-enabled",
       "opt-alt-text-visibility",
       "opt-block-targeting-preview-enabled",
-      "opt-block-targeting-visibility"
+      "opt-block-targeting-visibility",
+      "opt-preflight-total-image-weight-threshold-value",
+      "opt-preflight-total-image-weight-threshold-unit",
+      "opt-preflight-singular-image-weight-threshold-value",
+      "opt-preflight-singular-image-weight-threshold-unit"
     ];
 
     settingsIds.forEach((id) => {
@@ -1751,6 +1810,23 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
     if (changes.gemBlockTargetingVisibility) {
       const el = document.getElementById("opt-block-targeting-visibility");
       if (el) el.value = changes.gemBlockTargetingVisibility.newValue || "always-show";
+    }
+
+    if (changes[GEM_PREFLIGHT_TOTAL_IMAGE_WEIGHT_THRESHOLD_VALUE_KEY]) {
+      const el = document.getElementById("opt-preflight-total-image-weight-threshold-value");
+      if (el) el.value = String(changes[GEM_PREFLIGHT_TOTAL_IMAGE_WEIGHT_THRESHOLD_VALUE_KEY].newValue ?? GEM_PREFLIGHT_DEFAULT_TOTAL_IMAGE_WEIGHT_THRESHOLD_VALUE);
+    }
+    if (changes[GEM_PREFLIGHT_TOTAL_IMAGE_WEIGHT_THRESHOLD_UNIT_KEY]) {
+      const el = document.getElementById("opt-preflight-total-image-weight-threshold-unit");
+      if (el) el.value = (changes[GEM_PREFLIGHT_TOTAL_IMAGE_WEIGHT_THRESHOLD_UNIT_KEY].newValue === 'KB') ? 'KB' : 'MB';
+    }
+    if (changes[GEM_PREFLIGHT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_VALUE_KEY]) {
+      const el = document.getElementById("opt-preflight-singular-image-weight-threshold-value");
+      if (el) el.value = String(changes[GEM_PREFLIGHT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_VALUE_KEY].newValue ?? GEM_PREFLIGHT_DEFAULT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_VALUE);
+    }
+    if (changes[GEM_PREFLIGHT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_UNIT_KEY]) {
+      const el = document.getElementById("opt-preflight-singular-image-weight-threshold-unit");
+      if (el) el.value = (changes[GEM_PREFLIGHT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_UNIT_KEY].newValue === 'KB') ? 'KB' : 'MB';
     }
   });
 

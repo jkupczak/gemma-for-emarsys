@@ -116,7 +116,16 @@
     position: absolute;
     right: 22px;
     background: var(--token-box-default-background);
-    box-shadow: 0px 0px 0px 2px, 0 0 20px 24px var(--token-box-default-background) !important;
+    box-shadow: 0px 0px 0px 1px var(--token-box-default-border);
+    opacity: 1 !important;
+}
+
+.gem-expanded main .gem-header-edit-icon {
+    word-break: normal;
+    position: absolute;
+    right: 74px;
+    background: var(--token-box-default-background);
+    box-shadow: 0px 0px 0px 1px var(--token-box-default-border);
     opacity: 1 !important;
 }
 

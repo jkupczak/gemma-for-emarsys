@@ -1012,6 +1012,7 @@ td:has(input.gem-export-snippet-checkbox) ~ td .gem-snippet-row-actions {
 main {
     & section.e-contentblocks-navigation_section:has(.e-verticalnav__content cb-campaign-variables),
     & section.e-contentblocks-navigation_section:has(.e-verticalnav__content gem-snippets),
+    & section.e-contentblocks-navigation_section:has(.e-verticalnav__content gem-preflight),
     & section.e-contentblocks-navigation_section:has(.e-verticalnav__content cb-email-basics-tab),
     & section.e-contentblocks-navigation_section:has(.e-verticalnav__content cb-versions),
     & section.e-contentblocks-navigation_section:has(.e-verticalnav__content cb-locales-tab),
@@ -1056,6 +1057,247 @@ e-verticalnav-menu:has(.gem-e-verticalnav-item[status="active"]) e-verticalnav-i
 }
 e-verticalnav-menu:has(.gem-e-verticalnav-item[status="active"]) e-verticalnav-item:not(.gem-e-verticalnav-item) .e-icon {
     color: var(--token-icon-default-text) !important;
+}
+
+gem-preflight .gem-preflight-section {
+    margin-bottom: 14px;
+}
+
+gem-preflight .gem-preflight-subsection-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 700;
+    margin-bottom: 10px;
+}
+
+gem-preflight .gem-preflight-subsection-title--spaced {
+    margin-top: 14px;
+}
+
+gem-preflight .gem-preflight-subsection-title-main {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+gem-preflight .gem-preflight-section-pip {
+    min-width: 16px;
+    height: 16px;
+    border-radius: 999px;
+    background: var(--token-red-600, #dc2626);
+    color: #fff;
+    font-size: 10px;
+    line-height: 16px;
+    text-align: center;
+    font-weight: 700;
+    padding: 0 4px;
+}
+
+gem-preflight .gem-preflight-header-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+}
+
+gem-preflight .gem-preflight-refresh-btn.e-btn {
+    min-width: unset;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+}
+
+gem-preflight .gem-preflight-settings-btn.e-btn {
+    min-width: unset;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+}
+
+#gem-preflight-tab .e-verticalnavitem {
+    position: relative;
+}
+
+#gem-preflight-tab .gem-preflight-alert-pip {
+    position: absolute;
+    top: 1px;
+    left: 38px;
+    min-width: 16px;
+    height: 16px;
+    border-radius: 999px;
+    background: var(--token-red-600, #dc2626);
+    color: #fff;
+    font-size: 10px;
+    line-height: 16px;
+    text-align: center;
+    font-weight: 700;
+    padding: 0 4px;
+    box-shadow: 0 0 0 2px var(--token-box-default-background, #fff);
+    z-index: 2;
+}
+
+gem-preflight .gem-preflight-metrics {
+    border: 1px solid var(--token-box-default-border);
+    border-radius: 8px;
+    background: var(--token-box-default-background);
+}
+
+gem-preflight .gem-preflight-permission-gate {
+    border: 1px solid var(--token-box-default-border);
+    border-radius: 8px;
+    padding: 12px;
+    background: var(--token-box-default-background);
+    margin-bottom: 10px;
+}
+
+gem-preflight .gem-preflight-permission-text {
+    font-size: 12px;
+    margin-bottom: 10px;
+    color: var(--token-font-default);
+}
+
+gem-preflight .gem-preflight-metric-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--token-box-default-border);
+}
+
+gem-preflight .gem-preflight-metric-row:last-child {
+    border-bottom: 0;
+}
+
+gem-preflight .gem-preflight-metric-label {
+    color: var(--token-font-default);
+    font-size: 12px;
+}
+
+gem-preflight .gem-preflight-metric-value {
+    font-weight: 700;
+    font-size: 12px;
+    color: var(--token-font-default);
+    text-align: right;
+}
+
+gem-preflight .gem-preflight-metric-value--alert {
+    color: var(--token-red-600, #dc2626);
+}
+
+gem-preflight .gem-preflight-metric-value--times {
+    max-width: 260px;
+    line-height: 1.3;
+    font-weight: 600;
+}
+
+gem-preflight .gem-preflight-footnote {
+    margin-top: 8px;
+    font-size: 11px;
+    color: var(--token-font-strong);
+    opacity: 0.75;
+}
+
+gem-preflight .gem-preflight-image-breakdown {
+    margin-top: 10px;
+    border: 1px solid var(--token-box-default-border);
+    border-radius: 8px;
+    background: var(--token-box-default-background);
+}
+
+gem-preflight .gem-preflight-accessibility-table {
+    margin-top: 8px;
+    border: 1px solid var(--token-box-default-border);
+    border-radius: 8px;
+    background: var(--token-box-default-background);
+}
+
+gem-preflight .gem-preflight-subsection-description {
+    font-size: 12px;
+    color: var(--token-font-strong);
+    opacity: 0.8;
+    margin-bottom: 6px;
+}
+
+gem-preflight .gem-preflight-image-breakdown-title {
+    font-size: 12px;
+    font-weight: 700;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--token-box-default-border);
+}
+
+gem-preflight .gem-preflight-image-breakdown-table {
+    display: block;
+}
+
+gem-preflight .gem-preflight-image-breakdown-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--token-box-default-border);
+}
+
+gem-preflight .gem-preflight-image-breakdown-row:last-child {
+    border-bottom: 0;
+}
+
+gem-preflight .gem-preflight-image-breakdown-name {
+    font-size: 12px;
+    color: var(--token-font-default);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 270px;
+    cursor: default;
+}
+
+gem-preflight .gem-preflight-image-breakdown-size {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--token-font-default);
+}
+
+gem-preflight .gem-preflight-image-breakdown-size--alert {
+    color: var(--token-red-600, #dc2626);
+}
+
+gem-preflight .gem-preflight-image-breakdown-empty {
+    padding: 10px;
+    font-size: 12px;
+    color: var(--token-font-strong);
+    opacity: 0.8;
+}
+
+.gem-preflight-image-tooltip {
+    position: fixed;
+    z-index: 200000;
+    pointer-events: none;
+    display: none;
+}
+
+.gem-preflight-image-tooltip--visible {
+    display: block;
+}
+
+.gem-preflight-image-tooltip-inner {
+    border: 1px solid var(--token-box-default-border, rgba(0, 0, 0, 0.2));
+    border-radius: 8px;
+    background: var(--token-box-default-background, #fff);
+    padding: 6px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+}
+
+.gem-preflight-image-tooltip-inner img {
+    display: block;
+    max-width: 220px;
+    max-height: 160px;
+    width: auto;
+    height: auto;
+    border-radius: 4px;
 }
 
 /* ------------------------------------------------------------------------------------------------ */
@@ -1633,4 +1875,8 @@ cb-device-preview > .e-section > .e-section__content { overflow: hidden }
     flex-wrap: nowrap;
     align-items: flex-start;
     gap: 12px;
+}
+
+.gem-e-btn-borderless-on-hover:hover {
+    border:none;
 }

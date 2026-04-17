@@ -5572,8 +5572,6 @@ function initializeOverlayPanelControls() {
       existingModals.forEach((modal) => scheduleImagePropertiesModalInit(modal, 'initial-scan'));
     } catch (_) {}
 
-    scheduleGemMediaDbPickerIframePreload();
-
     console.log("[Gem] Image Properties modal handler initialized");
   }
 

@@ -4,30 +4,53 @@ console.log("[gem] header-copy-icon.js loaded");
 function initializeHeaderCopyIcon() {
   console.log("[gem] Initializing header copy icon");
 
-  // Function to add copy icon to header
-  function addCopyIconToHeader(headerElement) {
-    // Check if icon already exists
-    if (headerElement.querySelector('.gem-header-copy-icon')) {
-      return;
-    }
-
-    // Create copy icon
-    const copyIcon = document.createElement('span');
-    copyIcon.className = 'gem-header-copy-icon';
-    copyIcon.style.cssText = `
+  function buildHeaderActionBaseStyle() {
+    return `
       display: inline-block;
-      margin-left: 12px;
+      margin-left: 8px;
       cursor: pointer;
       opacity: 0.6;
       transition: opacity 0.2s ease;
       vertical-align: middle;
       font-size: 11px;
       user-select: none;
-      box-shadow: 0 0 0 2px;
       line-height: 24px;
       padding: 0 6px;
       border-radius: 8px
     `;
+  }
+
+  function clickEmailSettingsButton() {
+    const btn = document.querySelector('button[analytics-action="Clicked_StepsItemAction_EmailSetting"]');
+    if (!btn) {
+      console.warn('[Gem] Email settings button not found');
+      return;
+    }
+    btn.click();
+  }
+
+  // Function to add copy icon to header
+  function addCopyIconToHeader(headerElement) {
+    // Check if icons already exist
+    if (headerElement.querySelector('.gem-header-copy-icon') || headerElement.querySelector('.gem-header-edit-icon')) {
+      return;
+    }
+
+    // Create copy icon
+    const copyIcon = document.createElement('span');
+    copyIcon.className = 'gem-header-copy-icon';
+    copyIcon.style.cssText = buildHeaderActionBaseStyle();
+
+    const editIcon = document.createElement('span');
+    editIcon.className = 'gem-header-edit-icon';
+    editIcon.style.cssText = buildHeaderActionBaseStyle();
+    editIcon.innerHTML = `
+      <gem-e-icon icon="edit" color="inherit">
+        <div aria-hidden="true" class="e-icon-wrapper">
+          <div class="e-icon e-icon-table text-color-inherit">&#xF0CE;</div>
+        </div>
+      </gem-e-icon>
+    `.trim();
 
     // Add hover effects
     copyIcon.addEventListener('mouseenter', () => {
@@ -36,6 +59,14 @@ function initializeHeaderCopyIcon() {
 
     copyIcon.addEventListener('mouseleave', () => {
       copyIcon.style.opacity = '0.6';
+    });
+
+    editIcon.addEventListener('mouseenter', () => {
+      editIcon.style.opacity = '1';
+    });
+
+    editIcon.addEventListener('mouseleave', () => {
+      editIcon.style.opacity = '0.6';
     });
 
     // Add click handler to copy text
@@ -99,16 +130,24 @@ function initializeHeaderCopyIcon() {
       }
     });
 
+    // Open email settings
+    editIcon.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      clickEmailSettingsButton();
+    });
+
     // Append icon to header
     headerElement.appendChild(copyIcon);
+    headerElement.appendChild(editIcon);
   }
 
   // Function to remove copy icon from header
   function removeCopyIconFromHeader(headerElement) {
-    const icon = headerElement.querySelector('.gem-header-copy-icon');
-    if (icon) {
-      headerElement.removeChild(icon);
-    }
+    const copyIcon = headerElement.querySelector('.gem-header-copy-icon');
+    if (copyIcon) headerElement.removeChild(copyIcon);
+    const editIcon = headerElement.querySelector('.gem-header-edit-icon');
+    if (editIcon) headerElement.removeChild(editIcon);
   }
 
   // Set up hover listeners for existing headers
@@ -116,6 +155,8 @@ function initializeHeaderCopyIcon() {
     const headers = document.querySelectorAll('cb-header h1');
 
     headers.forEach(header => {
+      if (header.dataset.gemHeaderCopyHandlersBound === 'true') return;
+      header.dataset.gemHeaderCopyHandlersBound = 'true';
       // Add hover listeners
       header.addEventListener('mouseenter', () => {
         addCopyIconToHeader(header);
@@ -124,7 +165,11 @@ function initializeHeaderCopyIcon() {
       header.addEventListener('mouseleave', (e) => {
         // Only remove if not hovering over the icon itself
         setTimeout(() => {
-          if (!header.matches(':hover') && !header.querySelector('.gem-header-copy-icon:hover')) {
+          if (
+            !header.matches(':hover') &&
+            !header.querySelector('.gem-header-copy-icon:hover') &&
+            !header.querySelector('.gem-header-edit-icon:hover')
+          ) {
             removeCopyIconFromHeader(header);
           }
         }, 100);
