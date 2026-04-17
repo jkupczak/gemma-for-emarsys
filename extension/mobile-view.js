@@ -10,12 +10,20 @@ let mobilePreviewScale = DEFAULT_MOBILE_SCALE;
 let mobilePreviewVisible = true;
 let bodyClassObserver = null;
 
+function syncGemFrameHandleForExpandedMode() {
+  const handle = document.querySelector("#gem-frame-handle");
+  if (!handle || !document.body) return;
+  const expanded = document.body.classList.contains("gem-expanded");
+  handle.style.left = expanded ? "-10px" : "-24px";
+  handle.style.width = expanded ? "10px" : "24px";
+}
+
 function applyMobilePreviewStyles(containerEl, iframeEl) {
+  syncGemFrameHandleForExpandedMode();
+
   const container = containerEl || document.querySelector(".gem-iframe-wrapper");
   const clone = iframeEl || document.querySelector(".iframe-duplicate");
   if (!container || !clone) return;
-
-  const handle = document.querySelector("#gem-frame-handle");
 
   if (mobilePreviewScale === 1) {
     const widthPx = `${mobilePreviewWidth}px`;
@@ -39,12 +47,6 @@ function applyMobilePreviewStyles(containerEl, iframeEl) {
     clone.style.transformOrigin = "top left";
     clone.style.transform = "scale(0.5)";
   }
-
-  if (handle) {
-    const expanded = document.body.classList.contains("gem-expanded");
-    handle.style.left = expanded ? "-10px" : "-24px";
-    handle.style.width = expanded ? "10px" : "24px";
-  }
 }
 
 function ensureBodyClassObserver() {
@@ -63,13 +65,14 @@ function addResizeHandle(container, styleTarget, clone, originalIframe) {
 
   const handle = document.createElement("div");
   handle.id = "gem-frame-handle";
+  const expandedOnCreate = document.body?.classList.contains("gem-expanded");
   Object.assign(handle.style, {
     margin: "auto",
     position: "absolute",
     top: "0",
     bottom: "0",
-    left: "-24px",
-    width: "24px",
+    left: expandedOnCreate ? "-10px" : "-24px",
+    width: expandedOnCreate ? "10px" : "24px",
     height: "100%",
     cursor: "col-resize"
   });
@@ -252,7 +255,9 @@ function setMobileVisibility(show) {
     targetWrapper.style.display = show ? "block" : "none";
   }
 
-  chrome.storage.sync.set({ mobileViewVisible: mobilePreviewVisible });
+  const syncPayload = { mobileViewVisible: mobilePreviewVisible };
+  if (mobilePreviewVisible) syncPayload.enableMobilePreview = true;
+  chrome.storage.sync.set(syncPayload);
 }
 
 // Check if mobile preview is enabled and initialize accordingly
@@ -265,7 +270,14 @@ chrome.storage.sync.get({
   mobilePreviewWidth = Number(settings.mobilePreviewWidth) || DEFAULT_MOBILE_WIDTH;
   mobilePreviewScale = Number(settings.mobilePreviewScale) === 1 ? 1 : DEFAULT_MOBILE_SCALE;
   mobilePreviewVisible = settings.mobileViewVisible !== false;
-  if (settings.enableMobilePreview) {
+
+  // Mount clone machinery if the master switch is on OR the pane was left visible
+  // via nav/shortcut (they only persist mobileViewVisible). Otherwise a false
+  // enableMobilePreview with true mobileViewVisible skips init and breaks reload.
+  const enableMaster = settings.enableMobilePreview !== false;
+  const shouldMountMobileChrome = enableMaster || settings.mobileViewVisible === true;
+
+  if (shouldMountMobileChrome) {
     initializeMobileView();
     setMobileVisibility(mobilePreviewVisible);
   }

@@ -477,6 +477,36 @@ function initializeOverlayPanelControls() {
     // Debug sequence for image preview tracing
     let gemImagePreviewDebugSeq = 0;
 
+    /** Pooled Media DB iframe (Image Picker): preloaded off-DOM, kept when switching tabs / closing dialog. */
+    let gemMediaDbPickerPoolHost = null;
+    let gemMediaDbPickerIframeEl = null;
+    let gemMediaDbPickerIframeSessionForSrc = null;
+    const GEM_MEDIA_DB_IFRAME_DEBUG = (() => {
+      try {
+        if (window.__GEM_MEDIA_DB_IFRAME_DEBUG__ != null) return !!window.__GEM_MEDIA_DB_IFRAME_DEBUG__;
+        return localStorage.getItem('gemMediaDbIframeDebug') === '1';
+      } catch (_) {
+        return false;
+      }
+    })();
+    function gemMediaDbDbg(...args) {
+      if (!GEM_MEDIA_DB_IFRAME_DEBUG) return;
+      try { console.log('[Gem][MediaDbIframe]', ...args); } catch (_) {}
+    }
+    try {
+      window.setGemMediaDbIframeDebug = function setGemMediaDbIframeDebug(enabled) {
+        const on = !!enabled;
+        try {
+          localStorage.setItem('gemMediaDbIframeDebug', on ? '1' : '0');
+          window.__GEM_MEDIA_DB_IFRAME_DEBUG__ = on;
+        } catch (_) {}
+        console.log(`[Gem][MediaDbIframe] debug ${on ? 'enabled' : 'disabled'}; reload page to apply.`);
+      };
+    } catch (_) {}
+    /** Modal used for insert-from-iframe; updated on each showRecentImagesPicker call. */
+    let gemMediaDbIframeClickModalRef = null;
+    let gemMediaDbParentThemeObserver = null;
+
     const GEM_LEGACY_RECENT_IMAGES_STORAGE_KEY = 'gemRecentlyUsedImages';
     const GEM_RECENTLY_SEEN_IMAGES_STORAGE_KEY = 'gemRecentlySeenImages';
     const LAST_USED_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
@@ -491,6 +521,8 @@ function initializeOverlayPanelControls() {
     const GEM_RECENTLY_SEEN_IMAGE_GROUP_COLLAPSE_KEY = 'gemRecentlySeenImageGroupCollapse';
     const GEM_RECENT_IMAGES_BTN_CLASS = 'gem-recent-images-btn';
     const GEM_RECENT_IMAGES_PICKER_PREFS_KEY = 'gemRecentImagesPickerPrefs';
+    /** Once true, first-open onboarding no longer forces the Media Database tab. */
+    const GEM_IMAGE_PICKER_MEDIA_DB_INTRO_KEY = 'gemImagePickerMediaDbTabIntroShown';
     const GEM_SEARCH_PILLS_KEY = 'gemSearchPills';
     const GEM_SEARCH_PILL_ACTIVE_KEY = 'gemSearchPillActive';
     const GEM_IMAGE_SEARCH_TEXT_KEY = 'gemImageSearchText';
@@ -775,6 +807,25 @@ function initializeOverlayPanelControls() {
       });
     } catch (_) {}
 
+    function normalizeRecentImagesPickerFavSortBy(raw) {
+      if (raw === 'language' || raw === 'translation') return raw;
+      return 'category';
+    }
+
+    function normalizeRecentImagesPickerSeenSortBy(raw) {
+      if (raw === 'path' || raw === 'lastUsed' || raw === 'filename') return raw;
+      return 'lastSeen';
+    }
+
+    function normalizeRecentImagesPickerSortOrder(raw) {
+      return raw === 'asc' ? 'asc' : 'desc';
+    }
+
+    function normalizeRecentImagesPickerSource(raw) {
+      if (raw === 'mediaDb' || raw === 'favorites' || raw === 'seen') return raw;
+      return 'seen';
+    }
+
     function getRecentImagesPickerPrefs(callback) {
       try {
         chrome.storage.local.get(
@@ -785,29 +836,39 @@ function initializeOverlayPanelControls() {
               source: 'seen',
               gridCols: 6,
               favGroupBy: 'category',
-              seenGroupBy: 'path'
+              seenGroupBy: 'path',
+              favSortBy: 'category',
+              seenSortBy: 'lastSeen',
+              favSortOrder: 'desc',
+              seenSortOrder: 'desc'
             }
           },
           (result) => {
             const prefs = result && result[GEM_RECENT_IMAGES_PICKER_PREFS_KEY];
             const view = prefs && (prefs.view === 'grid' ? 'grid' : 'table');
             const density = prefs && (prefs.density === 'medium' || prefs.density === 'large' ? prefs.density : 'small');
-            const rawSource = prefs && prefs.source;
-            const source =
-              rawSource === 'favorites' ? 'favorites' : 'seen';
+            const source = normalizeRecentImagesPickerSource(prefs && prefs.source);
             const gridColsRaw = prefs && Number(prefs.gridCols);
             const gridCols =
               Number.isFinite(gridColsRaw) ? Math.min(10, Math.max(2, Math.round(gridColsRaw))) : 6;
           const favGroupBy =
-            prefs && (prefs.favGroupBy === 'language' ? 'language' : (prefs.favGroupBy === 'translation' ? 'translation' : 'category'));
+            prefs && (prefs.favGroupBy === 'language' ? 'language' : (prefs.favGroupBy === 'translation' ? 'translation' : (prefs.favGroupBy === 'none' ? 'none' : 'category')));
           const sg = prefs && prefs.seenGroupBy;
           const seenGroupBy =
-            sg === 'date' ? 'date' : (sg === 'lastUsed' ? 'lastUsed' : 'path');
-            callback({ view, density, source, gridCols, favGroupBy, seenGroupBy });
+            sg === 'none' ? 'none' : (sg === 'date' ? 'date' : (sg === 'lastUsed' ? 'lastUsed' : 'path'));
+            const favSortBy = normalizeRecentImagesPickerFavSortBy(prefs && prefs.favSortBy);
+            const seenSortBy = normalizeRecentImagesPickerSeenSortBy(prefs && prefs.seenSortBy);
+            const favSortOrder = normalizeRecentImagesPickerSortOrder(prefs && prefs.favSortOrder);
+            const seenSortOrder = normalizeRecentImagesPickerSortOrder(prefs && prefs.seenSortOrder);
+            callback({ view, density, source, gridCols, favGroupBy, seenGroupBy, favSortBy, seenSortBy, favSortOrder, seenSortOrder });
           }
         );
       } catch (e) {
-        callback({ view: 'grid', density: 'small', source: 'seen', gridCols: 6, favGroupBy: 'category', seenGroupBy: 'path' });
+        callback({
+          view: 'grid', density: 'small', source: normalizeRecentImagesPickerSource('seen'), gridCols: 6,
+          favGroupBy: 'category', seenGroupBy: 'path',
+          favSortBy: 'category', seenSortBy: 'lastSeen', favSortOrder: 'desc', seenSortOrder: 'desc'
+        });
       }
     }
 
@@ -815,20 +876,43 @@ function initializeOverlayPanelControls() {
       try {
         const view = prefs && (prefs.view === 'grid' ? 'grid' : 'table');
         const density = prefs && (prefs.density === 'medium' || prefs.density === 'large' ? prefs.density : 'small');
-        const rawSource = prefs && prefs.source;
-        const source =
-          rawSource === 'favorites' ? 'favorites' : 'seen';
+        const source = normalizeRecentImagesPickerSource(prefs && prefs.source);
         const gridColsRaw = prefs && Number(prefs.gridCols);
         const gridCols = Number.isFinite(gridColsRaw) ? Math.min(10, Math.max(2, Math.round(gridColsRaw))) : 6;
         const favGroupBy =
-          prefs && (prefs.favGroupBy === 'language' ? 'language' : (prefs.favGroupBy === 'translation' ? 'translation' : 'category'));
+          prefs && (prefs.favGroupBy === 'language' ? 'language' : (prefs.favGroupBy === 'translation' ? 'translation' : (prefs.favGroupBy === 'none' ? 'none' : 'category')));
         const sg = prefs && prefs.seenGroupBy;
         const seenGroupBy =
-          sg === 'date' ? 'date' : (sg === 'lastUsed' ? 'lastUsed' : 'path');
+          sg === 'none' ? 'none' : (sg === 'date' ? 'date' : (sg === 'lastUsed' ? 'lastUsed' : 'path'));
+        const favSortBy = normalizeRecentImagesPickerFavSortBy(prefs && prefs.favSortBy);
+        const seenSortBy = normalizeRecentImagesPickerSeenSortBy(prefs && prefs.seenSortBy);
+        const favSortOrder = normalizeRecentImagesPickerSortOrder(prefs && prefs.favSortOrder);
+        const seenSortOrder = normalizeRecentImagesPickerSortOrder(prefs && prefs.seenSortOrder);
         chrome.storage.local.set({
-          [GEM_RECENT_IMAGES_PICKER_PREFS_KEY]: { view, density, source, gridCols, favGroupBy, seenGroupBy }
+          [GEM_RECENT_IMAGES_PICKER_PREFS_KEY]: {
+            view, density, source, gridCols, favGroupBy, seenGroupBy,
+            favSortBy, seenSortBy, favSortOrder, seenSortOrder
+          }
         });
       } catch (_) {}
+    }
+
+    function buildRecentImagesPickerPrefsPayload(picker, patch = {}) {
+      const p = patch || {};
+      return {
+        view: p.view != null ? p.view : (picker.dataset.gemRecentImagesView || 'grid'),
+        density: p.density != null ? p.density : (picker.dataset.gemRecentImagesGridDensity || 'small'),
+        source: normalizeRecentImagesPickerSource(
+          p.source != null ? p.source : (picker.dataset.gemRecentImagesSource || 'seen')
+        ),
+        gridCols: p.gridCols != null ? p.gridCols : Number(picker.dataset.gemRecentImagesGridCols || 6),
+        favGroupBy: p.favGroupBy != null ? p.favGroupBy : (picker.dataset.gemFavoriteImagesGroupBy || 'category'),
+        seenGroupBy: p.seenGroupBy != null ? p.seenGroupBy : (picker.dataset.gemSeenImagesGroupBy || 'path'),
+        favSortBy: p.favSortBy != null ? p.favSortBy : (picker.dataset.gemFavoriteImagesSortBy || 'category'),
+        seenSortBy: p.seenSortBy != null ? p.seenSortBy : (picker.dataset.gemSeenImagesSortBy || 'lastSeen'),
+        favSortOrder: p.favSortOrder != null ? p.favSortOrder : (picker.dataset.gemFavoriteImagesSortOrder || 'desc'),
+        seenSortOrder: p.seenSortOrder != null ? p.seenSortOrder : (picker.dataset.gemSeenImagesSortOrder || 'desc')
+      };
     }
 
     function normalizeRecentImageUrlCandidate(raw) {
@@ -1042,6 +1126,460 @@ function initializeOverlayPanelControls() {
         const pruned = pruneRecentlySeenImagesToLimit(next, recentlySeenMax, now);
         saveRecentlySeenImages(pruned);
       });
+    }
+
+    function insertImageUrlIntoImagePropertiesModal(modal, url) {
+      const normalizedUrl = normalizeRecentImageUrlCandidate(url);
+      const applyMetaSideEffects = () => {
+        if (!normalizedUrl) return;
+        getFavoriteImageMetaMap((map) => {
+          const meta = (map && typeof map === 'object') ? map[normalizedUrl] : null;
+          if (!meta) return;
+          const alt = meta && typeof meta.altText === 'string' ? meta.altText.trim() : '';
+          if (alt) setImageAltTextInput(modal, alt);
+          const w = meta && (typeof meta.width === 'number' || typeof meta.width === 'string') ? meta.width : '';
+          if (w) setImageWidthInput(modal, w);
+        });
+      };
+
+      const switchedMobileRadio = ensureMobileAlternateImageEnabled(modal);
+      if (switchedMobileRadio) {
+        setActiveImageUrlCodeMirrorWithRetry(modal, url, 12, 90, applyMetaSideEffects);
+      } else {
+        const ok = setActiveImageUrlCodeMirror(modal, url);
+        if (!ok) {
+          console.warn('[Gem][RecentImages] Failed to set image URL into active CodeMirror. Leaving picker open.');
+          return;
+        }
+        applyMetaSideEffects();
+      }
+      recordImageLastUsed(url);
+    }
+
+    function getGemMediaDbPickerIframeSrc() {
+      let sessionId = '';
+      try {
+        sessionId = new URL(window.location.href).searchParams.get('session_id') || '';
+      } catch (_) {
+        sessionId = '';
+      }
+      if (!sessionId) return '';
+      return `https://suite8.emarsys.net/bootstrap.php?r=MediaDB/popup&session_id=${encodeURIComponent(sessionId)}&insert_callback=true`;
+    }
+
+    function ensureGemMediaDbPickerPoolHost() {
+      if (gemMediaDbPickerPoolHost && gemMediaDbPickerPoolHost.isConnected) return gemMediaDbPickerPoolHost;
+      const host = document.createElement('div');
+      host.id = 'gem-media-db-picker-pool-host';
+      host.setAttribute('aria-hidden', 'true');
+      host.style.cssText =
+        'position:fixed;left:-200vw;top:-200vh;width:1280px;height:900px;overflow:hidden;opacity:1;pointer-events:none;z-index:0;border:0;margin:0;padding:0;';
+      document.body.appendChild(host);
+      gemMediaDbPickerPoolHost = host;
+      return host;
+    }
+
+    function ensureGemMediaDbPaneEl() {
+      ensureGemMediaDbPickerPoolHost();
+      let pane = document.getElementById('gem-media-db-pane');
+      if (!pane) {
+        pane = document.createElement('div');
+        pane.id = 'gem-media-db-pane';
+        pane.className = 'gem-scrollable';
+        pane.style.height = '100%';
+        pane.style.width = '100%';
+        pane.style.display = 'none';
+        pane.style.background = 'var(--token-box-alternate-background)';
+        pane.style.boxSizing = 'border-box';
+        gemMediaDbPickerPoolHost.appendChild(pane);
+      }
+      return pane;
+    }
+
+    function rehomeGemMediaDbPaneToPool() {
+      try {
+        const pane = document.getElementById('gem-media-db-pane');
+        if (!pane) return;
+        ensureGemMediaDbPickerPoolHost();
+        gemMediaDbDbg('rehome pane -> pool', {
+          from: pane.parentNode && pane.parentNode.id,
+          to: gemMediaDbPickerPoolHost && gemMediaDbPickerPoolHost.id
+        });
+        pane.style.display = 'none';
+        if (pane.parentNode !== gemMediaDbPickerPoolHost) {
+          gemMediaDbPickerPoolHost.appendChild(pane);
+        }
+      } catch (_) {}
+    }
+
+    function rehomeGemMediaDbPickerIframeToPool() {
+      try {
+        if (!gemMediaDbPickerIframeEl) return;
+        ensureGemMediaDbPickerPoolHost();
+        if (gemMediaDbPickerIframeEl.parentNode !== gemMediaDbPickerPoolHost) {
+          gemMediaDbPickerPoolHost.appendChild(gemMediaDbPickerIframeEl);
+        }
+      } catch (_) {}
+    }
+
+    function rehomeGemMediaDbPickerIframeFromPickerIfPresent(picker) {
+      try {
+        if (!picker) return;
+        const found = picker.querySelector('.gem-media-db-iframe');
+        if (found && found === gemMediaDbPickerIframeEl) {
+          ensureGemMediaDbPickerPoolHost();
+          gemMediaDbPickerPoolHost.appendChild(gemMediaDbPickerIframeEl);
+        }
+      } catch (_) {}
+    }
+
+    function unbindGemMediaDbPickerIframeDocClick() {
+      const iframe = gemMediaDbPickerIframeEl;
+      if (!iframe || !iframe._gemMediaDbDocClickFn || !iframe._gemMediaDbClickDocRef) return;
+      try {
+        iframe._gemMediaDbClickDocRef.removeEventListener('click', iframe._gemMediaDbDocClickFn, true);
+      } catch (_) {}
+      iframe._gemMediaDbDocClickFn = null;
+      iframe._gemMediaDbClickDocRef = null;
+    }
+
+    function teardownGemMediaDbIframeBridge(picker) {
+      unbindGemMediaDbPickerIframeDocClick();
+      if (picker) picker._gemMediaDbBridge = null;
+    }
+
+    /** Copy Gemma / FLIPPER theme classes from the parent page <html> to the iframe document <html>. */
+    function syncGemThemeClassesToMediaDbIframeDoc(doc) {
+      if (!doc || !doc.documentElement) return;
+      const parentHtml = document.documentElement;
+      const target = doc.documentElement;
+      if (!parentHtml || !target) return;
+      const themeLike = (c) => c.startsWith('gem-theme-') || c.startsWith('FLIPPER-theme-');
+      const toRemove = [];
+      target.classList.forEach((c) => {
+        if (themeLike(c)) toRemove.push(c);
+      });
+      toRemove.forEach((c) => target.classList.remove(c));
+      parentHtml.classList.forEach((c) => {
+        if (themeLike(c)) target.classList.add(c);
+      });
+    }
+
+    /** theme.css + media-database.css when Media DB is embedded in our Image Picker iframe only. */
+    function injectGemmaStylesIntoMediaDbIframeForImagePicker(doc) {
+      if (!doc || !doc.head) return;
+      try {
+        if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.getURL) return;
+        const inject = (filename, linkId) => {
+          if (doc.getElementById(linkId)) return;
+          const link = doc.createElement('link');
+          link.id = linkId;
+          link.rel = 'stylesheet';
+          link.setAttribute('data-gem-image-picker-inject', '1');
+          link.href = chrome.runtime.getURL(filename);
+          doc.head.appendChild(link);
+        };
+        inject('global-styles.css', 'gem-media-db-iframe-global');
+        inject('theme.css', 'gem-media-db-iframe-theme');
+        inject('media-database.css', 'gem-media-db-iframe-database');
+      } catch (_) {}
+    }
+
+    function setupMediaDbPreviewDialogNavigation(doc) {
+      if (!doc || doc._gemMediaDbPreviewNavSetup) return;
+      doc._gemMediaDbPreviewNavSetup = true;
+
+      const toUrlParts = (raw) => {
+        let absHref = '';
+        try {
+          absHref = new URL(String(raw || ''), doc.location.href).href;
+        } catch (_) {
+          absHref = String(raw || '');
+        }
+        let noQuery = absHref;
+        let pathname = '';
+        let file = '';
+        try {
+          const u = new URL(absHref, doc.location.href);
+          noQuery = `${u.origin}${u.pathname}`;
+          pathname = u.pathname || '';
+          file = pathname.split('/').filter(Boolean).pop() || '';
+        } catch (_) {
+          noQuery = String(absHref || '').split('?')[0];
+          pathname = noQuery;
+          file = pathname.split('/').filter(Boolean).pop() || '';
+        }
+        return { absHref, noQuery, pathname, file };
+      };
+
+      const getCycleUrls = () => {
+        const scoped = Array.from(doc.querySelectorAll('.e-mediadb-section__content .e-table .file-table-row [copy-to-clipboard]'));
+        const broad = Array.from(doc.querySelectorAll('[copy-to-clipboard]'));
+        const nodes = scoped.length > 0 ? scoped : broad;
+        const out = [];
+        const seen = new Set();
+        nodes.forEach((n) => {
+          const v = n && n.getAttribute ? (n.getAttribute('copy-to-clipboard') || '') : '';
+          if (!v) return;
+          const p = toUrlParts(v);
+          if (!p.absHref) return;
+          const dedupeKey = p.noQuery || p.pathname || p.file || p.absHref;
+          if (!dedupeKey || seen.has(dedupeKey)) return;
+          seen.add(dedupeKey);
+          out.push({
+            href: p.absHref,
+            key: p.noQuery,
+            path: p.pathname,
+            file: p.file
+          });
+        });
+        return out;
+      };
+
+      const ensureDialogFooter = (dialog) => {
+        if (!dialog) return;
+        const content = dialog.querySelector('.ngdialog-content');
+        const img = content && content.querySelector('img.preview-image');
+        if (!content || !img) return;
+
+        let footer = content.querySelector('.gem-mediadb-preview-footer');
+        if (!footer) {
+          footer = doc.createElement('div');
+          footer.className = 'gem-mediadb-preview-footer';
+          footer.innerHTML = `
+            <div class="gem-image-nav-group">
+              <button class="e-btn e-btn-borderless e-btn-onlyicon gem-image-nav-btn gem-mediadb-preview-prev" type="button" aria-label="Previous image" title="Previous image">‹</button>
+              <button class="e-btn e-btn-borderless e-btn-onlyicon gem-image-nav-btn gem-mediadb-preview-next" type="button" aria-label="Next image" title="Next image">›</button>
+            </div>
+          `.trim();
+          content.appendChild(footer);
+        }
+
+        const render = () => {
+          const urls = getCycleUrls();
+          const cur = toUrlParts(img.getAttribute('src') || img.src || '');
+          let idx = urls.findIndex((u) => u.key === cur.noQuery);
+          if (idx < 0) idx = urls.findIndex((u) => u.path && u.path === cur.pathname);
+          if (idx < 0) idx = urls.findIndex((u) => u.file && cur.file && u.file === cur.file);
+          const prevBtn = footer.querySelector('.gem-mediadb-preview-prev');
+          const nextBtn = footer.querySelector('.gem-mediadb-preview-next');
+          if (prevBtn) prevBtn.disabled = !(idx > 0);
+          if (nextBtn) nextBtn.disabled = !(idx >= 0 && idx < urls.length - 1);
+          footer._gemCycleUrls = urls;
+          footer._gemCycleIndex = idx;
+        };
+
+        const navigate = (delta) => {
+          const urls = footer._gemCycleUrls || getCycleUrls();
+          const idx = Number.isFinite(footer._gemCycleIndex) ? footer._gemCycleIndex : -1;
+          if (idx < 0) return;
+          const nextIdx = idx + delta;
+          if (nextIdx < 0 || nextIdx >= urls.length) return;
+          const next = urls[nextIdx];
+          if (!next || !next.href) return;
+          img.setAttribute('src', next.href);
+          render();
+        };
+
+        if (!footer._gemNavBound) {
+          footer._gemNavBound = true;
+          footer.querySelector('.gem-mediadb-preview-prev')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            navigate(-1);
+          });
+          footer.querySelector('.gem-mediadb-preview-next')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            navigate(1);
+          });
+        }
+
+        if (!img._gemPreviewNavObserver) {
+          const obs = new MutationObserver(() => render());
+          obs.observe(img, { attributes: true, attributeFilter: ['src'] });
+          img._gemPreviewNavObserver = obs;
+        }
+
+        render();
+      };
+
+      const applyToOpenDialogs = () => {
+        const dialogs = Array.from(doc.querySelectorAll('#ngdialog3.mediadb-dialog, .ngdialog.mediadb-dialog'));
+        dialogs.forEach((d) => ensureDialogFooter(d));
+      };
+
+      if (!doc._gemMediaDbPreviewKeydown) {
+        const onKeydown = (e) => {
+          const dialog = doc.querySelector('#ngdialog3.mediadb-dialog, .ngdialog.mediadb-dialog');
+          if (!dialog) return;
+          const footer = dialog.querySelector('.gem-mediadb-preview-footer');
+          if (!footer) return;
+          if (e.key === 'ArrowLeft') {
+            e.preventDefault();
+            e.stopPropagation();
+            footer.querySelector('.gem-mediadb-preview-prev')?.click();
+            return;
+          }
+          if (e.key === 'ArrowRight') {
+            e.preventDefault();
+            e.stopPropagation();
+            footer.querySelector('.gem-mediadb-preview-next')?.click();
+          }
+        };
+        doc.addEventListener('keydown', onKeydown, true);
+        doc._gemMediaDbPreviewKeydown = onKeydown;
+      }
+
+      if (!doc._gemMediaDbPreviewObserver) {
+        const observer = new MutationObserver(() => applyToOpenDialogs());
+        observer.observe(doc.body || doc.documentElement, { childList: true, subtree: true });
+        doc._gemMediaDbPreviewObserver = observer;
+      }
+
+      applyToOpenDialogs();
+    }
+
+    function wireGemMediaDbPickerIframeAfterDocReady(iframe) {
+      if (!iframe) return;
+      const doc = iframe.contentDocument;
+      if (!doc) return;
+      injectGemmaStylesIntoMediaDbIframeForImagePicker(doc);
+      syncGemThemeClassesToMediaDbIframeDoc(doc);
+      setupMediaDbPreviewDialogNavigation(doc);
+      unbindGemMediaDbPickerIframeDocClick();
+      const clickFn = (ev) => {
+        const modal = gemMediaDbIframeClickModalRef;
+        if (!modal || !modal.isConnected) return;
+        const el = ev.target;
+        if (!el || !el.closest) return;
+        const trigger = el.closest("a[title='Add To Page']") || el.closest('button.test-insert-action');
+        if (!trigger) return;
+        const row = trigger.closest('.file-table-row');
+        if (!row) return;
+        const clip = row.querySelector('[copy-to-clipboard]');
+        const rawUrl = clip && clip.getAttribute && clip.getAttribute('copy-to-clipboard');
+        if (!rawUrl || !String(rawUrl).trim()) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        insertImageUrlIntoImagePropertiesModal(modal, rawUrl);
+      };
+      doc.addEventListener('click', clickFn, true);
+      iframe._gemMediaDbDocClickFn = clickFn;
+      iframe._gemMediaDbClickDocRef = doc;
+    }
+
+    function ensureGemMediaDbParentThemeObserver() {
+      if (gemMediaDbParentThemeObserver) return;
+      try {
+        gemMediaDbParentThemeObserver = new MutationObserver(() => {
+          const iframe = gemMediaDbPickerIframeEl;
+          const doc = iframe && iframe.contentDocument;
+          if (!doc) return;
+          syncGemThemeClassesToMediaDbIframeDoc(doc);
+        });
+        gemMediaDbParentThemeObserver.observe(document.documentElement, {
+          attributes: true,
+          attributeFilter: ['class']
+        });
+      } catch (_) {}
+    }
+
+    function attachGemMediaDbPickerIframeLoadHook(iframe) {
+      if (!iframe || iframe._gemMediaDbPickerLoadHooked) return;
+      iframe._gemMediaDbPickerLoadHooked = true;
+      iframe.addEventListener('load', () => {
+        gemMediaDbDbg('iframe load', { src: iframe.getAttribute('src') || iframe.src || '' });
+        wireGemMediaDbPickerIframeAfterDocReady(iframe);
+      });
+    }
+
+    function ensureGemMediaDbPickerIframePreloaded() {
+      const src = getGemMediaDbPickerIframeSrc();
+      if (!src) return;
+
+      ensureGemMediaDbPickerPoolHost();
+      ensureGemMediaDbParentThemeObserver();
+
+      if (!gemMediaDbPickerIframeEl) {
+        const iframe = document.createElement('iframe');
+        iframe.className = 'gem-media-db-iframe';
+        iframe.title = 'Media Database';
+        iframe.setAttribute('data-gem-media-db-pool', '1');
+        iframe.loading = 'eager';
+        gemMediaDbPickerPoolHost.appendChild(iframe);
+        gemMediaDbPickerIframeEl = iframe;
+        gemMediaDbPickerIframeSessionForSrc = src;
+        attachGemMediaDbPickerIframeLoadHook(iframe);
+        gemMediaDbDbg('set src (create)', src);
+        iframe.src = src;
+        if (iframe.contentDocument && iframe.contentDocument.readyState === 'complete') {
+          wireGemMediaDbPickerIframeAfterDocReady(iframe);
+        }
+        return;
+      }
+
+      // Important: do not touch src after first creation. Reassigning src causes reloads.
+      attachGemMediaDbPickerIframeLoadHook(gemMediaDbPickerIframeEl);
+      gemMediaDbPickerIframeSessionForSrc = gemMediaDbPickerIframeSessionForSrc || src;
+    }
+
+    function scheduleGemMediaDbPickerIframePreload() {
+      const run = () => {
+        try {
+          ensureGemMediaDbPickerIframePreloaded();
+        } catch (_) {}
+      };
+      // Prime immediately so the first Image Picker open is already warm.
+      run();
+      try {
+        if (typeof requestIdleCallback === 'function') {
+          requestIdleCallback(run, { timeout: 8000 });
+        } else {
+          setTimeout(run, 200);
+        }
+      } catch (_) {
+        setTimeout(run, 200);
+      }
+    }
+
+    function setupGemMediaDbIframeBridge(picker, modal) {
+      if (!picker || !modal) return;
+      gemMediaDbIframeClickModalRef = modal;
+      picker._gemImagePropsModalRef = modal;
+
+      ensureGemMediaDbPickerIframePreloaded();
+      const wrap = picker.querySelector('.gem-media-db-wrap');
+      if (!gemMediaDbPickerIframeEl || !wrap) return;
+
+      unbindGemMediaDbPickerIframeDocClick();
+      gemMediaDbDbg('bridge setup start', {
+        wrapParent: wrap.parentNode && wrap.parentNode.id,
+        iframeParent: gemMediaDbPickerIframeEl.parentNode && gemMediaDbPickerIframeEl.parentNode.id,
+        iframeSrcAttr: gemMediaDbPickerIframeEl.getAttribute('src') || '',
+        iframeSrcProp: gemMediaDbPickerIframeEl.src || '',
+        iframeReadyState: gemMediaDbPickerIframeEl.contentDocument && gemMediaDbPickerIframeEl.contentDocument.readyState,
+        iframeHref: (() => {
+          try { return gemMediaDbPickerIframeEl.contentWindow && gemMediaDbPickerIframeEl.contentWindow.location && gemMediaDbPickerIframeEl.contentWindow.location.href; } catch (_) { return '(unavailable)'; }
+        })()
+      });
+      if (gemMediaDbPickerIframeEl.parentNode !== wrap) {
+        gemMediaDbDbg('reparent into media tab', {
+          from: gemMediaDbPickerIframeEl.parentNode && gemMediaDbPickerIframeEl.parentNode.id,
+          to: wrap.id || '(no-id)'
+        });
+        wrap.appendChild(gemMediaDbPickerIframeEl);
+      }
+
+      const iframe = gemMediaDbPickerIframeEl;
+      attachGemMediaDbPickerIframeLoadHook(iframe);
+      if (iframe.contentDocument && iframe.contentDocument.readyState === 'complete') {
+        wireGemMediaDbPickerIframeAfterDocReady(iframe);
+      } else {
+        syncGemThemeClassesToMediaDbIframeDoc(iframe.contentDocument);
+      }
+
+      picker._gemMediaDbBridge = { iframe, pool: true };
     }
 
     // ------------------------------------------------------------
@@ -1626,8 +2164,13 @@ function initializeOverlayPanelControls() {
       const leftPanelContainer = modal.querySelector('#gem-image-properties-left-panel');
       if (!leftPanelContainer) return;
 
+      gemMediaDbIframeClickModalRef = modal;
+      gemMediaDbDbg('show picker', { contentOnly: !!opts.contentOnly });
+
       let pickerPre = leftPanelContainer.querySelector('#gem-recent-images-picker');
-      if (pickerPre) destroyGemSearchPillSortables(pickerPre);
+      if (pickerPre) {
+        destroyGemSearchPillSortables(pickerPre);
+      }
 
       function sanitizeSearchAgainstActivePills(rawValue, pills) {
         const raw = String(rawValue || '').trim();
@@ -1642,6 +2185,23 @@ function initializeOverlayPanelControls() {
         if (activeTerms.has(raw.toLowerCase())) return '';
         return raw;
       }
+
+      const buildSharedImagePickerHeader = ({ sourceTabs, addFavoriteBtn = '', rightControls = '', searchBlock = '' }) => `
+            <div class="gem-image-list-header" style="padding:0; background: var(--token-box-alternate-background); position:sticky; z-index:3; top:0">
+            <div style="display:flex; align-items:center; justify-content:space-between; width:100%; margin-bottom:10px; background-color: var(--token-tab-default-background);">
+              <div style="display:flex; gap:10px; align-items:center; width:100%;">
+                <div class="e-tabs e-tabs-dialogheader">
+                ${sourceTabs}
+                ${addFavoriteBtn}
+                <div style="display:flex; gap:10px; align-items:center; justify-content:flex-end; margin-left:auto;">
+                  ${rightControls}
+                </div>
+                </div>
+              </div>
+            </div>
+            ${searchBlock}
+            </div>
+          `.trim();
 
       // Create picker container once
       let picker = leftPanelContainer.querySelector('#gem-recent-images-picker');
@@ -1693,6 +2253,18 @@ function initializeOverlayPanelControls() {
           if (!picker.dataset.gemFavoriteImagesGroupBy) {
             picker.dataset.gemFavoriteImagesGroupBy = 'category'; // category | language | translation
           }
+          if (!picker.dataset.gemFavoriteImagesSortBy) {
+            picker.dataset.gemFavoriteImagesSortBy = 'category';
+          }
+          if (!picker.dataset.gemSeenImagesSortBy) {
+            picker.dataset.gemSeenImagesSortBy = 'lastSeen';
+          }
+          if (!picker.dataset.gemFavoriteImagesSortOrder) {
+            picker.dataset.gemFavoriteImagesSortOrder = 'desc';
+          }
+          if (!picker.dataset.gemSeenImagesSortOrder) {
+            picker.dataset.gemSeenImagesSortOrder = 'desc';
+          }
           if (!picker.dataset.gemRecentImagesGridCols) {
             picker.dataset.gemRecentImagesGridCols = '6'; // 3-8
           }
@@ -1710,6 +2282,26 @@ function initializeOverlayPanelControls() {
               e.preventDefault();
               e.stopPropagation();
               if (window.openGemmaSettings) window.openGemmaSettings('saved-searches');
+              return;
+            }
+            const orderToggle = e.target.closest && e.target.closest('.gem-image-picker-order-toggle');
+            if (orderToggle) {
+              e.preventDefault();
+              e.stopPropagation();
+              const ctx = orderToggle.getAttribute('data-order-context') || '';
+              const cur =
+                ctx === 'favorites'
+                  ? normalizeRecentImagesPickerSortOrder(picker.dataset.gemFavoriteImagesSortOrder)
+                  : normalizeRecentImagesPickerSortOrder(picker.dataset.gemSeenImagesSortOrder);
+              const next = cur === 'desc' ? 'asc' : 'desc';
+              if (ctx === 'favorites') {
+                picker.dataset.gemFavoriteImagesSortOrder = next;
+                saveRecentImagesPickerPrefs(buildRecentImagesPickerPrefsPayload(picker, { favSortOrder: next }));
+              } else if (ctx === 'seen') {
+                picker.dataset.gemSeenImagesSortOrder = next;
+                saveRecentImagesPickerPrefs(buildRecentImagesPickerPrefsPayload(picker, { seenSortOrder: next }));
+              }
+              showRecentImagesPicker(modal);
               return;
             }
             const regexToggle = e.target.closest && e.target.closest('.gem-regex-toggle');
@@ -1821,16 +2413,9 @@ function initializeOverlayPanelControls() {
             e.preventDefault();
             e.stopPropagation();
             const tabValue = sourceTab.getAttribute('data-tab') || '';
-            const v = tabValue === 'favorites' ? 'favorites' : 'seen';
+            const v = normalizeRecentImagesPickerSource(tabValue === 'favorites' ? 'favorites' : (tabValue === 'mediaDb' ? 'mediaDb' : 'seen'));
             picker.dataset.gemRecentImagesSource = v;
-            saveRecentImagesPickerPrefs({
-              view: picker.dataset.gemRecentImagesView || 'grid',
-              density: picker.dataset.gemRecentImagesGridDensity || 'small',
-              source: v,
-              gridCols: Number(picker.dataset.gemRecentImagesGridCols || 6),
-              favGroupBy: picker.dataset.gemFavoriteImagesGroupBy || 'category',
-              seenGroupBy: picker.dataset.gemSeenImagesGroupBy || 'path'
-            });
+            saveRecentImagesPickerPrefs(buildRecentImagesPickerPrefsPayload(picker, { source: v }));
             showRecentImagesPicker(modal);
             return;
           }
@@ -1986,33 +2571,7 @@ function initializeOverlayPanelControls() {
           if (!btn) return;
           const url = btn.getAttribute('data-url') || '';
           console.log('[Gem][RecentImages][SetUrl] Use clicked for url:', url);
-          const normalizedUrl = normalizeRecentImageUrlCandidate(url);
-
-          const applyMetaSideEffects = () => {
-            if (!normalizedUrl) return;
-            getFavoriteImageMetaMap((map) => {
-              const meta = (map && typeof map === 'object') ? map[normalizedUrl] : null;
-              if (!meta) return;
-              const alt = meta && typeof meta.altText === 'string' ? meta.altText.trim() : '';
-              if (alt) setImageAltTextInput(modal, alt);
-              const w = meta && (typeof meta.width === 'number' || typeof meta.width === 'string') ? meta.width : '';
-              if (w) setImageWidthInput(modal, w);
-            });
-          };
-
-          const switchedMobileRadio = ensureMobileAlternateImageEnabled(modal);
-          if (switchedMobileRadio) {
-            // Emarsys may re-render the URL editor after switching radios; retry setting URL.
-            setActiveImageUrlCodeMirrorWithRetry(modal, url, 12, 90, applyMetaSideEffects);
-          } else {
-            const ok = setActiveImageUrlCodeMirror(modal, url);
-            if (!ok) {
-              console.warn('[Gem][RecentImages] Failed to set image URL into active CodeMirror. Leaving picker open.');
-              return;
-            }
-            applyMetaSideEffects();
-          }
-          recordImageLastUsed(url);
+          insertImageUrlIntoImagePropertiesModal(modal, url);
         });
 
         // Enter/Tab on search input: add terms as pills
@@ -2096,16 +2655,9 @@ function initializeOverlayPanelControls() {
         picker.addEventListener('change', (e) => {
           const groupSel = e.target && e.target.closest && e.target.closest('.gem-fav-groupby-select');
           if (groupSel) {
-            const v = groupSel.value === 'language' ? 'language' : (groupSel.value === 'translation' ? 'translation' : 'category');
+            const v = groupSel.value === 'language' ? 'language' : (groupSel.value === 'translation' ? 'translation' : (groupSel.value === 'none' ? 'none' : 'category'));
             picker.dataset.gemFavoriteImagesGroupBy = v;
-            saveRecentImagesPickerPrefs({
-              view: picker.dataset.gemRecentImagesView || 'grid',
-              density: picker.dataset.gemRecentImagesGridDensity || 'small',
-              source: picker.dataset.gemRecentImagesSource || 'seen',
-              gridCols: Number(picker.dataset.gemRecentImagesGridCols || 6),
-              favGroupBy: v,
-              seenGroupBy: picker.dataset.gemSeenImagesGroupBy || 'path'
-            });
+            saveRecentImagesPickerPrefs(buildRecentImagesPickerPrefsPayload(picker, { favGroupBy: v }));
             showRecentImagesPicker(modal);
             return;
           }
@@ -2114,15 +2666,26 @@ function initializeOverlayPanelControls() {
           if (seenGroupSel) {
             const v =
               seenGroupSel.value === 'date' ? 'date' :
-              (seenGroupSel.value === 'lastUsed' ? 'lastUsed' : 'path');
+              (seenGroupSel.value === 'lastUsed' ? 'lastUsed' :
+              (seenGroupSel.value === 'none' ? 'none' : 'path'));
             picker.dataset.gemSeenImagesGroupBy = v;
-            saveRecentImagesPickerPrefs({
-              view: picker.dataset.gemRecentImagesView || 'grid',
-              density: picker.dataset.gemRecentImagesGridDensity || 'small',
-              source: picker.dataset.gemRecentImagesSource || 'seen',
-              gridCols: Number(picker.dataset.gemRecentImagesGridCols || 6),
-              seenGroupBy: v
-            });
+            saveRecentImagesPickerPrefs(buildRecentImagesPickerPrefsPayload(picker, { seenGroupBy: v }));
+            showRecentImagesPicker(modal);
+            return;
+          }
+
+          const favSortSel = e.target && e.target.closest && e.target.closest('.gem-fav-sortby-select');
+          if (favSortSel) {
+            picker.dataset.gemFavoriteImagesSortBy = normalizeRecentImagesPickerFavSortBy(favSortSel.value);
+            saveRecentImagesPickerPrefs(buildRecentImagesPickerPrefsPayload(picker, { favSortBy: picker.dataset.gemFavoriteImagesSortBy }));
+            showRecentImagesPicker(modal);
+            return;
+          }
+
+          const seenSortSel = e.target && e.target.closest && e.target.closest('.gem-seen-sortby-select');
+          if (seenSortSel) {
+            picker.dataset.gemSeenImagesSortBy = normalizeRecentImagesPickerSeenSortBy(seenSortSel.value);
+            saveRecentImagesPickerPrefs(buildRecentImagesPickerPrefsPayload(picker, { seenSortBy: picker.dataset.gemSeenImagesSortBy }));
             showRecentImagesPicker(modal);
             return;
           }
@@ -2132,14 +2695,7 @@ function initializeOverlayPanelControls() {
             const v = Math.min(10, Math.max(2, Number(slider.value || 6)));
             picker.dataset.gemRecentImagesGridCols = String(v);
             picker.style.setProperty('--gem-recent-grid-cols', String(v));
-            saveRecentImagesPickerPrefs({
-              view: picker.dataset.gemRecentImagesView || 'grid',
-              density: picker.dataset.gemRecentImagesGridDensity || 'small',
-              source: picker.dataset.gemRecentImagesSource || 'seen',
-              gridCols: v,
-              favGroupBy: picker.dataset.gemFavoriteImagesGroupBy || 'category',
-              seenGroupBy: picker.dataset.gemSeenImagesGroupBy || 'path'
-            });
+            saveRecentImagesPickerPrefs(buildRecentImagesPickerPrefsPayload(picker, { gridCols: v }));
           }
         }, true);
 
@@ -2148,38 +2704,109 @@ function initializeOverlayPanelControls() {
           const toggleBtn = e.target.closest && e.target.closest('.gem-recent-images-toggle-view-btn');
           if (!toggleBtn) return;
           picker.dataset.gemRecentImagesView = picker.dataset.gemRecentImagesView === 'grid' ? 'table' : 'grid';
-          saveRecentImagesPickerPrefs({
-            view: picker.dataset.gemRecentImagesView,
-            density: picker.dataset.gemRecentImagesGridDensity || 'small',
-            source: picker.dataset.gemRecentImagesSource || 'seen',
-            gridCols: Number(picker.dataset.gemRecentImagesGridCols || 6),
-            favGroupBy: picker.dataset.gemFavoriteImagesGroupBy || 'category',
-            seenGroupBy: picker.dataset.gemSeenImagesGroupBy || 'path'
-          });
+          saveRecentImagesPickerPrefs(buildRecentImagesPickerPrefsPayload(picker, { view: picker.dataset.gemRecentImagesView }));
           // Re-render (stay open)
           showRecentImagesPicker(modal);
         });
+      }
+
+      if (picker) picker._gemImagePropsModalRef = modal;
+
+      let pickerContent = picker.querySelector('#gem-image-picker-content');
+      if (!pickerContent) {
+        pickerContent = document.createElement('div');
+        pickerContent.id = 'gem-image-picker-content';
+        picker.appendChild(pickerContent);
       }
 
       // Load persisted prefs once per picker lifetime
       if (picker.dataset.gemRecentImagesPrefsLoaded !== 'true') {
         picker.dataset.gemRecentImagesPrefsLoaded = 'true';
         getRecentImagesPickerPrefs((prefs) => {
-          picker.dataset.gemRecentImagesView = prefs.view;
-          picker.dataset.gemRecentImagesGridDensity = prefs.density;
-          picker.dataset.gemRecentImagesSource = prefs.source;
-          picker.dataset.gemRecentImagesGridCols = String(prefs.gridCols || 6);
-          picker.dataset.gemFavoriteImagesGroupBy = prefs.favGroupBy || 'category';
-          picker.dataset.gemSeenImagesGroupBy = prefs.seenGroupBy || 'path';
-          picker.style.setProperty('--gem-recent-grid-cols', String(prefs.gridCols || 6));
-          showRecentImagesPicker(modal);
+          chrome.storage.local.get({ [GEM_IMAGE_PICKER_MEDIA_DB_INTRO_KEY]: false }, (introRes) => {
+            const introShown = !!(introRes && introRes[GEM_IMAGE_PICKER_MEDIA_DB_INTRO_KEY]);
+            let applied = prefs;
+            if (!introShown) {
+              applied = { ...prefs, source: 'mediaDb' };
+              saveRecentImagesPickerPrefs(applied);
+              try {
+                chrome.storage.local.set({ [GEM_IMAGE_PICKER_MEDIA_DB_INTRO_KEY]: true });
+              } catch (_) {}
+            }
+            picker.dataset.gemRecentImagesView = applied.view;
+            picker.dataset.gemRecentImagesGridDensity = applied.density;
+            picker.dataset.gemRecentImagesSource = normalizeRecentImagesPickerSource(applied.source);
+            picker.dataset.gemRecentImagesGridCols = String(applied.gridCols || 6);
+            picker.dataset.gemFavoriteImagesGroupBy = applied.favGroupBy || 'category';
+            picker.dataset.gemSeenImagesGroupBy = applied.seenGroupBy || 'path';
+            picker.dataset.gemFavoriteImagesSortBy = applied.favSortBy || 'category';
+            picker.dataset.gemSeenImagesSortBy = applied.seenSortBy || 'lastSeen';
+            picker.dataset.gemFavoriteImagesSortOrder = applied.favSortOrder || 'desc';
+            picker.dataset.gemSeenImagesSortOrder = applied.seenSortOrder || 'desc';
+            picker.style.setProperty('--gem-recent-grid-cols', String(applied.gridCols || 6));
+            showRecentImagesPicker(modal);
+          });
         });
         return;
       }
 
       // Render
-      const source =
-        picker.dataset.gemRecentImagesSource === 'favorites' ? 'favorites' : 'seen';
+
+      const source = normalizeRecentImagesPickerSource(picker.dataset.gemRecentImagesSource || 'seen');
+      gemMediaDbDbg('render source', { source });
+
+      if (source === 'mediaDb') {
+        destroyGemSearchPillSortables(picker);
+        picker.style.display = '';
+
+        const sourceTabs = `
+              <div class="e-tabs__title ${source === 'mediaDb' ? 'e-tabs__title-active' : ''}" data-tab="mediaDb">
+                <div class="e-tabs__separator">Media Database</div>
+              </div>
+              <div class="e-tabs__title ${source === 'seen' ? 'e-tabs__title-active' : ''}" data-tab="seen">
+                <div class="e-tabs__separator">Recent Images</div>
+              </div>
+              <div class="e-tabs__title ${source === 'favorites' ? 'e-tabs__title-active' : ''}" data-tab="favorites">
+                <div class="e-tabs__separator">Favorite Images</div>
+              </div>
+          `.trim();
+
+        const iframeSrc = getGemMediaDbPickerIframeSrc();
+        const header = buildSharedImagePickerHeader({ sourceTabs });
+        pickerContent.innerHTML = header;
+
+        let mediaPane = ensureGemMediaDbPaneEl();
+        if (mediaPane.parentNode !== picker) {
+          picker.appendChild(mediaPane);
+        }
+        mediaPane.style.display = '';
+
+        const hasWrap = !!mediaPane.querySelector('.gem-media-db-wrap');
+        const hasMissing = !!mediaPane.querySelector('.gem-media-db-missing-session');
+        if (iframeSrc) {
+          if (!hasWrap) {
+            mediaPane.innerHTML = `
+              <div class="gem-media-db-wrap">
+                <div class="gem-media-db-loading-spinner" aria-hidden="true"></div>
+              </div>
+            `.trim();
+          }
+          ensureGemMediaDbPickerIframePreloaded();
+          setupGemMediaDbIframeBridge(mediaPane, modal);
+        } else if (!hasMissing) {
+          mediaPane.innerHTML = `<div class="gem-media-db-missing-session" style="padding:16px; opacity:0.85;">Media Database requires a <code>session_id</code> in the page URL. Open the editor from Emarsys with a valid session and try again.</div>`;
+        }
+        return;
+      }
+
+      picker.style.display = '';
+      const existingMediaPane = picker.querySelector('#gem-media-db-pane');
+      if (existingMediaPane) {
+        existingMediaPane.style.display = 'none';
+        if (existingMediaPane.parentNode !== picker) {
+          picker.appendChild(existingMediaPane);
+        }
+      }
 
       const getList = (cb) => {
         if (source === 'favorites') return getFavoriteImages(cb);
@@ -2197,8 +2824,7 @@ function initializeOverlayPanelControls() {
           getList((list) => {
           const render = (listForRender) => {
           const rows = (Array.isArray(listForRender) ? [...listForRender] : [])
-            .filter((x) => x && typeof x.url === 'string' && x.url.trim())
-            .sort((a, b) => (b.ts || 0) - (a.ts || 0));
+            .filter((x) => x && typeof x.url === 'string' && x.url.trim());
 
           const escape = (s) =>
             String(s)
@@ -2221,6 +2847,9 @@ function initializeOverlayPanelControls() {
             : '';
 
           const sourceTabs = `
+              <div class="e-tabs__title ${source === 'mediaDb' ? 'e-tabs__title-active' : ''}" data-tab="mediaDb">
+                <div class="e-tabs__separator">Media Database</div>
+              </div>
               <div class="e-tabs__title ${source === 'seen' ? 'e-tabs__title-active' : ''}" data-tab="seen">
                 <div class="e-tabs__separator">Recent Images</div>
               </div>
@@ -2232,27 +2861,250 @@ function initializeOverlayPanelControls() {
           const groupBy =
             (picker.dataset.gemFavoriteImagesGroupBy === 'language') ? 'language' :
             (picker.dataset.gemFavoriteImagesGroupBy === 'translation') ? 'translation' :
+            (picker.dataset.gemFavoriteImagesGroupBy === 'none') ? 'none' :
             'category';
           const sgRaw = picker.dataset.gemSeenImagesGroupBy;
           const seenGroupBy =
+            sgRaw === 'none' ? 'none' :
             sgRaw === 'date' ? 'date' : (sgRaw === 'lastUsed' ? 'lastUsed' : 'path');
+          const favSortByRaw = picker.dataset.gemFavoriteImagesSortBy;
+          const favSortBy = normalizeRecentImagesPickerFavSortBy(favSortByRaw);
+          const seenSortByRaw = picker.dataset.gemSeenImagesSortBy;
+          const seenSortBy = normalizeRecentImagesPickerSeenSortBy(seenSortByRaw);
+          const favSortOrder = normalizeRecentImagesPickerSortOrder(picker.dataset.gemFavoriteImagesSortOrder);
+          const seenSortOrder = normalizeRecentImagesPickerSortOrder(picker.dataset.gemSeenImagesSortOrder);
+          const favSortDesc = favSortOrder === 'desc';
+          const seenSortDesc = seenSortOrder === 'desc';
+
+          const cmpFieldEmptyLastStr = (aRaw, bRaw, desc) => {
+            const a = String(aRaw || '').trim();
+            const b = String(bRaw || '').trim();
+            const aEmpty = !a;
+            const bEmpty = !b;
+            if (aEmpty && bEmpty) return 0;
+            if (aEmpty) return 1;
+            if (bEmpty) return -1;
+            const c = a.localeCompare(b, undefined, { sensitivity: 'base' });
+            return desc ? -c : c;
+          };
+
+          const getFavSortFieldStr = (it, sortBy) => {
+            if (sortBy === 'language') return it.language || '';
+            if (sortBy === 'translation') return it.translation || '';
+            return it.category || '';
+          };
+
+          const compareFavPickerItems = (a, b, sortBy, desc) => {
+            let c = cmpFieldEmptyLastStr(getFavSortFieldStr(a, sortBy), getFavSortFieldStr(b, sortBy), desc);
+            if (c !== 0) return c;
+            return String(a.url || '').localeCompare(String(b.url || ''), undefined, { sensitivity: 'base' });
+          };
+
+          const favGroupRepString = (catItems, sortBy, desc) => {
+            const strs = catItems.map((it) => String(getFavSortFieldStr(it, sortBy) || '').trim()).filter(Boolean);
+            if (strs.length === 0) return '';
+            if (desc) {
+              return strs.reduce((best, s) => (s.localeCompare(best, undefined, { sensitivity: 'base' }) >= 0 ? s : best));
+            }
+            return strs.reduce((best, s) => (s.localeCompare(best, undefined, { sensitivity: 'base' }) <= 0 ? s : best));
+          };
+
+          const cmpFavGroupBucketKey = (ga, gb) => {
+            const aa = String(ga || '').toLowerCase().trim();
+            const bb = String(gb || '').toLowerCase().trim();
+            if (!aa && !bb) return 0;
+            if (!aa) return 1;
+            if (!bb) return -1;
+            return aa.localeCompare(bb);
+          };
+
+          const sortFavGroupKeysByRepresentative = (keys, groupMap, sortBy, desc) => {
+            keys.sort((ka, kb) => {
+              const itemsA = groupMap.get(ka) || [];
+              const itemsB = groupMap.get(kb) || [];
+              const repA = favGroupRepString(itemsA, sortBy, desc);
+              const repB = favGroupRepString(itemsB, sortBy, desc);
+              let c = cmpFieldEmptyLastStr(repA, repB, desc);
+              if (c !== 0) return c;
+              return cmpFavGroupBucketKey(ka, kb);
+            });
+          };
+
+          const getSeenSortNum = (it, sortBy) => {
+            if (sortBy === 'lastSeen') return Number(it.ts) || 0;
+            if (sortBy === 'lastUsed') {
+              return (typeof it.lastUsed === 'number' && it.lastUsed > 0) ? it.lastUsed : 0;
+            }
+            return 0;
+          };
+
+          const getSeenSortStr = (it, sortBy) => {
+            if (sortBy === 'path') return String(it.path || '').trim();
+            if (sortBy === 'filename') {
+              const f = String(it.friendlyFilename || '').trim();
+              return f || String(it.url || '').trim();
+            }
+            return '';
+          };
+
+          const cmpSeenNumEmptyLast = (na, nb, desc) => {
+            const aWeak = !(Number(na) > 0);
+            const bWeak = !(Number(nb) > 0);
+            if (aWeak && bWeak) return 0;
+            if (aWeak) return 1;
+            if (bWeak) return -1;
+            return desc ? (nb - na) : (na - nb);
+          };
+
+          const compareSeenGroupReps = (ra, rb, sortBy, desc) => {
+            if (sortBy === 'lastSeen' || sortBy === 'lastUsed') {
+              return cmpSeenNumEmptyLast(ra, rb, desc);
+            }
+            return cmpFieldEmptyLastStr(ra, rb, desc);
+          };
+
+          const compareSeenPickerItems = (a, b, sortBy, desc) => {
+            if (sortBy === 'lastSeen' || sortBy === 'lastUsed') {
+              const va = getSeenSortNum(a, sortBy);
+              const vb = getSeenSortNum(b, sortBy);
+              let c = cmpSeenNumEmptyLast(va, vb, desc);
+              if (c !== 0) return c;
+              return String(a.url || '').localeCompare(String(b.url || ''), undefined, { sensitivity: 'base' });
+            }
+            let c = cmpFieldEmptyLastStr(getSeenSortStr(a, sortBy), getSeenSortStr(b, sortBy), desc);
+            if (c !== 0) return c;
+            return String(a.url || '').localeCompare(String(b.url || ''), undefined, { sensitivity: 'base' });
+          };
+
+          const seenGroupRep = (items, sortBy, desc) => {
+            if (sortBy === 'lastSeen' || sortBy === 'lastUsed') {
+              const nums = items.map((it) => getSeenSortNum(it, sortBy)).filter((n) => n > 0);
+              if (nums.length === 0) return 0;
+              return desc ? Math.max(...nums) : Math.min(...nums);
+            }
+            const strs = items.map((it) => String(getSeenSortStr(it, sortBy) || '').trim()).filter(Boolean);
+            if (strs.length === 0) return '';
+            if (desc) {
+              return strs.reduce((best, s) => (s.localeCompare(best, undefined, { sensitivity: 'base' }) >= 0 ? s : best));
+            }
+            return strs.reduce((best, s) => (s.localeCompare(best, undefined, { sensitivity: 'base' }) <= 0 ? s : best));
+          };
+
+          const cmpSeenGroupBucketKeyTie = (ka, kb, seenGroupByMode) => {
+            if (seenGroupByMode === 'path' || seenGroupByMode === 'date') {
+              const aEmpty = !String(ka || '').trim();
+              const bEmpty = !String(kb || '').trim();
+              if (aEmpty && bEmpty) return 0;
+              if (aEmpty) return 1;
+              if (bEmpty) return -1;
+            }
+            return String(ka || '').localeCompare(String(kb || ''), undefined, { sensitivity: 'base' });
+          };
+
+          const sortSeenGroupKeysByRepresentative = (keys, groupMap, seenSortByLocal, desc, SEEN_LAST_USED_SENTINEL, seenGroupByMode) => {
+            keys.sort((ka, kb) => {
+              if (seenGroupByMode === 'lastUsed') {
+                if (ka === SEEN_LAST_USED_SENTINEL && kb === SEEN_LAST_USED_SENTINEL) return 0;
+                if (ka === SEEN_LAST_USED_SENTINEL) return 1;
+                if (kb === SEEN_LAST_USED_SENTINEL) return -1;
+              }
+              const repA = seenGroupRep(groupMap.get(ka) || [], seenSortByLocal, desc);
+              const repB = seenGroupRep(groupMap.get(kb) || [], seenSortByLocal, desc);
+              let c = compareSeenGroupReps(repA, repB, seenSortByLocal, desc);
+              if (c !== 0) return c;
+              return cmpSeenGroupBucketKeyTie(ka, kb, seenGroupByMode);
+            });
+          };
+
           const groupBySelect = (source === 'favorites')
             ? `
-              <label style="font-size:12px; opacity:0.75; white-space:nowrap;">Group by</label>
-              <select class="e-select gem-fav-groupby-select" style="height:36px; width:auto;">
+              <div class="gem-image-picker-filter-stack">
+              <label>Group by</label>
+              <select class="e-select gem-fav-groupby-select gem-image-picker-groupby-select" style="width:auto;">
                 <option value="category" ${groupBy === 'category' ? 'selected' : ''}>Category</option>
                 <option value="language" ${groupBy === 'language' ? 'selected' : ''}>Language</option>
                 <option value="translation" ${groupBy === 'translation' ? 'selected' : ''}>Translation</option>
+                <option value="none" ${groupBy === 'none' ? 'selected' : ''}>No Grouping</option>
               </select>
+              </div>
             `.trim()
             : (source === 'seen')
             ? `
+              <div class="gem-image-picker-filter-stack">
               <label style="font-size:12px; opacity:0.75; white-space:nowrap;">Group by</label>
-              <select class="e-select gem-seen-groupby-select" style="height:36px; width:auto;">
+              <select class="e-select gem-seen-groupby-select gem-image-picker-groupby-select" style="width:auto;">
                 <option value="path" ${seenGroupBy === 'path' ? 'selected' : ''}>Folder Path</option>
                 <option value="date" ${seenGroupBy === 'date' ? 'selected' : ''}>Last Seen</option>
                 <option value="lastUsed" ${seenGroupBy === 'lastUsed' ? 'selected' : ''}>Last Used</option>
+                <option value="none" ${seenGroupBy === 'none' ? 'selected' : ''}>No Grouping</option>
               </select>
+              </div>
+            `.trim()
+            : '';
+
+          const favOrderAria =
+            favSortOrder === 'desc'
+              ? 'Sort order: descending. Activate to use ascending order.'
+              : 'Sort order: ascending. Activate to use descending order.';
+          const seenOrderAria =
+            seenSortOrder === 'desc'
+              ? 'Sort order: descending. Activate to use ascending order.'
+              : 'Sort order: ascending. Activate to use descending order.';
+          const orderIconStack = (orderClass, dataContext, ariaLabel) => `
+              <div class="gem-image-picker-filter-stack gem-image-picker-filter-stack--order-icons">
+                <button type="button" class="gem-image-picker-order-toggle e-btn e-btn-borderless ${orderClass}" data-order-context="${dataContext}" aria-label="${escape(ariaLabel)}">
+                  <span class="gem-image-picker-order-toggle__icons">
+                    <span class="gem-image-picker-order-icon gem-image-picker-order-icon--up">
+                      <e-icon icon="caret-up">
+                        <div aria-hidden="true" class="e-icon-wrapper">
+                          <div class="e-icon">&#xF172;</div>
+                        </div>
+                      </e-icon>
+                    </span>
+                    <span class="gem-image-picker-order-icon gem-image-picker-order-icon--down">
+                      <e-icon icon="caret-down">
+                        <div aria-hidden="true" class="e-icon-wrapper">
+                          <div class="e-icon">&#xF173;</div>
+                        </div>
+                      </e-icon>
+                    </span>
+                  </span>
+                </button>
+              </div>
+            `.trim();
+
+          const sortByOrderControls = (source === 'favorites')
+            ? `
+              <div class="gem-image-picker-filter-stack">
+              <label>Sort by</label>
+              <select class="e-select gem-fav-sortby-select gem-image-picker-groupby-select" style="width:auto;">
+                <option value="category" ${favSortBy === 'category' ? 'selected' : ''}>Category</option>
+                <option value="language" ${favSortBy === 'language' ? 'selected' : ''}>Language</option>
+                <option value="translation" ${favSortBy === 'translation' ? 'selected' : ''}>Translation</option>
+              </select>
+              </div>
+              ${orderIconStack(
+                `gem-image-picker-order-toggle--${favSortOrder}`,
+                'favorites',
+                favOrderAria
+              )}
+            `.trim()
+            : (source === 'seen')
+            ? `
+              <div class="gem-image-picker-filter-stack">
+              <label style="font-size:12px; opacity:0.75; white-space:nowrap;">Sort by</label>
+              <select class="e-select gem-seen-sortby-select gem-image-picker-groupby-select" style="width:auto;">
+                <option value="path" ${seenSortBy === 'path' ? 'selected' : ''}>Folder Path</option>
+                <option value="lastSeen" ${seenSortBy === 'lastSeen' ? 'selected' : ''}>Last Seen</option>
+                <option value="lastUsed" ${seenSortBy === 'lastUsed' ? 'selected' : ''}>Last Used</option>
+                <option value="filename" ${seenSortBy === 'filename' ? 'selected' : ''}>Filename</option>
+              </select>
+              </div>
+              ${orderIconStack(
+                `gem-image-picker-order-toggle--${seenSortOrder}`,
+                'seen',
+                seenOrderAria
+              )}
             `.trim()
             : '';
 
@@ -2270,27 +3122,31 @@ function initializeOverlayPanelControls() {
           const regexActive = source === 'favorites' ? picker.dataset.gemFavRegex === '1' : picker.dataset.gemSeenRegex === '1';
           const favSearch = (source === 'favorites' || source === 'seen')
             ? `
-              <div id="gem-search-container" style="margin-top:8px;padding:0 16px;display:flex;gap:8px;align-items:flex-start;">
-                <div style="flex:1;display:flex;flex-direction:column;gap:8px;min-width:0;">
-                  <div class="gem-search-input-wrap">
+              <div id="gem-search-container" style="margin-top:12px;padding:0 16px;display:flex; flex-direction: column; gap:0;align-items:flex-start;">
+                <div style="flex:1;display:flex;flex-direction:row;gap:12px;min-width:100%;">
+                  <div class="gem-search-input-wrap" style="width:100%">
                     <input class="e-input e-input-search gem-image-search ${source === 'favorites' ? 'gem-favorite-images-search' : 'gem-seen-images-search'}" placeholder="Search ${source === 'favorites' ? 'favorite images' : 'recent images'}" type="search" value="${escape(source === 'favorites' ? (picker.dataset.gemFavoriteImagesSearch || '') : (picker.dataset.gemSeenImagesSearch || ''))}">
                     <button type="button" class="gem-regex-toggle ${regexActive ? 'gem-regex-toggle--active' : ''}" title="Use regular expression" aria-pressed="${regexActive ? 'true' : 'false'}" data-regex-source="${source}">.*</button>
                   </div>
-                  <div class="gem-search-pills" data-pills-source="${source}">
+                <div class="gem-search-group-by-container">
+                  ${groupBySelect}
+                  ${sortByOrderControls}
+                </div>
+                <button type="button" class="gem-search-settings-btn" title="Manage saved searches">⚙</button>
+                </div>
+                  <div class="gem-search-pills" data-pills-source="${source}" style="padding:16px 0; ">
                     ${pillsHtml}
                   </div>
-                </div>
-                <div style="margin-left:12px;padding-left:12px;border-left:1px solid var(--token-box-default-border);display:flex;align-items:center;gap:8px;">
-                  ${groupBySelect}
-                  <button type="button" class="gem-search-settings-btn" title="Manage saved searches">⚙</button>
-                </div>
               </div>
             `.trim()
             : '';
 
           const currentAction = picker.dataset.gemCollapseExpandAction || 'collapse';
           const actionLabel = currentAction === 'collapse' ? 'Collapse all groups' : 'Expand all groups';
-          const collapseExpandAllBtn = (source === 'favorites' || source === 'seen')
+          const groupingActive =
+            (source === 'favorites' && groupBy !== 'none') ||
+            (source === 'seen' && seenGroupBy !== 'none');
+          const collapseExpandAllBtn = (source === 'favorites' || source === 'seen') && groupingActive
             ? `<button class="e-btn e-btn-borderless e-btn-onlyicon gem-collapse-expand-all-btn" type="button" data-action="${escape(currentAction)}" aria-label="${escape(actionLabel)}" title="${escape(actionLabel)}">⇅</button>`
             : '';
 
@@ -2303,24 +3159,16 @@ function initializeOverlayPanelControls() {
             `.trim()
             : '';
 
-          const header = `
-            <div id="gem-image-list-header" style="padding:0 0 16px; background: var(--token-box-alternate-background); position:sticky; z-index:3; top:0">
-            <div style="display:flex; align-items:center; justify-content:space-between; width:100%; margin-bottom:10px; background-color: var(--token-tab-default-background);">
-              <div style="display:flex; gap:10px; align-items:center; width:100%;">
-                <div class="e-tabs e-tabs-dialogheader">
-                ${sourceTabs}
-                ${addFavoriteBtn}
-                <div style="display:flex; gap:10px; align-items:center; justify-content:flex-end; margin-left:auto;">
+          const header = buildSharedImagePickerHeader({
+            sourceTabs,
+            addFavoriteBtn,
+            rightControls: `
                   ${collapseExpandAllBtn}
                   ${gridColsControl}
                   <button class="e-btn gem-recent-images-toggle-view-btn" type="button">${toggleLabel}</button>
-                </div>
-                </div>
-              </div>
-            </div>
-            ${favSearch}
-            </div>
-          `.trim();
+                `.trim(),
+            searchBlock: favSearch
+          });
 
           const empty = rows.length === 0
             ? (source === 'favorites'
@@ -2379,26 +3227,26 @@ function initializeOverlayPanelControls() {
                   ? `<div style="padding:0 16px 16px 16px; opacity:0.7;">Found ${filtered.length} matches for ${termsDisplay}.</div>`
                   : '';
 
+                const effectiveGroupBy = groupBy === 'none' ? 'category' : groupBy;
+
                 const groupMap = new Map();
-                filtered.forEach((it) => {
-                  const g =
-                    groupBy === 'language' ? (it.language || '') :
-                    groupBy === 'translation' ? (it.translation || '') :
-                    (it.category || '');
-                  if (!groupMap.has(g)) groupMap.set(g, []);
-                  groupMap.get(g).push(it);
-                });
+                if (groupBy !== 'none') {
+                  filtered.forEach((it) => {
+                    const g =
+                      groupBy === 'language' ? (it.language || '') :
+                      groupBy === 'translation' ? (it.translation || '') :
+                      (it.category || '');
+                    if (!groupMap.has(g)) groupMap.set(g, []);
+                    groupMap.get(g).push(it);
+                  });
+                }
 
                 const groupKeys = Array.from(groupMap.keys());
-                groupKeys.sort((a, b) => {
-                  const aa = (a || '').toLowerCase();
-                  const bb = (b || '').toLowerCase();
-                  if (!aa) return 1; // Uncategorized / No Language Set last
-                  if (!bb) return -1;
-                  return aa.localeCompare(bb);
-                });
+                if (groupBy !== 'none') {
+                  sortFavGroupKeysByRepresentative(groupKeys, groupMap, favSortBy, favSortDesc);
+                }
 
-                if (terms.length === 0) {
+                if (terms.length === 0 && groupBy !== 'none') {
                   const validKeys = new Set(groupKeys.map(gKey => `${groupBy}:${gKey || ''}`));
                   const pruned = {};
                   let changed = false;
@@ -2451,15 +3299,15 @@ function initializeOverlayPanelControls() {
                 const renderGridItem = (it) => {
                   const editTitle = 'Edit metadata';
                   const label =
-                    (groupBy === 'translation')
+                    (effectiveGroupBy === 'translation')
                       ? ((it.language || '').trim())
                       : (((it.translation || '').trim()) || ((it.altText || '').trim()));
 
                   // Extra metadata to show under the primary label (varies by Group By)
                   const extraPartsRaw =
-                    (groupBy === 'category')
+                    (effectiveGroupBy === 'category')
                       ? [((it.language || '').trim()), ((it.translation || '').trim())]
-                      : (groupBy === 'translation')
+                      : (effectiveGroupBy === 'translation')
                         ? [((it.category || '').trim()), ((it.language || '').trim())]
                         : [((it.category || '').trim()), ((it.translation || '').trim())]; // language
                   const extraParts = extraPartsRaw
@@ -2487,14 +3335,14 @@ function initializeOverlayPanelControls() {
                 const renderTableRows = (catItems) => {
                   return catItems.map((it) => {
                     const metaText = [it.altText].filter(Boolean).join(' • ');
-                    const colA = (groupBy === 'category')
+                    const colA = (effectiveGroupBy === 'category')
                       ? (it.language || '')
-                      : (groupBy === 'translation')
+                      : (effectiveGroupBy === 'translation')
                         ? (it.category || '')
                         : (it.category || ''); // language
-                    const colB = (groupBy === 'category')
+                    const colB = (effectiveGroupBy === 'category')
                       ? (it.translation || '')
-                      : (groupBy === 'translation')
+                      : (effectiveGroupBy === 'translation')
                         ? (it.language || '')
                         : (it.translation || ''); // language
                     return `
@@ -2523,19 +3371,41 @@ function initializeOverlayPanelControls() {
                 };
 
                 const buildCategorySections = () => {
+                  if (groupBy === 'none') {
+                    const sortedItems = [...filtered];
+                    sortedItems.sort((a, b) => compareFavPickerItems(a, b, favSortBy, favSortDesc));
+                    if (viewMode === 'grid') {
+                      return `
+                        <div class="gem-fav-cat-section" style="padding:0 16px">
+                          <div class="gem-recent-images-grid">
+                            ${sortedItems.map(renderGridItem).join('')}
+                          </div>
+                        </div>
+                      `.trim();
+                    }
+                    return `
+                      <div class="gem-fav-cat-section" style="padding:0 16px">
+                        <table data-e-version="2" class="e-table e-table-bordered gem-recent-images-table" style="width:100%; font-size: 14px; margin-top:8px;">
+                          <thead>
+                            <tr>
+                              <th style="width:140px;">Preview</th>
+                              <th>URL</th>
+                              <th style="width:140px;">Language</th>
+                              <th style="width:140px;">Translation</th>
+                              <th style="width:160px;">${dateLabel}</th>
+                              <th style="width:160px; text-align:right;">Use</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            ${renderTableRows(sortedItems)}
+                          </tbody>
+                        </table>
+                      </div>
+                    `.trim();
+                  }
                   return groupKeys.map((gKey) => {
                     const catItems = groupMap.get(gKey) || [];
-                    // Sort: altText present alpha; no altText last by lastUsed desc
-                    catItems.sort((a, b) => {
-                      const aa = (a.altText || '').trim();
-                      const bb = (b.altText || '').trim();
-                      const hasA = !!aa;
-                      const hasB = !!bb;
-                      if (hasA && hasB) return aa.toLowerCase().localeCompare(bb.toLowerCase());
-                      if (hasA && !hasB) return -1;
-                      if (!hasA && hasB) return 1;
-                      return (b.lastUsed || 0) - (a.lastUsed || 0);
-                    });
+                    catItems.sort((a, b) => compareFavPickerItems(a, b, favSortBy, favSortDesc));
 
                     const headerHtml = renderGroupHeader(gKey, catItems.length);
                     const storageKey = `${groupBy}:${gKey || ''}`;
@@ -2564,8 +3434,8 @@ function initializeOverlayPanelControls() {
                               <tr>
                                 <th style="width:140px;">Preview</th>
                                 <th>URL</th>
-                                <th style="width:140px;">${groupBy === 'category' ? 'Language' : (groupBy === 'translation' ? 'Category' : 'Category')}</th>
-                                <th style="width:140px;">${groupBy === 'category' ? 'Translation' : (groupBy === 'translation' ? 'Language' : 'Translation')}</th>
+                                <th style="width:140px;">${effectiveGroupBy === 'category' ? 'Language' : (effectiveGroupBy === 'translation' ? 'Category' : 'Category')}</th>
+                                <th style="width:140px;">${effectiveGroupBy === 'category' ? 'Translation' : (effectiveGroupBy === 'translation' ? 'Language' : 'Translation')}</th>
                                 <th style="width:160px;">${dateLabel}</th>
                                 <th style="width:160px; text-align:right;">Use</th>
                               </tr>
@@ -2581,16 +3451,16 @@ function initializeOverlayPanelControls() {
                 };
 
                 // For content-only updates (search changes), preserve header and update only content
-                if (opts.contentOnly && picker.querySelector('#gem-image-list-header')) {
+                if (opts.contentOnly && pickerContent.querySelector('.gem-image-list-header')) {
                   const contentContainer = document.createElement('div');
                   contentContainer.innerHTML = `
                     ${searchSummary}
-                    ${terms.length > 0 && groupKeys.length === 0 ? `<div style="padding:0 16px 16px 16px; opacity:0.7;">No matches found for ${termsDisplay}.</div>` : ''}
+                    ${terms.length > 0 && filtered.length === 0 ? `<div style="padding:0 16px 16px 16px; opacity:0.7;">No matches found for ${termsDisplay}.</div>` : ''}
                     ${buildCategorySections()}
                     ${terms.length === 0 ? empty : ''}
                   `.trim();
                   // Replace everything after the header
-                  const header = picker.querySelector('#gem-image-list-header');
+                  const header = pickerContent.querySelector('.gem-image-list-header');
                   if (header) {
                     // Remove all siblings after header
                     let nextSibling = header.nextSibling;
@@ -2601,10 +3471,10 @@ function initializeOverlayPanelControls() {
                     }
                     // Add new content
                     while (contentContainer.firstChild) {
-                      picker.appendChild(contentContainer.firstChild);
+                      pickerContent.appendChild(contentContainer.firstChild);
                     }
                   }
-                  const pillsContainerFav = picker.querySelector('.gem-search-pills[data-pills-source="favorites"]');
+                  const pillsContainerFav = pickerContent.querySelector('.gem-search-pills[data-pills-source="favorites"]');
                   if (pillsContainerFav) {
                     const favPillsForUpdate = pillsForContext(picker._gemSearchPills, PILL_CTX_FAV);
                     pillsContainerFav.innerHTML = favPillsForUpdate.map((p) => {
@@ -2618,10 +3488,10 @@ function initializeOverlayPanelControls() {
                     }).filter(Boolean).join('');
                   }
                 } else {
-                  picker.innerHTML = `
+                  pickerContent.innerHTML = `
                     ${header}
                     ${searchSummary}
-                    ${terms.length > 0 && groupKeys.length === 0 ? `<div style="padding:0 16px 16px 16px; opacity:0.7;">No matches found for ${termsDisplay}.</div>` : ''}
+                    ${terms.length > 0 && filtered.length === 0 ? `<div style="padding:0 16px 16px 16px; opacity:0.7;">No matches found for ${termsDisplay}.</div>` : ''}
                     ${buildCategorySections()}
                     ${terms.length === 0 ? empty : ''}
                   `.trim();
@@ -2675,70 +3545,41 @@ function initializeOverlayPanelControls() {
                 : '';
 
               const groupMap = new Map();
-              filtered.forEach((it) => {
-                let g;
-                if (seenGroupBy === 'lastUsed') {
-                  g = (typeof it.lastUsed === 'number' && it.lastUsed > 0)
-                    ? formatRecentImageDate(it.lastUsed).split(',')[0]
-                    : SEEN_LAST_USED_NONE;
-                } else if (seenGroupBy === 'date') {
-                  g = formatRecentImageDate(it.ts).split(',')[0];
-                } else {
-                  g = it.path || '';
-                }
-                if (!groupMap.has(g)) groupMap.set(g, []);
-                groupMap.get(g).push(it);
-              });
-
-              let groupKeys = Array.from(groupMap.keys());
-              if (seenGroupBy === 'lastUsed') {
-                const dated = groupKeys.filter((k) => k !== SEEN_LAST_USED_NONE);
-                dated.sort((a, b) => {
-                  const aItems = groupMap.get(a) || [];
-                  const bItems = groupMap.get(b) || [];
-                  const aMax = Math.max(...aItems.map((item) => item.lastUsed || 0));
-                  const bMax = Math.max(...bItems.map((item) => item.lastUsed || 0));
-                  return bMax - aMax;
-                });
-                groupKeys = dated;
-                if (groupMap.has(SEEN_LAST_USED_NONE)) groupKeys.push(SEEN_LAST_USED_NONE);
-              } else {
-                groupKeys.sort((a, b) => {
-                  const aEmpty = !a || (a || '').trim() === '';
-                  const bEmpty = !b || (b || '').trim() === '';
-
-                  if (aEmpty && bEmpty) return 0;
-                  if (aEmpty) return 1;
-                  if (bEmpty) return -1;
-
-                  if (seenGroupBy === 'path') {
-                    const aItems = groupMap.get(a) || [];
-                    const bItems = groupMap.get(b) || [];
-                    const aMaxTs = Math.max(...aItems.map(item => item.ts || 0));
-                    const bMaxTs = Math.max(...bItems.map(item => item.ts || 0));
-                    return bMaxTs - aMaxTs;
-                  }
-
-                  const aa = (a || '').toLowerCase();
-                  const bb = (b || '').toLowerCase();
-                  return aa.localeCompare(bb);
-                });
-              }
-
-              if (seenTerms.length === 0) {
-                const prefix = `seen:${seenGroupBy}:`;
-                const validKeys = new Set(groupKeys.map(gKey => `${prefix}${gKey || ''}`));
-                const pruned = {};
-                let changed = false;
-                for (const [k, v] of Object.entries(collapse)) {
-                  if (k.startsWith(prefix) && !validKeys.has(k)) {
-                    changed = true;
+              let groupKeys = [];
+              if (seenGroupBy !== 'none') {
+                filtered.forEach((it) => {
+                  let g;
+                  if (seenGroupBy === 'lastUsed') {
+                    g = (typeof it.lastUsed === 'number' && it.lastUsed > 0)
+                      ? formatRecentImageDate(it.lastUsed).split(',')[0]
+                      : SEEN_LAST_USED_NONE;
+                  } else if (seenGroupBy === 'date') {
+                    g = formatRecentImageDate(it.ts).split(',')[0];
                   } else {
-                    pruned[k] = v;
+                    g = it.path || '';
                   }
-                }
-                if (changed) {
-                  saveRecentlySeenImageGroupCollapseMap(pruned);
+                  if (!groupMap.has(g)) groupMap.set(g, []);
+                  groupMap.get(g).push(it);
+                });
+
+                groupKeys = Array.from(groupMap.keys());
+                sortSeenGroupKeysByRepresentative(groupKeys, groupMap, seenSortBy, seenSortDesc, SEEN_LAST_USED_NONE, seenGroupBy);
+
+                if (seenTerms.length === 0) {
+                  const prefix = `seen:${seenGroupBy}:`;
+                  const validKeys = new Set(groupKeys.map(gKey => `${prefix}${gKey || ''}`));
+                  const pruned = {};
+                  let changed = false;
+                  for (const [k, v] of Object.entries(collapse)) {
+                    if (k.startsWith(prefix) && !validKeys.has(k)) {
+                      changed = true;
+                    } else {
+                      pruned[k] = v;
+                    }
+                  }
+                  if (changed) {
+                    saveRecentlySeenImageGroupCollapseMap(pruned);
+                  }
                 }
               }
 
@@ -2839,14 +3680,39 @@ function initializeOverlayPanelControls() {
               };
 
               const buildCategorySections = () => {
+                if (seenGroupBy === 'none') {
+                  const flatItems = [...filtered];
+                  flatItems.sort((a, b) => compareSeenPickerItems(a, b, seenSortBy, seenSortDesc));
+                  if (viewMode === 'grid') {
+                    return `
+                      <div class="gem-seen-cat-section" style="padding:0 16px">
+                        <div class="gem-recent-images-grid">
+                          ${flatItems.map(renderGridItem).join('')}
+                        </div>
+                      </div>
+                    `.trim();
+                  }
+                  return `
+                    <div class="gem-seen-cat-section" style="padding:0 16px">
+                      <table data-e-version="2" class="e-table e-table-bordered gem-recent-images-table" style="width:100%; font-size: 14px; margin-top:8px;">
+                        <thead>
+                          <tr>
+                            <th style="width:140px;">Preview</th>
+                            <th>Filename</th>
+                            <th style="width:160px;">${dateLabel}</th>
+                            <th style="width:160px; text-align:right;">Use</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          ${renderTableRows(flatItems)}
+                        </tbody>
+                      </table>
+                    </div>
+                  `.trim();
+                }
                 return groupKeys.map((gKey) => {
                   const catItems = groupMap.get(gKey) || [];
-                  catItems.sort((a, b) => {
-                    if (seenGroupBy === 'lastUsed' && gKey !== SEEN_LAST_USED_NONE) {
-                      return (b.lastUsed || 0) - (a.lastUsed || 0);
-                    }
-                    return (b.ts || 0) - (a.ts || 0);
-                  });
+                  catItems.sort((a, b) => compareSeenPickerItems(a, b, seenSortBy, seenSortDesc));
 
                   const headerHtml = renderGroupHeader(gKey, catItems.length);
                   const storageKey = `seen:${seenGroupBy}:${gKey === SEEN_LAST_USED_NONE ? SEEN_LAST_USED_NONE : (gKey || '')}`;
@@ -2889,17 +3755,17 @@ function initializeOverlayPanelControls() {
               };
 
               // For content-only updates (search changes), preserve header and update only content
-              if (opts.contentOnly && picker.querySelector('#gem-image-list-header')) {
+              if (opts.contentOnly && pickerContent.querySelector('.gem-image-list-header')) {
                 const contentContainer = document.createElement('div');
                 contentContainer.innerHTML = `
                   ${searchSummary}
-                  ${seenTerms.length > 0 && groupKeys.length === 0 ? `<div style="padding:0 16px 16px 16px; opacity:0.7;">No matches found for ${seenTermsDisplay}.</div>` : ''}
+                  ${seenTerms.length > 0 && filtered.length === 0 ? `<div style="padding:0 16px 16px 16px; opacity:0.7;">No matches found for ${seenTermsDisplay}.</div>` : ''}
                   ${buildCategorySections()}
                   ${seenTerms.length === 0 ? empty : ''}
                 `.trim();
 
                 // Replace everything after the header
-                const header = picker.querySelector('#gem-image-list-header');
+                const header = pickerContent.querySelector('.gem-image-list-header');
                 if (header) {
                   // Remove all siblings after header
                   let nextSibling = header.nextSibling;
@@ -2910,10 +3776,10 @@ function initializeOverlayPanelControls() {
                   }
                   // Add new content
                   while (contentContainer.firstChild) {
-                    picker.appendChild(contentContainer.firstChild);
+                    pickerContent.appendChild(contentContainer.firstChild);
                   }
                 }
-                const pillsContainerSeen = picker.querySelector('.gem-search-pills[data-pills-source="seen"]');
+                const pillsContainerSeen = pickerContent.querySelector('.gem-search-pills[data-pills-source="seen"]');
                 if (pillsContainerSeen) {
                   const seenPillsForUpdate = pillsForContext(picker._gemSearchPills, PILL_CTX_SEEN);
                   pillsContainerSeen.innerHTML = seenPillsForUpdate.map((p) => {
@@ -2927,10 +3793,10 @@ function initializeOverlayPanelControls() {
                   }).filter(Boolean).join('');
                 }
               } else {
-                picker.innerHTML = `
+                pickerContent.innerHTML = `
                   ${header}
                   ${searchSummary}
-                  ${seenTerms.length > 0 && groupKeys.length === 0 ? `<div style="padding:0 16px 16px 16px; opacity:0.7;">No matches found for ${seenTermsDisplay}.</div>` : ''}
+                  ${seenTerms.length > 0 && filtered.length === 0 ? `<div style="padding:0 16px 16px 16px; opacity:0.7;">No matches found for ${seenTermsDisplay}.</div>` : ''}
                   ${buildCategorySections()}
                   ${seenTerms.length === 0 ? empty : ''}
                 `.trim();
@@ -3115,6 +3981,26 @@ function initializeOverlayPanelControls() {
       `.trim();
     }
 
+    function getImagePickerNavigableUrls(modal) {
+      try {
+        const pickerContent = modal && modal.querySelector ? modal.querySelector('#gem-image-picker-content') : null;
+        if (!pickerContent) return [];
+        const buttons = Array.from(pickerContent.querySelectorAll('.gem-recent-image-use-btn[data-url]'));
+        const urls = [];
+        const seen = new Set();
+        buttons.forEach((btn) => {
+          const raw = btn.getAttribute('data-url') || '';
+          const u = normalizeRecentImageUrlCandidate(raw);
+          if (!u || seen.has(u)) return;
+          seen.add(u);
+          urls.push(u);
+        });
+        return urls;
+      } catch (_) {
+        return [];
+      }
+    }
+
     function openRecentlySeenImageDetailsModal(modal, url) {
       const u = normalizeRecentImageUrlCandidate(url);
       if (!u) return;
@@ -3123,139 +4009,166 @@ function initializeOverlayPanelControls() {
       if (existing) existing.remove();
 
       getRecentlySeenImages((seenList) => {
-        const seenItem = (Array.isArray(seenList) ? seenList : []).find((x) => x && x.url === u);
-        if (!seenItem) return;
+        let seenArr = Array.isArray(seenList) ? seenList : [];
+        const fallbackUrls = seenArr.map((x) => x && x.url).filter(Boolean);
+        const pickerUrls = getImagePickerNavigableUrls(modal);
+        let orderedUrls = pickerUrls.length > 0 ? pickerUrls : fallbackUrls;
+        let currentUrl = u;
+        if (!orderedUrls.includes(currentUrl) && orderedUrls.length > 0) currentUrl = orderedUrls[0];
 
-        getFavoriteImages((favList) => {
-          const favSet = new Set((Array.isArray(favList) ? favList : []).map((x) => x && x.url).filter(Boolean));
-          const isFav = favSet.has(u);
-          const friendlyFilename = (seenItem.friendlyFilename || '');
-          const path = (seenItem.path || '');
-          const ts = seenItem.ts || 0;
-          const lastUsedTs = typeof seenItem.lastUsed === 'number' ? seenItem.lastUsed : null;
+        const footerLeftHtml = `
+          <div class="gem-image-nav-group">
+            <button class="e-btn e-btn-borderless e-btn-onlyicon gem-image-nav-btn gem-image-nav-prev" type="button" aria-label="Previous image" title="Previous image">‹</button>
+            <button class="e-btn e-btn-borderless e-btn-onlyicon gem-image-nav-btn gem-image-nav-next" type="button" aria-label="Next image" title="Next image">›</button>
+          </div>
+          <button class="e-btn e-btn-borderless e-btn-onlyicon gem-seen-image-details-favtoggle" type="button" aria-label="Favorite" title="Favorite">
+            <span class="gem-recent-image-star">☆</span>
+          </button>
+        `.trim();
 
-          const bodyHtml = `
-            <div class="gem-image-modal__metadata">
-              <div class="e-field">
-                <label class="e-field__label">URL</label>
-                <div class="gem-image-modal__url">${u.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
-              </div>
-              ${friendlyFilename ? `
-                <div class="e-field">
-                  <label class="e-field__label">Filename</label>
-                  <div style="word-wrap: break-word;">${friendlyFilename.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
-                </div>
-              ` : ''}
-              ${path ? `
-                <div class="e-field">
-                  <label class="e-field__label">Path</label>
-                  <div>${path.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
-                </div>
-              ` : ''}
-              <div class="e-field">
-                <label class="e-field__label">Last Seen</label>
-                <div>${formatRecentImageDate(ts)}</div>
-              </div>
-              <div class="e-field">
-                <label class="e-field__label">Last Used</label>
-                <div>${lastUsedTs != null ? formatRecentImageDate(lastUsedTs) : '—'}</div>
-              </div>
-            </div>
-          `.trim();
-
-          const footerLeftHtml = `
-            <button class="e-btn e-btn-borderless e-btn-onlyicon gem-seen-image-details-favtoggle" type="button" aria-label="${isFav ? 'Unfavorite' : 'Favorite'}" title="${isFav ? 'Unfavorite' : 'Favorite'}">
-              <span class="gem-recent-image-star">${isFav ? '★' : '☆'}</span>
-            </button>
-          `.trim();
-
-          const footerRightHtml = `
-            <button class="e-btn gem-seen-image-details-cancel" type="button">Cancel</button>
-            <button class="e-btn e-btn-primary gem-seen-image-details-add-to-page" type="button">Insert</button>
-          `.trim();
+        const footerRightHtml = `
+          <button class="e-btn e-btn-secondary gem-seen-image-details-remove" type="button">Remove</button>
+          <button class="e-btn gem-seen-image-details-cancel" type="button">Cancel</button>
+          <button class="e-btn e-btn-primary gem-seen-image-details-add-to-page" type="button">Insert</button>
+        `.trim();
 
         const overlay = document.createElement('div');
         overlay.id = 'gem-seen-image-details-modal';
         overlay.className = 'gem-image-modal gem-seen-image-details-modal';
         overlay.innerHTML = buildGemImageModalPanelHTML({
           title: 'Image Details',
-          previewImgSrc: u,
-          bodyHtml,
+          previewImgSrc: currentUrl,
+          bodyHtml: `
+            <div class="gem-image-modal__metadata">
+              <div class="e-field"><label class="e-field__label">URL</label><div class="gem-image-modal__url gem-seen-details-url"></div></div>
+              <div class="e-field gem-seen-details-filename-row"><label class="e-field__label">Filename</label><div class="gem-seen-details-filename" style="word-wrap: break-word;"></div></div>
+              <div class="e-field gem-seen-details-path-row"><label class="e-field__label">Path</label><div class="gem-seen-details-path"></div></div>
+              <div class="e-field"><label class="e-field__label">Last Seen</label><div class="gem-seen-details-last-seen"></div></div>
+              <div class="e-field"><label class="e-field__label">Last Used</label><div class="gem-seen-details-last-used"></div></div>
+            </div>
+          `.trim(),
           footerLeftHtml,
           footerRightHtml
         });
-
         document.body.appendChild(overlay);
 
-        // Event handlers
-        const closeModal = () => overlay.remove();
+        const onWindowKeydown = (e) => {
+          if (!overlay.isConnected) return;
+          if (e.key === 'Escape') {
+            closeModal();
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+          }
+          if (e.key === 'ArrowLeft') {
+            navToOffset(-1);
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+          }
+          if (e.key === 'ArrowRight') {
+            navToOffset(1);
+            e.preventDefault();
+            e.stopPropagation();
+          }
+        };
+        const closeModal = () => {
+          try { window.removeEventListener('keydown', onWindowKeydown, true); } catch (_) {}
+          overlay.remove();
+        };
+        const getIndex = () => orderedUrls.indexOf(currentUrl);
+        const navToOffset = (delta) => {
+          const idx = getIndex();
+          if (idx < 0) return;
+          const nextIdx = idx + delta;
+          if (nextIdx < 0 || nextIdx >= orderedUrls.length) return;
+          currentUrl = orderedUrls[nextIdx];
+          renderCurrent();
+        };
+
+        const renderCurrent = () => {
+          const seenItem = seenArr.find((x) => x && x.url === currentUrl) || { url: currentUrl, ts: Date.now(), path: '', friendlyFilename: '' };
+          const esc = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          const filename = seenItem.friendlyFilename || '';
+          const path = seenItem.path || '';
+          const lastUsedTs = typeof seenItem.lastUsed === 'number' ? seenItem.lastUsed : null;
+          const img = overlay.querySelector('.gem-image-modal__preview img');
+          if (img) img.src = currentUrl;
+          const urlEl = overlay.querySelector('.gem-seen-details-url');
+          if (urlEl) urlEl.innerHTML = esc(currentUrl);
+          const filenameRow = overlay.querySelector('.gem-seen-details-filename-row');
+          const filenameEl = overlay.querySelector('.gem-seen-details-filename');
+          if (filenameRow) filenameRow.style.display = filename ? '' : 'none';
+          if (filenameEl) filenameEl.innerHTML = esc(filename);
+          const pathRow = overlay.querySelector('.gem-seen-details-path-row');
+          const pathEl = overlay.querySelector('.gem-seen-details-path');
+          if (pathRow) pathRow.style.display = path ? '' : 'none';
+          if (pathEl) pathEl.innerHTML = esc(path);
+          const lastSeenEl = overlay.querySelector('.gem-seen-details-last-seen');
+          if (lastSeenEl) lastSeenEl.textContent = formatRecentImageDate(seenItem.ts || 0);
+          const lastUsedEl = overlay.querySelector('.gem-seen-details-last-used');
+          if (lastUsedEl) lastUsedEl.textContent = lastUsedTs != null ? formatRecentImageDate(lastUsedTs) : '—';
+
+          getFavoriteImages((favList) => {
+            const favSet = new Set((Array.isArray(favList) ? favList : []).map((x) => x && x.url).filter(Boolean));
+            const nowFav = favSet.has(currentUrl);
+            const btn = overlay.querySelector('.gem-seen-image-details-favtoggle');
+            if (btn) {
+              btn.setAttribute('aria-label', nowFav ? 'Unfavorite' : 'Favorite');
+              btn.setAttribute('title', nowFav ? 'Unfavorite' : 'Favorite');
+              const starEl = btn.querySelector('.gem-recent-image-star');
+              if (starEl) starEl.textContent = nowFav ? '★' : '☆';
+            }
+          });
+
+          const idx = getIndex();
+          const prevBtn = overlay.querySelector('.gem-image-nav-prev');
+          const nextBtn = overlay.querySelector('.gem-image-nav-next');
+          const canPrev = idx > 0;
+          const canNext = idx >= 0 && idx < orderedUrls.length - 1;
+          if (prevBtn) prevBtn.disabled = !canPrev;
+          if (nextBtn) nextBtn.disabled = !canNext;
+        };
 
         overlay.addEventListener('click', (e) => {
           if (e.target === overlay || e.target.classList.contains('gem-image-modal__backdrop') || e.target.classList.contains('gem-image-modal__close')) {
             closeModal();
           }
         });
-
         overlay.querySelector('.gem-seen-image-details-cancel')?.addEventListener('click', closeModal);
-
         overlay.querySelector('.gem-seen-image-details-add-to-page')?.addEventListener('click', () => {
-          const normalizedUrl = normalizeRecentImageUrlCandidate(u);
-          const applyMetaSideEffects = () => {
-            if (!normalizedUrl) return;
-            getFavoriteImageMetaMap((map) => {
-              const meta = (map && typeof map === 'object') ? map[normalizedUrl] : null;
-              if (!meta) return;
-              const alt = meta && typeof meta.altText === 'string' ? meta.altText.trim() : '';
-              if (alt) setImageAltTextInput(modal, alt);
-              const w = meta && (typeof meta.width === 'number' || typeof meta.width === 'string') ? meta.width : '';
-              if (w) setImageWidthInput(modal, w);
-            });
-          };
-          const switchedMobileRadio = ensureMobileAlternateImageEnabled(modal);
-          if (switchedMobileRadio) {
-            setActiveImageUrlCodeMirrorWithRetry(modal, u, 12, 90, applyMetaSideEffects);
-          } else {
-            const ok = setActiveImageUrlCodeMirror(modal, u);
-            if (!ok) {
-              console.warn('[Gem][RecentImages] Failed to set image URL into active CodeMirror.');
-              return;
-            }
-            applyMetaSideEffects();
-          }
-          recordImageLastUsed(u);
+          insertImageUrlIntoImagePropertiesModal(modal, currentUrl);
           closeModal();
         });
-
-        overlay.querySelector('.gem-seen-image-details-favtoggle')?.addEventListener('click', () => {
-          toggleFavoriteImageUrl(u, () => {
-            getFavoriteImages((nextFavList) => {
-              const nextSet = new Set((Array.isArray(nextFavList) ? nextFavList : []).map((x) => x && x.url).filter(Boolean));
-              const nowFav = nextSet.has(u);
-              const btn = overlay.querySelector('.gem-seen-image-details-favtoggle');
-              if (btn) {
-                btn.setAttribute('aria-label', nowFav ? 'Unfavorite' : 'Favorite');
-                btn.setAttribute('title', nowFav ? 'Unfavorite' : 'Favorite');
-                const starEl = btn.querySelector('.gem-recent-image-star');
-                if (starEl) starEl.textContent = nowFav ? '★' : '☆';
-              }
-            });
+        overlay.querySelector('.gem-seen-image-details-remove')?.addEventListener('click', () => {
+          const prevIdx = orderedUrls.indexOf(currentUrl);
+          const nextSeen = (Array.isArray(seenArr) ? seenArr : []).filter((x) => x && x.url !== currentUrl);
+          saveRecentlySeenImages(nextSeen, () => {
+            seenArr = nextSeen;
+            orderedUrls = (Array.isArray(orderedUrls) ? orderedUrls : []).filter((x) => x && x !== currentUrl);
+            if (orderedUrls.length === 0) {
+              closeModal();
+              showRecentImagesPicker(modal);
+              return;
+            }
+            const fallbackIdx = Math.max(0, Math.min(prevIdx, orderedUrls.length - 1));
+            currentUrl = orderedUrls[fallbackIdx] || orderedUrls[0];
+            renderCurrent();
+            showRecentImagesPicker(modal);
           });
         });
-
-        overlay.addEventListener('keydown', (e) => {
-          if (e.key === 'Escape') {
-            closeModal();
-            e.preventDefault();
-            e.stopPropagation();
-          }
+        overlay.querySelector('.gem-seen-image-details-favtoggle')?.addEventListener('click', () => {
+          toggleFavoriteImageUrl(currentUrl, () => renderCurrent());
         });
+        overlay.querySelector('.gem-image-nav-prev')?.addEventListener('click', () => navToOffset(-1));
+        overlay.querySelector('.gem-image-nav-next')?.addEventListener('click', () => navToOffset(1));
+        window.addEventListener('keydown', onWindowKeydown, true);
 
-        // Focus the close button for accessibility
+        renderCurrent();
         const closeBtn = overlay.querySelector('.gem-image-modal__close');
         if (closeBtn) {
           try { closeBtn.focus(); } catch (_) {}
         }
-        });
       });
     }
 
@@ -3281,6 +4194,15 @@ function initializeOverlayPanelControls() {
           const translation = (meta.translation || '');
           const width = (meta.width || '');
           const startingUrl = mode === 'create' ? '' : u;
+          const orderedUrls = mode === 'edit' ? (() => {
+            const fromPicker = getImagePickerNavigableUrls(modal);
+            if (fromPicker.length > 0) return fromPicker;
+            return (Array.isArray(favList) ? favList : []).map((x) => x && x.url).filter(Boolean);
+          })() : [];
+          let currentUrl = startingUrl;
+          if (mode === 'edit' && !orderedUrls.includes(currentUrl) && orderedUrls.length > 0) {
+            currentUrl = orderedUrls[0];
+          }
 
         const headerExtra = mode === 'create' ? `
           <div class="gem-modal-mode-tabs">
@@ -3340,6 +4262,10 @@ function initializeOverlayPanelControls() {
           `.trim();
 
         const footerLeftHtml = mode === 'edit' ? `
+          <div class="gem-image-nav-group">
+            <button class="e-btn e-btn-borderless e-btn-onlyicon gem-image-nav-btn gem-image-nav-prev" type="button" aria-label="Previous image" title="Previous image">‹</button>
+            <button class="e-btn e-btn-borderless e-btn-onlyicon gem-image-nav-btn gem-image-nav-next" type="button" aria-label="Next image" title="Next image">›</button>
+          </div>
           <button class="e-btn e-btn-borderless e-btn-onlyicon gem-favorite-image-meta-favtoggle" type="button" aria-label="${isFav ? 'Unfavorite' : 'Favorite'}" title="${isFav ? 'Unfavorite' : 'Favorite'}">
             <span class="gem-recent-image-star">${isFav ? '★' : '☆'}</span>
           </button>
@@ -3356,7 +4282,7 @@ function initializeOverlayPanelControls() {
         overlay.innerHTML = buildGemImageModalPanelHTML({
           title: mode === 'create' ? 'Add Favorite Image' : 'Edit Image Metadata',
           headerExtra,
-          previewImgSrc: mode === 'edit' ? u : '',
+          previewImgSrc: mode === 'edit' ? currentUrl : '',
           bodyHtml,
           footerLeftHtml,
           footerRightHtml
@@ -3365,7 +4291,33 @@ function initializeOverlayPanelControls() {
         const host = modal || document.body;
         host.appendChild(overlay);
 
-        const close = () => overlay.remove();
+        const onWindowKeydown = (e) => {
+          if (!overlay.isConnected) return;
+          if (e.key === 'Escape') {
+            close();
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+          }
+          if (mode !== 'edit') return;
+          const t = e.target;
+          if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+          if (e.key === 'ArrowLeft') {
+            navMetaToOffset(-1);
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+          }
+          if (e.key === 'ArrowRight') {
+            navMetaToOffset(1);
+            e.preventDefault();
+            e.stopPropagation();
+          }
+        };
+        const close = () => {
+          try { window.removeEventListener('keydown', onWindowKeydown, true); } catch (_) {}
+          overlay.remove();
+        };
         overlay.querySelector('.gem-image-modal__backdrop')?.addEventListener('click', close);
         overlay.querySelector('.gem-image-modal__close')?.addEventListener('click', close);
         overlay.querySelector('.gem-favorite-image-meta-cancel')?.addEventListener('click', close);
@@ -3396,8 +4348,58 @@ function initializeOverlayPanelControls() {
           });
         }
 
+        const renderCurrentMeta = () => {
+          if (mode !== 'edit') return;
+          const targetUrl = currentUrl;
+          const img = overlay.querySelector('.gem-image-modal__preview img');
+          if (img) img.src = targetUrl;
+          const urlEl = overlay.querySelector('.gem-image-modal__url');
+          if (urlEl) {
+            urlEl.innerHTML = targetUrl.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          }
+          getFavoriteImageMetaMap((liveMap) => {
+            const liveMeta = (liveMap && typeof liveMap === 'object' && liveMap[targetUrl]) ? liveMap[targetUrl] : {};
+            const catInput = overlay.querySelector('.gem-favorite-image-meta-category');
+            const langInput = overlay.querySelector('.gem-favorite-image-meta-language');
+            const altInput = overlay.querySelector('.gem-favorite-image-meta-alttext');
+            const trnInput = overlay.querySelector('.gem-favorite-image-meta-translation');
+            const widthInput = overlay.querySelector('.gem-favorite-image-meta-width');
+            if (catInput) catInput.value = liveMeta.category || '';
+            if (langInput) langInput.value = liveMeta.language || '';
+            if (altInput) altInput.value = liveMeta.altText || '';
+            if (trnInput) trnInput.value = liveMeta.translation || '';
+            if (widthInput) widthInput.value = liveMeta.width || '';
+          });
+          getFavoriteImages((liveFavList) => {
+            const liveSet = new Set((Array.isArray(liveFavList) ? liveFavList : []).map((x) => x && x.url).filter(Boolean));
+            const nowFav = liveSet.has(targetUrl);
+            const btn = overlay.querySelector('.gem-favorite-image-meta-favtoggle');
+            if (btn) {
+              btn.setAttribute('aria-label', nowFav ? 'Unfavorite' : 'Favorite');
+              btn.setAttribute('title', nowFav ? 'Unfavorite' : 'Favorite');
+              const starEl = btn.querySelector('.gem-recent-image-star');
+              if (starEl) starEl.textContent = nowFav ? '★' : '☆';
+            }
+          });
+          const idx = orderedUrls.indexOf(currentUrl);
+          const prevBtn = overlay.querySelector('.gem-image-nav-prev');
+          const nextBtn = overlay.querySelector('.gem-image-nav-next');
+          if (prevBtn) prevBtn.disabled = !(idx > 0);
+          if (nextBtn) nextBtn.disabled = !(idx >= 0 && idx < orderedUrls.length - 1);
+        };
+
+        const navMetaToOffset = (delta) => {
+          if (mode !== 'edit') return;
+          const idx = orderedUrls.indexOf(currentUrl);
+          if (idx < 0) return;
+          const nextIdx = idx + delta;
+          if (nextIdx < 0 || nextIdx >= orderedUrls.length) return;
+          currentUrl = orderedUrls[nextIdx];
+          renderCurrentMeta();
+        };
+
         overlay.querySelector('.gem-favorite-image-meta-favtoggle')?.addEventListener('click', () => {
-          const targetUrl = startingUrl;
+          const targetUrl = mode === 'edit' ? currentUrl : startingUrl;
           if (!targetUrl) return;
           toggleFavoriteImageUrl(targetUrl, () => {
             // Update icon immediately
@@ -3415,6 +4417,8 @@ function initializeOverlayPanelControls() {
             });
           });
         });
+        overlay.querySelector('.gem-image-nav-prev')?.addEventListener('click', () => navMetaToOffset(-1));
+        overlay.querySelector('.gem-image-nav-next')?.addEventListener('click', () => navMetaToOffset(1));
 
         overlay.querySelector('.gem-favorite-image-meta-save')?.addEventListener('click', () => {
           // Check if JSON import mode is active
@@ -3515,7 +4519,7 @@ function initializeOverlayPanelControls() {
             // Manual entry mode (existing logic)
             const rawUrl = mode === 'create'
               ? (overlay.querySelector('.gem-favorite-image-meta-url')?.value || '')
-              : startingUrl;
+              : currentUrl;
             const targetUrl = normalizeRecentImageUrlCandidate(rawUrl);
             if (!targetUrl) {
               alert('Please enter a valid image URL.');
@@ -3566,6 +4570,10 @@ function initializeOverlayPanelControls() {
             });
           }
         });
+
+        window.addEventListener('keydown', onWindowKeydown, true);
+
+        if (mode === 'edit') renderCurrentMeta();
         });
       });
     }
@@ -3726,6 +4734,11 @@ function initializeOverlayPanelControls() {
       const cleanupImagePropertiesModal = () => {
         if (container._gemIsClosing) return;
         container._gemIsClosing = true;
+        try {
+          rehomeGemMediaDbPaneToPool();
+          unbindGemMediaDbPickerIframeDocClick();
+          gemMediaDbIframeClickModalRef = null;
+        } catch (_) {}
         try { container._gemContainerObserver && container._gemContainerObserver.disconnect(); } catch (_) {}
         try { container._gemAccordionObserver && container._gemAccordionObserver.disconnect(); } catch (_) {}
         try { container._gemHtmlEditorObserver && container._gemHtmlEditorObserver.disconnect(); } catch (_) {}
@@ -4558,6 +5571,8 @@ function initializeOverlayPanelControls() {
       const existingModals = Array.from(document.querySelectorAll('.e-float-container-default'));
       existingModals.forEach((modal) => scheduleImagePropertiesModalInit(modal, 'initial-scan'));
     } catch (_) {}
+
+    scheduleGemMediaDbPickerIframePreload();
 
     console.log("[Gem] Image Properties modal handler initialized");
   }

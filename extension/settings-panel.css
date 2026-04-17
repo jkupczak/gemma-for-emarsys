@@ -33,7 +33,9 @@
   font-weight: 700;
   background: var(--token-primary-500);
   color: var(--token-button-highlight-text);
-  border-radius: 8px 0 0 0;
+  display: flex;
+  align-items: center;
+  gap: 16px;
 }
 
 #gem-settings-body {
@@ -43,7 +45,7 @@
 }
 
 #gem-settings-panel input[type="color"] {
-  padding: 5px !important;
+  padding: 8px !important;
 }
 
 .gem-setting-info {
@@ -101,7 +103,6 @@ p:has(+ [data-gem-paste-allow-disabled]) { margin-bottom: 0 !important; }
 }
 
 #gem-settings-close {
-  position: absolute;
   top: 16px;
   right: 16px;
   font-size: 20px;
@@ -109,8 +110,8 @@ p:has(+ [data-gem-paste-allow-disabled]) { margin-bottom: 0 !important; }
   color: white;
   opacity: 0.8;
   transition: opacity 0.2s ease;
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -120,7 +121,7 @@ p:has(+ [data-gem-paste-allow-disabled]) { margin-bottom: 0 !important; }
 
 #gem-settings-close:hover {
   opacity: 1;
-  background: rgba(255,255,255,0.2);
+  background: var(--token-primary-default);
 }
 
 .gem-setting-section {
@@ -233,8 +234,8 @@ p:has(+ [data-gem-paste-allow-disabled]) { margin-bottom: 0 !important; }
   font-weight: 600;
   transition: all 0.2s ease;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -243,10 +244,8 @@ p:has(+ [data-gem-paste-allow-disabled]) { margin-bottom: 0 !important; }
 
 .highlight-term-remove:hover,
 .color-swatch-clear:hover {
-  background: #e5e7eb;
-  border-color: #9ca3af;
+  background: var(--token-primary-default);
   color: var(--token-font-default);
-  transform: translateY(-1px);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
@@ -429,11 +428,16 @@ p:has(+ [data-gem-paste-allow-disabled]) { margin-bottom: 0 !important; }
   border-top: 2px solid var(--token-box-default-background);
   padding-top: 24px;
 }
+#gem-settings-body h2:first-of-type {
+  margin-top: 0;
+  border-top: none;
+  padding-top: 0;
+}
 
 .color-swatch-color {
-  min-width:24px;
-  width: 24px;
-  height: 24px;
+  min-width:36px;
+  width: 36px;
+  height: 36px;
   border: 0;
   border-radius: 6px;
   cursor: pointer;

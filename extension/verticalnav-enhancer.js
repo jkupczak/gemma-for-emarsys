@@ -28,11 +28,19 @@ chrome.storage.sync.get({ mobileViewVisible: true }, (settings) => {
   if (!settings.mobileViewVisible) {
     console.log("[Gem] Mobile view was hidden, waiting for mobile frame...");
 
-    // Wait for the mobile frame to be available before hiding it
+    // Wait for the mobile frame to be available before hiding it. Re-read storage
+    // when the frame appears — the user may have shown the pane (shortcut/button)
+    // before this callback runs, and we must not clobber that with a stale hide.
     waitForElement("#gem-mobile-frame", (mobileFrame) => {
-      console.log("[Gem] Mobile frame found, hiding mobile view...");
-      mobileFrame.style.display = "none";
-      updateNavToggleIcons();
+      chrome.storage.sync.get({ mobileViewVisible: true }, (current) => {
+        if (current.mobileViewVisible === false) {
+          console.log("[Gem] Mobile frame found, hiding mobile view (storage still hidden)...");
+          mobileFrame.style.display = "none";
+        } else {
+          console.log("[Gem] Mobile frame found; storage says visible — not forcing hide");
+        }
+        updateNavToggleIcons();
+      });
     });
   } else {
     console.log("[Gem] Mobile view was visible, keeping default state");
@@ -217,26 +225,36 @@ function createIconBar() {
   mobile.addEventListener("click", () => {
     console.log("[Gem] Mobile button clicked");
 
-    const mobileFrame = document.getElementById("gem-mobile-frame");
-    console.log("[Gem] Mobile click - Mobile frame found:", mobileFrame);
-
-    if (mobileFrame) {
-      const isVisible = mobileFrame.style.display !== "none";
-      console.log("[Gem] Mobile click - Was visible:", isVisible);
-
-      mobileFrame.style.display = isVisible ? "none" : "block";
-
-      const isNowVisible = mobileFrame.style.display !== "none";
-      console.log("[Gem] Mobile click - Now visible:", isNowVisible);
-      updateNavToggleIcons();
-
-      // Store the mobile view visibility state
-      chrome.storage.sync.set({ mobileViewVisible: isNowVisible }, () => {
-        console.log("[Gem] Mobile click - State saved to storage:", isNowVisible);
-      });
-    } else {
-      console.log("[Gem] Mobile click - ERROR: Could not find #gem-mobile-frame element");
+    if (!chrome?.storage?.sync) {
+      console.warn("[Gem] Mobile click - Chrome storage API unavailable");
+      return;
     }
+
+    // Match keyboard shortcut (CMD+/): toggle storage and let mobile-view.js
+    // onChanged apply visibility / create the frame when missing.
+    chrome.storage.sync.get({ mobileViewVisible: true }, (result) => {
+      if (!chrome?.storage?.sync) return;
+
+      const storedVisible = result.mobileViewVisible !== false;
+      const frame = document.getElementById("gem-mobile-frame");
+      const currentState = frame ? frame.style.display !== "none" : false;
+      const newState = !currentState;
+      console.log("[Gem] Mobile click - toggling:", currentState, "->", newState, {
+        framePresent: !!frame,
+        storedMobileViewVisible: storedVisible,
+      });
+
+      const payload = { mobileViewVisible: newState };
+      if (newState) payload.enableMobilePreview = true;
+
+      chrome.storage.sync.set(payload, () => {
+        if (chrome.runtime.lastError) {
+          console.error("[Gem] Mobile click - storage error:", chrome.runtime.lastError);
+        } else {
+          console.log("[Gem] Mobile click - State saved to storage:", newState);
+        }
+      });
+    });
   });
 
   bar.appendChild(expand);

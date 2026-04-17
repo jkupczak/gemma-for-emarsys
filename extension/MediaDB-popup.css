@@ -14,8 +14,10 @@
     background-color: var(--token-neutral-100) !important;
 }
 
-.e-table tr.folder-table-row:hover,
-.e-table tr.file-table-row:hover {
+.e-table tr.folder-table-row:nth-child(odd):hover,
+.e-table tr.file-table-row:nth-child(odd):hover,
+.e-table tr.folder-table-row:nth-child(even):hover,
+.e-table tr.file-table-row:nth-child(even):hover {
     background-color: var(--token-blue-200) !important;
 }
 

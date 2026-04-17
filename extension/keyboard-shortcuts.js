@@ -160,13 +160,20 @@ function initializeKeyboardShortcuts() {
           return;
         }
 
-        const currentState = result.mobileViewVisible !== false; // Default to true if undefined
+        const storedVisible = result.mobileViewVisible !== false;
+        const frame = document.getElementById("gem-mobile-frame");
+        const currentState = frame ? frame.style.display !== "none" : false;
         const newState = !currentState;
 
-        console.log("[Gem] Toggling mobile preview:", currentState, "->", newState);
+        console.log("[Gem] Toggling mobile preview:", currentState, "->", newState, {
+          framePresent: !!frame,
+          storedMobileViewVisible: storedVisible,
+        });
 
-        // Update the setting in storage
-        chrome.storage.sync.set({ mobileViewVisible: newState }, () => {
+        const payload = { mobileViewVisible: newState };
+        if (newState) payload.enableMobilePreview = true;
+
+        chrome.storage.sync.set(payload, () => {
           if (chrome.runtime.lastError) {
             console.error("[Gem] Error toggling mobile preview:", chrome.runtime.lastError);
           }

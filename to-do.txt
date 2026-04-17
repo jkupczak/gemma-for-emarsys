@@ -1,11 +1,14 @@
 -----------------------------------------------
 # TO-DO
 
-Can I add a note to the content block about what block targeting is being done?
+Create a "Warnings" panel.
+  - Bad/missing links
+  - Detect when more than one unique price is shown across body, subject, preview text
+  - Detect images that are missing Alt text
+  - Detect total image weight of the email
+  - Alert them to images that are very large
 
-Deprecate recently used tab and roll the functionality into recently seen. Recently seen images in storage should get a property for the used date. Images that were recently used should get some sort of visual highlight so that they stand out among the seen images that have not been used. Recently used images should not get pushed out as fast as unused recently seen image? Maybe they are part of a separate list that is capped at 100. Add a category grouping for Recently used by Day.
 
-Grouping by "Last Seen" presents the images with the oldest at the top. Reverse this.
 
 Sometimes i cant open the edit snippet modal
 
@@ -28,15 +31,11 @@ Add disabled placeholders for the language and version selectboxes so that the U
   </cb-version-selector>
   ```
 
-In expanded mode, the hidden nav on the left should only open on click.
-
 #Rich Paste: After rich pasting, MCPASTEBIN seems to be getting added and takes up space until the user blurs the block. Sometimes pasting into buttons creates a SECODN button in the mobile preview which suggests something else is getting pasted.
 
 #Rich Paste: Sometimes Rich Paste inserts the paste inside of the existing text even though we did CMD+A to select all of the existing text.
 
 Search pills should take two clicks to close.
-
-Search pills should be draggable to rearrange
 
 Hide the "Title" input in the Links dialog by default. Provide a toggle to turn it back but explain why it was hidden by default.
 
@@ -147,3 +146,9 @@ x Add a pinned folder dropdown to the media picker.
 ✓ gemRecentlySeenImageGroupCollapse in localstorage is holding onto the collapse status of Recently Seen groupings that are no longer visible to the user. Once a group is no longer available in Recently seen, the matching key in gemRecentlySeenImageGroupCollapse should be removed so that the log size does not get out of control.
 
 ✓ Add Expanded Mode as a toggle in the settings panel
+
+✓ Search pills should be draggable to rearrange
+
+✓ Can I add a note to the content block about what block targeting is being done?
+
+✓ Deprecate recently used tab and roll the functionality into recently seen. Recently seen images in storage should get a property for the used date. Images that were recently used should get some sort of visual highlight so that they stand out among the seen images that have not been used. Recently used images should not get pushed out as fast as unused recently seen image? Maybe they are part of a separate list that is capped at 100. Add a category grouping for Recently used by Day.

@@ -1,0 +1,70 @@
+/* Gemma: Media Database iframe (Image Picker). Add overrides here. */
+
+
+.e-mediadb-breadcrumb .e-mediadb-breadcrumb__root.ng-binding[ng-click="directiveCtrl.selectRoot()"] {
+    font-size: 0 !important;
+    display: flex;
+}
+  
+.e-mediadb-breadcrumb .e-mediadb-breadcrumb__root.ng-binding[ng-click="directiveCtrl.selectRoot()"]::before {
+    content: "Home" !important;
+    font-size: 16px !important;
+}
+
+html, body { background-color: transparent !important; }
+
+.e-mediadb > .e-layout.e-layout-fullheight.e-layout-without_navigation {
+    padding-top: 8px !important;
+}
+
+.e-mediadb .e-layout__header {
+    margin: 0 !important;
+    padding: 0 0 10px !important;
+}
+
+.e-mediadb-breadcrumb {
+    align-items: anchor-center;
+}
+
+.e-mediadb .ngdialog-overlay {
+    background: color-mix(in srgb, var(--token-box-alternate-background) 80%, transparent) !important;
+}
+.e-card-has_overlay .e-card__content:after {
+    background: color-mix(in srgb, var(--token-box-alternate-background) 66%, transparent) !important;
+}
+
+.ngdialog.mediadb-dialog .ngdialog-content {
+    display: flex;
+    flex-direction: column;
+}
+
+.ngdialog.mediadb-dialog .ngdialog-content img.preview-image {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.gem-mediadb-preview-footer {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border-top: 1px solid var(--token-box-default-border);
+    background: color-mix(in srgb, var(--token-box-alternate-background) 92%, transparent);
+}
+
+section.e-layout__section.e-mediadb-section, 
+.e-mediadb-section__content .e-table {
+    background: var(--token-box-alternate-background) !important;
+}
+
+.e-table tr.folder-table-row:nth-child(odd),
+.e-table tr.file-table-row:nth-child(odd) {
+    background-color: color-mix(in srgb, var(--token-neutral-100) 25%, transparent) !important;
+}
+
+
+
+.e-mediadb .e-btn {
+    background: var(--token-box-alternate-background) !important;
+}

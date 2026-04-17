@@ -259,25 +259,24 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
     panelEl.innerHTML = `
       <div id="gem-settings-header">
         Gemma Settings
-        <div id="gem-settings-close">✕</div>
-      </div>
-      <div id="gem-settings-body" class="gem-scrollable">
-
-        <div style="display: flex; flex-direction: row; gap: 12px;">
-          <div class="gem-welcome-link gem-border-hover-primary-600" style="border-radius: 8px; align-content: center; flex: 1; color: var(--token-text-default); text-align: center; cursor: pointer; border: 1px solid var(--token-box-default-border);">
-            <div style="font-size: 16px; font-weight: 600">
-              ✨&nbsp;&nbsp;Feature List
+        <div style="display: flex; flex-direction: row; gap: 16px; margin-left:auto">
+          <div class="gem-welcome-link gem-border-hover-primary-600" style="border-radius: 8px; align-content: center; flex: 1; color: #fff; text-align: center; cursor: pointer; border: 1px solid #fff; padding: 0 12px;">
+            <div style="font-size: 12px; font-weight: 600">
+              Features
             </div>
           </div>
 
           <div style="flex: 1;">
-            <button class="e-btn gem-keyboard-shortcuts-btn gem-border-hover-primary-600" type="button" style="border: 1px solid var(--token-box-default-border); background:transparent; color: var(--token-text-default); border-radius: 8px; width: 100%; text-align:center; height:auto; padding: 12px;">
-              <div style="font-size: 16px; font-weight: 600">
-                ⌨️&nbsp;&nbsp;Keyboard Shortcuts
+            <button class="e-btn gem-keyboard-shortcuts-btn gem-border-hover-primary-600" type="button" style="border: 1px solid #fff; background:transparent; color: #fff; border-radius: 8px; width: 100%; text-align:center; height:auto; padding: 0 12px;">
+              <div style="font-size: 12px; font-weight: 600">
+                Shortcuts
               </div>
             </button>
           </div>
         </div>
+        <div id="gem-settings-close">✕</div>
+      </div>
+      <div id="gem-settings-body" class="gem-scrollable">
 
         <h2>General Settings</h2>
 
