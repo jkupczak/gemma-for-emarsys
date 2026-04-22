@@ -160,6 +160,17 @@ p:has(+ [data-gem-paste-allow-disabled]) { margin-bottom: 0 !important; }
   gap: 8px;
 }
 
+.gem-highlight-term-mode {
+  min-width: 96px;
+  height: 34px;
+  border: 1px solid var(--token-box-default-border);
+  border-radius: 6px;
+  background: var(--token-box-default-background);
+  color: var(--token-font-default);
+  font-size: 12px;
+  padding: 0 8px;
+}
+
 .gem-settings-regex-toggle {
   background: none;
   border: 1px solid var(--token-box-default-border);
@@ -514,4 +525,22 @@ padding-bottom:0;
     0 0 0 2px var(--token-background-faint),
     0 0 0 4px var(--token-primary-600);
   transform: scale(1.06);
+}
+
+.gem-full-backup-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 12px;
+}
+
+#gem-preflight-never-check-modal-list .gem-setting.gem-setting-blocked-url {
+  display:flex; align-items:flex-start; gap:6px;
+  margin: 5px 0px;
+  padding: 4px 12px;
+}
+
+#gem-preflight-never-check-modal-list .gem-setting.gem-setting-blocked-url .sub-label {
+  font-size: 11px;
+  align-self: center;
 }

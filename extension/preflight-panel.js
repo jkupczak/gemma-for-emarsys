@@ -8,7 +8,9 @@ function initializePreflightPanel() {
   const PREFLIGHT_TOTAL_THRESHOLD_UNIT_KEY = 'gemPreflightTotalImageWeightThresholdUnit';
   const PREFLIGHT_SINGULAR_THRESHOLD_VALUE_KEY = 'gemPreflightSingularImageWeightThresholdValue';
   const PREFLIGHT_SINGULAR_THRESHOLD_UNIT_KEY = 'gemPreflightSingularImageWeightThresholdUnit';
+  const PREFLIGHT_URL_NEVER_CHECK_KEY = 'urlPreflightNeverCheck';
   const PREFLIGHT_ALERT_COUNT_KEY = 'gemPreflightAlertCount';
+  const PREFLIGHT_SECTION_COLLAPSE_STATE_KEY = 'gemPreflightSectionCollapseStateV1';
   const PREFLIGHT_DEFAULT_TOTAL_THRESHOLD_VALUE = 3;
   const PREFLIGHT_DEFAULT_SINGULAR_THRESHOLD_VALUE = 2;
   const PREFLIGHT_DEFAULT_THRESHOLD_UNIT = 'MB';
@@ -23,6 +25,173 @@ function initializePreflightPanel() {
   let boundPreviewIframe = null;
   let boundPreviewIframeLoadHandler = null;
   let imageHoverTooltipEl = null;
+  const CONTACT_PREVIEW_IFRAME_SELECTOR = '.cp-contact_preview__preview vce-iframes-container iframe';
+  const CONTACT_PREVIEW_LINK_VERIFY_DEBOUNCE_MS = 550;
+
+  /** @type {Map<string, object>} */
+  const linkLiveState = new Map();
+  /** @type {{ totalAnchors: number, uniqueCount: number, linksAlertCount: number, rows: any[], anchorRowKeysInOrder: string[] } | null} */
+  let cachedLinksAnalysis = null;
+  let contactPreviewObserver = null;
+  let contactPreviewDebounceTimer = null;
+  let contactPreviewBoundIframe = null;
+  let contactPreviewLoadHandler = null;
+  let editorLinkLiveVerifyAllInFlight = false;
+  /** Editor `rowKey` → synthetic row shown after Contact Preview renders personalization (cleared on editor rescan). */
+  const contactPreviewRenderedRowByEditorKey = new Map();
+  /** Canonical URL strings configured in sync storage to skip all preflight URL checks. */
+  const preflightNeverCheckUrls = new Set();
+  /** Rows skipped because they matched `preflightNeverCheckUrls`. */
+  let cachedSkippedLinkRows = [];
+  let openLinkRowMenuKey = '';
+
+  const GEM_PREFLIGHT_LIVE_SESSION_KEY = 'gemPreflightLinkLiveSessionV1';
+  let preflightLiveSessionSaveTimer = null;
+
+  function isChromeStorageSessionAvailable() {
+    return typeof chrome !== 'undefined' && chrome.storage && chrome.storage.session;
+  }
+
+  function hashString32(str) {
+    let h = 2166136261 >>> 0;
+    const s = String(str || '');
+    for (let i = 0; i < s.length; i += 1) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return (h >>> 0).toString(36);
+  }
+
+  function fingerprintForLinksAnalysis(analysis) {
+    if (!analysis) return '';
+    const order = Array.isArray(analysis.anchorRowKeysInOrder) ? analysis.anchorRowKeysInOrder.join('\x1e') : '';
+    const n = Number.parseInt(String(analysis.totalAnchors), 10) || 0;
+    const u = Number.parseInt(String(analysis.uniqueCount), 10) || 0;
+    return `${n}|${u}|${hashString32(order)}`;
+  }
+
+  function readPreflightLiveSessionPayload() {
+    return new Promise((resolve) => {
+      if (!isChromeStorageSessionAvailable()) {
+        resolve(null);
+        return;
+      }
+      try {
+        chrome.storage.session.get(GEM_PREFLIGHT_LIVE_SESSION_KEY, (res) => {
+          if (chrome.runtime.lastError) {
+            resolve(null);
+            return;
+          }
+          resolve(res[GEM_PREFLIGHT_LIVE_SESSION_KEY] || null);
+        });
+      } catch (_) {
+        resolve(null);
+      }
+    });
+  }
+
+  function writePreflightLiveSessionPayload(payload) {
+    return new Promise((resolve) => {
+      if (!isChromeStorageSessionAvailable()) {
+        resolve();
+        return;
+      }
+      try {
+        chrome.storage.session.set({ [GEM_PREFLIGHT_LIVE_SESSION_KEY]: payload }, () => {
+          if (chrome.runtime.lastError) {
+            /* ignore quota / session API errors */
+          }
+          resolve();
+        });
+      } catch (_) {
+        resolve();
+      }
+    });
+  }
+
+  function removePreflightLiveSessionPayload() {
+    return new Promise((resolve) => {
+      if (!isChromeStorageSessionAvailable()) {
+        resolve();
+        return;
+      }
+      try {
+        chrome.storage.session.remove(GEM_PREFLIGHT_LIVE_SESSION_KEY, () => {
+          resolve();
+        });
+      } catch (_) {
+        resolve();
+      }
+    });
+  }
+
+  function serializeLinkLiveStateForSession() {
+    const out = {};
+    linkLiveState.forEach((v, k) => {
+      if (!v || typeof v !== 'object') return;
+      if (v.phase === 'checking') return;
+      out[k] = { ...v };
+    });
+    return out;
+  }
+
+  async function persistPreflightLiveSessionNow() {
+    if (!isChromeStorageSessionAvailable() || !cachedLinksAnalysis) return;
+    const fingerprint = fingerprintForLinksAnalysis(cachedLinksAnalysis);
+    await writePreflightLiveSessionPayload({
+      fingerprint,
+      linkLiveState: serializeLinkLiveStateForSession(),
+      contactPreviewRendered: Object.fromEntries(contactPreviewRenderedRowByEditorKey)
+    });
+  }
+
+  function schedulePersistPreflightLiveSession() {
+    if (!isChromeStorageSessionAvailable()) return;
+    if (preflightLiveSessionSaveTimer) clearTimeout(preflightLiveSessionSaveTimer);
+    preflightLiveSessionSaveTimer = setTimeout(() => {
+      preflightLiveSessionSaveTimer = null;
+      void persistPreflightLiveSessionNow();
+    }, 400);
+  }
+
+  async function hydratePreflightLiveFromSession(analysis) {
+    linkLiveState.clear();
+    contactPreviewRenderedRowByEditorKey.clear();
+    if (!analysis || !isChromeStorageSessionAvailable()) return;
+    const fp = fingerprintForLinksAnalysis(analysis);
+    const stored = await readPreflightLiveSessionPayload();
+    if (!stored || stored.fingerprint !== fp) {
+      if (stored) await removePreflightLiveSessionPayload();
+      return;
+    }
+    const rows = Array.isArray(analysis.rows) ? analysis.rows : [];
+    const allowedEditorKeys = new Set(rows.map((r) => r && r.rowKey).filter(Boolean));
+
+    const live = stored.linkLiveState && typeof stored.linkLiveState === 'object' ? stored.linkLiveState : {};
+    Object.keys(live).forEach((k) => {
+      const v = live[k];
+      if (!v || typeof v !== 'object') return;
+      if (k.startsWith('__cp_rendered__:')) {
+        const suffix = k.slice('__cp_rendered__:'.length);
+        let parentKey = '';
+        try {
+          parentKey = decodeURIComponent(suffix);
+        } catch (_) {
+          return;
+        }
+        if (!allowedEditorKeys.has(parentKey)) return;
+      } else if (!allowedEditorKeys.has(k)) return;
+      linkLiveState.set(k, v);
+    });
+
+    const cp = stored.contactPreviewRendered && typeof stored.contactPreviewRendered === 'object' ? stored.contactPreviewRendered : {};
+    Object.keys(cp).forEach((editorKey) => {
+      if (!allowedEditorKeys.has(editorKey)) return;
+      const syn = cp[editorKey];
+      if (!syn || typeof syn !== 'object' || !syn.isContactPreviewRenderedRow || !syn.rowKey) return;
+      contactPreviewRenderedRowByEditorKey.set(editorKey, syn);
+    });
+  }
 
   function hideNonRouterOutletChildren(navContent) {
     const children = Array.from(navContent.children);
@@ -76,81 +245,188 @@ function initializePreflightPanel() {
       <div class="e-section__title">Preflight</div>
     </div>
     <div class="e-section__content">
-      <div class="gem-preflight-subsection-title">
-        <div class="gem-preflight-subsection-title-main">
-          <span>Image Weight</span>
-          <span class="gem-preflight-section-pip" data-role="imagesSectionAlertPip" style="display:none;">0</span>
+      <div class="gem-preflight-collapsible-section" data-role="textAnalysisSection">
+        <div class="gem-preflight-subsection-title">
+          <div class="gem-preflight-subsection-title-main">
+            <span>Text Analysis</span>
+            <span class="gem-preflight-section-pip gem-preflight-section-pip--muted" data-role="textAnalysisSectionAlertPip">0</span>
+          </div>
+          <div class="gem-preflight-header-actions">
+            <button type="button" class="gem-preflight-section-toggle" data-role="toggleSectionBtn" data-section-key="textAnalysis" aria-expanded="true" title="Collapse Text Analysis" aria-label="Collapse Text Analysis">
+              <span class="gem-preflight-section-toggle-arrow" aria-hidden="true">▾</span>
+            </button>
+          </div>
         </div>
-        <div class="gem-preflight-header-actions">
-          <button type="button" class="e-datagrid__item_action gem-borderless-btn gem-preflight-refresh-btn" data-role="refreshMetricsBtn" title="Recalculate image metrics" aria-label="Recalculate image metrics">
-            <gem-e-icon icon="refresh" color="inherit">
-              <div aria-hidden="true" class="e-icon-wrapper">
-                <div class="e-icon e-icon-table text-color-inherit">&#xF160;</div>
+        <div class="gem-preflight-collapsible-body" data-role="textAnalysisSectionBody">
+          <div class="gem-preflight-metrics gem-preflight-links-metrics">
+            <div class="gem-preflight-metric-row">
+              <div class="gem-preflight-metric-label">Total text matches</div>
+              <div class="gem-preflight-metric-value" data-metric="textMatchesTotal">Scanning...</div>
+            </div>
+            <div class="gem-preflight-metric-row">
+              <div class="gem-preflight-metric-label">Total "Notify" matches</div>
+              <div class="gem-preflight-metric-value" data-metric="textNotifyMatchesTotal">Scanning...</div>
+            </div>
+          </div>
+          <div data-role="notifyMatchesWrap">
+            <div class="gem-preflight-subsection-description">
+              Unique "Notify" matches
+            </div>
+            <div class="gem-preflight-accessibility-table" data-role="notifyMatchesTable">
+              <div class="gem-preflight-image-breakdown-empty">Scanning...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="gem-preflight-section-divider" aria-hidden="true"></div>
+      <div class="gem-preflight-collapsible-section" data-role="accessibilitySection">
+        <div class="gem-preflight-subsection-title gem-preflight-subsection-title--spaced">
+          <div class="gem-preflight-subsection-title-main">
+            <span>Accessibility</span>
+            <span class="gem-preflight-section-pip gem-preflight-section-pip--muted" data-role="accessibilitySectionAlertPip">0</span>
+          </div>
+          <div class="gem-preflight-header-actions">
+            <button type="button" class="gem-preflight-section-toggle" data-role="toggleSectionBtn" data-section-key="accessibility" aria-expanded="true" title="Collapse Accessibility" aria-label="Collapse Accessibility">
+              <span class="gem-preflight-section-toggle-arrow" aria-hidden="true">▾</span>
+            </button>
+          </div>
+        </div>
+        <div class="gem-preflight-collapsible-body" data-role="accessibilitySectionBody">
+          <div class="gem-preflight-subsection-description">
+            Linked images missing ALT text
+          </div>
+          <div class="gem-preflight-accessibility-table" data-role="accessibilityWarningsTable">
+            <div class="gem-preflight-image-breakdown-empty">Scanning...</div>
+          </div>
+        </div>
+      </div>
+      <div class="gem-preflight-section-divider" aria-hidden="true"></div>
+      <div class="gem-preflight-collapsible-section" data-role="linksSection">
+        <div class="gem-preflight-subsection-title gem-preflight-subsection-title--spaced">
+          <div class="gem-preflight-subsection-title-main">
+            <span>Links</span>
+            <span class="gem-preflight-section-pip gem-preflight-section-pip--muted" data-role="linksSectionAlertPip">0</span>
+          </div>
+          <div class="gem-preflight-header-actions gem-preflight-links-header-actions">
+            <div class="gem-preflight-section-actions">
+              <button type="button" class="e-datagrid__item_action gem-borderless-btn gem-preflight-live-links-all-btn" data-role="liveVerifyAllLinksBtn" title="Live HTTP(S) check for all eligible links (requests host access)" aria-label="Live verify all links">
+                <span class="gem-preflight-live-links-btn-label">Live verify all</span>
+              </button>
+            </div>
+            <button type="button" class="gem-preflight-section-toggle" data-role="toggleSectionBtn" data-section-key="links" aria-expanded="true" title="Collapse Links" aria-label="Collapse Links">
+              <span class="gem-preflight-section-toggle-arrow" aria-hidden="true">▾</span>
+            </button>
+          </div>
+        </div>
+        <div class="gem-preflight-collapsible-body" data-role="linksSectionBody">
+          <div class="gem-preflight-metrics gem-preflight-links-metrics">
+            <div class="gem-preflight-metric-row">
+              <div class="gem-preflight-metric-label">Total links</div>
+              <div class="gem-preflight-metric-value" data-metric="linksTotal">Scanning...</div>
+            </div>
+            <div class="gem-preflight-metric-row">
+              <div class="gem-preflight-metric-label">Total unique links</div>
+              <div class="gem-preflight-metric-value" data-metric="linksUnique">Scanning...</div>
+            </div>
+          </div>
+          <div class="gem-preflight-live-link-footnote" data-role="liveLinkFootnote" style="display:none;"></div>
+          <div class="gem-preflight-accessibility-table gem-preflight-links-table" data-role="linksTable">
+            <div class="gem-preflight-image-breakdown-empty">Scanning...</div>
+          </div>
+          <div class="gem-preflight-image-breakdown gem-preflight-skipped-urls" data-role="skippedUrlsWrap">
+            <div class="gem-preflight-image-breakdown-header">
+              <div class="gem-preflight-image-breakdown-title">Skipped URLs</div>
+              <button type="button" class="gem-preflight-image-breakdown-toggle" data-role="skippedUrlsToggle" aria-expanded="false" title="Show or hide skipped URL list" aria-label="Show or hide skipped URL list">
+                <span class="gem-preflight-image-breakdown-toggle-arrow" aria-hidden="true">▸</span>
+              </button>
+            </div>
+            <div class="gem-preflight-image-breakdown-body" data-role="skippedUrlsBody">
+              <div class="gem-preflight-accessibility-table gem-preflight-links-table" data-role="skippedUrlsTable">
+                <div class="gem-preflight-image-breakdown-empty">No skipped URLs.</div>
               </div>
-            </gem-e-icon>
-          </button>
-          <button type="button" class="e-datagrid__item_action gem-borderless-btn gem-preflight-settings-btn" data-role="openPreflightSettingsBtn" title="Open Preflight settings" aria-label="Open Preflight settings">
-            <gem-e-icon icon="settings" color="inherit">
-              <div aria-hidden="true" class="e-icon-wrapper">
-                <div class="e-icon e-icon-table text-color-inherit">&#xF16C;</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="gem-preflight-section-divider" aria-hidden="true"></div>
+      <div class="gem-preflight-collapsible-section" data-role="imagesSection">
+        <div class="gem-preflight-subsection-title gem-preflight-subsection-title--spaced">
+          <div class="gem-preflight-subsection-title-main">
+            <span>Images</span>
+            <span class="gem-preflight-section-pip gem-preflight-section-pip--muted" data-role="imagesSectionAlertPip">0</span>
+          </div>
+          <div class="gem-preflight-header-actions">
+            <div class="gem-preflight-section-actions">
+              <button type="button" class="e-datagrid__item_action gem-borderless-btn gem-preflight-refresh-btn" data-role="refreshMetricsBtn" title="Recalculate image metrics" aria-label="Recalculate image metrics">
+                <gem-e-icon icon="refresh" color="inherit">
+                  <div aria-hidden="true" class="e-icon-wrapper">
+                    <div class="e-icon e-icon-table text-color-inherit">&#xF160;</div>
+                  </div>
+                </gem-e-icon>
+              </button>
+              <button type="button" class="e-datagrid__item_action gem-borderless-btn gem-preflight-settings-btn" data-role="openPreflightSettingsBtn" title="Open Preflight settings" aria-label="Open Preflight settings">
+                <gem-e-icon icon="settings" color="inherit">
+                  <div aria-hidden="true" class="e-icon-wrapper">
+                    <div class="e-icon e-icon-table text-color-inherit">&#xF16C;</div>
+                  </div>
+                </gem-e-icon>
+              </button>
+            </div>
+            <button type="button" class="gem-preflight-section-toggle" data-role="toggleSectionBtn" data-section-key="images" aria-expanded="true" title="Collapse Images" aria-label="Collapse Images">
+              <span class="gem-preflight-section-toggle-arrow" aria-hidden="true">▾</span>
+            </button>
+          </div>
+        </div>
+        <div class="gem-preflight-collapsible-body" data-role="imagesSectionBody">
+          <div class="gem-preflight-permission-gate" data-role="permissionGate">
+            <div class="gem-preflight-permission-text">
+              Estimate cold-cache image download weight for this email. This requests temporary image-host access so Gemma can measure unique image resources across any domain used in your email.
+            </div>
+            <button type="button" class="e-btn e-btn-primary gem-preflight-enable-image-access-btn" data-role="enableImageAccessBtn">
+              Analyze Image Download Weight
+            </button>
+            <div class="gem-preflight-footnote" data-metric="permissionStatus"></div>
+          </div>
+          <div class="gem-preflight-metrics" id="gem-preflight-images-metrics">
+            <div class="gem-preflight-metric-row">
+              <div class="gem-preflight-metric-label">Total image references</div>
+              <div class="gem-preflight-metric-value" data-metric="totalRefs">Scanning...</div>
+            </div>
+            <div class="gem-preflight-metric-row">
+              <div class="gem-preflight-metric-label">Unique image URLs</div>
+              <div class="gem-preflight-metric-value" data-metric="uniqueUrls">Scanning...</div>
+            </div>
+            <div class="gem-preflight-metric-row">
+              <div class="gem-preflight-metric-label">Estimated image download (cold cache)</div>
+              <div class="gem-preflight-metric-value" data-metric="totalSize" data-alertable="totalSize">Scanning...</div>
+            </div>
+            <div class="gem-preflight-metric-row">
+              <div class="gem-preflight-metric-label">Unique network image URLs</div>
+              <div class="gem-preflight-metric-value" data-metric="networkUniqueUrls">Scanning...</div>
+            </div>
+            <div class="gem-preflight-metric-row">
+              <div class="gem-preflight-metric-label">Unique embedded/non-network URLs</div>
+              <div class="gem-preflight-metric-value" data-metric="embeddedUniqueUrls">Scanning...</div>
+            </div>
+            <div class="gem-preflight-metric-row">
+              <div class="gem-preflight-metric-label">Estimated download time</div>
+              <div class="gem-preflight-metric-value gem-preflight-metric-value--times" data-metric="speedEstimates">Scanning...</div>
+            </div>
+          </div>
+          <div class="gem-preflight-image-breakdown" data-role="imageBreakdownWrap">
+            <div class="gem-preflight-image-breakdown-header">
+              <div class="gem-preflight-image-breakdown-title">Image Details</div>
+              <button type="button" class="gem-preflight-image-breakdown-toggle" data-role="imageDetailsToggle" aria-expanded="true" title="Show or hide image list" aria-label="Show or hide image list">
+                <span class="gem-preflight-image-breakdown-toggle-arrow" aria-hidden="true">▾</span>
+              </button>
+            </div>
+            <div class="gem-preflight-image-breakdown-body" data-role="imageBreakdownBody">
+              <div class="gem-preflight-image-breakdown-table" data-role="imageBreakdownTable">
+                <div class="gem-preflight-image-breakdown-empty">Scanning...</div>
               </div>
-            </gem-e-icon>
-          </button>
+            </div>
+          </div>
         </div>
-      </div>
-      <div class="gem-preflight-permission-gate" data-role="permissionGate">
-        <div class="gem-preflight-permission-text">
-          Estimate cold-cache image download weight for this email. This requests temporary image-host access so Gemma can measure unique image resources across any domain used in your email.
-        </div>
-        <button type="button" class="e-btn e-btn-primary gem-preflight-enable-image-access-btn" data-role="enableImageAccessBtn">
-          Analyze Image Download Weight
-        </button>
-        <div class="gem-preflight-footnote" data-metric="permissionStatus"></div>
-      </div>
-      <div class="gem-preflight-metrics" id="gem-preflight-images-metrics">
-        <div class="gem-preflight-metric-row">
-          <div class="gem-preflight-metric-label">Total image references</div>
-          <div class="gem-preflight-metric-value" data-metric="totalRefs">Scanning...</div>
-        </div>
-        <div class="gem-preflight-metric-row">
-          <div class="gem-preflight-metric-label">Unique image URLs</div>
-          <div class="gem-preflight-metric-value" data-metric="uniqueUrls">Scanning...</div>
-        </div>
-        <div class="gem-preflight-metric-row">
-          <div class="gem-preflight-metric-label">Estimated image download (cold cache)</div>
-          <div class="gem-preflight-metric-value" data-metric="totalSize" data-alertable="totalSize">Scanning...</div>
-        </div>
-        <div class="gem-preflight-metric-row">
-          <div class="gem-preflight-metric-label">Unique network image URLs</div>
-          <div class="gem-preflight-metric-value" data-metric="networkUniqueUrls">Scanning...</div>
-        </div>
-        <div class="gem-preflight-metric-row">
-          <div class="gem-preflight-metric-label">Unique embedded/non-network URLs</div>
-          <div class="gem-preflight-metric-value" data-metric="embeddedUniqueUrls">Scanning...</div>
-        </div>
-        <div class="gem-preflight-metric-row">
-          <div class="gem-preflight-metric-label">Estimated download time</div>
-          <div class="gem-preflight-metric-value gem-preflight-metric-value--times" data-metric="speedEstimates">Scanning...</div>
-        </div>
-      </div>
-      <div class="gem-preflight-image-breakdown">
-        <div class="gem-preflight-image-breakdown-title">Image Weight Details</div>
-        <div class="gem-preflight-image-breakdown-table" data-role="imageBreakdownTable">
-          <div class="gem-preflight-image-breakdown-empty">Scanning...</div>
-        </div>
-      </div>
-
-      <div class="gem-preflight-subsection-title gem-preflight-subsection-title--spaced">
-        <div class="gem-preflight-subsection-title-main">
-          <span>Accessibility</span>
-          <span class="gem-preflight-section-pip" data-role="accessibilitySectionAlertPip" style="display:none;">0</span>
-        </div>
-      </div>
-      <div class="gem-preflight-subsection-description">
-        Linked images missing ALT text
-      </div>
-      <div class="gem-preflight-accessibility-table" data-role="accessibilityWarningsTable">
-        <div class="gem-preflight-image-breakdown-empty">Scanning...</div>
       </div>
       <div class="gem-preflight-footnote" data-metric="statusText"></div>
     </div>
@@ -176,10 +452,20 @@ function initializePreflightPanel() {
       imagesSectionPip: panel.querySelector('[data-role="imagesSectionAlertPip"]'),
       accessibilitySectionPip: panel.querySelector('[data-role="accessibilitySectionAlertPip"]'),
       imageBreakdownTable: panel.querySelector('[data-role="imageBreakdownTable"]'),
+      linksTable: panel.querySelector('[data-role="linksTable"]'),
+      notifyMatchesTable: panel.querySelector('[data-role="notifyMatchesTable"]'),
+      notifyMatchesWrap: panel.querySelector('[data-role="notifyMatchesWrap"]'),
+      skippedUrlsWrap: panel.querySelector('[data-role="skippedUrlsWrap"]'),
+      skippedUrlsToggle: panel.querySelector('[data-role="skippedUrlsToggle"]'),
+      skippedUrlsTable: panel.querySelector('[data-role="skippedUrlsTable"]'),
+      liveVerifyAllLinksBtn: panel.querySelector('[data-role="liveVerifyAllLinksBtn"]'),
+      liveLinkFootnote: panel.querySelector('[data-role="liveLinkFootnote"]'),
       accessibilityWarningsTable: panel.querySelector('[data-role="accessibilityWarningsTable"]'),
+      linksSectionPip: panel.querySelector('[data-role="linksSectionAlertPip"]'),
+      textAnalysisSectionPip: panel.querySelector('[data-role="textAnalysisSectionAlertPip"]'),
       permissionStatus: panel.querySelector('[data-metric="permissionStatus"]'),
       metrics: panel.querySelector('#gem-preflight-images-metrics'),
-      imageBreakdownWrap: panel.querySelector('.gem-preflight-image-breakdown')
+      imageBreakdownWrap: panel.querySelector('[data-role="imageBreakdownWrap"]')
     };
   }
 
@@ -200,30 +486,277 @@ function initializePreflightPanel() {
     pip.style.display = '';
   }
 
+  function updateSectionPip(pipEl, count) {
+    if (!pipEl) return;
+    const safe = Math.max(0, Number.parseInt(count, 10) || 0);
+    pipEl.textContent = String(Math.min(99, safe));
+    pipEl.style.display = '';
+    pipEl.classList.toggle('gem-preflight-section-pip--muted', safe <= 0);
+  }
+
   function updateImagesSectionPip(count) {
     const els = getPreflightPanelEls();
     if (!els || !els.imagesSectionPip) return;
-    const safe = Math.max(0, Number.parseInt(count, 10) || 0);
-    if (!safe) {
-      els.imagesSectionPip.textContent = '0';
-      els.imagesSectionPip.style.display = 'none';
-      return;
-    }
-    els.imagesSectionPip.textContent = String(Math.min(99, safe));
-    els.imagesSectionPip.style.display = '';
+    updateSectionPip(els.imagesSectionPip, count);
   }
 
   function updateAccessibilitySectionPip(count) {
     const els = getPreflightPanelEls();
     if (!els || !els.accessibilitySectionPip) return;
-    const safe = Math.max(0, Number.parseInt(count, 10) || 0);
-    if (!safe) {
-      els.accessibilitySectionPip.textContent = '0';
-      els.accessibilitySectionPip.style.display = 'none';
-      return;
+    updateSectionPip(els.accessibilitySectionPip, count);
+  }
+
+  function updateLinksSectionPip(count) {
+    const els = getPreflightPanelEls();
+    if (!els || !els.linksSectionPip) return;
+    updateSectionPip(els.linksSectionPip, count);
+  }
+
+  function updateTextAnalysisSectionPip(count) {
+    const els = getPreflightPanelEls();
+    if (!els || !els.textAnalysisSectionPip) return;
+    updateSectionPip(els.textAnalysisSectionPip, count);
+  }
+
+  const LINK_HREF_MAX_LENGTH = 2000;
+  const EMARSYS_FULL_URL_TOKEN = '#HTML_BROWSE_HREF#';
+  const EMARSYS_TOKEN_PLACEHOLDER_URL = 'https://emarsys-token.invalid/';
+  const LINK_ISSUE_LABELS = {
+    MISSING_HREF: 'Missing href',
+    EMPTY_HREF: 'Empty href',
+    JAVASCRIPT_HREF: 'javascript: URL',
+    FRAGMENT_ONLY: 'Fragment-only URL',
+    RELATIVE_HREF: 'Relative or non-absolute URL',
+    HTTP_NOT_HTTPS: 'http:// (not HTTPS)',
+    HREF_WHITESPACE: 'Href contains spaces or line breaks',
+    HREF_TOO_LONG: 'Very long href'
+  };
+
+  function extractUnescapedTemplateRanges(rawHref) {
+    const text = String(rawHref || '');
+    const ranges = [];
+    let idx = 0;
+    while (idx < text.length - 1) {
+      const start = text.indexOf('{{', idx);
+      if (start === -1) break;
+      const startEscaped = start > 0 && text[start - 1] === '\\';
+      if (startEscaped) {
+        idx = start + 2;
+        continue;
+      }
+      let end = start + 2;
+      let foundEnd = -1;
+      while (end < text.length - 1) {
+        const close = text.indexOf('}}', end);
+        if (close === -1) break;
+        const closeEscaped = close > 0 && text[close - 1] === '\\';
+        if (!closeEscaped) {
+          foundEnd = close + 2;
+          break;
+        }
+        end = close + 2;
+      }
+      if (foundEnd === -1) break;
+      ranges.push({ start, end: foundEnd });
+      idx = foundEnd;
     }
-    els.accessibilitySectionPip.textContent = String(Math.min(99, safe));
-    els.accessibilitySectionPip.style.display = '';
+    return ranges;
+  }
+
+  function sanitizeHrefForValidation(rawHref) {
+    const text = String(rawHref || '');
+    const ranges = extractUnescapedTemplateRanges(text);
+    if (!ranges.length) {
+      return { sanitized: text, hasTemplateTokens: false };
+    }
+    let cursor = 0;
+    const parts = [];
+    ranges.forEach((range) => {
+      if (range.start > cursor) {
+        parts.push(text.slice(cursor, range.start));
+      }
+      parts.push(EMARSYS_TOKEN_PLACEHOLDER_URL);
+      cursor = range.end;
+    });
+    if (cursor < text.length) {
+      parts.push(text.slice(cursor));
+    }
+    return { sanitized: parts.join(''), hasTemplateTokens: true };
+  }
+
+  function isEmarsysFullUrlToken(rawHref) {
+    return String(rawHref || '').trim() === EMARSYS_FULL_URL_TOKEN;
+  }
+
+  function getLinkIssueCodesForAnchor(anchor) {
+    const codes = [];
+    if (!anchor.hasAttribute('href')) {
+      return ['MISSING_HREF'];
+    }
+    const raw = anchor.getAttribute('href');
+    if (raw === null) {
+      return ['MISSING_HREF'];
+    }
+    const trimmed = raw.trim();
+    if (trimmed === '') {
+      codes.push('EMPTY_HREF');
+      return codes;
+    }
+    if (isEmarsysFullUrlToken(trimmed)) {
+      return [];
+    }
+
+    const sanitizedData = sanitizeHrefForValidation(trimmed);
+    if (sanitizedData.hasTemplateTokens && !/^https?:\/\//i.test(trimmed)) {
+      return [];
+    }
+    const rawForChecks = trimmed;
+    const sanitizedTrimmed = sanitizedData.sanitized.trim();
+
+    if (sanitizedTrimmed.length > LINK_HREF_MAX_LENGTH) {
+      codes.push('HREF_TOO_LONG');
+    }
+    if (/[\s\n\r]/.test(sanitizedData.sanitized)) {
+      codes.push('HREF_WHITESPACE');
+    }
+    const lower = rawForChecks.toLowerCase();
+    if (lower.startsWith('javascript:')) {
+      codes.push('JAVASCRIPT_HREF');
+    }
+    if (rawForChecks.startsWith('#')) {
+      codes.push('FRAGMENT_ONLY');
+    }
+    const allowedWithoutRelativeFlag =
+      /^https?:\/\//i.test(sanitizedTrimmed) ||
+      /^mailto:/i.test(sanitizedTrimmed) ||
+      /^tel:/i.test(sanitizedTrimmed) ||
+      /^\/\//.test(sanitizedTrimmed) ||
+      /^#/i.test(sanitizedTrimmed) ||
+      /^cid:/i.test(sanitizedTrimmed) ||
+      /^sms:/i.test(sanitizedTrimmed);
+    if (!allowedWithoutRelativeFlag) {
+      codes.push('RELATIVE_HREF');
+    }
+    if (/^http:\/\//i.test(sanitizedTrimmed)) {
+      codes.push('HTTP_NOT_HTTPS');
+    }
+    return codes;
+  }
+
+  function linkGroupingKey(anchor) {
+    if (!anchor.hasAttribute('href')) return '__missing__';
+    const raw = anchor.getAttribute('href');
+    if (raw === null) return '__missing__';
+    if (raw.trim() === '') return '__empty__';
+    return `__raw__:${raw}`;
+  }
+
+  function linkDisplayHref(anchor) {
+    if (!anchor.hasAttribute('href')) return '(no href)';
+    const raw = anchor.getAttribute('href');
+    if (raw === null) return '(no href)';
+    if (raw.trim() === '') return '(empty href)';
+    return raw;
+  }
+
+  function computeLinkFetchMetadata(anchor, doc) {
+    if (!anchor || !anchor.hasAttribute('href')) {
+      return { hasTemplateTokens: false, fetchCandidateUrl: null };
+    }
+    const raw = anchor.getAttribute('href');
+    if (raw === null) {
+      return { hasTemplateTokens: false, fetchCandidateUrl: null };
+    }
+    const trimmed = raw.trim();
+    if (!trimmed || isEmarsysFullUrlToken(trimmed)) {
+      return { hasTemplateTokens: false, fetchCandidateUrl: null };
+    }
+    const sanitizedData = sanitizeHrefForValidation(trimmed);
+    // Pure (or leading) template hrefs sanitize to https://emarsys-token.invalid/ — do not treat as a real fetch target.
+    if (sanitizedData.hasTemplateTokens && !/^https?:\/\//i.test(trimmed)) {
+      return { hasTemplateTokens: true, fetchCandidateUrl: null };
+    }
+    const base = doc && doc.baseURI ? doc.baseURI : window.location.href;
+    const sanitizedTrimmed = sanitizedData.sanitized.trim();
+    try {
+      const u = new URL(sanitizedTrimmed, base);
+      if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+        return { hasTemplateTokens: !!sanitizedData.hasTemplateTokens, fetchCandidateUrl: null };
+      }
+      if ((u.hostname || '').toLowerCase() === 'emarsys-token.invalid') {
+        return { hasTemplateTokens: !!sanitizedData.hasTemplateTokens, fetchCandidateUrl: null };
+      }
+      return { hasTemplateTokens: !!sanitizedData.hasTemplateTokens, fetchCandidateUrl: u.href };
+    } catch (_) {
+      return { hasTemplateTokens: !!sanitizedData.hasTemplateTokens, fetchCandidateUrl: null };
+    }
+  }
+
+  function analyzeLinksInPreviewDoc(doc) {
+    const anchors = Array.from(doc.querySelectorAll('a'));
+    const anchorRowKeysInOrder = anchors.map((a) => linkGroupingKey(a));
+    const groups = new Map();
+
+    anchors.forEach((anchor) => {
+      const codes = getLinkIssueCodesForAnchor(anchor);
+      const key = linkGroupingKey(anchor);
+      const display = linkDisplayHref(anchor);
+      let g = groups.get(key);
+      if (!g) {
+        g = { key, displayHref: display, referenceCount: 0, issueCodes: new Set(), representativeAnchor: anchor };
+        groups.set(key, g);
+      }
+      g.referenceCount += 1;
+      codes.forEach((c) => g.issueCodes.add(c));
+      if (key !== '__missing__' && key !== '__empty__') {
+        g.displayHref = display;
+      }
+    });
+
+    const allRows = Array.from(groups.values())
+      .map((g) => {
+        const labels = Array.from(g.issueCodes)
+          .map((c) => LINK_ISSUE_LABELS[c] || c)
+          .sort((a, b) => a.localeCompare(b));
+        const meta = computeLinkFetchMetadata(g.representativeAnchor, doc);
+        const neverCheckUrlKey = normalizePreflightNeverCheckUrl(
+          meta.hasTemplateTokens ? g.displayHref : (meta.fetchCandidateUrl || g.displayHref),
+          doc && doc.baseURI
+        );
+        return {
+          rowKey: g.key,
+          displayHref: g.displayHref,
+          referenceCount: g.referenceCount,
+          issueLabels: labels,
+          hasIssues: labels.length > 0,
+          hasTemplateTokens: !!meta.hasTemplateTokens,
+          fetchCandidateUrl: meta.fetchCandidateUrl,
+          neverCheckUrlKey
+        };
+      })
+      .sort((a, b) => {
+        if (a.hasIssues !== b.hasIssues) return a.hasIssues ? -1 : 1;
+        return (b.referenceCount || 0) - (a.referenceCount || 0);
+      });
+
+    const skippedRows = allRows
+      .filter((row) => row.neverCheckUrlKey && preflightNeverCheckUrls.has(row.neverCheckUrlKey))
+      .map((row) => ({
+        ...row,
+        issueLabels: [],
+        hasIssues: false
+      }));
+    const rows = allRows.filter((row) => !(row.neverCheckUrlKey && preflightNeverCheckUrls.has(row.neverCheckUrlKey)));
+    const linksAlertCount = rows.reduce((sum, row) => sum + (Array.isArray(row.issueLabels) ? row.issueLabels.length : 0), 0);
+
+    return {
+      totalAnchors: anchors.length,
+      uniqueCount: rows.length,
+      linksAlertCount,
+      rows,
+      skippedRows,
+      anchorRowKeysInOrder: anchorRowKeysInOrder.filter((rk) => rows.some((r) => r.rowKey === rk))
+    };
   }
 
   function ensureImageHoverTooltipEl() {
@@ -294,6 +827,127 @@ function initializePreflightPanel() {
     });
   }
 
+  function syncImageWeightDetailsCollapseUI(wrap, collapsed) {
+    if (!wrap) return;
+    wrap.classList.toggle('gem-preflight-image-breakdown--collapsed', !!collapsed);
+    const btn = wrap.querySelector('[data-role="imageDetailsToggle"]');
+    if (btn) {
+      btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      const arrow = btn.querySelector('.gem-preflight-image-breakdown-toggle-arrow');
+      if (arrow) arrow.textContent = collapsed ? '▸' : '▾';
+    }
+  }
+
+  function setupImageWeightDetailsToggle() {
+    const els = getPreflightPanelEls();
+    if (!els || !els.panel || els.panel.dataset.gemImageDetailsToggleBound === 'true') return;
+    els.panel.dataset.gemImageDetailsToggleBound = 'true';
+    els.panel.addEventListener('click', (e) => {
+      const btn = e.target && e.target.closest ? e.target.closest('[data-role="imageDetailsToggle"]') : null;
+      if (!btn || !els.panel.contains(btn)) return;
+      const wrap = els.imageBreakdownWrap;
+      if (!wrap) return;
+      const nextCollapsed = !wrap.classList.contains('gem-preflight-image-breakdown--collapsed');
+      syncImageWeightDetailsCollapseUI(wrap, nextCollapsed);
+    });
+  }
+
+  function syncSkippedUrlsCollapseUI(wrap, collapsed) {
+    if (!wrap) return;
+    wrap.classList.toggle('gem-preflight-image-breakdown--collapsed', !!collapsed);
+    const btn = wrap.querySelector('[data-role="skippedUrlsToggle"]');
+    if (!btn) return;
+    btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    const arrow = btn.querySelector('.gem-preflight-image-breakdown-toggle-arrow');
+    if (arrow) arrow.textContent = collapsed ? '▸' : '▾';
+  }
+
+  function setupSkippedUrlsToggle() {
+    const els = getPreflightPanelEls();
+    if (!els || !els.panel || els.panel.dataset.gemSkippedUrlsToggleBound === 'true') return;
+    els.panel.dataset.gemSkippedUrlsToggleBound = 'true';
+    els.panel.addEventListener('click', (e) => {
+      const btn = e.target && e.target.closest ? e.target.closest('[data-role="skippedUrlsToggle"]') : null;
+      if (!btn || !els.panel.contains(btn)) return;
+      const wrap = els.skippedUrlsWrap;
+      if (!wrap) return;
+      const nextCollapsed = !wrap.classList.contains('gem-preflight-image-breakdown--collapsed');
+      syncSkippedUrlsCollapseUI(wrap, nextCollapsed);
+    });
+  }
+
+  function normalizeSectionCollapseStateObject(raw) {
+    const src = raw && typeof raw === 'object' ? raw : {};
+    return {
+      textAnalysis: !!src.textAnalysis,
+      accessibility: !!src.accessibility,
+      links: !!src.links,
+      images: !!src.images
+    };
+  }
+
+  function readSectionCollapseState() {
+    return new Promise((resolve) => {
+      try {
+        chrome.storage.local.get({ [PREFLIGHT_SECTION_COLLAPSE_STATE_KEY]: {} }, (res) => {
+          if (chrome.runtime.lastError) {
+            resolve(normalizeSectionCollapseStateObject({}));
+            return;
+          }
+          resolve(normalizeSectionCollapseStateObject(res[PREFLIGHT_SECTION_COLLAPSE_STATE_KEY]));
+        });
+      } catch (_) {
+        resolve(normalizeSectionCollapseStateObject({}));
+      }
+    });
+  }
+
+  function writeSectionCollapseState(state) {
+    return new Promise((resolve) => {
+      const safe = normalizeSectionCollapseStateObject(state);
+      try {
+        chrome.storage.local.set({ [PREFLIGHT_SECTION_COLLAPSE_STATE_KEY]: safe }, () => resolve());
+      } catch (_) {
+        resolve();
+      }
+    });
+  }
+
+  function syncPreflightSectionCollapseUI(panel, sectionKey, collapsed) {
+    if (!panel || !sectionKey) return;
+    const sectionWrap = panel.querySelector(`[data-role="${sectionKey}Section"]`);
+    const body = panel.querySelector(`[data-role="${sectionKey}SectionBody"]`);
+    const btn = panel.querySelector(`[data-role="toggleSectionBtn"][data-section-key="${sectionKey}"]`);
+    if (sectionWrap) sectionWrap.classList.toggle('gem-preflight-collapsible-section--collapsed', !!collapsed);
+    if (body) body.style.display = collapsed ? 'none' : '';
+    if (!btn) return;
+    btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    const arrow = btn.querySelector('.gem-preflight-section-toggle-arrow');
+    if (arrow) arrow.textContent = collapsed ? '▸' : '▾';
+    btn.setAttribute('title', `${collapsed ? 'Expand' : 'Collapse'} ${sectionKey === 'textAnalysis' ? 'Text Analysis' : sectionKey.charAt(0).toUpperCase() + sectionKey.slice(1)}`);
+    btn.setAttribute('aria-label', `${collapsed ? 'Expand' : 'Collapse'} ${sectionKey === 'textAnalysis' ? 'Text Analysis' : sectionKey.charAt(0).toUpperCase() + sectionKey.slice(1)}`);
+  }
+
+  function setupSectionCollapseToggles() {
+    const els = getPreflightPanelEls();
+    if (!els || !els.panel || els.panel.dataset.gemSectionCollapseToggleBound === 'true') return;
+    const panel = els.panel;
+    panel.dataset.gemSectionCollapseToggleBound = 'true';
+    panel.addEventListener('click', (e) => {
+      const btn = e.target && e.target.closest ? e.target.closest('[data-role="toggleSectionBtn"]') : null;
+      if (!btn || !panel.contains(btn)) return;
+      const sectionKey = btn.getAttribute('data-section-key');
+      if (!sectionKey) return;
+      const isExpanded = btn.getAttribute('aria-expanded') !== 'false';
+      const nextCollapsed = isExpanded;
+      syncPreflightSectionCollapseUI(panel, sectionKey, nextCollapsed);
+      void readSectionCollapseState().then((state) => {
+        state[sectionKey] = nextCollapsed;
+        return writeSectionCollapseState(state);
+      });
+    });
+  }
+
   function toBytes(value, unit) {
     const n = Number.parseFloat(String(value));
     if (!Number.isFinite(n) || n <= 0) return 0;
@@ -328,6 +982,17 @@ function initializePreflightPanel() {
       clearTimeout(initialScanRetryTimer);
       initialScanRetryTimer = null;
     }
+    disconnectContactPreviewObserver();
+    if (preflightLiveSessionSaveTimer) {
+      clearTimeout(preflightLiveSessionSaveTimer);
+      preflightLiveSessionSaveTimer = null;
+    }
+    cachedLinksAnalysis = null;
+    cachedSkippedLinkRows = [];
+    openLinkRowMenuKey = '';
+    contactPreviewRenderedRowByEditorKey.clear();
+    linkLiveState.clear();
+    setLiveLinkFootnoteText('', false);
   }
 
   function parseCssBackgroundImageUrls(backgroundImageValue) {
@@ -448,6 +1113,208 @@ function initializePreflightPanel() {
     }
   }
 
+  function normalizePreflightNeverCheckUrl(rawUrl, baseUrl) {
+    const trimmed = String(rawUrl || '').trim();
+    if (!trimmed) return '';
+    // Preserve tokenized/template URLs exactly as shown in Preflight.
+    // Parsing can inject placeholder hosts or encode braces.
+    if (trimmed.includes('{{') || trimmed.includes('}}') || /\$[^$]+\$/i.test(trimmed)) return trimmed;
+    // Keep non-HTTP hrefs exactly as the user sees them in Preflight (e.g. raw template tokens).
+    // Resolving against base URL would incorrectly prefix/encode values like "{{ ... }}".
+    if (!/^https?:\/\//i.test(trimmed)) return trimmed;
+    try {
+      const u = new URL(trimmed, baseUrl || window.location.href);
+      if (u.protocol === 'http:' || u.protocol === 'https:') return u.href;
+    } catch (_) {}
+    return trimmed;
+  }
+
+  function parsePreflightNeverCheckStoredValue(raw) {
+    if (Array.isArray(raw)) return raw.filter(Boolean).map((v) => String(v));
+    if (typeof raw === 'string') {
+      const text = raw.trim();
+      if (!text) return [];
+      if (text.startsWith('{') && text.includes('"v"')) {
+        try {
+          const parsed = JSON.parse(text);
+          if (parsed && parsed.v === 2 && Array.isArray(parsed.p) && Array.isArray(parsed.e)) {
+            const out = [];
+            parsed.e.forEach((entry) => {
+              if (typeof entry === 'string') {
+                if (entry) out.push(entry);
+                return;
+              }
+              if (Array.isArray(entry) && entry.length === 2) {
+                const idx = Number.parseInt(String(entry[0]), 10);
+                const suffix = String(entry[1] || '');
+                const prefix = parsed.p[idx];
+                if (typeof prefix === 'string') out.push(prefix + suffix);
+              }
+            });
+            return out.filter(Boolean);
+          }
+        } catch (_) {}
+      }
+      return text.split('\n').map((v) => v.trim()).filter(Boolean);
+    }
+    return [];
+  }
+
+  function serializePreflightNeverCheckStoredValue(list) {
+    const cleaned = Array.from(new Set((Array.isArray(list) ? list : []).map((v) => String(v || '').trim()).filter(Boolean)));
+    cleaned.sort((a, b) => a.localeCompare(b));
+    const baseline = cleaned.join('\n');
+
+    const prefixCounts = new Map();
+    cleaned.forEach((url) => {
+      try {
+        const u = new URL(url);
+        if (u.protocol !== 'http:' && u.protocol !== 'https:') return;
+        const prefix = `${u.origin}/`;
+        prefixCounts.set(prefix, (prefixCounts.get(prefix) || 0) + 1);
+      } catch (_) {}
+    });
+    const prefixes = Array.from(prefixCounts.entries())
+      .filter(([, n]) => n >= 2)
+      .sort((a, b) => b[1] - a[1] || b[0].length - a[0].length)
+      .map(([prefix]) => prefix);
+    if (!prefixes.length) return baseline;
+
+    const entries = cleaned.map((url) => {
+      for (let i = 0; i < prefixes.length; i += 1) {
+        const p = prefixes[i];
+        if (url.startsWith(p)) return [i, url.slice(p.length)];
+      }
+      return url;
+    });
+    const packed = JSON.stringify({ v: 2, p: prefixes, e: entries });
+    return packed.length < baseline.length ? packed : baseline;
+  }
+
+  async function loadPreflightNeverCheckUrls() {
+    return new Promise((resolve) => {
+      chrome.storage.sync.get({ [PREFLIGHT_URL_NEVER_CHECK_KEY]: '' }, (res) => {
+        const arr = parsePreflightNeverCheckStoredValue(res[PREFLIGHT_URL_NEVER_CHECK_KEY]);
+        preflightNeverCheckUrls.clear();
+        arr.forEach((u) => {
+          const n = normalizePreflightNeverCheckUrl(u);
+          if (n) preflightNeverCheckUrls.add(n);
+        });
+        resolve();
+      });
+    });
+  }
+
+  async function savePreflightNeverCheckUrls() {
+    const serialized = serializePreflightNeverCheckStoredValue(Array.from(preflightNeverCheckUrls.values()));
+    return new Promise((resolve) => {
+      chrome.storage.sync.set({ [PREFLIGHT_URL_NEVER_CHECK_KEY]: serialized }, () => resolve());
+    });
+  }
+
+  async function setUrlPreflightNeverCheck(url, shouldSkip) {
+    const normalized = normalizePreflightNeverCheckUrl(url);
+    if (!normalized) return false;
+    if (shouldSkip) preflightNeverCheckUrls.add(normalized);
+    else preflightNeverCheckUrls.delete(normalized);
+    await savePreflightNeverCheckUrls();
+    return true;
+  }
+
+  /** True only for absolute URLs whose string form begins with http:// or https:// (case-insensitive). */
+  function isHttpOrHttpsPreflightLink(url) {
+    if (!url || typeof url !== 'string') return false;
+    const lower = url.trim().toLowerCase();
+    return lower.startsWith('http://') || lower.startsWith('https://');
+  }
+
+  function displayHrefBeginsWithHttpOrHttps(displayHref) {
+    return /^https?:\/\//i.test(String(displayHref || '').trim());
+  }
+
+  function rowEligibleForPreflightLiveVerify(row) {
+    return !!(
+      row &&
+      !row.hasTemplateTokens &&
+      row.fetchCandidateUrl &&
+      isHttpOrHttpsPreflightLink(row.fetchCandidateUrl) &&
+      displayHrefBeginsWithHttpOrHttps(row.displayHref)
+    );
+  }
+
+  function shouldCreateContactPreviewRenderedCompanion(editorRow, previewAnchor, previewDoc) {
+    if (!editorRow || !previewAnchor || !previewDoc) return false;
+    const meta = computeLinkFetchMetadata(previewAnchor, previewDoc);
+    if (!meta.fetchCandidateUrl || !isHttpOrHttpsPreflightLink(meta.fetchCandidateUrl)) return false;
+    const prevText = String(linkDisplayHref(previewAnchor)).trim();
+    if (!displayHrefBeginsWithHttpOrHttps(prevText)) return false;
+    if (editorRow.hasTemplateTokens) return true;
+    if (!displayHrefBeginsWithHttpOrHttps(editorRow.displayHref)) return true;
+    if (prevText !== String(editorRow.displayHref || '').trim()) return true;
+    return false;
+  }
+
+  function buildSyntheticContactPreviewRow(editorRow, previewAnchor, previewDoc) {
+    const codes = getLinkIssueCodesForAnchor(previewAnchor);
+    const labels = codes.map((c) => LINK_ISSUE_LABELS[c] || c).sort((a, b) => a.localeCompare(b));
+    const meta = computeLinkFetchMetadata(previewAnchor, previewDoc);
+    return {
+      rowKey: `__cp_rendered__:${encodeURIComponent(editorRow.rowKey)}`,
+      parentEditorRowKey: editorRow.rowKey,
+      isContactPreviewRenderedRow: true,
+      displayHref: linkDisplayHref(previewAnchor),
+      referenceCount: 1,
+      issueLabels: labels,
+      hasIssues: labels.length > 0,
+      hasTemplateTokens: false,
+      fetchCandidateUrl: meta.fetchCandidateUrl
+    };
+  }
+
+  function clearContactPreviewRenderedRows() {
+    contactPreviewRenderedRowByEditorKey.clear();
+  }
+
+  /**
+   * Contact Preview can resolve the same editor link to a new rendered href or URL on a later pass.
+   * If we keep the prior synthetic row's live-verify state, `lastPreviewResolvedUrl` can match the new
+   * fetch URL and incorrectly skip a refetch while the logged companion row should reflect the latest preview.
+   */
+  function invalidateContactPreviewSyntheticLiveStateIfIdentityChanged(prevSyn, nextSyn) {
+    if (!nextSyn || !nextSyn.rowKey) return;
+    if (!prevSyn || typeof prevSyn !== 'object' || !prevSyn.rowKey) return;
+    if (String(prevSyn.rowKey) !== String(nextSyn.rowKey)) return;
+    const prevDisp = String(prevSyn.displayHref || '').trim();
+    const nextDisp = String(nextSyn.displayHref || '').trim();
+    const prevFetch = prevSyn.fetchCandidateUrl || null;
+    const nextFetch = nextSyn.fetchCandidateUrl || null;
+    if (prevFetch !== nextFetch || prevDisp !== nextDisp) {
+      linkLiveState.delete(nextSyn.rowKey);
+    }
+  }
+
+  function mergeEditorRowsWithContactPreviewRendered(baseRows) {
+    const out = [];
+    (baseRows || []).forEach((row) => {
+      out.push(row);
+      const syn = contactPreviewRenderedRowByEditorKey.get(row.rowKey);
+      if (syn) out.push(syn);
+    });
+    return out;
+  }
+
+  function findLinkRowByRowKey(rowKey) {
+    if (!rowKey || !cachedLinksAnalysis) return null;
+    const base = cachedLinksAnalysis.rows || [];
+    const hit = base.find((r) => r.rowKey === rowKey);
+    if (hit) return hit;
+    let found = null;
+    contactPreviewRenderedRowByEditorKey.forEach((syn) => {
+      if (syn && syn.rowKey === rowKey) found = syn;
+    });
+    return found;
+  }
+
   function sendRuntimeMessage(payload) {
     return new Promise((resolve) => {
       try {
@@ -483,6 +1350,930 @@ function initializePreflightPanel() {
   async function hasImageHostAccess() {
     const response = await sendRuntimeMessage({ action: 'preflightCheckImageHostAccess' });
     return !!(response && response.ok && response.granted);
+  }
+
+  async function ensureLinkHostAccess() {
+    const response = await sendRuntimeMessage({ action: 'preflightEnsureLinkHostAccess' });
+    return !!(response && response.ok && response.granted);
+  }
+
+  async function hasLinkHostAccess() {
+    const response = await sendRuntimeMessage({ action: 'preflightCheckLinkHostAccess' });
+    return !!(response && response.ok && response.granted);
+  }
+
+  function pruneLinkLiveStateForRows(rows) {
+    const allowed = new Set((rows || []).map((r) => r && r.rowKey).filter(Boolean));
+    contactPreviewRenderedRowByEditorKey.forEach((syn, editorKey) => {
+      if (allowed.has(editorKey) && syn && syn.rowKey) allowed.add(syn.rowKey);
+    });
+    Array.from(linkLiveState.keys()).forEach((k) => {
+      if (!allowed.has(k)) linkLiveState.delete(k);
+    });
+  }
+
+  function setLiveLinkFootnoteText(text, visible) {
+    const els = getPreflightPanelEls();
+    if (!els || !els.liveLinkFootnote) return;
+    els.liveLinkFootnote.style.display = visible ? '' : 'none';
+    els.liveLinkFootnote.textContent = visible ? String(text || '') : '';
+  }
+
+  function isDesktopPreviewDocReady() {
+    const iframe = document.querySelector(PREVIEW_IFRAME_SELECTOR);
+    const doc = iframe && iframe.contentDocument;
+    return !!(doc && doc.documentElement);
+  }
+
+  function buildNetworkErrorHintText(errorName, failStage) {
+    const name = String(errorName || '').trim();
+    const stage = String(failStage || '').trim();
+    const stageText = stage ? ` Failure stage: ${stage}.` : '';
+    if (!name) return 'Request failed before an HTTP response arrived.';
+    if (name === 'TypeError') {
+      return `Browser/network fetch failed before an HTTP response (DNS/TLS/connectivity/policy/ad-blocker).${stageText}`;
+    }
+    return `${name}: request failed before an HTTP response arrived.${stageText}`;
+  }
+
+  function buildLinkProbeDiagnosticsText(r) {
+    const probe = r && r.probe && typeof r.probe === 'object' ? r.probe : null;
+    const nav = r && r.navigation && typeof r.navigation === 'object' ? r.navigation : null;
+    const parts = [];
+    if (nav) {
+      const navMain = nav.ok
+        ? `Top-level navigation landed successfully at ${nav.finalUrl || '(unknown URL)'}`
+        : `Top-level navigation failed (${nav.errorName || 'NavigationError'})`;
+      const navMeta = [
+        Number.isFinite(nav.redirectCount) ? `${nav.redirectCount} redirect(s)` : '',
+        Number.isFinite(nav.durationMs) ? `${nav.durationMs} ms` : ''
+      ]
+        .filter(Boolean)
+        .join(', ');
+      parts.push(navMeta ? `${navMain}. ${navMeta}.` : `${navMain}.`);
+      if (Array.isArray(nav.events) && nav.events.length) {
+        parts.push(`Navigation trace: ${nav.events.join(' · ')}`);
+      }
+    }
+    if (probe) {
+      const probeMain = `HTTP probe: ${probe.ok ? 'ok' : 'not-ok'} ${Number.isFinite(probe.status) ? `(status ${probe.status})` : ''}`.trim();
+      parts.push(probeMain);
+      const attempts = Array.isArray(probe.attempts) ? probe.attempts.join(' · ') : '';
+      if (attempts) parts.push(`Probe attempts: ${attempts}`);
+      if (probe.failStage) parts.push(`Probe failure stage: ${probe.failStage}`);
+    } else {
+      const attempts = Array.isArray(r && r.attempts) ? r.attempts.join(' · ') : '';
+      if (attempts) parts.push(`Probe attempts: ${attempts}`);
+    }
+    return parts.join(' ');
+  }
+
+  function summarizeVerifyResult(r) {
+    const attempts = Array.isArray(r.attempts) ? r.attempts.join(' · ') : '';
+    if (r && r.category === 'navigationOk') {
+      return {
+        summary: 'Landed successfully',
+        category: 'ok',
+        detailText: buildLinkProbeDiagnosticsText(r)
+      };
+    }
+    if (r && r.category === 'navigationError') {
+      const detail = buildLinkProbeDiagnosticsText(r);
+      return {
+        summary: 'Navigation failed',
+        category: 'networkError',
+        detailText: detail
+      };
+    }
+    if (r && r.ok) {
+      return { summary: `OK ${r.status}`, category: 'ok', detailText: attempts };
+    }
+    if (r && r.category === 'networkError') {
+      const hint = buildNetworkErrorHintText(r.errorName, r.failStage);
+      const detail = [hint, attempts].filter(Boolean).join(' ');
+      return { summary: 'Network fetch failed', category: 'networkError', detailText: detail };
+    }
+    if (r && r.category === 'blocked') {
+      return {
+        summary: 'Blocked',
+        category: 'blocked',
+        detailText: r.errorName || attempts || 'Cross-origin or opaque response.'
+      };
+    }
+    if (r && Number.isFinite(r.status) && r.status > 0) {
+      const cat = r.status >= 500 ? 'serverError' : 'clientError';
+      return { summary: `HTTP ${r.status}`, category: cat, detailText: attempts || r.errorName || '' };
+    }
+    return {
+      summary: (r && r.errorName) || 'Failed',
+      category: (r && r.category) || 'clientError',
+      detailText: attempts
+    };
+  }
+
+  function buildLiveStatusPresentation(row) {
+    const st = linkLiveState.get(row.rowKey);
+    const stDetail = String((st && (st.detailText || st.detail)) || '').trim();
+    if (!rowEligibleForPreflightLiveVerify(row)) {
+      return {
+        className: 'gem-preflight-live-chip--skipped',
+        label: 'Skipped',
+        detailText:
+          'Live verify only runs when the href begins with http:// or https://. mailto:, tel:, fragments, templated-only hrefs, and other schemes are skipped — use Contact Preview for personalized links.'
+      };
+    }
+    if (!st || st.phase === 'idle') {
+      return { className: 'gem-preflight-live-chip--neutral', label: 'Not checked', detailText: '' };
+    }
+    if (st.phase === 'checking') {
+      return { className: 'gem-preflight-live-chip--pending', label: 'Checking…', detailText: '' };
+    }
+    if (st.phase === 'error') {
+      return {
+        className: 'gem-preflight-live-chip--error',
+        label: st.summary || 'Error',
+        detailText: [stDetail, st.finalUrl].filter(Boolean).join(' ')
+      };
+    }
+    const label = st.summary || 'Done';
+    let chipClass = 'gem-preflight-live-chip--neutral';
+    if (st.category === 'ok') chipClass = 'gem-preflight-live-chip--ok';
+    else if (st.category === 'blocked' || st.category === 'clientError') chipClass = 'gem-preflight-live-chip--warn';
+    else if (st.category === 'serverError' || st.category === 'networkError') chipClass = 'gem-preflight-live-chip--error';
+    const detailParts = [
+      stDetail,
+      st.finalUrl && row.fetchCandidateUrl && st.finalUrl !== row.fetchCandidateUrl ? `Final: ${st.finalUrl}` : ''
+    ].filter(Boolean);
+    return { className: chipClass, label, detailText: detailParts.join(' ') };
+  }
+
+  function buildPreflightLinkRowMenuHtml(row, opts) {
+    if (!row || row.isContactPreviewRenderedRow) return '';
+    const neverKey = row.neverCheckUrlKey || normalizePreflightNeverCheckUrl(row.fetchCandidateUrl || row.displayHref);
+    if (!neverKey) return '';
+    const inSkippedSection = !!(opts && opts.isSkippedSection);
+    const isSkipped = preflightNeverCheckUrls.has(neverKey);
+    const menuKey = `${inSkippedSection ? 'skipped' : 'main'}:${row.rowKey}`;
+    const isOpen = openLinkRowMenuKey === menuKey;
+    const neverItem = !isSkipped && !inSkippedSection
+      ? '<button type="button" class="gem-preflight-links-row-menu-item" data-action="gem-url-never-check">Never check</button>'
+      : '';
+    const alwaysItem = isSkipped
+      ? '<button type="button" class="gem-preflight-links-row-menu-item" data-action="gem-url-always-check">Always check</button>'
+      : '';
+    const menuItems = `${neverItem}${alwaysItem}`;
+    if (!menuItems) return '';
+    return `<div class="gem-preflight-links-row-menu-wrap">
+      <button type="button" class="gem-preflight-live-links-row-btn gem-preflight-live-links-row-btn--secondary" data-action="gem-open-row-menu" data-gem-link-row-key="${encodeURIComponent(row.rowKey || '')}" data-gem-link-menu-context="${inSkippedSection ? 'skipped' : 'main'}" title="URL check options" aria-label="URL check options">⚙</button>
+      <div class="gem-preflight-links-row-menu${isOpen ? ' gem-preflight-links-row-menu--open' : ''}" data-gem-link-row-key="${encodeURIComponent(row.rowKey || '')}" data-gem-link-menu-context="${inSkippedSection ? 'skipped' : 'main'}">
+        ${menuItems}
+      </div>
+    </div>`;
+  }
+
+  function renderLinksTableHtml(lrows, opts = {}) {
+    const inSkippedSection = !!opts.isSkippedSection;
+    return lrows
+      .map((row) => {
+        const rk = encodeURIComponent(row.rowKey || '');
+        const live = inSkippedSection
+          ? {
+              className: 'gem-preflight-live-chip--skipped',
+              label: 'Skipped by setting',
+              detailText: 'This URL is listed in Never check and is excluded from formatting and live checks.'
+            }
+          : buildLiveStatusPresentation(row);
+        const isCpRendered = !!row.isContactPreviewRenderedRow;
+        const cpBadge = isCpRendered
+          ? '<div class="gem-preflight-links-row-cp-badge">Contact Preview — rendered URL</div>'
+          : '';
+        const cpBtn =
+          !inSkippedSection && row.hasTemplateTokens && !isCpRendered
+            ? '<button type="button" class="gem-preflight-live-links-row-btn gem-preflight-live-links-row-btn--secondary" data-action="gem-open-contact-preview" title="Open Emarsys Contact Preview" aria-label="Open Contact Preview">Preview</button>'
+            : '';
+        const verifyBtn = !inSkippedSection && rowEligibleForPreflightLiveVerify(row)
+          ? `<button type="button" class="gem-preflight-live-links-row-btn" data-action="gem-live-verify-one" data-gem-link-row-key="${rk}" title="Live verify this URL" aria-label="Live verify this link">↗</button>`
+          : '';
+        const menuBtn = buildPreflightLinkRowMenuHtml(row, { isSkippedSection: inSkippedSection });
+        const liveDetail = String(live.detailText || '').trim();
+        const liveDetailBlock = liveDetail
+          ? `<div class="gem-preflight-live-debug">${escapeHtmlText(liveDetail)}</div>`
+          : '';
+        const actionsInner = `${verifyBtn}${cpBtn}${menuBtn}`;
+        const actionsBlock = actionsInner
+          ? `<div class="gem-preflight-links-row-actions">${actionsInner}</div>`
+          : '';
+        const issueLabels = Array.isArray(row.issueLabels) ? row.issueLabels : [];
+        const issueCount = issueLabels.length;
+        const lintSummaryTitle = issueCount > 0 ? escapeHtmlText(issueLabels.join(', ')) : '';
+        const lintCell = inSkippedSection
+          ? ''
+          : issueCount > 0
+            ? `<span class="gem-preflight-links-lint-pip" title="${lintSummaryTitle}" aria-label="${issueCount} link issue${issueCount === 1 ? '' : 's'}">${String(Math.min(99, issueCount))}</span>`
+            : `<span class="gem-preflight-links-lint-ok" title="No static link issues" aria-label="No link issues"><span aria-hidden="true">&#10003;</span></span>`;
+        const issuesBlock =
+          issueCount > 0
+            ? `<div class="gem-preflight-links-row-line3" role="region" aria-label="Link issues">
+            <ul class="gem-preflight-links-issue-list">
+              ${issueLabels.map((lab) => `<li>${escapeHtmlText(lab)}</li>`).join('')}
+            </ul>
+          </div>`
+            : '';
+        return `
+        <div class="gem-preflight-links-row${isCpRendered ? ' gem-preflight-links-row--cp-rendered' : ''}">
+          <div class="gem-preflight-links-row-line1">
+            <div class="gem-preflight-links-row-main">
+              ${cpBadge}
+              <div class="gem-preflight-image-breakdown-name gem-preflight-link-href" title="${escapeHtmlText(row.displayHref)}">${escapeHtmlText(row.displayHref)}${row.referenceCount > 1 ? ` (${row.referenceCount}×)` : ''}</div>
+            </div>
+            <div class="gem-preflight-links-row-lint">${lintCell}</div>
+          </div>
+          ${issuesBlock}
+          <div class="gem-preflight-links-row-line2">
+            <div class="gem-preflight-links-row-live">
+              <span class="gem-preflight-live-chip ${live.className}">${escapeHtmlText(live.label)}</span>
+              ${liveDetailBlock}
+            </div>
+            ${actionsBlock}
+          </div>
+        </div>`;
+      })
+      .join('');
+  }
+
+  function renderLinksTableIntoEl(linksTableEl, lrows, emptyMessage) {
+    if (!linksTableEl) return;
+    if (!lrows.length) {
+      linksTableEl.innerHTML = `<div class="gem-preflight-image-breakdown-empty">${emptyMessage}</div>`;
+      syncLiveVerifyAllButtonState();
+      return;
+    }
+    const merged = mergeEditorRowsWithContactPreviewRendered(lrows);
+    linksTableEl.innerHTML = renderLinksTableHtml(merged, { isSkippedSection: false });
+    syncLiveVerifyAllButtonState();
+  }
+
+  function renderSkippedUrlsSection() {
+    const els = getPreflightPanelEls();
+    if (!els || !els.skippedUrlsTable || !els.skippedUrlsWrap) return;
+    const rows = Array.isArray(cachedSkippedLinkRows) ? cachedSkippedLinkRows : [];
+    if (!rows.length) {
+      els.skippedUrlsTable.innerHTML = '<div class="gem-preflight-image-breakdown-empty">No skipped URLs.</div>';
+      els.skippedUrlsWrap.style.display = 'none';
+      return;
+    }
+    els.skippedUrlsWrap.style.display = '';
+    els.skippedUrlsTable.innerHTML = renderLinksTableHtml(rows, { isSkippedSection: true });
+  }
+
+  function syncLiveVerifyAllButtonState() {
+    const els = getPreflightPanelEls();
+    if (!els || !els.liveVerifyAllLinksBtn) return;
+    const lrows = (cachedLinksAnalysis && cachedLinksAnalysis.rows) || [];
+    const ready = isDesktopPreviewDocReady() && lrows.length > 0;
+    els.liveVerifyAllLinksBtn.disabled = !ready || editorLinkLiveVerifyAllInFlight;
+  }
+
+  function refreshLinksTableFromCache() {
+    const els = getPreflightPanelEls();
+    if (!els || !els.linksTable || !cachedLinksAnalysis) return;
+    const lrows = cachedLinksAnalysis.rows || [];
+    renderLinksTableIntoEl(els.linksTable, lrows, 'No links found.');
+  }
+
+  function collectRowKeysFromUrlMap(urlToRowKeys) {
+    const out = new Set();
+    urlToRowKeys.forEach((set) => {
+      set.forEach((rk) => out.add(rk));
+    });
+    return Array.from(out);
+  }
+
+  function collectUrlConflictsForRowKeys(urlToRowKeys) {
+    const rowKeyToUrls = new Map();
+    urlToRowKeys.forEach((rowKeys, url) => {
+      rowKeys.forEach((rk) => {
+        if (!rowKeyToUrls.has(rk)) rowKeyToUrls.set(rk, new Set());
+        rowKeyToUrls.get(rk).add(url);
+      });
+    });
+    let n = 0;
+    rowKeyToUrls.forEach((urls) => {
+      if (urls.size > 1) n += 1;
+    });
+    return n;
+  }
+
+  function applyVerifyResultsToState(urlToRowKeys, results, source, mappingMode) {
+    const byUrl = new Map();
+    (results || []).forEach((r) => {
+      if (r && r.url) byUrl.set(r.url, r);
+    });
+    urlToRowKeys.forEach((rowKeys, url) => {
+      const r = byUrl.get(url);
+      rowKeys.forEach((rowKey) => {
+        if (!r) {
+          linkLiveState.set(rowKey, {
+            phase: 'error',
+            checkedAt: Date.now(),
+            source,
+            summary: 'No result',
+            category: 'networkError',
+            detail: '',
+            lastMappingMode: mappingMode || null,
+            lastPreviewResolvedUrl: url
+          });
+          return;
+        }
+        const sum = summarizeVerifyResult(r);
+        linkLiveState.set(rowKey, {
+          phase: 'done',
+          checkedAt: Date.now(),
+          source,
+          ...sum,
+          ok: !!r.ok,
+          status: r.status,
+          finalUrl: r.finalUrl,
+          errorName: r.errorName,
+          lastPreviewResolvedUrl: url,
+          lastMappingMode: mappingMode || null
+        });
+      });
+    });
+    refreshLinksTableFromCache();
+    schedulePersistPreflightLiveSession();
+  }
+
+  function urlRowKeysNeedLiveNetworkFetch(url, rowKeys, opts) {
+    if (opts && opts.forceNetworkFetch) return true;
+    const keys = Array.from(rowKeys);
+    return keys.some((rk) => {
+      const st = linkLiveState.get(rk);
+      if (!st || st.phase !== 'done') return true;
+      if (st.lastPreviewResolvedUrl && st.lastPreviewResolvedUrl !== url) return true;
+      return false;
+    });
+  }
+
+  async function executeLiveVerifyFromUrlMap(urlToRowKeys, source, meta) {
+    const fetchOpts = meta && typeof meta === 'object' ? meta : null;
+    const filteredUrlToRowKeys = new Map();
+    urlToRowKeys.forEach((rowKeys, url) => {
+      if (!url) return;
+      if (urlRowKeysNeedLiveNetworkFetch(url, rowKeys, fetchOpts)) filteredUrlToRowKeys.set(url, rowKeys);
+    });
+    const urls = [...filteredUrlToRowKeys.keys()].filter(Boolean);
+    const rowKeys = collectRowKeysFromUrlMap(filteredUrlToRowKeys);
+    if (!urls.length) {
+      refreshLinksTableFromCache();
+      schedulePersistPreflightLiveSession();
+      return;
+    }
+    rowKeys.forEach((rk) => {
+      linkLiveState.set(rk, { phase: 'checking', checkedAt: Date.now(), source });
+    });
+    refreshLinksTableFromCache();
+
+    if (source === 'editor') {
+      const granted = await ensureLinkHostAccess();
+      if (!isPreflightActive()) return;
+      if (!granted) {
+        rowKeys.forEach((rk) => {
+          linkLiveState.set(rk, {
+            phase: 'error',
+            checkedAt: Date.now(),
+            source,
+            summary: 'Host access denied',
+            category: 'blocked',
+            detail: 'Grant https/http host access when prompted to run live link checks.'
+          });
+        });
+        refreshLinksTableFromCache();
+        schedulePersistPreflightLiveSession();
+        return;
+      }
+    } else if (source === 'contact-preview') {
+      const ok = await hasLinkHostAccess();
+      if (!isPreflightActive()) return;
+      if (!ok) {
+        rowKeys.forEach((rk) => {
+          linkLiveState.set(rk, {
+            phase: 'error',
+            checkedAt: Date.now(),
+            source,
+            summary: 'No host access',
+            category: 'blocked',
+            detail: 'Use “Live verify all” once to grant access.'
+          });
+        });
+        refreshLinksTableFromCache();
+        schedulePersistPreflightLiveSession();
+        return;
+      }
+    }
+
+    const response = await sendRuntimeMessage({ action: 'preflightVerifyLinkUrls', urls });
+    if (!isPreflightActive()) return;
+    if (!response || !response.ok) {
+      rowKeys.forEach((rk) => {
+        linkLiveState.set(rk, {
+          phase: 'error',
+          checkedAt: Date.now(),
+          source,
+          summary: 'Verify failed',
+          category: 'networkError',
+          detail: (response && response.error) || 'Unknown error'
+        });
+      });
+      refreshLinksTableFromCache();
+      schedulePersistPreflightLiveSession();
+      return;
+    }
+    applyVerifyResultsToState(filteredUrlToRowKeys, response.results || [], source, meta && meta.mappingMode);
+  }
+
+  async function runLiveVerifyAllLinks() {
+    if (!cachedLinksAnalysis || editorLinkLiveVerifyAllInFlight) return;
+    const rows = mergeEditorRowsWithContactPreviewRendered(cachedLinksAnalysis.rows || []).filter((r) =>
+      rowEligibleForPreflightLiveVerify(r)
+    );
+    const urlToRowKeys = new Map();
+    rows.forEach((row) => {
+      const url = row.fetchCandidateUrl;
+      if (!urlToRowKeys.has(url)) urlToRowKeys.set(url, new Set());
+      urlToRowKeys.get(url).add(row.rowKey);
+    });
+    if (urlToRowKeys.size === 0) return;
+    editorLinkLiveVerifyAllInFlight = true;
+    syncLiveVerifyAllButtonState();
+    try {
+      await executeLiveVerifyFromUrlMap(urlToRowKeys, 'editor', { mappingMode: 'editor-bulk' });
+    } finally {
+      editorLinkLiveVerifyAllInFlight = false;
+      syncLiveVerifyAllButtonState();
+    }
+  }
+
+  async function runLiveVerifyOneRow(rowKey) {
+    if (!cachedLinksAnalysis || !rowKey) return;
+    const row = findLinkRowByRowKey(rowKey);
+    if (!row || row.hasTemplateTokens || !rowEligibleForPreflightLiveVerify(row)) return;
+    const m = new Map();
+    m.set(row.fetchCandidateUrl, new Set([row.rowKey]));
+    await executeLiveVerifyFromUrlMap(m, 'editor', { mappingMode: 'editor-row', forceNetworkFetch: true });
+  }
+
+  function sortLinkRowsForDisplay(rows) {
+    return (Array.isArray(rows) ? rows.slice() : []).sort((a, b) => {
+      if (!!a.hasIssues !== !!b.hasIssues) return a.hasIssues ? -1 : 1;
+      return (b.referenceCount || 0) - (a.referenceCount || 0);
+    });
+  }
+
+  function refreshLinkMetricsFromCache() {
+    const panel = document.querySelector(PRELIGHT_PANEL_TAG);
+    if (!panel) return;
+    const linksTotalEl = panel.querySelector('[data-metric="linksTotal"]');
+    const linksUniqueEl = panel.querySelector('[data-metric="linksUnique"]');
+    const activeRows = (cachedLinksAnalysis && Array.isArray(cachedLinksAnalysis.rows)) ? cachedLinksAnalysis.rows : [];
+    const skippedRows = Array.isArray(cachedSkippedLinkRows) ? cachedSkippedLinkRows : [];
+    const totalAnchors = activeRows.concat(skippedRows).reduce((sum, row) => sum + (row && row.referenceCount ? row.referenceCount : 0), 0);
+    const totalUniqueLinks = activeRows.length + skippedRows.length;
+    const linksAlertCount = activeRows.reduce((sum, row) => sum + (Array.isArray(row.issueLabels) ? row.issueLabels.length : 0), 0);
+    if (linksTotalEl) linksTotalEl.textContent = String(totalAnchors);
+    if (linksUniqueEl) linksUniqueEl.textContent = String(totalUniqueLinks);
+    updateLinksSectionPip(linksAlertCount);
+    if (cachedLinksAnalysis) {
+      cachedLinksAnalysis.totalAnchors = totalAnchors;
+      cachedLinksAnalysis.uniqueCount = totalUniqueLinks;
+      cachedLinksAnalysis.linksAlertCount = linksAlertCount;
+    }
+  }
+
+  function applyNeverCheckToCurrentRows(targetUrl, shouldSkip) {
+    if (!cachedLinksAnalysis) return;
+    const normalizedTarget = normalizePreflightNeverCheckUrl(targetUrl);
+    if (!normalizedTarget) return;
+    const active = Array.isArray(cachedLinksAnalysis.rows) ? cachedLinksAnalysis.rows.slice() : [];
+    const skipped = Array.isArray(cachedSkippedLinkRows) ? cachedSkippedLinkRows.slice() : [];
+
+    if (shouldSkip) {
+      const keep = [];
+      active.forEach((row) => {
+        const key = normalizePreflightNeverCheckUrl(row && (row.neverCheckUrlKey || row.fetchCandidateUrl || row.displayHref));
+        if (key && key === normalizedTarget) {
+          skipped.push({ ...row, issueLabels: [], hasIssues: false });
+          if (row && row.rowKey) {
+            linkLiveState.delete(row.rowKey);
+            const syn = contactPreviewRenderedRowByEditorKey.get(row.rowKey);
+            if (syn && syn.rowKey) linkLiveState.delete(syn.rowKey);
+            contactPreviewRenderedRowByEditorKey.delete(row.rowKey);
+          }
+        } else {
+          keep.push(row);
+        }
+      });
+      cachedLinksAnalysis.rows = sortLinkRowsForDisplay(keep);
+      cachedSkippedLinkRows = sortLinkRowsForDisplay(skipped);
+      cachedLinksAnalysis.anchorRowKeysInOrder = (cachedLinksAnalysis.anchorRowKeysInOrder || []).filter((rk) =>
+        cachedLinksAnalysis.rows.some((r) => r && r.rowKey === rk)
+      );
+    } else {
+      const stillSkipped = [];
+      const movedBack = [];
+      skipped.forEach((row) => {
+        const key = normalizePreflightNeverCheckUrl(row && (row.neverCheckUrlKey || row.fetchCandidateUrl || row.displayHref));
+        if (key && key === normalizedTarget) movedBack.push(row);
+        else stillSkipped.push(row);
+      });
+      if (movedBack.length) {
+        const restored = movedBack.map((row) => ({ ...row, hasIssues: Array.isArray(row.issueLabels) && row.issueLabels.length > 0 }));
+        cachedLinksAnalysis.rows = sortLinkRowsForDisplay(active.concat(restored));
+        cachedSkippedLinkRows = sortLinkRowsForDisplay(stillSkipped);
+        const existing = new Set(cachedLinksAnalysis.anchorRowKeysInOrder || []);
+        restored.forEach((row) => {
+          if (row && row.rowKey && !existing.has(row.rowKey)) {
+            cachedLinksAnalysis.anchorRowKeysInOrder = (cachedLinksAnalysis.anchorRowKeysInOrder || []).concat([row.rowKey]);
+            existing.add(row.rowKey);
+          }
+        });
+      }
+    }
+
+    pruneLinkLiveStateForRows(cachedLinksAnalysis.rows || []);
+    refreshLinksTableFromCache();
+    renderSkippedUrlsSection();
+    refreshLinkMetricsFromCache();
+    schedulePersistPreflightLiveSession();
+  }
+
+  async function reapplyNeverCheckSetToCachedRows() {
+    if (!cachedLinksAnalysis) return;
+    await loadPreflightNeverCheckUrls();
+    const active = Array.isArray(cachedLinksAnalysis.rows) ? cachedLinksAnalysis.rows.slice() : [];
+    const skipped = Array.isArray(cachedSkippedLinkRows) ? cachedSkippedLinkRows.slice() : [];
+    const allRows = active.concat(skipped);
+    const nextActive = [];
+    const nextSkipped = [];
+    allRows.forEach((row) => {
+      const key = normalizePreflightNeverCheckUrl(row && (row.neverCheckUrlKey || row.fetchCandidateUrl || row.displayHref));
+      if (key && preflightNeverCheckUrls.has(key)) nextSkipped.push({ ...row, issueLabels: [], hasIssues: false });
+      else nextActive.push({ ...row, hasIssues: Array.isArray(row.issueLabels) && row.issueLabels.length > 0 });
+    });
+    cachedLinksAnalysis.rows = sortLinkRowsForDisplay(nextActive);
+    cachedSkippedLinkRows = sortLinkRowsForDisplay(nextSkipped);
+    cachedLinksAnalysis.anchorRowKeysInOrder = (cachedLinksAnalysis.anchorRowKeysInOrder || []).filter((rk) =>
+      cachedLinksAnalysis.rows.some((r) => r && r.rowKey === rk)
+    );
+    pruneLinkLiveStateForRows(cachedLinksAnalysis.rows || []);
+    refreshLinksTableFromCache();
+    renderSkippedUrlsSection();
+    refreshLinkMetricsFromCache();
+    schedulePersistPreflightLiveSession();
+  }
+
+  function truncateForPreflightNote(text, maxLen) {
+    const cap = Number.isFinite(maxLen) && maxLen > 8 ? maxLen : 96;
+    const s = String(text == null ? '' : text).replace(/\s+/g, ' ').trim();
+    if (s.length <= cap) return s;
+    return `${s.slice(0, cap - 1)}…`;
+  }
+
+  function describeContactPreviewMixedSchemePair(ctx) {
+    const { pairIndex1, url, verifyRowKey, editorRowKey, editorRow, previewAn, previewDoc } = ctx;
+    const idx = `Ordered pair #${pairIndex1}`;
+    const editorHint = editorRow
+      ? `Editor row shows: ${truncateForPreflightNote(editorRow.displayHref, 88)}.`
+      : editorRowKey
+        ? 'Editor list has a row key at this index but the row was not found in the current analysis.'
+        : 'No editor link row at this index (preview has more anchors than the editor list, or a gap).';
+
+    if (!verifyRowKey) {
+      const pv = previewAn ? truncateForPreflightNote(linkDisplayHref(previewAn), 88) : 'no preview anchor';
+      const urlBit = url ? ` Preview resolved fetch URL: ${truncateForPreflightNote(url, 72)}.` : '';
+      return `${idx}: nothing to attach live verify to (preview ${pv}; ${editorHint})${urlBit}`;
+    }
+
+    if (!url) {
+      const raw = previewAn && previewAn.getAttribute('href') != null ? String(previewAn.getAttribute('href')).trim() : '';
+      const lower = raw.toLowerCase();
+      let why = 'preview href does not yield an http(s) URL for live verify';
+      if (!previewAn) why = 'missing preview anchor element';
+      else if (!raw) why = 'empty href attribute';
+      else if (lower.startsWith('mailto:')) why = 'mailto: is not an http(s) live-verify target';
+      else if (lower.startsWith('tel:') || lower.startsWith('sms:')) why = 'tel:/sms: are not http(s) live-verify targets';
+      else if (lower.startsWith('javascript:')) why = 'javascript: hrefs are not live-verified';
+      else if (lower.startsWith('data:')) why = 'data: URLs are not http(s) live-verify targets';
+      else if (lower === '#' || /^#[^/]/i.test(raw)) why = 'fragment-only / hash href has no standalone http(s) fetch target here';
+      else {
+        const meta = computeLinkFetchMetadata(previewAn, previewDoc);
+        if (meta.hasTemplateTokens && !meta.fetchCandidateUrl) {
+          why =
+            'href is still templated or sanitized in a way that does not resolve to a real http(s) host for fetching';
+        } else if (!/^https?:\/\//i.test(raw)) {
+          why = `href does not start with http(s) after pairing (${truncateForPreflightNote(raw, 64)})`;
+        } else {
+          why =
+            'http(s)-looking href could not be used as a fetch target (for example emarsys placeholder host or unsupported URL after sanitization)';
+        }
+      }
+      const pv = previewAn ? truncateForPreflightNote(linkDisplayHref(previewAn), 88) : '';
+      return `${idx}: ${why} Preview href attribute: ${truncateForPreflightNote(raw || pv || '(none)', 88)}. ${editorHint}`;
+    }
+
+    return `${idx}: could not join preview and editor into one verify mapping (${editorHint} Fetch URL was ${truncateForPreflightNote(url, 88)}.)`;
+  }
+
+  function buildContactPreviewUrlRowKeyMapping(previewDoc) {
+    if (!cachedLinksAnalysis || !previewDoc) {
+      return { urlToRowKeys: new Map(), footnote: '', mappingMode: 'none' };
+    }
+    const prevContactPreviewRenderedByEditor = new Map(contactPreviewRenderedRowByEditorKey);
+    clearContactPreviewRenderedRows();
+    const editorKeysInOrder = Array.isArray(cachedLinksAnalysis.anchorRowKeysInOrder)
+      ? cachedLinksAnalysis.anchorRowKeysInOrder
+      : [];
+    const editorRows = Array.isArray(cachedLinksAnalysis.rows) ? cachedLinksAnalysis.rows : [];
+    const rowsByKey = new Map(editorRows.map((r) => [r.rowKey, r]));
+    const previewAnchors = Array.from(previewDoc.querySelectorAll('a'));
+    const previewUrls = previewAnchors.map((a) => computeLinkFetchMetadata(a, previewDoc).fetchCandidateUrl);
+
+    const urlToRowKeys = new Map();
+    const add = (url, rowKey) => {
+      if (!url || !rowKey) return;
+      let s = urlToRowKeys.get(url);
+      if (!s) {
+        s = new Set();
+        urlToRowKeys.set(url, s);
+      }
+      s.add(rowKey);
+    };
+
+    const pairCount = Math.min(previewAnchors.length, editorKeysInOrder.length);
+    let mappingMode =
+      previewAnchors.length === editorKeysInOrder.length && previewAnchors.length > 0
+        ? 'order'
+        : 'order-partial';
+    const mixedSchemePairNotes = [];
+    for (let i = 0; i < pairCount; i += 1) {
+      const url = previewUrls[i];
+      const editorRowKey = editorKeysInOrder[i];
+      const editorRow = rowsByKey.get(editorRowKey);
+      const previewAn = previewAnchors[i];
+      let verifyRowKey = editorRowKey;
+      if (url && editorRow && previewAn && shouldCreateContactPreviewRenderedCompanion(editorRow, previewAn, previewDoc)) {
+        const syn = buildSyntheticContactPreviewRow(editorRow, previewAn, previewDoc);
+        const prevSyn = prevContactPreviewRenderedByEditor.get(editorRow.rowKey);
+        invalidateContactPreviewSyntheticLiveStateIfIdentityChanged(prevSyn, syn);
+        contactPreviewRenderedRowByEditorKey.set(editorRow.rowKey, syn);
+        verifyRowKey = syn.rowKey;
+      }
+      if (url && verifyRowKey) add(url, verifyRowKey);
+      else if (url || editorRowKey) {
+        mixedSchemePairNotes.push(
+          describeContactPreviewMixedSchemePair({
+            pairIndex1: i + 1,
+            url,
+            verifyRowKey,
+            editorRowKey,
+            editorRow,
+            previewAn,
+            previewDoc
+          })
+        );
+      }
+    }
+
+    const urlToEditorRowKeys = new Map();
+    editorRows.forEach((r) => {
+      if (!r.fetchCandidateUrl) return;
+      if (!urlToEditorRowKeys.has(r.fetchCandidateUrl)) urlToEditorRowKeys.set(r.fetchCandidateUrl, []);
+      urlToEditorRowKeys.get(r.fetchCandidateUrl).push(r.rowKey);
+    });
+
+    let ambiguous = 0;
+    let unmapped = 0;
+    if (previewAnchors.length > pairCount) {
+      mappingMode = 'order-partial+url';
+      for (let i = pairCount; i < previewAnchors.length; i += 1) {
+        const url = previewUrls[i];
+        if (!url) continue;
+        const list = urlToEditorRowKeys.get(url) || [];
+        if (list.length === 1) add(url, list[0]);
+        else if (!list.length) unmapped += 1;
+        else ambiguous += 1;
+      }
+    }
+
+    const footnoteParts = [];
+    if (previewAnchors.length !== editorKeysInOrder.length) {
+      footnoteParts.push(
+        `Contact Preview has ${previewAnchors.length} link anchor(s) vs ${editorKeysInOrder.length} in the editor preview; the first ${pairCount} were paired by document order (so templated editor hrefs can match rendered http(s) URLs).`
+      );
+    }
+    if (mixedSchemePairNotes.length > 0) {
+      const maxNotes = 6;
+      const shown = mixedSchemePairNotes.slice(0, maxNotes);
+      const overflow = mixedSchemePairNotes.length - shown.length;
+      const detail = `${shown.join(' ')}${overflow > 0 ? ` (+${overflow} more)` : ''}`;
+      footnoteParts.push(
+        `Some paired anchors could not both map to an http(s) verify URL and an editor row (mixed schemes). ${detail}`
+      );
+    }
+    if (ambiguous || unmapped) {
+      footnoteParts.push(
+        `${unmapped ? `${unmapped} trailing preview URL(s) had no unique editor fetch match` : ''}${unmapped && ambiguous ? '; ' : ''}${ambiguous ? `${ambiguous} ambiguous trailing URL(s)` : ''}.`
+      );
+    }
+
+    let footnote = footnoteParts.join(' ');
+
+    const conflicts = collectUrlConflictsForRowKeys(urlToRowKeys);
+    if (conflicts > 0) {
+      const cmsg = `${conflicts} editor link group(s) mapped to multiple preview URLs; last write applies per URL batch.`;
+      footnote = footnote ? `${footnote} ${cmsg}` : cmsg;
+    }
+
+    prevContactPreviewRenderedByEditor.forEach((prevSyn, editorKey) => {
+      if (!contactPreviewRenderedRowByEditorKey.has(editorKey) && prevSyn && prevSyn.rowKey) {
+        linkLiveState.delete(prevSyn.rowKey);
+      }
+    });
+
+    return { urlToRowKeys, footnote: footnote.trim(), mappingMode };
+  }
+
+  let contactPreviewVerifyInFlight = false;
+
+  function disconnectContactPreviewObserver() {
+    if (contactPreviewObserver) {
+      try {
+        contactPreviewObserver.disconnect();
+      } catch (_) {}
+      contactPreviewObserver = null;
+    }
+    if (contactPreviewDebounceTimer) {
+      clearTimeout(contactPreviewDebounceTimer);
+      contactPreviewDebounceTimer = null;
+    }
+    if (contactPreviewBoundIframe && contactPreviewLoadHandler) {
+      try {
+        contactPreviewBoundIframe.removeEventListener('load', contactPreviewLoadHandler, true);
+      } catch (_) {}
+    }
+    contactPreviewBoundIframe = null;
+    contactPreviewLoadHandler = null;
+  }
+
+  function bindContactPreviewIframe(iframe) {
+    if (!iframe) return;
+    if (contactPreviewBoundIframe === iframe && contactPreviewLoadHandler) return;
+    if (contactPreviewBoundIframe && contactPreviewLoadHandler) {
+      try {
+        contactPreviewBoundIframe.removeEventListener('load', contactPreviewLoadHandler, true);
+      } catch (_) {}
+    }
+    contactPreviewLoadHandler = () => {
+      scheduleContactPreviewLinkVerify();
+    };
+    iframe.addEventListener('load', contactPreviewLoadHandler, true);
+    contactPreviewBoundIframe = iframe;
+  }
+
+  function scheduleContactPreviewLinkVerify() {
+    if (!isPreflightActive()) return;
+    if (contactPreviewDebounceTimer) clearTimeout(contactPreviewDebounceTimer);
+    contactPreviewDebounceTimer = setTimeout(() => {
+      contactPreviewDebounceTimer = null;
+      runContactPreviewLinkLiveVerifyPass();
+    }, CONTACT_PREVIEW_LINK_VERIFY_DEBOUNCE_MS);
+  }
+
+  async function runContactPreviewLinkLiveVerifyPass() {
+    if (!isPreflightActive() || contactPreviewVerifyInFlight) return;
+    if (!cachedLinksAnalysis) return;
+    const iframe = document.querySelector(CONTACT_PREVIEW_IFRAME_SELECTOR);
+    if (!iframe) {
+      return;
+    }
+    bindContactPreviewIframe(iframe);
+    let previewDoc = null;
+    try {
+      previewDoc = iframe.contentDocument;
+    } catch (_) {}
+    if (!previewDoc || !previewDoc.documentElement) return;
+
+    const hasAccess = await hasLinkHostAccess();
+    if (!isPreflightActive()) return;
+    if (!hasAccess) {
+      const hasAnchors = previewDoc.querySelector('a');
+      if (hasAnchors) {
+        setLiveLinkFootnoteText(
+          'Contact Preview can auto-verify links after you grant host access once via “Live verify all”.',
+          true
+        );
+      }
+      return;
+    }
+
+    setLiveLinkFootnoteText('', false);
+    const { urlToRowKeys, footnote, mappingMode } = buildContactPreviewUrlRowKeyMapping(previewDoc);
+    refreshLinksTableFromCache();
+    schedulePersistPreflightLiveSession();
+    const verifyUrls = [...urlToRowKeys.keys()].filter(Boolean);
+    if (footnote) {
+      setLiveLinkFootnoteText(footnote, true);
+    } else if (!verifyUrls.length) {
+      setLiveLinkFootnoteText('', false);
+    }
+
+    if (!verifyUrls.length) return;
+
+    contactPreviewVerifyInFlight = true;
+    try {
+      await executeLiveVerifyFromUrlMap(urlToRowKeys, 'contact-preview', { mappingMode });
+    } finally {
+      contactPreviewVerifyInFlight = false;
+      schedulePersistPreflightLiveSession();
+    }
+  }
+
+  function observeContactPreviewIframe() {
+    disconnectContactPreviewObserver();
+    const root = document.body || document.documentElement;
+    if (!root) return;
+    contactPreviewObserver = new MutationObserver(() => {
+      scheduleContactPreviewLinkVerify();
+    });
+    contactPreviewObserver.observe(root, { childList: true, subtree: true });
+    scheduleContactPreviewLinkVerify();
+  }
+
+  function setupLinksLiveVerifyInteractions() {
+    const els = getPreflightPanelEls();
+    if (!els || !els.panel || els.panel.dataset.gemLinksLiveUiBound === 'true') return;
+    els.panel.dataset.gemLinksLiveUiBound = 'true';
+    els.panel.addEventListener('click', (event) => {
+      const menuToggle = event.target.closest('[data-action="gem-open-row-menu"]');
+      if (menuToggle) {
+        event.preventDefault();
+        const rowKey = decodeURIComponent(menuToggle.getAttribute('data-gem-link-row-key') || '');
+        const ctx = menuToggle.getAttribute('data-gem-link-menu-context') || 'main';
+        const mk = `${ctx}:${rowKey}`;
+        openLinkRowMenuKey = openLinkRowMenuKey === mk ? '' : mk;
+        refreshLinksTableFromCache();
+        renderSkippedUrlsSection();
+        return;
+      }
+      const menuItem = event.target.closest('.gem-preflight-links-row-menu-item');
+      if (menuItem) {
+        event.preventDefault();
+        const menu = menuItem.closest('.gem-preflight-links-row-menu');
+        const rowKey = decodeURIComponent((menu && menu.getAttribute('data-gem-link-row-key')) || '');
+        const row = findLinkRowByRowKey(rowKey) || (cachedSkippedLinkRows || []).find((r) => r && r.rowKey === rowKey);
+        const targetUrl = row && (row.neverCheckUrlKey || row.fetchCandidateUrl || row.displayHref);
+        if (!targetUrl) return;
+        if (menuItem.getAttribute('data-action') === 'gem-url-never-check') {
+          setUrlPreflightNeverCheck(targetUrl, true).then((ok) => {
+            if (ok) applyNeverCheckToCurrentRows(targetUrl, true);
+          });
+        } else if (menuItem.getAttribute('data-action') === 'gem-url-always-check') {
+          setUrlPreflightNeverCheck(targetUrl, false).then((ok) => {
+            if (ok) applyNeverCheckToCurrentRows(targetUrl, false);
+          });
+        }
+        openLinkRowMenuKey = '';
+        return;
+      }
+      if (openLinkRowMenuKey) {
+        openLinkRowMenuKey = '';
+        refreshLinksTableFromCache();
+        renderSkippedUrlsSection();
+      }
+      const openCp = event.target.closest('[data-action="gem-open-contact-preview"]');
+      if (openCp) {
+        event.preventDefault();
+        const btn = document.querySelector('[data-test-id="contact-preview-button"]');
+        if (btn && typeof btn.click === 'function') btn.click();
+        return;
+      }
+      const one = event.target.closest('[data-action="gem-live-verify-one"]');
+      if (one) {
+        event.preventDefault();
+        const enc = one.getAttribute('data-gem-link-row-key');
+        const rowKey = enc ? decodeURIComponent(enc) : '';
+        runLiveVerifyOneRow(rowKey);
+        return;
+      }
+    });
+    if (els.liveVerifyAllLinksBtn && els.liveVerifyAllLinksBtn.dataset.gemBound !== 'true') {
+      els.liveVerifyAllLinksBtn.dataset.gemBound = 'true';
+      els.liveVerifyAllLinksBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (!isPreflightActive()) return;
+        runLiveVerifyAllLinks();
+      });
+    }
   }
 
   function setPermissionGateVisible(isVisible, message = '') {
@@ -548,6 +2339,141 @@ function initializePreflightPanel() {
       .replace(/'/g, '&#39;');
   }
 
+  function normalizeHighlightTermData(termData) {
+    if (typeof termData === 'string') {
+      return {
+        isRegex: false,
+        mode: 'highlight'
+      };
+    }
+    const data = termData && typeof termData === 'object' ? termData : {};
+    return {
+      isRegex: !!data.isRegex,
+      mode: data.mode === 'notify' ? 'notify' : 'highlight'
+    };
+  }
+
+  function loadHighlightTermsFromStorage() {
+    return new Promise((resolve) => {
+      try {
+        chrome.storage.sync.get({ highlightTerms: {} }, (res) => {
+          if (chrome.runtime.lastError) {
+            resolve({});
+            return;
+          }
+          resolve((res && res.highlightTerms) || {});
+        });
+      } catch (_) {
+        resolve({});
+      }
+    });
+  }
+
+  function compileHighlightRegex(pattern) {
+    try {
+      return new RegExp(pattern, 'gi');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  async function analyzeTextInPreviewDoc(doc) {
+    if (!doc || !doc.body) {
+      return { totalMatches: 0, totalNotifyMatches: 0, notifyRows: [] };
+    }
+    const highlightTerms = await loadHighlightTermsFromStorage();
+    const normalizedTerms = Object.entries(highlightTerms).map(([term, termData]) => {
+      const normalized = normalizeHighlightTermData(termData);
+      return {
+        term,
+        isRegex: normalized.isRegex,
+        mode: normalized.mode,
+        termLower: normalized.isRegex ? null : String(term || '').toLowerCase(),
+        regex: normalized.isRegex ? compileHighlightRegex(term) : null
+      };
+    });
+    if (!normalizedTerms.length) {
+      return { totalMatches: 0, totalNotifyMatches: 0, notifyRows: [] };
+    }
+
+    const notifyCountsByNormalized = new Map();
+    let totalMatches = 0;
+    let totalNotifyMatches = 0;
+    const walker = doc.createTreeWalker(
+      doc.body,
+      NodeFilter.SHOW_TEXT,
+      {
+        acceptNode(node) {
+          if (!node || !node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
+          const parentTag = node.parentElement && node.parentElement.tagName
+            ? node.parentElement.tagName.toUpperCase()
+            : '';
+          if (parentTag === 'SCRIPT' || parentTag === 'STYLE' || parentTag === 'NOSCRIPT') {
+            return NodeFilter.FILTER_REJECT;
+          }
+          return NodeFilter.FILTER_ACCEPT;
+        }
+      }
+    );
+
+    let textNode;
+    while ((textNode = walker.nextNode())) {
+      const raw = String(textNode.nodeValue || '');
+      if (!raw) continue;
+      const lowerRaw = raw.toLowerCase();
+      normalizedTerms.forEach((entry) => {
+        if (entry.isRegex) {
+          if (!entry.regex) return;
+          entry.regex.lastIndex = 0;
+          let match;
+          while ((match = entry.regex.exec(raw)) !== null) {
+            const found = String(match[0] || '');
+            if (!found) {
+              if (entry.regex.lastIndex === match.index) entry.regex.lastIndex += 1;
+              continue;
+            }
+            totalMatches += 1;
+            if (entry.mode === 'notify') {
+              totalNotifyMatches += 1;
+              const norm = found.toLowerCase();
+              const current = notifyCountsByNormalized.get(norm) || { label: found, count: 0 };
+              current.count += 1;
+              notifyCountsByNormalized.set(norm, current);
+            }
+            if (found.length === 0 && entry.regex.lastIndex === match.index) entry.regex.lastIndex += 1;
+          }
+          entry.regex.lastIndex = 0;
+          return;
+        }
+
+        const termLower = entry.termLower || '';
+        if (!termLower) return;
+        let startIndex = 0;
+        while (true) {
+          const index = lowerRaw.indexOf(termLower, startIndex);
+          if (index === -1) break;
+          totalMatches += 1;
+          if (entry.mode === 'notify') {
+            totalNotifyMatches += 1;
+            const found = raw.slice(index, index + termLower.length);
+            const norm = found.toLowerCase();
+            const current = notifyCountsByNormalized.get(norm) || { label: found, count: 0 };
+            current.count += 1;
+            notifyCountsByNormalized.set(norm, current);
+          }
+          startIndex = index + termLower.length;
+        }
+      });
+    }
+
+    const notifyRows = Array.from(notifyCountsByNormalized.values())
+      .sort((a, b) => {
+        if ((b.count || 0) !== (a.count || 0)) return (b.count || 0) - (a.count || 0);
+        return String(a.label || '').localeCompare(String(b.label || ''));
+      });
+    return { totalMatches, totalNotifyMatches, notifyRows };
+  }
+
   function formatBytes(bytes) {
     if (!Number.isFinite(bytes) || bytes < 0) return '0 B';
     if (bytes === 0) return '0 B';
@@ -562,7 +2488,7 @@ function initializePreflightPanel() {
     return `${value.toFixed(fixed)} ${units[unitIdx]}`;
   }
 
-  function updateImagesMetricsUI(payload) {
+  async function updateImagesMetricsUI(payload) {
     const panel = document.querySelector(PRELIGHT_PANEL_TAG);
     if (!panel) return;
 
@@ -576,8 +2502,12 @@ function initializePreflightPanel() {
     const speedEstimatesEl = panel.querySelector('[data-metric="speedEstimates"]');
     const totalSizeAlertableEl = panel.querySelector('[data-alertable="totalSize"]');
     const statusEl = panel.querySelector('[data-metric="statusText"]');
+    const linksTotalEl = panel.querySelector('[data-metric="linksTotal"]');
+    const linksUniqueEl = panel.querySelector('[data-metric="linksUnique"]');
+    const textMatchesTotalEl = panel.querySelector('[data-metric="textMatchesTotal"]');
+    const textNotifyMatchesTotalEl = panel.querySelector('[data-metric="textNotifyMatchesTotal"]');
     const els = getPreflightPanelEls();
-    if (!refsEl || !uniqueEl || !sizeEl || !statusEl || !networkUniqueEl || !embeddedUniqueEl || !speedEstimatesEl || !els || !els.imageBreakdownTable || !els.accessibilityWarningsTable) return;
+    if (!refsEl || !uniqueEl || !sizeEl || !statusEl || !networkUniqueEl || !embeddedUniqueEl || !speedEstimatesEl || !textMatchesTotalEl || !textNotifyMatchesTotalEl || !els || !els.imageBreakdownTable || !els.linksTable || !els.accessibilityWarningsTable || !els.notifyMatchesTable || !els.notifyMatchesWrap) return;
 
     if (payload.state === 'loading') {
       refsEl.textContent = 'Scanning...';
@@ -592,8 +2522,25 @@ function initializePreflightPanel() {
       if (totalSizeAlertableEl) totalSizeAlertableEl.classList.remove('gem-preflight-metric-value--alert');
       els.imageBreakdownTable.innerHTML = '<div class="gem-preflight-image-breakdown-empty">Scanning...</div>';
       els.accessibilityWarningsTable.innerHTML = '<div class="gem-preflight-image-breakdown-empty">Scanning...</div>';
+      syncImageWeightDetailsCollapseUI(els.imageBreakdownWrap, false);
       updateImagesSectionPip(0);
       updateAccessibilitySectionPip(0);
+      if (linksTotalEl) linksTotalEl.textContent = 'Scanning...';
+      if (linksUniqueEl) linksUniqueEl.textContent = 'Scanning...';
+      textMatchesTotalEl.textContent = 'Scanning...';
+      textNotifyMatchesTotalEl.textContent = 'Scanning...';
+      els.notifyMatchesWrap.style.display = 'none';
+      els.notifyMatchesTable.innerHTML = '<div class="gem-preflight-image-breakdown-empty">Scanning...</div>';
+      cachedLinksAnalysis = null;
+      cachedSkippedLinkRows = [];
+      clearContactPreviewRenderedRows();
+      linkLiveState.clear();
+      setLiveLinkFootnoteText('', false);
+      els.linksTable.innerHTML = '<div class="gem-preflight-image-breakdown-empty">Scanning...</div>';
+      renderSkippedUrlsSection();
+      syncLiveVerifyAllButtonState();
+      updateLinksSectionPip(0);
+      updateTextAnalysisSectionPip(0);
       return;
     }
 
@@ -610,8 +2557,73 @@ function initializePreflightPanel() {
       if (totalSizeAlertableEl) totalSizeAlertableEl.classList.remove('gem-preflight-metric-value--alert');
       els.imageBreakdownTable.innerHTML = '<div class="gem-preflight-image-breakdown-empty">Unable to load image details.</div>';
       els.accessibilityWarningsTable.innerHTML = '<div class="gem-preflight-image-breakdown-empty">Unable to load accessibility warnings.</div>';
+      syncImageWeightDetailsCollapseUI(els.imageBreakdownWrap, false);
       updateImagesSectionPip(0);
       updateAccessibilitySectionPip(0);
+      if (payload.linksPayload) {
+        const skippedCount = Array.isArray(payload.linksPayload.skippedRows) ? payload.linksPayload.skippedRows.length : 0;
+        if (linksTotalEl) linksTotalEl.textContent = String(payload.linksPayload.totalAnchors);
+        if (linksUniqueEl) linksUniqueEl.textContent = String((payload.linksPayload.uniqueCount || 0) + skippedCount);
+        updateLinksSectionPip(payload.linksPayload.linksAlertCount || 0);
+        const lrows = Array.isArray(payload.linksPayload.rows) ? payload.linksPayload.rows : [];
+        cachedSkippedLinkRows = Array.isArray(payload.linksPayload.skippedRows) ? payload.linksPayload.skippedRows : [];
+        if (lrows.length) {
+          cachedLinksAnalysis = {
+            totalAnchors: payload.linksPayload.totalAnchors,
+            uniqueCount: payload.linksPayload.uniqueCount,
+            linksAlertCount: payload.linksPayload.linksAlertCount || 0,
+            rows: lrows,
+            anchorRowKeysInOrder: payload.linksPayload.anchorRowKeysInOrder || []
+          };
+          await hydratePreflightLiveFromSession(cachedLinksAnalysis);
+          pruneLinkLiveStateForRows(lrows);
+        } else {
+          cachedLinksAnalysis = null;
+          cachedSkippedLinkRows = Array.isArray(payload.linksPayload.skippedRows) ? payload.linksPayload.skippedRows : [];
+          clearContactPreviewRenderedRows();
+          linkLiveState.clear();
+          await removePreflightLiveSessionPayload();
+        }
+        renderLinksTableIntoEl(els.linksTable, lrows, 'No links found.');
+        renderSkippedUrlsSection();
+        setupLinksLiveVerifyInteractions();
+      } else {
+        if (linksTotalEl) linksTotalEl.textContent = '--';
+        if (linksUniqueEl) linksUniqueEl.textContent = '--';
+        cachedLinksAnalysis = null;
+        cachedSkippedLinkRows = [];
+        clearContactPreviewRenderedRows();
+        linkLiveState.clear();
+        await removePreflightLiveSessionPayload();
+        els.linksTable.innerHTML = '<div class="gem-preflight-image-breakdown-empty">Unable to scan links.</div>';
+        renderSkippedUrlsSection();
+        syncLiveVerifyAllButtonState();
+        updateLinksSectionPip(0);
+      }
+      if (payload.textPayload) {
+        textMatchesTotalEl.textContent = String(payload.textPayload.totalMatches || 0);
+        textNotifyMatchesTotalEl.textContent = String(payload.textPayload.totalNotifyMatches || 0);
+        const notifyRows = Array.isArray(payload.textPayload.notifyRows) ? payload.textPayload.notifyRows : [];
+        if (!notifyRows.length) {
+          els.notifyMatchesWrap.style.display = 'none';
+          els.notifyMatchesTable.innerHTML = '<div class="gem-preflight-image-breakdown-empty">No "Notify" text matches found.</div>';
+        } else {
+          els.notifyMatchesWrap.style.display = '';
+          els.notifyMatchesTable.innerHTML = notifyRows.map((row) => `
+            <div class="gem-preflight-image-breakdown-row">
+              <div class="gem-preflight-image-breakdown-name" title="${escapeHtmlText(row.label || '')}">${escapeHtmlText(row.label || '')}</div>
+              <div class="gem-preflight-image-breakdown-size">${String(row.count || 0)}</div>
+            </div>
+          `).join('');
+        }
+        updateTextAnalysisSectionPip(payload.textPayload.totalNotifyMatches || 0);
+      } else {
+        textMatchesTotalEl.textContent = '--';
+        textNotifyMatchesTotalEl.textContent = '--';
+        els.notifyMatchesWrap.style.display = '';
+        els.notifyMatchesTable.innerHTML = '<div class="gem-preflight-image-breakdown-empty">Unable to scan text matches.</div>';
+        updateTextAnalysisSectionPip(0);
+      }
       return;
     }
 
@@ -631,6 +2643,54 @@ function initializePreflightPanel() {
     updateImagesSectionPip(payload.imagesAlertCount || 0);
     updateAccessibilitySectionPip(payload.accessibilityAlertCount || 0);
 
+    const linksPayload = payload.links;
+    if (linksPayload && linksTotalEl && linksUniqueEl) {
+      const skippedCount = Array.isArray(linksPayload.skippedRows) ? linksPayload.skippedRows.length : 0;
+      linksTotalEl.textContent = String(linksPayload.totalAnchors);
+      linksUniqueEl.textContent = String((linksPayload.uniqueCount || 0) + skippedCount);
+      updateLinksSectionPip(linksPayload.linksAlertCount || 0);
+      const lrows = Array.isArray(linksPayload.rows) ? linksPayload.rows : [];
+      cachedSkippedLinkRows = Array.isArray(linksPayload.skippedRows) ? linksPayload.skippedRows : [];
+      if (lrows.length) {
+        cachedLinksAnalysis = {
+          totalAnchors: linksPayload.totalAnchors,
+          uniqueCount: linksPayload.uniqueCount,
+          linksAlertCount: linksPayload.linksAlertCount || 0,
+          rows: lrows,
+          anchorRowKeysInOrder: linksPayload.anchorRowKeysInOrder || []
+        };
+        await hydratePreflightLiveFromSession(cachedLinksAnalysis);
+        pruneLinkLiveStateForRows(lrows);
+      } else {
+        cachedLinksAnalysis = null;
+        cachedSkippedLinkRows = Array.isArray(linksPayload.skippedRows) ? linksPayload.skippedRows : [];
+        clearContactPreviewRenderedRows();
+        linkLiveState.clear();
+        await removePreflightLiveSessionPayload();
+      }
+      renderLinksTableIntoEl(els.linksTable, lrows, 'No links found.');
+      renderSkippedUrlsSection();
+      setupLinksLiveVerifyInteractions();
+    }
+
+    const textPayload = payload.text || { totalMatches: 0, totalNotifyMatches: 0, notifyRows: [] };
+    textMatchesTotalEl.textContent = String(textPayload.totalMatches || 0);
+    textNotifyMatchesTotalEl.textContent = String(textPayload.totalNotifyMatches || 0);
+    const notifyRows = Array.isArray(textPayload.notifyRows) ? textPayload.notifyRows : [];
+    if (!notifyRows.length) {
+      els.notifyMatchesWrap.style.display = 'none';
+      els.notifyMatchesTable.innerHTML = '<div class="gem-preflight-image-breakdown-empty">No "Notify" text matches found.</div>';
+    } else {
+      els.notifyMatchesWrap.style.display = '';
+      els.notifyMatchesTable.innerHTML = notifyRows.map((row) => `
+        <div class="gem-preflight-image-breakdown-row">
+          <div class="gem-preflight-image-breakdown-name" title="${escapeHtmlText(row.label || '')}">${escapeHtmlText(row.label || '')}</div>
+          <div class="gem-preflight-image-breakdown-size">${String(row.count || 0)}</div>
+        </div>
+      `).join('');
+    }
+    updateTextAnalysisSectionPip(textPayload.totalNotifyMatches || 0);
+
     const rows = Array.isArray(payload.imageBreakdownRows) ? payload.imageBreakdownRows : [];
     if (!rows.length) {
       els.imageBreakdownTable.innerHTML = '<div class="gem-preflight-image-breakdown-empty">No network image URLs found.</div>';
@@ -642,36 +2702,49 @@ function initializePreflightPanel() {
         </div>
       `).join('');
     }
+    const hasSingularImageAlert = rows.some((row) => row.isSingularAlert);
+    syncImageWeightDetailsCollapseUI(els.imageBreakdownWrap, !hasSingularImageAlert);
 
     const accessibilityRows = Array.isArray(payload.accessibilityWarningRows) ? payload.accessibilityWarningRows : [];
     if (!accessibilityRows.length) {
       els.accessibilityWarningsTable.innerHTML = '<div class="gem-preflight-image-breakdown-empty">No linked images with missing ALT text.</div>';
-      return;
-    }
-    els.accessibilityWarningsTable.innerHTML = accessibilityRows.map((row) => `
+    } else {
+      els.accessibilityWarningsTable.innerHTML = accessibilityRows.map((row) => `
       <div class="gem-preflight-image-breakdown-row">
         <div class="gem-preflight-image-breakdown-name" data-image-url="${escapeHtmlText(row.url || '')}">${escapeHtmlText(row.filename)}</div>
         <div class="gem-preflight-image-breakdown-size gem-preflight-image-breakdown-size--alert">Missing ALT</div>
       </div>
     `).join('');
+    }
   }
 
   async function scanAndRenderImageMetrics(opts = {}) {
     const includeImageWeight = opts.includeImageWeight !== false;
     const scanToken = Date.now();
     currentScanToken = scanToken;
-    updateImagesMetricsUI({ state: 'loading', message: 'Scanning desktop preview...' });
+    await updateImagesMetricsUI({ state: 'loading', message: 'Scanning desktop preview...' });
 
     const iframe = document.querySelector(PREVIEW_IFRAME_SELECTOR);
     const doc = iframe && iframe.contentDocument ? iframe.contentDocument : null;
     if (!doc || !doc.documentElement) {
-      updateImagesMetricsUI({ state: 'error', message: 'Desktop preview is not ready yet.' });
-      return { ok: false, reason: 'iframe-not-ready', totalReferences: 0 };
+      await updateImagesMetricsUI({ state: 'error', message: 'Desktop preview is not ready yet.' });
+      return { ok: false, reason: 'iframe-not-ready', totalReferences: 0, totalLinkAnchors: 0 };
     }
 
     const refs = collectImageReferencesFromPreviewDoc(doc);
     const uniqueUrls = Array.from(new Set(refs));
     const accessibilityWarnings = collectLinkedImageMissingAltWarnings(doc);
+    const textAnalysis = await analyzeTextInPreviewDoc(doc);
+    await loadPreflightNeverCheckUrls();
+    const linkAnalysis = analyzeLinksInPreviewDoc(doc);
+    const linksPayload = {
+      totalAnchors: linkAnalysis.totalAnchors,
+      uniqueCount: linkAnalysis.uniqueCount,
+      rows: linkAnalysis.rows,
+      skippedRows: linkAnalysis.skippedRows,
+      linksAlertCount: linkAnalysis.linksAlertCount,
+      anchorRowKeysInOrder: linkAnalysis.anchorRowKeysInOrder
+    };
     const networkUniqueUrls = uniqueUrls.filter(isDownloadableNetworkUrl);
     const embeddedUniqueCount = uniqueUrls.length - networkUniqueUrls.length;
 
@@ -679,11 +2752,16 @@ function initializePreflightPanel() {
       ? await fetchUniqueDownloadSize(uniqueUrls)
       : { ok: true, knownBytes: 0, unknownCount: 0, networkCount: networkUniqueUrls.length, unknownDetails: [], measurements: [] };
     if (!sizeData || sizeData.ok === false) {
-      updateImagesMetricsUI({
+      const fallbackAlertCount = (accessibilityWarnings.length || 0) + (linkAnalysis.linksAlertCount || 0) + (textAnalysis.totalNotifyMatches || 0);
+      chrome.storage.local.set({ [PREFLIGHT_ALERT_COUNT_KEY]: fallbackAlertCount });
+      updateAlertPip(fallbackAlertCount);
+      await updateImagesMetricsUI({
         state: 'error',
-        message: sizeData && sizeData.error ? `Unable to measure image sizes: ${sizeData.error}` : 'Unable to measure image sizes.'
+        message: sizeData && sizeData.error ? `Unable to measure image sizes: ${sizeData.error}` : 'Unable to measure image sizes.',
+        linksPayload,
+        textPayload: textAnalysis
       });
-      return { ok: false, reason: 'measure-failed', totalReferences: 0 };
+      return { ok: false, reason: 'measure-failed', totalReferences: 0, totalLinkAnchors: linkAnalysis.totalAnchors };
     }
     if (currentScanToken !== scanToken) return { ok: false, reason: 'stale-scan', totalReferences: 0 };
 
@@ -712,7 +2790,9 @@ function initializePreflightPanel() {
     const singularExceeded = singularExceededCount > 0 || (includeImageWeight && singularThresholdBytes > 0 && maxSingleImageBytes >= singularThresholdBytes);
     const imageAlertCount = (totalExceeded ? 1 : 0) + singularExceededCount;
     const accessibilityAlertCount = accessibilityWarnings.length;
-    const alertCount = imageAlertCount + accessibilityAlertCount;
+    const linksAlertCount = linkAnalysis.linksAlertCount || 0;
+    const notifyAlertCount = textAnalysis.totalNotifyMatches || 0;
+    const alertCount = imageAlertCount + accessibilityAlertCount + linksAlertCount + notifyAlertCount;
     chrome.storage.local.set({ [PREFLIGHT_ALERT_COUNT_KEY]: alertCount });
     updateAlertPip(alertCount);
 
@@ -730,7 +2810,7 @@ function initializePreflightPanel() {
       }).sort((a, b) => {
         return (b.sortBytes || 0) - (a.sortBytes || 0);
       });
-      updateImagesMetricsUI({
+      await updateImagesMetricsUI({
         state: 'ready',
         totalReferences: refs.length,
         uniqueCount: uniqueUrls.length,
@@ -741,14 +2821,16 @@ function initializePreflightPanel() {
         totalThresholdExceeded: includeImageWeight && totalExceeded,
         imagesAlertCount: imageAlertCount,
         accessibilityAlertCount,
+        links: linksPayload,
+        text: textAnalysis,
         imageBreakdownRows: includeImageWeight ? imageBreakdownRows : [],
         accessibilityWarningRows: accessibilityWarnings.map((row) => ({ ...row, url: row.url || '' })),
         statusText: includeImageWeight
-          ? `Measured ${sizeData.networkCount - sizeData.unknownCount} of ${sizeData.networkCount} unique network image URLs${sizeData.unknownCount > 0 ? ' (missing headers/CORS/auth blocked for unknown items).' : '.'} Estimate reflects unique image payload bytes for cold cache and excludes protocol overhead/proxy behavior. Threshold alerts: total ${thresholds.totalValue} ${thresholds.totalUnit}, singular ${thresholds.singularValue} ${thresholds.singularUnit}. Accessibility warnings: ${accessibilityAlertCount} linked image(s) missing ALT text.`
-          : `Image weight analysis requires permission. Accessibility warnings: ${accessibilityAlertCount} linked image(s) missing ALT text.`
+          ? `Measured ${sizeData.networkCount - sizeData.unknownCount} of ${sizeData.networkCount} unique network image URLs${sizeData.unknownCount > 0 ? ' (missing headers/CORS/auth blocked for unknown items).' : '.'} Estimate reflects unique image payload bytes for cold cache and excludes protocol overhead/proxy behavior. Threshold alerts: total ${thresholds.totalValue} ${thresholds.totalUnit}, singular ${thresholds.singularValue} ${thresholds.singularUnit}. Link checks: ${linksAlertCount} issue(s). Accessibility warnings: ${accessibilityAlertCount} linked image(s) missing ALT text. Text "Notify" matches: ${notifyAlertCount}.`
+          : `Image weight analysis requires permission. Link checks: ${linksAlertCount} issue(s). Accessibility warnings: ${accessibilityAlertCount} linked image(s) missing ALT text. Text "Notify" matches: ${notifyAlertCount}.`
       });
     }
-    return { ok: true, reason: 'success', totalReferences: refs.length };
+    return { ok: true, reason: 'success', totalReferences: refs.length, totalLinkAnchors: linkAnalysis.totalAnchors };
   }
 
   function scheduleScan(ms = 350) {
@@ -775,6 +2857,24 @@ function initializePreflightPanel() {
     if (existingPanel) existingPanel.remove();
     navContent.insertAdjacentHTML('afterbegin', createPreflightPanelHTML());
     setupImageRowHoverTooltip();
+    setupImageWeightDetailsToggle();
+    setupSkippedUrlsToggle();
+    setupSectionCollapseToggles();
+    setupLinksLiveVerifyInteractions();
+    observeContactPreviewIframe();
+    const els = getPreflightPanelEls();
+    if (els && els.skippedUrlsWrap) syncSkippedUrlsCollapseUI(els.skippedUrlsWrap, true);
+    if (els && els.panel) {
+      updateTextAnalysisSectionPip(0);
+      updateAccessibilitySectionPip(0);
+      updateLinksSectionPip(0);
+      updateImagesSectionPip(0);
+      void readSectionCollapseState().then((state) => {
+        ['textAnalysis', 'accessibility', 'links', 'images'].forEach((key) => {
+          syncPreflightSectionCollapseUI(els.panel, key, !!state[key]);
+        });
+      });
+    }
 
     setPermissionGateVisible(true);
     initializePermissionGateState();
@@ -866,7 +2966,7 @@ function initializePreflightPanel() {
     const hasAccess = await hasImageHostAccess();
     // Calculate once on page load so nav badge can alert before panel open.
     const scanResult = await scanAndRenderImageMetrics({ includeImageWeight: !!hasAccess });
-    if (scanResult && scanResult.ok && scanResult.totalReferences > 0) {
+    if (scanResult && scanResult.ok && (scanResult.totalReferences > 0 || (scanResult.totalLinkAnchors || 0) > 0)) {
       initialScanTriggered = true;
       return;
     }
@@ -972,6 +3072,12 @@ function initializePreflightPanel() {
     observeForPreviewIframeAndRunInitialCalculation();
     chrome.storage.onChanged.addListener((changes, namespace) => {
       if (namespace !== 'sync') return;
+      if (changes[PREFLIGHT_URL_NEVER_CHECK_KEY]) {
+        if (isPreflightActive()) {
+          reapplyNeverCheckSetToCachedRows();
+        }
+        return;
+      }
       if (
         changes[PREFLIGHT_TOTAL_THRESHOLD_VALUE_KEY] ||
         changes[PREFLIGHT_TOTAL_THRESHOLD_UNIT_KEY] ||
@@ -979,6 +3085,7 @@ function initializePreflightPanel() {
         changes[PREFLIGHT_SINGULAR_THRESHOLD_UNIT_KEY]
       ) {
         maybeRunInitialAlertCalculation();
+        if (isPreflightActive()) scheduleScan(10);
       }
     });
     return true;

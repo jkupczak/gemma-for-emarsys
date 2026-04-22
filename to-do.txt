@@ -7,8 +7,10 @@ Create a "Warnings" panel.
   - Detect images that are missing Alt text
   - Detect total image weight of the email
   - Alert them to images that are very large
-
-
+  - Allow text highlights to be preflight pips
+    - Should I recontextualize the entire text highlighting feature as a preflight feature?
+    - Preflight should list total highlights, total highlights labeled as warning, total as errors
+    - Needs to support subject line, preview text, and alt text
 
 Sometimes i cant open the edit snippet modal
 

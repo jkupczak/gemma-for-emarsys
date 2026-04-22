@@ -3,6 +3,22 @@ console.log("text-highlighting.js loaded");
 // Global variables for dynamic configuration
 let PLACEHOLDERS = [];
 
+function normalizeHighlightTermData(termData) {
+  if (typeof termData === 'string') {
+    return {
+      color: termData,
+      isRegex: false,
+      mode: 'highlight'
+    };
+  }
+  const data = termData && typeof termData === 'object' ? termData : {};
+  return {
+    color: typeof data.color === 'string' ? data.color : 'rgba(255, 255, 0, 0.40)',
+    isRegex: !!data.isRegex,
+    mode: data.mode === 'notify' ? 'notify' : 'highlight'
+  };
+}
+
 // Compile regex safely
 function compileRegex(pattern) {
   try {
@@ -62,19 +78,18 @@ function loadHighlightConfig() {
     // Now get the enableHighlighting setting
     chrome.storage.sync.get({ enableHighlighting: true }, (settings) => {
       // Update global PLACEHOLDERS
-      PLACEHOLDERS = Object.entries(highlightTerms).map(([term, termData]) => {
-        // Handle both old format (string) and new format (object)
-        const color = typeof termData === 'string' ? termData : termData.color;
-        const isRegex = typeof termData === 'object' ? termData.isRegex : false;
-
-        return {
-          term: term,
-          termLower: isRegex ? null : term.toLowerCase(), // Only lowercase for non-regex
-          color: color,
-          isRegex: isRegex,
-          regex: isRegex ? compileRegex(term) : null
-        };
-      });
+      PLACEHOLDERS = Object.entries(highlightTerms)
+        .map(([term, termData]) => {
+          const normalized = normalizeHighlightTermData(termData);
+          return {
+            term,
+            mode: normalized.mode,
+            termLower: normalized.isRegex ? null : term.toLowerCase(), // Only lowercase for non-regex
+            color: normalized.color,
+            isRegex: normalized.isRegex,
+            regex: normalized.isRegex ? compileRegex(term) : null
+          };
+        });
 
       console.log("[Gem] Loaded highlight configuration:", highlightTerms);
 
@@ -107,19 +122,18 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
 
     if (changes.highlightTerms) {
       // Update PLACEHOLDERS and re-highlight if active
-      PLACEHOLDERS = Object.entries(changes.highlightTerms.newValue).map(([term, termData]) => {
-        // Handle both old format (string) and new format (object)
-        const color = typeof termData === 'string' ? termData : termData.color;
-        const isRegex = typeof termData === 'object' ? termData.isRegex : false;
-
-        return {
-          term: term,
-          termLower: isRegex ? null : term.toLowerCase(), // Only lowercase for non-regex
-          color: color,
-          isRegex: isRegex,
-          regex: isRegex ? compileRegex(term) : null
-        };
-      });
+      PLACEHOLDERS = Object.entries(changes.highlightTerms.newValue)
+        .map(([term, termData]) => {
+          const normalized = normalizeHighlightTermData(termData);
+          return {
+            term,
+            mode: normalized.mode,
+            termLower: normalized.isRegex ? null : term.toLowerCase(), // Only lowercase for non-regex
+            color: normalized.color,
+            isRegex: normalized.isRegex,
+            regex: normalized.isRegex ? compileRegex(term) : null
+          };
+        });
       console.log("[Gem] Highlight terms updated, re-highlighting...");
 
       // Re-highlight existing content

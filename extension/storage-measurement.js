@@ -43,6 +43,16 @@ console.log("[gem] storage-measurement.js loaded");
       match: (key) => key === "fm" || /^f\d+$/.test(key),
     },
     {
+      name: "Preflight Settings",
+      color: "#cbe753",
+      match: (key) =>
+        key === "gemPreflightTotalImageWeightThresholdValue" ||
+        key === "gemPreflightTotalImageWeightThresholdUnit" ||
+        key === "gemPreflightSingularImageWeightThresholdValue" ||
+        key === "gemPreflightSingularImageWeightThresholdUnit" ||
+        key === "urlPreflightNeverCheck",
+    },
+    {
       name: "Settings",
       color: "#6b7280",
       match: () => true,

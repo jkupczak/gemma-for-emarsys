@@ -1099,6 +1099,9 @@ function initializeOverlayPanelControls() {
       });
     }
 
+    // IMPORTANT: keep this scoped to explicit user actions that set an image URL
+    // (insert/use/edit flows). Passive captures during picker open can trigger a
+    // "seen" list rerender and swallow the first interaction in the picker UI.
     function recordImageLastUsed(url) {
       const u = normalizeRecentImageUrlCandidate(url);
       if (!u) {
@@ -1128,8 +1131,93 @@ function initializeOverlayPanelControls() {
       });
     }
 
+    function recordImagesLastUsed(urls) {
+      const listIn = Array.isArray(urls) ? urls : [];
+      const normalizedUnique = [];
+      const seen = new Set();
+      listIn.forEach((raw) => {
+        const u = normalizeRecentImageUrlCandidate(raw);
+        if (!u || !looksLikeImageUrl(u)) return;
+        if (seen.has(u)) return;
+        seen.add(u);
+        normalizedUnique.push(u);
+      });
+      if (!normalizedUnique.length) return;
+      const now = Date.now();
+      getRecentlySeenImages((list) => {
+        const next = Array.isArray(list) ? [...list] : [];
+        normalizedUnique.forEach((u) => {
+          const idx = next.findIndex((x) => x && x.url === u);
+          if (idx >= 0) {
+            const prev = next[idx];
+            next[idx] = {
+              url: u,
+              ts: prev.ts || now,
+              path: prev.path || '',
+              friendlyFilename: prev.friendlyFilename || '',
+              lastUsed: now
+            };
+          } else {
+            next.push({ url: u, ts: now, lastUsed: now, path: '', friendlyFilename: '' });
+          }
+        });
+        next.sort((a, b) => (a.ts || 0) - (b.ts || 0));
+        const pruned = pruneRecentlySeenImagesToLimit(next, recentlySeenMax, now);
+        saveRecentlySeenImages(pruned);
+      });
+    }
+
+    function isLastUsedDebugEnabled() {
+      try {
+        if (window.gemIsDebugLoggingEnabled) return !!window.gemIsDebugLoggingEnabled();
+        if (typeof window.GEM_DEBUG === 'boolean') return window.GEM_DEBUG;
+      } catch (_) {}
+      return false;
+    }
+
+    function logLastUsedDebug(message, details = null) {
+      if (!isLastUsedDebugEnabled()) return;
+      if (details != null) {
+        console.log('[Gem][LastUsedDebug]', message, details);
+      } else {
+        console.log('[Gem][LastUsedDebug]', message);
+      }
+    }
+
     function insertImageUrlIntoImagePropertiesModal(modal, url) {
       const normalizedUrl = normalizeRecentImageUrlCandidate(url);
+      const getCurrentImagePropsContainer = () => {
+        const dialogActive = modal.querySelector('div.e-dialog.e-dialog-active') || modal.querySelector('.e-dialog.e-dialog-active');
+        return dialogActive ? dialogActive.querySelector('div.e-dialog__container') : null;
+      };
+      const rememberInsertedImageUrl = () => {
+        if (!normalizedUrl) return;
+        const stateHost = modal;
+        // Prefer inferring from the currently mounted/visible editor rather than active tab class,
+        // because Emarsys can transiently keep multiple tab titles marked active.
+        const editor = modal.querySelector('vce-html-editor');
+        let activeTab = null;
+        if (editor && editor.closest) {
+          const scope = editor.closest('.e-dialog__content') || editor;
+          const hasMobileVisibilityControls = !!(scope.querySelector && scope.querySelector('#imageVisibilitySwitch_showImageOnMobile, #imageVisibilitySwitch_hideImageOnMobile, #imageVisibilitySwitch_useAlternateImage'));
+          activeTab = hasMobileVisibilityControls ? 'mobile' : 'desktop';
+        }
+        if (!activeTab) {
+          const activeTabEl = modal.querySelector('.e-tabs__title.e-tabs__title-active[data-tab="mobile"], .e-tabs__title.e-tabs__title-active[data-tab="desktop"]');
+          activeTab = (activeTabEl && activeTabEl.getAttribute('data-tab') === 'mobile') ? 'mobile' : 'desktop';
+        }
+        if (activeTab === 'mobile') {
+          stateHost._gemPendingLastUsedImageUrlMobile = normalizedUrl;
+        } else {
+          stateHost._gemPendingLastUsedImageUrlDesktop = normalizedUrl;
+        }
+        logLastUsedDebug('rememberInsertedImageUrl', {
+          activeTab,
+          normalizedUrl,
+          pendingDesktop: stateHost._gemPendingLastUsedImageUrlDesktop || '',
+          pendingMobile: stateHost._gemPendingLastUsedImageUrlMobile || ''
+        });
+      };
       const applyMetaSideEffects = () => {
         if (!normalizedUrl) return;
         getFavoriteImageMetaMap((map) => {
@@ -1144,16 +1232,19 @@ function initializeOverlayPanelControls() {
 
       const switchedMobileRadio = ensureMobileAlternateImageEnabled(modal);
       if (switchedMobileRadio) {
-        setActiveImageUrlCodeMirrorWithRetry(modal, url, 12, 90, applyMetaSideEffects);
+        setActiveImageUrlCodeMirrorWithRetry(modal, url, 12, 90, () => {
+          rememberInsertedImageUrl();
+          applyMetaSideEffects();
+        });
       } else {
         const ok = setActiveImageUrlCodeMirror(modal, url);
         if (!ok) {
           console.warn('[Gem][RecentImages] Failed to set image URL into active CodeMirror. Leaving picker open.');
           return;
         }
+        rememberInsertedImageUrl();
         applyMetaSideEffects();
       }
-      recordImageLastUsed(url);
     }
 
     function getGemMediaDbPickerIframeSrc() {
@@ -1235,6 +1326,7 @@ function initializeOverlayPanelControls() {
 
     function unbindGemMediaDbPickerIframeDocClick() {
       const iframe = gemMediaDbPickerIframeEl;
+      disconnectGemMediaDbIframeLayoutSync(iframe);
       if (!iframe || !iframe._gemMediaDbDocClickFn || !iframe._gemMediaDbClickDocRef) return;
       try {
         iframe._gemMediaDbClickDocRef.removeEventListener('click', iframe._gemMediaDbDocClickFn, true);
@@ -1246,6 +1338,152 @@ function initializeOverlayPanelControls() {
     function teardownGemMediaDbIframeBridge(picker) {
       unbindGemMediaDbPickerIframeDocClick();
       if (picker) picker._gemMediaDbBridge = null;
+    }
+
+    function getGemMediaDbIframeViewModeFromDoc(doc) {
+      if (!doc) return 'unknown';
+      try {
+        if (doc.querySelector('[data-e-tooltip="List view"]')) return 'grid';
+        if (doc.querySelector('[data-e-tooltip="Thumbnails"]')) return 'list';
+      } catch (_) {}
+      return 'unknown';
+    }
+
+    /** Align Media DB iframe thumbnails vs list with `picker.dataset.gemRecentImagesView` (grid | table). */
+    function applyGemRecentImagesViewToMediaDbIframe(iframe, recentPicker) {
+      if (!iframe) return;
+      const rp = recentPicker || (iframe.closest && iframe.closest('#gem-recent-images-picker'));
+      if (!rp) return;
+      const doc = iframe.contentDocument;
+      if (!doc) return;
+      const wantGrid = rp.dataset.gemRecentImagesView === 'grid';
+      const mode = getGemMediaDbIframeViewModeFromDoc(doc);
+      if (mode === 'unknown') return;
+      const inner =
+        wantGrid && mode === 'list'
+          ? doc.querySelector('[data-e-tooltip="Thumbnails"]')
+          : (!wantGrid && mode === 'grid' ? doc.querySelector('[data-e-tooltip="List view"]') : null);
+      if (!inner) return;
+      try {
+        inner.click();
+      } catch (_) {}
+    }
+
+    /**
+     * After iframe load / Media DB tab shown, push persisted grid|table preference into the iframe.
+     * Suppresses iframe→dataset sync briefly so a transient list layout does not overwrite prefs.
+     */
+    function scheduleApplyMediaDbViewFromPicker(iframe) {
+      const rp = iframe && iframe.closest && iframe.closest('#gem-recent-images-picker');
+      if (!iframe || !rp) return;
+      if (normalizeRecentImagesPickerSource(rp.dataset.gemRecentImagesSource || 'seen') !== 'mediaDb') return;
+      try {
+        if (iframe._gemMediaDbApplyBootstrapT) clearTimeout(iframe._gemMediaDbApplyBootstrapT);
+      } catch (_) {}
+      iframe._gemMediaDbApplyingPickerViewToIframe = true;
+      const run = () => applyGemRecentImagesViewToMediaDbIframe(iframe, rp);
+      run();
+      setTimeout(run, 60);
+      setTimeout(run, 200);
+      setTimeout(run, 500);
+      iframe._gemMediaDbApplyBootstrapT = setTimeout(() => {
+        iframe._gemMediaDbApplyingPickerViewToIframe = false;
+        iframe._gemMediaDbApplyBootstrapT = null;
+        run();
+        scheduleGemMediaDbLayoutChromeRefresh(iframe);
+      }, 620);
+    }
+
+    function disconnectGemMediaDbIframeLayoutSync(iframe) {
+      if (!iframe) return;
+      try {
+        if (iframe._gemMediaDbApplyBootstrapT) {
+          clearTimeout(iframe._gemMediaDbApplyBootstrapT);
+          iframe._gemMediaDbApplyBootstrapT = null;
+        }
+      } catch (_) {}
+      iframe._gemMediaDbApplyingPickerViewToIframe = false;
+      try {
+        if (iframe._gemMediaDbLayoutObserver) {
+          iframe._gemMediaDbLayoutObserver.disconnect();
+          iframe._gemMediaDbLayoutObserver = null;
+        }
+        if (iframe._gemMediaDbLayoutRaf) {
+          cancelAnimationFrame(iframe._gemMediaDbLayoutRaf);
+          iframe._gemMediaDbLayoutRaf = 0;
+        }
+      } catch (_) {}
+    }
+
+    function updateGemMediaDbPickerHeaderChrome(recentPicker, iframe) {
+      if (!recentPicker || !iframe) return;
+      const doc = iframe.contentDocument;
+      const content = recentPicker.querySelector('#gem-image-picker-content');
+      if (!content) return;
+      const colsWrap = content.querySelector('.gem-mediadb-header-cols-wrap');
+      const viewToggleBtn = content.querySelector('.gem-mediadb-toggle-view-btn');
+      if (!colsWrap && !viewToggleBtn) return;
+      const mode = getGemMediaDbIframeViewModeFromDoc(doc);
+      const gridCols = Math.min(10, Math.max(2, Number(recentPicker.dataset.gemRecentImagesGridCols || 6)));
+      if (colsWrap) {
+        colsWrap.style.display = mode === 'grid' ? 'flex' : 'none';
+      }
+      if (viewToggleBtn) {
+        viewToggleBtn.disabled = mode === 'unknown';
+        viewToggleBtn.textContent = mode === 'grid' ? 'Show List' : 'Show Grid';
+      }
+      if (doc && doc.documentElement) {
+        if (mode === 'grid') {
+          doc.documentElement.style.setProperty('--gem-recent-grid-cols', String(gridCols));
+        } else {
+          doc.documentElement.style.removeProperty('--gem-recent-grid-cols');
+        }
+      }
+
+      // User (or Emarsys UI) toggled view inside the iframe — keep picker + prefs in sync for all tabs.
+      if (!iframe._gemMediaDbApplyingPickerViewToIframe) {
+        const modeForPicker = getGemMediaDbIframeViewModeFromDoc(doc);
+        if (modeForPicker === 'grid' || modeForPicker === 'list') {
+          const viewFromIframe = modeForPicker === 'grid' ? 'grid' : 'table';
+          const curView = recentPicker.dataset.gemRecentImagesView === 'grid' ? 'grid' : 'table';
+          if (viewFromIframe !== curView) {
+            recentPicker.dataset.gemRecentImagesView = viewFromIframe === 'grid' ? 'grid' : 'table';
+            saveRecentImagesPickerPrefs(buildRecentImagesPickerPrefsPayload(recentPicker, { view: recentPicker.dataset.gemRecentImagesView }));
+          }
+        }
+      }
+    }
+
+    function notifyGemMediaDbIframeLayoutChange(iframe) {
+      if (!iframe || !iframe.isConnected) return;
+      const recentPicker = iframe.closest && iframe.closest('#gem-recent-images-picker');
+      if (!recentPicker) return;
+      if (normalizeRecentImagesPickerSource(recentPicker.dataset.gemRecentImagesSource || 'seen') !== 'mediaDb') return;
+      updateGemMediaDbPickerHeaderChrome(recentPicker, iframe);
+    }
+
+    function scheduleGemMediaDbLayoutChromeRefresh(iframe) {
+      if (!iframe) return;
+      if (iframe._gemMediaDbLayoutRaf) return;
+      iframe._gemMediaDbLayoutRaf = requestAnimationFrame(() => {
+        iframe._gemMediaDbLayoutRaf = 0;
+        notifyGemMediaDbIframeLayoutChange(iframe);
+      });
+    }
+
+    function setupGemMediaDbIframeLayoutSync(iframe) {
+      if (!iframe) return;
+      disconnectGemMediaDbIframeLayoutSync(iframe);
+      const doc = iframe.contentDocument;
+      if (!doc) return;
+      const root = doc.body || doc.documentElement;
+      if (!root) return;
+      try {
+        const obs = new MutationObserver(() => scheduleGemMediaDbLayoutChromeRefresh(iframe));
+        obs.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-e-tooltip', 'class'] });
+        iframe._gemMediaDbLayoutObserver = obs;
+      } catch (_) {}
+      scheduleGemMediaDbLayoutChromeRefresh(iframe);
     }
 
     /** Copy Gemma / FLIPPER theme classes from the parent page <html> to the iframe document <html>. */
@@ -1455,9 +1693,9 @@ function initializeOverlayPanelControls() {
         if (!el || !el.closest) return;
         const trigger = el.closest("a[title='Add To Page']") || el.closest('button.test-insert-action');
         if (!trigger) return;
-        const row = trigger.closest('.file-table-row');
-        if (!row) return;
-        const clip = row.querySelector('[copy-to-clipboard]');
+        const sourceItem = trigger.closest('.file-table-row, .file-thumbnail, .card-wrapper');
+        if (!sourceItem) return;
+        const clip = sourceItem.querySelector('[copy-to-clipboard]');
         const rawUrl = clip && clip.getAttribute && clip.getAttribute('copy-to-clipboard');
         if (!rawUrl || !String(rawUrl).trim()) return;
         ev.preventDefault();
@@ -1467,6 +1705,8 @@ function initializeOverlayPanelControls() {
       doc.addEventListener('click', clickFn, true);
       iframe._gemMediaDbDocClickFn = clickFn;
       iframe._gemMediaDbClickDocRef = doc;
+      setupGemMediaDbIframeLayoutSync(iframe);
+      scheduleApplyMediaDbViewFromPicker(iframe);
     }
 
     function ensureGemMediaDbParentThemeObserver() {
@@ -1580,6 +1820,7 @@ function initializeOverlayPanelControls() {
       }
 
       picker._gemMediaDbBridge = { iframe, pool: true };
+      scheduleApplyMediaDbViewFromPicker(iframe);
     }
 
     // ------------------------------------------------------------
@@ -2212,9 +2453,7 @@ function initializeOverlayPanelControls() {
         picker.style.height = '100%';
         picker.style.width = '100%';
         picker.style.display = '';
-        picker.style.overflow = 'auto';
         picker.style.background = 'var(--token-box-alternate-background)';
-        picker.style.overflowY = 'scroll';
         picker.style.boxSizing = 'border-box';
         picker._gemSearchPills = [];
         leftPanelContainer.appendChild(picker);
@@ -2417,6 +2656,33 @@ function initializeOverlayPanelControls() {
             picker.dataset.gemRecentImagesSource = v;
             saveRecentImagesPickerPrefs(buildRecentImagesPickerPrefsPayload(picker, { source: v }));
             showRecentImagesPicker(modal);
+            return;
+          }
+
+          const mdViewToggle = e.target.closest && e.target.closest('.gem-mediadb-toggle-view-btn');
+          if (mdViewToggle && !mdViewToggle.disabled) {
+            e.preventDefault();
+            e.stopPropagation();
+            const iframeEl = gemMediaDbPickerIframeEl;
+            const idoc = iframeEl && iframeEl.contentDocument;
+            const mode = getGemMediaDbIframeViewModeFromDoc(idoc);
+            const inner =
+              mode === 'list'
+                ? (idoc && idoc.querySelector('[data-e-tooltip="Thumbnails"]'))
+                : (mode === 'grid' ? (idoc && idoc.querySelector('[data-e-tooltip="List view"]')) : null);
+            if (mode === 'list' || mode === 'grid') {
+              const nextView = mode === 'list' ? 'grid' : 'table';
+              if (iframeEl) iframeEl._gemMediaDbApplyingPickerViewToIframe = true;
+              picker.dataset.gemRecentImagesView = nextView === 'grid' ? 'grid' : 'table';
+              saveRecentImagesPickerPrefs(buildRecentImagesPickerPrefsPayload(picker, { view: picker.dataset.gemRecentImagesView }));
+              if (inner) inner.click();
+              if (iframeEl) {
+                setTimeout(() => {
+                  iframeEl._gemMediaDbApplyingPickerViewToIframe = false;
+                  scheduleGemMediaDbLayoutChromeRefresh(iframeEl);
+                }, 350);
+              }
+            }
             return;
           }
 
@@ -2649,6 +2915,13 @@ function initializeOverlayPanelControls() {
             const v = Math.min(10, Math.max(2, Number(slider.value || 6)));
             picker.dataset.gemRecentImagesGridCols = String(v);
             picker.style.setProperty('--gem-recent-grid-cols', String(v));
+            if (normalizeRecentImagesPickerSource(picker.dataset.gemRecentImagesSource || 'seen') === 'mediaDb') {
+              const iframeEl = gemMediaDbPickerIframeEl;
+              const idoc = iframeEl && iframeEl.contentDocument;
+              if (idoc && idoc.documentElement && getGemMediaDbIframeViewModeFromDoc(idoc) === 'grid') {
+                idoc.documentElement.style.setProperty('--gem-recent-grid-cols', String(v));
+              }
+            }
           }
         }, true);
 
@@ -2695,6 +2968,13 @@ function initializeOverlayPanelControls() {
             const v = Math.min(10, Math.max(2, Number(slider.value || 6)));
             picker.dataset.gemRecentImagesGridCols = String(v);
             picker.style.setProperty('--gem-recent-grid-cols', String(v));
+            if (normalizeRecentImagesPickerSource(picker.dataset.gemRecentImagesSource || 'seen') === 'mediaDb') {
+              const iframeEl = gemMediaDbPickerIframeEl;
+              const idoc = iframeEl && iframeEl.contentDocument;
+              if (idoc && idoc.documentElement && getGemMediaDbIframeViewModeFromDoc(idoc) === 'grid') {
+                idoc.documentElement.style.setProperty('--gem-recent-grid-cols', String(v));
+              }
+            }
             saveRecentImagesPickerPrefs(buildRecentImagesPickerPrefsPayload(picker, { gridCols: v }));
           }
         }, true);
@@ -2772,7 +3052,20 @@ function initializeOverlayPanelControls() {
           `.trim();
 
         const iframeSrc = getGemMediaDbPickerIframeSrc();
-        const header = buildSharedImagePickerHeader({ sourceTabs });
+        const gridColsMedia = Math.min(10, Math.max(2, Number(picker.dataset.gemRecentImagesGridCols || 6)));
+        picker.style.setProperty('--gem-recent-grid-cols', String(gridColsMedia));
+        const mediaDbRightControls = iframeSrc
+          ? `
+              <div class="gem-mediadb-header-controls" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                <div class="gem-mediadb-header-cols-wrap" style="display:none;align-items:center;gap:8px;">
+                  <label style="font-size:12px;opacity:0.75;">Cols</label>
+                  <input class="gem-fav-grid-cols-slider gem-mediadb-grid-cols-slider" type="range" min="2" max="10" step="1" value="${gridColsMedia}">
+                </div>
+                <button type="button" class="e-btn gem-mediadb-toggle-view-btn" disabled>Show Grid</button>
+              </div>
+            `.trim()
+          : '';
+        const header = buildSharedImagePickerHeader({ sourceTabs, rightControls: mediaDbRightControls });
         pickerContent.innerHTML = header;
 
         let mediaPane = ensureGemMediaDbPaneEl();
@@ -2835,7 +3128,7 @@ function initializeOverlayPanelControls() {
               .replace(/'/g, '&#39;');
 
           const viewMode = picker.dataset.gemRecentImagesView === 'grid' ? 'grid' : 'table';
-          const toggleLabel = viewMode === 'grid' ? 'Show Table' : 'Show Grid';
+          const toggleLabel = viewMode === 'grid' ? 'Show List' : 'Show Grid';
           const gridCols = Math.min(10, Math.max(2, Number(picker.dataset.gemRecentImagesGridCols || 6)));
           picker.style.setProperty('--gem-recent-grid-cols', String(gridCols));
 
@@ -3376,7 +3669,7 @@ function initializeOverlayPanelControls() {
                     sortedItems.sort((a, b) => compareFavPickerItems(a, b, favSortBy, favSortDesc));
                     if (viewMode === 'grid') {
                       return `
-                        <div class="gem-fav-cat-section" style="padding:0 16px">
+                        <div class="gem-fav-cat-section">
                           <div class="gem-recent-images-grid">
                             ${sortedItems.map(renderGridItem).join('')}
                           </div>
@@ -3384,7 +3677,7 @@ function initializeOverlayPanelControls() {
                       `.trim();
                     }
                     return `
-                      <div class="gem-fav-cat-section" style="padding:0 16px">
+                      <div class="gem-fav-cat-section">
                         <table data-e-version="2" class="e-table e-table-bordered gem-recent-images-table" style="width:100%; font-size: 14px; margin-top:8px;">
                           <thead>
                             <tr>
@@ -3414,7 +3707,7 @@ function initializeOverlayPanelControls() {
                     const isCollapsed = isCollapsedRaw;
                     if (viewMode === 'grid') {
                       return `
-                        <div class="gem-fav-cat-section" style="padding:0 16px">
+                        <div class="gem-fav-cat-section">
                           ${headerHtml}
                           ${isCollapsed ? '' : `
                             <div class="gem-recent-images-grid">
@@ -3426,7 +3719,7 @@ function initializeOverlayPanelControls() {
                     }
 
                     return `
-                      <div class="gem-fav-cat-section" style="padding:0 16px">
+                      <div class="gem-fav-cat-section">
                         ${headerHtml}
                         ${isCollapsed ? '' : `
                           <table data-e-version="2" class="e-table e-table-bordered gem-recent-images-table" style="width:100%; font-size: 14px; margin-top:8px;">
@@ -3456,7 +3749,9 @@ function initializeOverlayPanelControls() {
                   contentContainer.innerHTML = `
                     ${searchSummary}
                     ${terms.length > 0 && filtered.length === 0 ? `<div style="padding:0 16px 16px 16px; opacity:0.7;">No matches found for ${termsDisplay}.</div>` : ''}
+                    <div class="gem-img-picker-list-wrapper">
                     ${buildCategorySections()}
+                    </div>
                     ${terms.length === 0 ? empty : ''}
                   `.trim();
                   // Replace everything after the header
@@ -3492,7 +3787,9 @@ function initializeOverlayPanelControls() {
                     ${header}
                     ${searchSummary}
                     ${terms.length > 0 && filtered.length === 0 ? `<div style="padding:0 16px 16px 16px; opacity:0.7;">No matches found for ${termsDisplay}.</div>` : ''}
+                    <div class="gem-img-picker-list-wrapper">
                     ${buildCategorySections()}
+                    </div>
                     ${terms.length === 0 ? empty : ''}
                   `.trim();
                 }
@@ -3685,7 +3982,7 @@ function initializeOverlayPanelControls() {
                   flatItems.sort((a, b) => compareSeenPickerItems(a, b, seenSortBy, seenSortDesc));
                   if (viewMode === 'grid') {
                     return `
-                      <div class="gem-seen-cat-section" style="padding:0 16px">
+                      <div class="gem-seen-cat-section">
                         <div class="gem-recent-images-grid">
                           ${flatItems.map(renderGridItem).join('')}
                         </div>
@@ -3693,7 +3990,7 @@ function initializeOverlayPanelControls() {
                     `.trim();
                   }
                   return `
-                    <div class="gem-seen-cat-section" style="padding:0 16px">
+                    <div class="gem-seen-cat-section">
                       <table data-e-version="2" class="e-table e-table-bordered gem-recent-images-table" style="width:100%; font-size: 14px; margin-top:8px;">
                         <thead>
                           <tr>
@@ -3720,7 +4017,7 @@ function initializeOverlayPanelControls() {
                   const isCollapsed = isCollapsedRaw;
                   if (viewMode === 'grid') {
                     return `
-                      <div class="gem-seen-cat-section" style="padding:0 16px">
+                      <div class="gem-seen-cat-section">
                         ${headerHtml}
                         ${isCollapsed ? '' : `
                           <div class="gem-recent-images-grid">
@@ -3732,7 +4029,7 @@ function initializeOverlayPanelControls() {
                   }
 
                   return `
-                    <div class="gem-seen-cat-section" style="padding:0 16px">
+                    <div class="gem-seen-cat-section">
                       ${headerHtml}
                       ${isCollapsed ? '' : `
                         <table data-e-version="2" class="e-table e-table-bordered gem-recent-images-table" style="width:100%; font-size: 14px; margin-top:8px;">
@@ -3760,7 +4057,9 @@ function initializeOverlayPanelControls() {
                 contentContainer.innerHTML = `
                   ${searchSummary}
                   ${seenTerms.length > 0 && filtered.length === 0 ? `<div style="padding:0 16px 16px 16px; opacity:0.7;">No matches found for ${seenTermsDisplay}.</div>` : ''}
+                  <div class="gem-img-picker-list-wrapper">
                   ${buildCategorySections()}
+                  </div>
                   ${seenTerms.length === 0 ? empty : ''}
                 `.trim();
 
@@ -3797,7 +4096,9 @@ function initializeOverlayPanelControls() {
                   ${header}
                   ${searchSummary}
                   ${seenTerms.length > 0 && filtered.length === 0 ? `<div style="padding:0 16px 16px 16px; opacity:0.7;">No matches found for ${seenTermsDisplay}.</div>` : ''}
+                  <div class="gem-img-picker-list-wrapper">
                   ${buildCategorySections()}
+                  </div>
                   ${seenTerms.length === 0 ? empty : ''}
                 `.trim();
               }
@@ -4974,6 +5275,62 @@ function initializeOverlayPanelControls() {
         return hasMobileVisibilityControls ? 'mobile' : 'desktop';
       };
 
+      const storeTrackedImageUrlForTab = (tab, rawUrl) => {
+        const normalized = normalizeRecentImageUrlCandidate(rawUrl);
+        if (!normalized) {
+          logLastUsedDebug('storeTrackedImageUrlForTab skipped invalid URL', { tab, rawUrl });
+          return;
+        }
+        const stateHost = modal;
+        if (tab === 'mobile') {
+          stateHost._gemPendingLastUsedImageUrlMobile = normalized;
+        } else {
+          stateHost._gemPendingLastUsedImageUrlDesktop = normalized;
+        }
+        logLastUsedDebug('storeTrackedImageUrlForTab stored', {
+          tab,
+          rawUrl,
+          normalized,
+          pendingDesktop: stateHost._gemPendingLastUsedImageUrlDesktop || '',
+          pendingMobile: stateHost._gemPendingLastUsedImageUrlMobile || ''
+        });
+      };
+
+      const getTrackedImageUrlsForCommit = () => {
+        const urls = new Set();
+        const sources = [];
+        const add = (value, source) => {
+          const normalized = normalizeRecentImageUrlCandidate(value);
+          if (!normalized) {
+            if (value) {
+              sources.push({ source, raw: String(value), normalized: '' });
+            }
+            return;
+          }
+          urls.add(normalized);
+          sources.push({ source, raw: String(value), normalized });
+        };
+        add(modal._gemPendingLastUsedImageUrlDesktop, 'pendingDesktop');
+        add(modal._gemPendingLastUsedImageUrlMobile, 'pendingMobile');
+        // Preview cache is tab-scoped and survives editor/tab re-renders.
+        add(container._gemPreviewImgUrlDesktop, 'previewDesktop');
+        add(container._gemPreviewImgUrlMobile, 'previewMobile');
+        const { value: activeEditorValue } = getActiveImageUrlCodeMirror(modal);
+        add(activeEditorValue, 'activeEditor');
+        const committedUrls = Array.from(urls);
+        logLastUsedDebug('getTrackedImageUrlsForCommit', {
+          activePreviewTab: getActivePreviewTab(),
+          pendingDesktop: modal._gemPendingLastUsedImageUrlDesktop || '',
+          pendingMobile: modal._gemPendingLastUsedImageUrlMobile || '',
+          previewDesktop: container._gemPreviewImgUrlDesktop || '',
+          previewMobile: container._gemPreviewImgUrlMobile || '',
+          activeEditorValue: activeEditorValue || '',
+          sources,
+          committedUrls
+        });
+        return committedUrls;
+      };
+
       const syncMobilePreviewSourceFromControls = () => {
         ensurePreviewImgs();
         const mobileMode = getMobilePreviewVisibilityMode();
@@ -5147,7 +5504,10 @@ function initializeOverlayPanelControls() {
         }, true);
       }
 
-      // Recent Images panel is always visible now
+      // Recent Images panel is always visible now.
+      // Track first-open time so storage-driven seen-list refreshes can be ignored
+      // for a brief stabilization window and not steal the first click.
+      container._gemRecentImagesPickerOpenedAt = Date.now();
       showRecentImagesPicker(modal);
 
       // Emarsys can re-render dialog content right after open (especially when our picker loads prefs),
@@ -5209,6 +5569,8 @@ function initializeOverlayPanelControls() {
             const picker = modal.querySelector('#gem-recent-images-picker');
             if (!picker) return;
             if (picker.dataset.gemRecentImagesSource !== 'seen') return;
+            const openedAt = Number(container._gemRecentImagesPickerOpenedAt || 0);
+            if (openedAt > 0 && (Date.now() - openedAt) < 500) return;
             clearTimeout(container._gemRecentlySeenRefreshT);
             container._gemRecentlySeenRefreshT = setTimeout(() => {
               if (container._gemIsClosing || !container.isConnected || !modal.isConnected) return;
@@ -5269,8 +5631,6 @@ function initializeOverlayPanelControls() {
       if (htmlEditor && htmlEditor.getAttribute('html') && !htmlEditor.classList.contains('e-input-disabled')) {
         const imageUrl = normalizePreviewImageUrl(htmlEditor.getAttribute('html'));
         updateImageInPreviewCanvas(imageUrl, inferPreviewTabFromEditor(htmlEditor));
-        // Collect recent image immediately on open
-        if (imageUrl) recordImageLastUsed(imageUrl);
       }
 
       // Set up observer to watch for vce-html-editor element changes
@@ -5313,8 +5673,8 @@ function initializeOverlayPanelControls() {
               } else if (newImageUrl) {
                 // If not disabled and has URL, update image
                 updateImageInPreviewCanvas(newImageUrl, tabContext);
-                // Collect into recent images list
-                recordImageLastUsed(newImageUrl);
+                // Track values for commit-time "Last Used" updates.
+                storeTrackedImageUrlForTab(tabContext, newImageUrl);
               } else if (tabContext === 'mobile') {
                 // Keep mobile preview aligned with radio state even when no direct URL is present.
                 syncMobilePreviewSourceFromControls();
@@ -5334,8 +5694,9 @@ function initializeOverlayPanelControls() {
         // Update image with current URL only if not disabled
         if (!htmlEditor.classList.contains('e-input-disabled')) {
           const currentImageUrl = normalizePreviewImageUrl(htmlEditor.getAttribute('html'));
-          updateImageInPreviewCanvas(currentImageUrl, inferPreviewTabFromEditor(htmlEditor));
-          if (currentImageUrl) recordImageLastUsed(currentImageUrl);
+          const tabContext = inferPreviewTabFromEditor(htmlEditor);
+          updateImageInPreviewCanvas(currentImageUrl, tabContext);
+          storeTrackedImageUrlForTab(tabContext, currentImageUrl);
         }
 
         console.log("[Gem] Set up attribute observer for vce-html-editor");
@@ -5411,6 +5772,19 @@ function initializeOverlayPanelControls() {
         setupHtmlEditorObserver(existingHtmlEditor);
       }
 
+      if (!modal._gemLastUsedCommitBound) {
+        modal._gemLastUsedCommitBound = true;
+        modal.addEventListener('click', (e) => {
+          const target = e.target;
+          if (!(target instanceof Element)) return;
+          const okButton = target.closest('.e-dialog__container button.ok-btn');
+          if (!okButton) return;
+          const urls = getTrackedImageUrlsForCommit();
+          logLastUsedDebug('OK clicked; committing lastUsed URLs', { urls, buttonText: (okButton.textContent || '').trim() });
+          recordImagesLastUsed(urls);
+        }, true);
+      }
+
       console.log("[Gem] Set up container observer for vce-html-editor changes");
 
       // Auto-expand the "Advanced settings" accordion
@@ -5463,33 +5837,8 @@ function initializeOverlayPanelControls() {
         if (oldBtn) oldBtn.remove();
       } catch (_) {}
 
-      // Watch for CodeMirror input field swapping in/out, and store the current URL whenever it appears.
-      if (!container._gemRecentImagesCmObserver) {
-        console.log('[Gem][RecentImages] Setting up CodeMirror observer');
-        container._gemRecentImagesCmObserver = new MutationObserver(() => {
-          if (container._gemIsClosing || !container.isConnected || !modal.isConnected) return;
-          const { cmEl, value } = getActiveImageUrlCodeMirror(modal);
-          if (!cmEl) return;
-          if (cmEl && container._gemLastSeenImageUrlCmEl !== cmEl) {
-            container._gemLastSeenImageUrlCmEl = cmEl;
-            if (value) recordImageLastUsed(value);
-          } else if (cmEl && value) {
-            // Also upsert if value changed (best-effort)
-            if (container._gemLastSeenImageUrlValue !== value) {
-              container._gemLastSeenImageUrlValue = value;
-              recordImageLastUsed(value);
-            }
-          }
-        });
-        container._gemRecentImagesCmObserver.observe(container, { childList: true, subtree: true });
-      }
-
-      // Initial capture on open
-      setTimeout(() => {
-        const { value } = getActiveImageUrlCodeMirror(modal);
-        console.log('[Gem][RecentImages] Initial CodeMirror URL value:', value);
-        if (value) recordImageLastUsed(value);
-      }, 150);
+      // Do not auto-capture existing URL values on open.
+      // "Recently used" should only update from explicit image insert/edit actions.
 
       console.log("[Gem] Image Properties modal modification complete");
     }

@@ -258,7 +258,6 @@ e-float-container .gem-enhanced-image-properties-dialog {
     /* Thumb height scales inversely with grid cols: 10 cols = 120px, 2 cols = 180px */
     --gem-recent-thumb-h: calc(120px + 20px * (10 - var(--gem-recent-grid-cols)));
     --gem-recent-grid-cols: 6;
-    padding-bottom: 16px;
 }
 
 .gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-recent-images-grid {
@@ -1073,6 +1072,24 @@ gem-preflight .gem-preflight-subsection-title {
     margin-bottom: 10px;
 }
 
+gem-preflight .gem-preflight-collapsible-section {
+    margin-top: 2px;
+}
+
+gem-preflight .gem-preflight-collapsible-section--collapsed .gem-preflight-section-actions {
+    display: none;
+}
+
+gem-preflight .gem-preflight-collapsible-body {
+    margin-top: 2px;
+}
+
+gem-preflight .gem-preflight-section-divider {
+    height: 1px;
+    background: var(--token-box-default-border);
+    margin: 12px 0;
+}
+
 gem-preflight .gem-preflight-subsection-title--spaced {
     margin-top: 14px;
 }
@@ -1096,10 +1113,43 @@ gem-preflight .gem-preflight-section-pip {
     padding: 0 4px;
 }
 
+gem-preflight .gem-preflight-section-pip.gem-preflight-section-pip--muted {
+    background: var(--token-box-default-border);
+}
+
 gem-preflight .gem-preflight-header-actions {
     display: inline-flex;
     align-items: center;
     gap: 2px;
+}
+
+gem-preflight .gem-preflight-section-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+}
+
+gem-preflight .gem-preflight-section-toggle {
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--token-font-strong);
+    cursor: pointer;
+    border-radius: 4px;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    line-height: 1;
+    opacity: 0.85;
+}
+
+gem-preflight .gem-preflight-section-toggle:hover {
+    opacity: 1;
+    background: var(--token-box-hover-background, rgba(0, 0, 0, 0.04));
+}
+
+gem-preflight .gem-preflight-section-toggle:focus-visible {
+    outline: 2px solid var(--token-focus-ring, #2563eb);
+    outline-offset: 1px;
 }
 
 gem-preflight .gem-preflight-refresh-btn.e-btn {
@@ -1221,11 +1271,48 @@ gem-preflight .gem-preflight-subsection-description {
     margin-bottom: 6px;
 }
 
+gem-preflight .gem-preflight-image-breakdown-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--token-box-default-border);
+}
+
 gem-preflight .gem-preflight-image-breakdown-title {
     font-size: 12px;
     font-weight: 700;
-    padding: 8px 10px;
-    border-bottom: 1px solid var(--token-box-default-border);
+    flex: 1;
+    min-width: 0;
+}
+
+gem-preflight .gem-preflight-image-breakdown-toggle {
+    flex-shrink: 0;
+    margin: 0;
+    padding: 2px 6px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--token-font-strong);
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 1;
+    opacity: 0.85;
+}
+
+gem-preflight .gem-preflight-image-breakdown-toggle:hover {
+    opacity: 1;
+    background: var(--token-box-hover-background, rgba(0, 0, 0, 0.04));
+}
+
+gem-preflight .gem-preflight-image-breakdown-toggle:focus-visible {
+    outline: 2px solid var(--token-focus-ring, #2563eb);
+    outline-offset: 1px;
+}
+
+gem-preflight .gem-preflight-image-breakdown--collapsed .gem-preflight-image-breakdown-body {
+    display: none;
 }
 
 gem-preflight .gem-preflight-image-breakdown-table {
@@ -1270,6 +1357,285 @@ gem-preflight .gem-preflight-image-breakdown-empty {
     font-size: 12px;
     color: var(--token-font-strong);
     opacity: 0.8;
+}
+
+gem-preflight .gem-preflight-link-href {
+    white-space: normal;
+    word-break: break-all;
+    max-width: 100%;
+}
+
+gem-preflight .gem-preflight-links-table {
+    display: block;
+}
+
+gem-preflight .gem-preflight-links-row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--token-box-default-border);
+}
+
+gem-preflight .gem-preflight-links-row:last-child {
+    border-bottom: 0;
+}
+
+gem-preflight .gem-preflight-links-row--cp-rendered {
+    background: var(--token-background-strong, rgba(0, 0, 0, 0.03));
+    border-radius: 6px;
+    margin-left: -4px;
+    margin-right: -4px;
+    padding-left: 14px;
+    padding-right: 14px;
+}
+
+gem-preflight .gem-preflight-links-row-cp-badge {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: var(--token-font-strong);
+    opacity: 0.85;
+    margin-bottom: 4px;
+}
+
+gem-preflight .gem-preflight-links-row-line1 {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px 10px;
+    align-items: start;
+}
+
+gem-preflight .gem-preflight-links-row-main {
+    min-width: 0;
+}
+
+gem-preflight .gem-preflight-links-row-line2 {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+gem-preflight .gem-preflight-links-row-main .gem-preflight-image-breakdown-name {
+    max-width: 100%;
+}
+
+gem-preflight .gem-preflight-links-row-lint {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    min-height: 22px;
+    flex-shrink: 0;
+    width: max-content;
+    max-width: 100%;
+}
+
+gem-preflight .gem-preflight-links-lint-pip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    border-radius: 999px;
+    background: var(--token-red-600, #dc2626);
+    color: #fff;
+    font-size: 10px;
+    line-height: 1;
+    font-weight: 700;
+    padding: 0 5px;
+    box-sizing: border-box;
+}
+
+gem-preflight .gem-preflight-links-lint-ok {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--token-green-700, #15803d);
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+gem-preflight .gem-preflight-links-row-line3 {
+    padding: 0 2px 0 0;
+}
+
+gem-preflight .gem-preflight-links-issue-list {
+    margin: 0;
+    padding: 0 0 0 1.15em;
+    font-size: 11px;
+    line-height: 1.45;
+    color: var(--token-font-default);
+}
+
+gem-preflight .gem-preflight-links-issue-list li {
+    margin: 2px 0;
+    color: var(--token-red-600, #b91c1c);
+}
+
+gem-preflight .gem-preflight-links-row-live {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-start;
+    flex: 1 1 auto;
+    min-width: 0;
+    gap: 4px;
+}
+
+gem-preflight .gem-preflight-links-row-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    justify-content: flex-end;
+    flex: 0 0 auto;
+    align-items: flex-start;
+}
+
+gem-preflight .gem-preflight-live-links-row-btn {
+    border: 1px solid var(--token-box-default-border, rgba(0, 0, 0, 0.15));
+    border-radius: 6px;
+    background: var(--token-box-default-background, #fff);
+    color: var(--token-font-default);
+    font-size: 12px;
+    line-height: 1;
+    padding: 4px 7px;
+    cursor: pointer;
+    min-width: 28px;
+}
+
+gem-preflight .gem-preflight-live-links-row-btn:hover {
+    background: var(--token-background-strong, rgba(0, 0, 0, 0.04));
+}
+
+gem-preflight .gem-preflight-live-links-row-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+gem-preflight .gem-preflight-live-links-row-btn--secondary {
+    font-size: 11px;
+    padding: 4px 8px;
+}
+
+gem-preflight .gem-preflight-links-row-menu-wrap {
+    position: relative;
+}
+
+gem-preflight .gem-preflight-links-row-menu {
+    display: none;
+    position: absolute;
+    right: 0;
+    top: calc(100% + 4px);
+    z-index: 4;
+    min-width: 130px;
+    padding: 4px;
+    border: 1px solid var(--token-box-default-border, rgba(0, 0, 0, 0.16));
+    border-radius: 8px;
+    background: var(--token-box-default-background, #fff);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.16);
+}
+
+gem-preflight .gem-preflight-links-row-menu--open {
+    display: flex;
+    flex-direction: column;
+}
+
+gem-preflight .gem-preflight-links-row-menu-item {
+    border: 0;
+    background: transparent;
+    text-align: left;
+    font-size: 12px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    color: var(--token-font-default);
+}
+
+gem-preflight .gem-preflight-links-row-menu-item:hover {
+    background: var(--token-background-strong, rgba(0, 0, 0, 0.05));
+}
+
+gem-preflight .gem-preflight-live-chip {
+    display: inline-flex;
+    align-items: center;
+    max-width: 100%;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.35;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+gem-preflight .gem-preflight-live-chip--neutral {
+    background: var(--token-background-strong, rgba(0, 0, 0, 0.06));
+    color: var(--token-font-default);
+}
+
+gem-preflight .gem-preflight-live-chip--pending {
+    background: var(--token-background-strong, rgba(0, 0, 0, 0.08));
+    color: var(--token-font-strong);
+}
+
+gem-preflight .gem-preflight-live-chip--skipped {
+    background: var(--token-background-strong, rgba(0, 0, 0, 0.05));
+    color: var(--token-font-strong);
+    opacity: 0.85;
+}
+
+gem-preflight .gem-preflight-live-chip--ok {
+    background: rgba(22, 163, 74, 0.14);
+    color: var(--token-green-700, #15803d);
+}
+
+gem-preflight .gem-preflight-live-chip--warn {
+    background: rgba(234, 179, 8, 0.18);
+    color: var(--token-yellow-800, #a16207);
+}
+
+gem-preflight .gem-preflight-live-chip--error {
+    background: rgba(220, 38, 38, 0.12);
+    color: var(--token-red-600, #dc2626);
+}
+
+gem-preflight .gem-preflight-live-debug {
+    font-size: 11px;
+    line-height: 1.35;
+    color: var(--token-font-strong);
+    opacity: 0.9;
+    white-space: normal;
+    word-break: break-word;
+}
+
+gem-preflight .gem-preflight-live-link-footnote {
+    margin: 6px 0 0;
+    padding: 0 2px 8px;
+    font-size: 11px;
+    line-height: 1.4;
+    color: var(--token-font-strong);
+    opacity: 0.9;
+}
+
+gem-preflight .gem-preflight-skipped-urls {
+    margin-top: 8px;
+}
+
+gem-preflight .gem-preflight-live-links-all-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+gem-preflight .gem-preflight-skipped-urls .gem-preflight-image-breakdown-body {
+    padding: 10px;
+}
+gem-preflight .gem-preflight-skipped-urls .gem-preflight-image-breakdown-body .gem-preflight-links-table {
+    margin-top: 0;
 }
 
 .gem-preflight-image-tooltip {
@@ -1879,4 +2245,20 @@ cb-device-preview > .e-section > .e-section__content { overflow: hidden }
 
 .gem-e-btn-borderless-on-hover:hover {
     border:none;
+}
+
+input.gem-input, select.gem-select {
+    background: var(--token-input-default-background);
+    border: 2px solid var(--token-box-default-border);
+    padding: 8px 4px 8px 4px;
+    border-radius:6px;
+  }
+
+
+[data-gem-recent-images-source="mediaDb"] {
+   overflow: hidden !important;    
+}
+
+.gem-img-picker-list-wrapper {
+    padding: 0 16px 16px;
 }

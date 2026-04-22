@@ -21,9 +21,14 @@ const GEM_PREFLIGHT_TOTAL_IMAGE_WEIGHT_THRESHOLD_VALUE_KEY = 'gemPreflightTotalI
 const GEM_PREFLIGHT_TOTAL_IMAGE_WEIGHT_THRESHOLD_UNIT_KEY = 'gemPreflightTotalImageWeightThresholdUnit';
 const GEM_PREFLIGHT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_VALUE_KEY = 'gemPreflightSingularImageWeightThresholdValue';
 const GEM_PREFLIGHT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_UNIT_KEY = 'gemPreflightSingularImageWeightThresholdUnit';
+const GEM_PREFLIGHT_URL_NEVER_CHECK_KEY = 'urlPreflightNeverCheck';
 const GEM_PREFLIGHT_DEFAULT_TOTAL_IMAGE_WEIGHT_THRESHOLD_VALUE = 3;
 const GEM_PREFLIGHT_DEFAULT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_VALUE = 2;
 const GEM_PREFLIGHT_DEFAULT_IMAGE_WEIGHT_THRESHOLD_UNIT = 'MB';
+const GEM_FULL_BACKUP_TYPE = 'gemma-full-backup';
+const GEM_FULL_BACKUP_VERSION = 1;
+const GEM_SNIPPET_MAX_CHUNKS = 16;
+const GEM_FAVORITE_IMAGE_MAX_CHUNKS = 16;
 
 function normalizeGemThemeMode(value) {
   if (value === "original") return "original";
@@ -253,6 +258,460 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         } catch (_) { }
       });
     } catch (_) { }
+  }
+
+  function isPlainObject(value) {
+    return !!value && typeof value === "object" && !Array.isArray(value);
+  }
+
+  function getGemmaLocalStorageSnapshot() {
+    const snapshot = {};
+    const explicitKeys = new Set([GEM_THEME_MODE_LOCAL_KEY]);
+    const gemmaPrefix = /^gem/i;
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!key) continue;
+        if (!gemmaPrefix.test(key) && !explicitKeys.has(key)) continue;
+        snapshot[key] = localStorage.getItem(key);
+      }
+    } catch (err) {
+      console.warn("[gem] Failed to read localStorage for backup:", err);
+    }
+    return snapshot;
+  }
+
+  function clearGemmaLocalStorageKeys() {
+    const keys = Object.keys(getGemmaLocalStorageSnapshot());
+    keys.forEach((key) => {
+      try {
+        localStorage.removeItem(key);
+      } catch (_) {
+        // ignore key-specific localStorage errors
+      }
+    });
+  }
+
+  function storageAreaGetAll(area) {
+    return new Promise((resolve) => {
+      try {
+        area.get(null, (data) => resolve(data || {}));
+      } catch (err) {
+        console.warn("[gem] Failed reading storage area:", err);
+        resolve({});
+      }
+    });
+  }
+
+  function storageAreaSet(area, payload) {
+    return new Promise((resolve, reject) => {
+      try {
+        area.set(payload, () => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message || "Storage write failed"));
+            return;
+          }
+          resolve();
+        });
+      } catch (err) {
+        reject(err);
+      }
+    });
+  }
+
+  function storageAreaClear(area) {
+    return new Promise((resolve, reject) => {
+      try {
+        area.clear(() => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message || "Storage clear failed"));
+            return;
+          }
+          resolve();
+        });
+      } catch (err) {
+        reject(err);
+      }
+    });
+  }
+
+  const FULL_BACKUP_EXPORT_CATEGORY_DEFS = [
+    {
+      id: "snippets",
+      label: "Snippets",
+      syncKeys: ["gemSnippets", "sm", "s_meta", ...Array.from({ length: GEM_SNIPPET_MAX_CHUNKS }, (_, i) => `s${i}`)],
+      localKeys: []
+    },
+    {
+      id: "savedSearches",
+      label: "Saved Searches",
+      syncKeys: ["gemSearchPills"],
+      localKeys: []
+    },
+    {
+      id: "textHighlighting",
+      label: "Text Highlighting",
+      syncKeys: ["highlightTerms", "enableHighlighting"],
+      localKeys: []
+    },
+    {
+      id: "blockVisibility",
+      label: "Block Visibility",
+      syncKeys: ["hiddenBlocks", "pinnedBlocks"],
+      localKeys: []
+    },
+    {
+      id: "notes",
+      label: "Notes",
+      syncKeys: ["gemNotes"],
+      localKeys: []
+    },
+    {
+      id: "favoriteImages",
+      label: "Favorite Images",
+      syncKeys: [
+        "fm",
+        ...Array.from({ length: GEM_FAVORITE_IMAGE_MAX_CHUNKS }, (_, i) => `f${i}`)
+      ],
+      localKeys: [
+        "gemFavoriteImagesConsolidated",
+        "gemFavoriteImages",
+        "gemFavoriteImageMeta"
+      ]
+    },
+    {
+      id: "colorSwatches",
+      label: "Color Swatches",
+      syncKeys: ["colorSwatches"],
+      localKeys: []
+    },
+    {
+      id: "preflightUrlBlocklist",
+      label: "Preflight URL Blocklist",
+      syncKeys: [GEM_PREFLIGHT_URL_NEVER_CHECK_KEY],
+      localKeys: []
+    },
+    {
+      id: "settings",
+      label: "Settings (all other data)",
+      syncKeys: [],
+      localKeys: []
+    }
+  ];
+
+  const FULL_BACKUP_EXPORT_CATEGORY_MAP = FULL_BACKUP_EXPORT_CATEGORY_DEFS.reduce((acc, def) => {
+    acc[def.id] = def;
+    return acc;
+  }, {});
+
+  const FULL_BACKUP_ALL_CATEGORY_SYNC_KEYS = new Set();
+  const FULL_BACKUP_ALL_CATEGORY_LOCAL_KEYS = new Set();
+  FULL_BACKUP_EXPORT_CATEGORY_DEFS.forEach((def) => {
+    if (def.id === "settings") return;
+    def.syncKeys.forEach((k) => FULL_BACKUP_ALL_CATEGORY_SYNC_KEYS.add(k));
+    def.localKeys.forEach((k) => FULL_BACKUP_ALL_CATEGORY_LOCAL_KEYS.add(k));
+  });
+
+  function stripFullBackupExcludedStorageKeys(source) {
+    const out = {};
+    if (!isPlainObject(source)) return out;
+    Object.keys(source).forEach((key) => {
+      if (key === "extensionVersion") return;
+      if (key === "gemRecentlySeenImages") return;
+      if (key === "gemPreflightAlertCount") return;
+      if (key === "gemRecentlySeenImageGroupCollapse") return;
+      if (String(key).startsWith("gemDraft_")) return;
+      out[key] = source[key];
+    });
+    return out;
+  }
+
+  function pickExistingKeys(source, keys) {
+    const out = {};
+    if (!isPlainObject(source) || !Array.isArray(keys)) return out;
+    keys.forEach((key) => {
+      if (Object.prototype.hasOwnProperty.call(source, key)) out[key] = source[key];
+    });
+    return out;
+  }
+
+  function pickRemainderKeys(source, excludedKeysSet) {
+    const out = {};
+    if (!isPlainObject(source)) return out;
+    Object.keys(source).forEach((key) => {
+      if (!excludedKeysSet.has(key)) out[key] = source[key];
+    });
+    return out;
+  }
+
+  function normalizeExportSelection(selection) {
+    if (!Array.isArray(selection) || selection.length === 0) {
+      return new Set(FULL_BACKUP_EXPORT_CATEGORY_DEFS.map((x) => x.id));
+    }
+    return new Set(
+      selection
+        .map((id) => String(id || "").trim())
+        .filter((id) => id && FULL_BACKUP_EXPORT_CATEGORY_MAP[id])
+    );
+  }
+
+  async function buildFullBackupPayload(selection = null) {
+    const [rawSync, rawLocal] = await Promise.all([
+      storageAreaGetAll(chrome.storage.sync),
+      storageAreaGetAll(chrome.storage.local)
+    ]);
+    const syncData = stripFullBackupExcludedStorageKeys(rawSync);
+    const localData = stripFullBackupExcludedStorageKeys(rawLocal);
+
+    const selected = normalizeExportSelection(selection);
+    const includeSettings = selected.has("settings");
+    const selectedSync = {};
+    const selectedLocal = {};
+
+    FULL_BACKUP_EXPORT_CATEGORY_DEFS.forEach((def) => {
+      if (def.id === "settings" || !selected.has(def.id)) return;
+      Object.assign(selectedSync, pickExistingKeys(syncData, def.syncKeys));
+      Object.assign(selectedLocal, pickExistingKeys(localData, def.localKeys));
+    });
+
+    if (includeSettings) {
+      Object.assign(selectedSync, pickRemainderKeys(syncData, FULL_BACKUP_ALL_CATEGORY_SYNC_KEYS));
+      Object.assign(selectedLocal, pickRemainderKeys(localData, FULL_BACKUP_ALL_CATEGORY_LOCAL_KEYS));
+    }
+
+    return {
+      type: GEM_FULL_BACKUP_TYPE,
+      version: GEM_FULL_BACKUP_VERSION,
+      exportedAt: new Date().toISOString(),
+      data: {
+        sync: stripFullBackupExcludedStorageKeys(selectedSync),
+        local: stripFullBackupExcludedStorageKeys(selectedLocal),
+        localStorage: includeSettings ? getGemmaLocalStorageSnapshot() : {}
+      }
+    };
+  }
+
+  function validateFullBackupPayload(payload) {
+    if (!isPlainObject(payload)) return { ok: false, message: "Backup must be a JSON object." };
+    if (payload.type !== GEM_FULL_BACKUP_TYPE) return { ok: false, message: "This file is not a Gemma full backup export." };
+    if (payload.version !== GEM_FULL_BACKUP_VERSION) return { ok: false, message: `Unsupported backup version: ${payload.version}` };
+    if (!isPlainObject(payload.data)) return { ok: false, message: "Backup is missing data sections." };
+    const { sync, local, localStorage: localStoreData } = payload.data;
+    if (!isPlainObject(sync)) return { ok: false, message: "Backup sync data is invalid." };
+    if (!isPlainObject(local)) return { ok: false, message: "Backup local data is invalid." };
+    if (!isPlainObject(localStoreData)) return { ok: false, message: "Backup localStorage data is invalid." };
+    return { ok: true };
+  }
+
+  function writeImportedLocalStorage(importedLocalStorage, replaceExisting) {
+    if (replaceExisting) clearGemmaLocalStorageKeys();
+    Object.entries(importedLocalStorage).forEach(([key, value]) => {
+      if (!key || !/^gem/i.test(key)) return;
+      try {
+        localStorage.setItem(key, value == null ? "" : String(value));
+      } catch (_) {
+        // ignore failing key writes
+      }
+    });
+  }
+
+  function showFullBackupExportModal() {
+    const modal = document.createElement("div");
+    modal.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10001;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    `;
+
+    modal.innerHTML = `
+      <div style="background: var(--token-box-default-background, #ffffff); border-radius: 12px; padding: 20px; max-width: 720px; width: 92%; max-height: 80vh; display: flex; flex-direction: column;">
+        <h3 style="margin: 0 0 15px 0; color: var(--token-font-default, #333333);">Export Full Gemma Backup</h3>
+        <p style="margin: 0 0 10px 0; color: var(--token-font-default, #666666); font-size: 14px;">Choose what to include, then generate JSON. If <b>Settings</b> is selected, all remaining sync/local keys and Gemma localStorage keys are included.</p>
+        <div id="gem-full-backup-category-list" style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; margin-bottom: 14px; padding: 12px; border: 1px solid var(--token-box-default-border, #e0e0e0); border-radius: 8px;">
+          ${FULL_BACKUP_EXPORT_CATEGORY_DEFS.map((def) => `
+            <label style="display:flex; align-items:flex-start; gap:8px; font-size:13px; cursor:pointer; line-height:1.3;">
+              <input type="checkbox" class="gem-full-backup-category-checkbox" value="${def.id}" checked style="margin-top:2px;" />
+              <span>${def.label}</span>
+            </label>
+          `).join("")}
+        </div>
+        <textarea id="gem-full-backup-export-json" class="gem-scrollable" readonly style="background:var(--token-background-faint); width: 100%; height: 240px; padding: 10px; border: 1px solid var(--token-box-default-border, #e0e0e0); border-radius: 4px; font-family: monospace; font-size: 12px; resize: vertical; margin-bottom: 15px;" placeholder="Select one or more categories, then click Generate JSON."></textarea>
+        <div style="display: flex; gap: 10px; justify-content: flex-end;">
+          <button id="gem-full-backup-generate-btn" class="e-btn e-btn-primary">Generate JSON</button>
+          <button id="gem-full-backup-copy-btn" class="e-btn e-btn-primary">Copy to Clipboard</button>
+          <button id="gem-full-backup-close-btn" class="e-btn">Close</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+    const textarea = modal.querySelector("#gem-full-backup-export-json");
+    const generateBtn = modal.querySelector("#gem-full-backup-generate-btn");
+    const copyBtn = modal.querySelector("#gem-full-backup-copy-btn");
+    const checkboxes = Array.from(modal.querySelectorAll(".gem-full-backup-category-checkbox"));
+    if (copyBtn) copyBtn.disabled = true;
+    if (copyBtn) copyBtn.style.opacity = "0.6";
+
+    const updateGenerateState = () => {
+      const selectedCount = checkboxes.filter((cb) => cb.checked).length;
+      if (generateBtn) generateBtn.disabled = selectedCount === 0;
+      if (generateBtn) generateBtn.style.opacity = selectedCount === 0 ? "0.6" : "1";
+    };
+    checkboxes.forEach((cb) => cb.addEventListener("change", updateGenerateState));
+    updateGenerateState();
+
+    generateBtn?.addEventListener("click", async () => {
+      const selected = checkboxes.filter((cb) => cb.checked).map((cb) => cb.value);
+      if (selected.length === 0) {
+        alert("Select at least one category to export.");
+        return;
+      }
+      try {
+        const payload = await buildFullBackupPayload(selected);
+        if (textarea) textarea.value = JSON.stringify(payload, null, 2);
+        if (copyBtn) copyBtn.disabled = false;
+        if (copyBtn) copyBtn.style.opacity = "1";
+      } catch (err) {
+        console.error("[gem] Failed to build selective full backup payload:", err);
+        alert("Failed to build full backup. Please try again.");
+      }
+    });
+
+    modal.querySelector("#gem-full-backup-copy-btn")?.addEventListener("click", async () => {
+      if (!textarea) return;
+      if (!textarea.value.trim()) {
+        alert("Generate JSON first, then copy it.");
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(textarea.value);
+        const btn = modal.querySelector("#gem-full-backup-copy-btn");
+        if (!btn) return;
+        btn.textContent = "Copied!";
+        btn.style.background = "#059669";
+        setTimeout(() => {
+          btn.textContent = "Copy to Clipboard";
+          btn.style.background = "#10b981";
+        }, 2000);
+      } catch (err) {
+        console.error("[gem] Failed to copy full backup:", err);
+        alert("Failed to copy to clipboard. Please copy manually.");
+      }
+    });
+
+    const closeModal = () => modal.remove();
+    modal.querySelector("#gem-full-backup-close-btn")?.addEventListener("click", closeModal);
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) closeModal();
+    });
+  }
+
+  function showFullBackupImportModal() {
+    const modal = document.createElement("div");
+    modal.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10001;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    `;
+
+    modal.innerHTML = `
+      <div style="background: var(--token-box-default-background, #ffffff); border-radius: 12px; padding: 20px; max-width: 720px; width: 92%; max-height: 86vh; display: flex; flex-direction: column;">
+        <h3 style="margin: 0 0 12px 0; color: var(--token-font-default, #333333);">Import Full Gemma Backup</h3>
+        <p style="margin: 0 0 12px 0; color: var(--token-font-default, #666666); font-size: 14px;">Paste a full backup JSON export. Choose whether to merge it with your current data or replace your current Gemma data entirely.</p>
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom: 10px;">
+          <label for="gem-full-backup-import-mode" style="font-weight:600; font-size:14px;">Import mode</label>
+          <select id="gem-full-backup-import-mode" class="gem-select" style="min-width:200px;">
+            <option value="merge" selected>Merge (imported values override conflicts)</option>
+            <option value="replace">Replace existing Gemma data</option>
+          </select>
+        </div>
+        <textarea id="gem-full-backup-import-json" class="gem-scrollable" placeholder="Paste backup JSON here..." style="background:var(--token-background-faint); width: 100%; height: 260px; padding: 10px; border: 1px solid var(--token-box-default-border, #e0e0e0); border-radius: 4px; font-family: monospace; font-size: 12px; resize: vertical; margin-bottom: 15px;"></textarea>
+        <div style="display: flex; gap: 10px; justify-content: flex-end;">
+          <button id="gem-full-backup-import-btn" style="padding: 8px 16px; background: #10b981; color: white; border: none; border-radius: 4px; cursor: pointer;">Import Backup</button>
+          <button id="gem-full-backup-cancel-btn" style="padding: 8px 16px; background: #6b7280; color: white; border: none; border-radius: 4px; cursor: pointer;">Cancel</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    const closeModal = () => modal.remove();
+    modal.querySelector("#gem-full-backup-cancel-btn")?.addEventListener("click", closeModal);
+
+    modal.querySelector("#gem-full-backup-import-btn")?.addEventListener("click", async () => {
+      const textarea = modal.querySelector("#gem-full-backup-import-json");
+      const modeSelect = modal.querySelector("#gem-full-backup-import-mode");
+      const raw = textarea && textarea.value ? textarea.value.trim() : "";
+      if (!raw) {
+        alert("Please paste backup JSON to import.");
+        return;
+      }
+
+      let payload;
+      try {
+        payload = JSON.parse(raw);
+      } catch (_) {
+        alert("Invalid JSON format. Please check your backup and try again.");
+        return;
+      }
+
+      const validation = validateFullBackupPayload(payload);
+      if (!validation.ok) {
+        alert(validation.message);
+        return;
+      }
+
+      const replaceExisting = !!(modeSelect && modeSelect.value === "replace");
+      const importedSync = payload.data.sync;
+      const importedLocal = payload.data.local;
+      const importedLocalStorage = payload.data.localStorage;
+
+      try {
+        if (replaceExisting) {
+          await storageAreaClear(chrome.storage.sync);
+          await storageAreaClear(chrome.storage.local);
+          if (Object.keys(importedSync).length) await storageAreaSet(chrome.storage.sync, importedSync);
+          if (Object.keys(importedLocal).length) await storageAreaSet(chrome.storage.local, importedLocal);
+          writeImportedLocalStorage(importedLocalStorage, true);
+        } else {
+          const [currentSync, currentLocal] = await Promise.all([
+            storageAreaGetAll(chrome.storage.sync),
+            storageAreaGetAll(chrome.storage.local)
+          ]);
+          await storageAreaSet(chrome.storage.sync, { ...currentSync, ...importedSync });
+          await storageAreaSet(chrome.storage.local, { ...currentLocal, ...importedLocal });
+          writeImportedLocalStorage(importedLocalStorage, false);
+        }
+
+        loadSettings();
+        syncThemeSwatchUI(document.getElementById("opt-theme-mode")?.value || "gemma-amethyst");
+        alert("Full backup imported successfully.");
+        closeModal();
+      } catch (err) {
+        console.error("[gem] Failed importing full backup:", err);
+        alert("Import failed. Please try again.");
+      }
+    });
+
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) closeModal();
+    });
   }
 
   // ------------------------------------------------------------
@@ -523,34 +982,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
           </div>
         </div>
 
-        <h2>Preflight Settings</h2>
-
-        <div class="gem-setting-section" id="gem-settings-preflight-settings">
-          <h3>Image Alerts</h3>
-          <div class="gem-setting gem-setting-condensed" style="display:flex; gap:12px; align-items:center;">
-            <label for="opt-preflight-total-image-weight-threshold-value" style="flex:1;">Total Image Weight Threshold</label>
-            <input type="number" id="opt-preflight-total-image-weight-threshold-value" min="0.1" step="0.1" style="width:100px;" value="3" />
-            <select id="opt-preflight-total-image-weight-threshold-unit" style="width:90px;">
-              <option value="KB">KB</option>
-              <option value="MB" selected>MB</option>
-            </select>
-          </div>
-          <div class="gem-setting gem-setting-condensed" style="display:flex; gap:12px; align-items:center;">
-            <label for="opt-preflight-singular-image-weight-threshold-value" style="flex:1;">Singular Image Weight Threshold</label>
-            <input type="number" id="opt-preflight-singular-image-weight-threshold-value" min="0.1" step="0.1" style="width:100px;" value="2" />
-            <select id="opt-preflight-singular-image-weight-threshold-unit" style="width:90px;">
-              <option value="KB">KB</option>
-              <option value="MB" selected>MB</option>
-            </select>
-          </div>
-          <div class="gem-setting gem-setting-condensed">
-            <p class="sub-label">
-              When enabled, blocks with targeting rules show a visual preview in the email canvas. You can also toggle this from the email preview toolbar.
-            </p>
-          </div>
-        </div>
-
-<div class="gem-setting-section">
+        <div class="gem-setting-section">
           <h3>Blocks Panel</h3>
 
           <div class="gem-setting">
@@ -570,34 +1002,6 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
               Unhide All Blocks
             </button>
             <div class="sub-label">Permanently unhide all blocks that have been hidden. This action cannot be undone.</div>
-          </div>
-        </div>
-
-        <div class="gem-setting-section">
-          <h3>Text Highlighting Configuration</h3>
-        <div class="gem-setting">
-          <div class="gem-e-switch-wrapper">
-            <label for="opt-enable-highlighting">Enable text highlighting overlays</label>
-            <div class="gem-e-switch--fat e-switch">
-              <input type="checkbox" class="e-switch__input" id="opt-enable-highlighting">
-              <label class="e-switch__toggle" for="opt-enable-highlighting"></label>
-            </div>
-          </div>
-          <p class="sub-label">
-            Creates overlays to help you quickly identify and highlight specific text in your email.
-          </p>
-        </div>
-          <div id="highlight-terms-list">
-            <!-- Terms will be dynamically added here -->
-          </div>
-          <div class="gem-add-term">
-            <input type="text" id="new-term-text" placeholder="New term to highlight" />
-            <input type="color" id="new-term-color" class="color-swatch-color" value="#ffff00" />
-            <button id="add-term-btn">Add</button>
-          </div>
-          <div class="gem-highlight-actions" style="display: flex; gap: 10px; justify-content: center; margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--token-box-default-border, #e0e0e0);">
-            <button id="export-highlight-btn" style="padding: 8px 16px; background: #10b981; color: white; border: none; border-radius: 4px; cursor: pointer;">Export Rules</button>
-            <button id="import-highlight-btn" style="padding: 8px 16px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer;">Import Rules</button>
           </div>
         </div>
 
@@ -661,6 +1065,64 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
           </div>
         </div>
 
+        <h2>Preflight Settings</h2>
+
+        <div class="gem-setting-section" id="gem-settings-preflight-settings">
+          <h3>Image Alerts</h3>
+          <div class="gem-setting gem-setting-condensed" style="display:flex; gap:12px; align-items:center;">
+            <label for="opt-preflight-total-image-weight-threshold-value" style="flex:1;">Total Image Weight Threshold</label>
+            <input type="number" id="opt-preflight-total-image-weight-threshold-value" min="0.1" step="0.1" style="width:100px;" value="3" />
+            <select id="opt-preflight-total-image-weight-threshold-unit" style="width:90px;">
+              <option value="KB">KB</option>
+              <option value="MB" selected>MB</option>
+            </select>
+          </div>
+          <div class="gem-setting gem-setting-condensed" style="display:flex; gap:12px; align-items:center;">
+            <label for="opt-preflight-singular-image-weight-threshold-value" style="flex:1;">Singular Image Weight Threshold</label>
+            <input type="number" id="opt-preflight-singular-image-weight-threshold-value" min="0.1" step="0.1" style="width:100px;" value="2" />
+            <select id="opt-preflight-singular-image-weight-threshold-unit" style="width:90px;">
+              <option value="KB">KB</option>
+              <option value="MB" selected>MB</option>
+            </select>
+          </div>
+          <div class="gem-setting gem-setting-condensed">
+            <p class="sub-label">
+              When enabled, blocks with targeting rules show a visual preview in the email canvas. You can also toggle this from the email preview toolbar.
+            </p>
+          </div>
+        </div>
+        <div class="gem-setting-section" id="gem-settings-preflight-url-never-check">
+          <h3>Preflight URL Never-Check List</h3>
+          <p class="gem-setting-info">URLs listed here are skipped by Preflight for both formatting and live checks.</p>
+          <div class="gem-setting">
+            <button id="gem-manage-preflight-never-check-btn" class="e-btn"type="button">Manage URL Blocklist</button>
+            <div id="gem-preflight-never-check-summary" class="sub-label" style="margin-top:8px;">No URLs are currently blocked.</div>
+          </div>
+        </div>
+
+        <div class="gem-setting-section">
+          <h3>Text Highlighting</h3>
+        <div class="gem-setting">
+          <div class="gem-e-switch-wrapper">
+            <label for="opt-enable-highlighting">Enable text highlighting overlays</label>
+            <div class="gem-e-switch--fat e-switch">
+              <input type="checkbox" class="e-switch__input" id="opt-enable-highlighting">
+              <label class="e-switch__toggle" for="opt-enable-highlighting"></label>
+            </div>
+          </div>
+          <p class="sub-label">
+            Creates overlays to help you quickly identify and highlight specific text in your email.
+          </p>
+        </div>
+          <div id="highlight-terms-list">
+            <!-- Terms will be dynamically added here -->
+          </div>
+          <div class="gem-add-term">
+            <input type="text" id="new-term-text" placeholder="New term to highlight" />
+            <input type="color" id="new-term-color" class="color-swatch-color" value="#ffff00" />
+            <button id="add-term-btn">Add</button>
+          </div>
+        </div>
 
         <h2>Media Picker Settings</h2>
 
@@ -734,6 +1196,19 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
 
         <div id="gem-storage-meter-mount"></div>
 
+        <div class="gem-setting-section" id="gem-settings-full-backup">
+          <h3>Full Backup &amp; Restore</h3>
+          <div class="gem-setting gem-setting-condensed">
+            <p class="sub-label">
+              Export or import a complete Gemma backup from one place. This includes your extension settings and data from Chrome sync storage, local extension storage, and Gemma local storage keys so you can safely share setups or recover your workspace.
+            </p>
+            <div class="gem-full-backup-actions">
+              <button id="gem-export-full-backup-btn" class="e-btn" type="button">Export Settings</button>
+              <button id="gem-import-full-backup-btn" class="e-btn" type="button">Import Settings</button>
+            </div>
+          </div>
+        </div>
+
       </div>
     `;
 
@@ -766,6 +1241,145 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
   // ------------------------------------------------------------
   // Load settings into UI
   // ------------------------------------------------------------
+  function parsePreflightNeverCheckStoredValue(raw) {
+    if (Array.isArray(raw)) return raw.filter(Boolean).map((v) => String(v));
+    if (typeof raw === "string") {
+      const text = raw.trim();
+      if (!text) return [];
+      if (text.startsWith("{") && text.includes('"v"')) {
+        try {
+          const parsed = JSON.parse(text);
+          if (parsed && parsed.v === 2 && Array.isArray(parsed.p) && Array.isArray(parsed.e)) {
+            const out = [];
+            parsed.e.forEach((entry) => {
+              if (typeof entry === "string") {
+                if (entry) out.push(entry);
+                return;
+              }
+              if (Array.isArray(entry) && entry.length === 2) {
+                const idx = Number.parseInt(String(entry[0]), 10);
+                const suffix = String(entry[1] || "");
+                const prefix = parsed.p[idx];
+                if (typeof prefix === "string") out.push(prefix + suffix);
+              }
+            });
+            return out.filter(Boolean);
+          }
+        } catch (_) {}
+      }
+      return text.split("\n").map((v) => String(v || "").trim()).filter(Boolean);
+    }
+    return [];
+  }
+
+  function serializePreflightNeverCheckStoredValue(list) {
+    const cleaned = Array.from(new Set((Array.isArray(list) ? list : []).map((v) => String(v || "").trim()).filter(Boolean)));
+    cleaned.sort((a, b) => a.localeCompare(b));
+    const baseline = cleaned.join("\n");
+
+    const prefixCounts = new Map();
+    cleaned.forEach((url) => {
+      try {
+        const u = new URL(url);
+        if (u.protocol !== "http:" && u.protocol !== "https:") return;
+        const prefix = `${u.origin}/`;
+        prefixCounts.set(prefix, (prefixCounts.get(prefix) || 0) + 1);
+      } catch (_) {}
+    });
+    const prefixes = Array.from(prefixCounts.entries())
+      .filter(([, n]) => n >= 2)
+      .sort((a, b) => b[1] - a[1] || b[0].length - a[0].length)
+      .map(([prefix]) => prefix);
+    if (!prefixes.length) return baseline;
+
+    const entries = cleaned.map((url) => {
+      for (let i = 0; i < prefixes.length; i += 1) {
+        const p = prefixes[i];
+        if (url.startsWith(p)) return [i, url.slice(p.length)];
+      }
+      return url;
+    });
+    const packed = JSON.stringify({ v: 2, p: prefixes, e: entries });
+    return packed.length < baseline.length ? packed : baseline;
+  }
+
+  function readPreflightNeverCheckList(callback) {
+    chrome.storage.sync.get({ [GEM_PREFLIGHT_URL_NEVER_CHECK_KEY]: "" }, (res) => {
+      const list = parsePreflightNeverCheckStoredValue(res[GEM_PREFLIGHT_URL_NEVER_CHECK_KEY]);
+      callback(list.sort((a, b) => String(a).localeCompare(String(b))));
+    });
+  }
+
+  function writePreflightNeverCheckList(urls, callback) {
+    const serialized = serializePreflightNeverCheckStoredValue(urls);
+    chrome.storage.sync.set({ [GEM_PREFLIGHT_URL_NEVER_CHECK_KEY]: serialized }, () => {
+      if (typeof callback === "function") callback();
+    });
+  }
+
+  function updatePreflightNeverCheckSummary(urls) {
+    const summary = document.getElementById("gem-preflight-never-check-summary");
+    if (!summary) return;
+    const count = Array.isArray(urls) ? urls.length : 0;
+    summary.textContent = count === 0 ? "No URLs are currently blocked." : `${count} URL${count === 1 ? "" : "s"} currently blocked.`;
+  }
+
+  function showPreflightNeverCheckModal(urls) {
+    const list = Array.isArray(urls) ? urls.slice() : [];
+    const modal = document.createElement("div");
+    modal.style.cssText = `
+      position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 10001;
+      display: flex; align-items: center; justify-content: center;
+    `;
+    const escapedRows = list.map((url) => {
+      const safe = String(url || "");
+      return `<div class="gem-setting gem-setting-blocked-url">
+        <button type="button" data-action="gem-preflight-never-check-remove" data-url="${safe.replace(/"/g, "&quot;")}" style="border:none; order: 2; background:transparent; color:#dc2626; cursor:pointer; font-weight:700;" aria-label="Remove URL from never-check list">✕</button>
+        <div class="sub-label" style="margin:0; word-break:break-all; flex:1;">${safe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</div>
+      </div>`;
+    }).join("");
+    modal.innerHTML = `
+      <div style="background: var(--token-box-default-background, #ffffff); border-radius: 12px; padding: 20px; max-width: 820px; width: 92%; max-height: 80vh; display: flex; flex-direction: column;">
+        <h3 style="margin:0 0 8px 0;">Preflight URL Never-Check List</h3>
+        <p class="sub-label" style="margin:0 0 10px 0;">URLs listed here are skipped by Preflight formatting and live checks.</p>
+        <div id="gem-preflight-never-check-modal-list" class="gem-scrollable" style="padding:0 8px 0 0; overflow:auto; max-height:90vh;">
+          ${escapedRows || '<div class="sub-label">No URLs are currently blocked.</div>'}
+        </div>
+        <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:12px;">
+          <button id="gem-preflight-never-check-clear-all-btn" type="button" class="e-btn">Clear all</button>
+          <button id="gem-preflight-never-check-close-btn" type="button" class="e-btn e-btn-primary">Close</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    const close = () => { if (modal && modal.parentNode) modal.parentNode.removeChild(modal); };
+    modal.querySelector("#gem-preflight-never-check-close-btn")?.addEventListener("click", close);
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) close();
+      const removeBtn = e.target && e.target.closest ? e.target.closest('[data-action="gem-preflight-never-check-remove"]') : null;
+      if (removeBtn) {
+        const url = removeBtn.getAttribute("data-url") || "";
+        const next = list.filter((u) => String(u) !== String(url));
+        writePreflightNeverCheckList(next, () => {
+          close();
+          loadPreflightNeverCheckList();
+          showPreflightNeverCheckModal(next);
+        });
+      }
+    });
+    modal.querySelector("#gem-preflight-never-check-clear-all-btn")?.addEventListener("click", () => {
+      if (!list.length) return;
+      writePreflightNeverCheckList([], () => {
+        close();
+        loadPreflightNeverCheckList();
+      });
+    });
+  }
+
+  function loadPreflightNeverCheckList() {
+    readPreflightNeverCheckList((list) => updatePreflightNeverCheckSummary(list));
+  }
+
   function loadSettings() {
     // First check if highlightTerms exists to determine if user has customized
     chrome.storage.sync.get(['highlightTerms'], (result) => {
@@ -943,6 +1557,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
 
         // Load saved searches
         loadSavedSearches();
+        loadPreflightNeverCheckList();
       });
     });
   }
@@ -1056,11 +1671,11 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         syncPasteBehaviorHandler() {
           syncPasteBehaviorUI();
         },
-        exportHandler() {
-          window.GemHighlightTerms.showExportModal();
+        exportFullBackupHandler() {
+          showFullBackupExportModal();
         },
-        importHandler() {
-          window.GemHighlightTerms.showImportModal();
+        importFullBackupHandler() {
+          showFullBackupImportModal();
         },
         unhideAllBlocksHandler() {
           if (!confirm("Are you sure you want to unhide all blocks? This will permanently show all blocks that were previously hidden.")) return;
@@ -1079,6 +1694,13 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
     }
 
     const handlers = _gemSettingsBoundHandlers;
+    const manageNeverCheckBtn = document.getElementById("gem-manage-preflight-never-check-btn");
+    if (manageNeverCheckBtn && manageNeverCheckBtn.dataset.gemBound !== "true") {
+      manageNeverCheckBtn.dataset.gemBound = "true";
+      manageNeverCheckBtn.addEventListener("click", () => {
+        readPreflightNeverCheckList((list) => showPreflightNeverCheckModal(list));
+      });
+    }
 
     // Settings elements that trigger save
     const settingsIds = [
@@ -1161,14 +1783,14 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
       addBtn.addEventListener("click", window.GemHighlightTerms.addNew);
     }
 
-    const exportBtn = document.getElementById("export-highlight-btn");
-    if (exportBtn) {
-      exportBtn.addEventListener("click", handlers.exportHandler);
+    const exportFullBackupBtn = document.getElementById("gem-export-full-backup-btn");
+    if (exportFullBackupBtn) {
+      exportFullBackupBtn.addEventListener("click", handlers.exportFullBackupHandler);
     }
 
-    const importBtn = document.getElementById("import-highlight-btn");
-    if (importBtn) {
-      importBtn.addEventListener("click", handlers.importHandler);
+    const importFullBackupBtn = document.getElementById("gem-import-full-backup-btn");
+    if (importFullBackupBtn) {
+      importFullBackupBtn.addEventListener("click", handlers.importFullBackupHandler);
     }
 
     const unhideBtn = document.getElementById("unhide-all-blocks-btn");
@@ -1387,7 +2009,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
 
   // Load highlight terms into the UI
   // Highlight terms management is now in highlight-terms-settings.js
-  // (window.GemHighlightTerms.load / .addNew / .showExportModal / .showImportModal)
+  // (window.GemHighlightTerms.load / .addNew)
 
   // Load color swatches into the UI
   function loadColorSwatches(swatches) {
@@ -1827,6 +2449,9 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
     if (changes[GEM_PREFLIGHT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_UNIT_KEY]) {
       const el = document.getElementById("opt-preflight-singular-image-weight-threshold-unit");
       if (el) el.value = (changes[GEM_PREFLIGHT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_UNIT_KEY].newValue === 'KB') ? 'KB' : 'MB';
+    }
+    if (changes[GEM_PREFLIGHT_URL_NEVER_CHECK_KEY]) {
+      loadPreflightNeverCheckList();
     }
   });
 

@@ -1,5 +1,9 @@
 /* Gemma: Media Database iframe (Image Picker). Add overrides here. */
 
+/* Column count for thumbnail grid; parent page syncs this from the Image Picker slider when grid view is active. */
+html {
+    --gem-recent-grid-cols: 6;
+}
 
 .e-mediadb-breadcrumb .e-mediadb-breadcrumb__root.ng-binding[ng-click="directiveCtrl.selectRoot()"] {
     font-size: 0 !important;
@@ -14,12 +18,12 @@
 html, body { background-color: transparent !important; }
 
 .e-mediadb > .e-layout.e-layout-fullheight.e-layout-without_navigation {
-    padding-top: 8px !important;
+    padding-top: 0px !important;
 }
 
 .e-mediadb .e-layout__header {
     margin: 0 !important;
-    padding: 0 0 10px !important;
+    padding: 2px 0 12px !important;
 }
 
 .e-mediadb-breadcrumb {
@@ -53,6 +57,10 @@ html, body { background-color: transparent !important; }
     background: color-mix(in srgb, var(--token-box-alternate-background) 92%, transparent);
 }
 
+section.e-layout__section {
+    margin: 0 0 0 16px !important;
+}
+
 section.e-layout__section.e-mediadb-section, 
 .e-mediadb-section__content .e-table {
     background: var(--token-box-alternate-background) !important;
@@ -67,4 +75,63 @@ section.e-layout__section.e-mediadb-section,
 
 .e-mediadb .e-btn {
     background: var(--token-box-alternate-background) !important;
+}
+
+.e-mediadb > .e-layout-without_navigation { padding: 0 16px 0 16px !important }
+.e-mediadb .e-layout__section.e-mediadb-section { 
+    border: none !important;
+    border-radius: 0 !important; 
+}
+
+.e-mediadb-section .e-mediadb-section__content {
+    padding: 0 16px 16px 0 !important;
+}
+
+.e-mediadb-section__content .e-padding-horizontal-l {
+    padding: 0 !important;
+    display: grid;
+    grid-template-columns: repeat(var(--gem-recent-grid-cols), minmax(0, 1fr));
+    gap: calc(16px - (var(--gem-recent-grid-cols) - 2) * 1.75px);
+}
+
+.e-mediadb-section__content .e-padding-horizontal-l .e-card-small {
+    margin:0 !important;
+    width: 100% !important;
+}
+
+[data-e-tooltip="Thumbnails"], [data-e-tooltip="List view"] {
+    display: none !important;
+}
+
+main.e-layout__content {
+    margin: 0 -16px !important;
+}
+
+.e-mediadb .e-mediadb-section .e-mediadb-section__content {
+    scrollbar-width: thin;
+}
+
+.e-card__title {
+    font-size: calc(15px - (var(--gem-recent-grid-cols) - 2) * 0.625px) !important;
+    line-height: 1.4 !important;
+}
+
+.e-card__lead {
+    padding: 8px 10px !important;
+    transition: none !important;
+}
+
+.mediadb-list-item[ng-show="ctrl.items.isInSearchingMode() && !ctrl.items.isReLoading()"] {
+    display: none !important;
+}
+
+.e-mediadb-breadcrumb__item_container {
+    color: unset !important;
+}
+
+.e-card { 
+    border-radius: 5px !important; 
+    background: var(--token-box-default-background) !important;
+    box-shadow: rgba(0, 0, 0, 0.075) 0px 4px 8px, rgba(0, 0, 0, 0.05) 0px 1px 1px 0px !important;
+    border: 1px solid var(--token-box-default-border) !important;
 }
