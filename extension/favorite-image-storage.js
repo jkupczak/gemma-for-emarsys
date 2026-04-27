@@ -4,14 +4,14 @@
  * Mirrors the strategy used by snippet-storage.js.
  *
  * Format v2 packed structure:
- *   { p: [urlPrefix, ...], t: [str, ...], i: [[url, ts, catIdx, langIdx, altText, transIdx, width], ...] }
+ *   { p: [urlPrefix, ...], t: [str, ...], i: [[url, ts, catIdx, langIdx, altText, transIdx, width, friendlyFilename], ...] }
  *   - p: URL prefix dedup table (prefixes shared by 2+ URLs)
  *   - t: string dedup table for category/language/translation (index 0 = empty string)
  *   - i: packed items; url is either a full string or [prefixIdx, suffix]
  *   - trailing default values (0 or '') are truncated from each item
  *
  * Format v1 (legacy, read-only):
- *   [[url, ts, category, language, altText, translation, width], ...]
+ *   [[url, ts, category, language, altText, translation, width, friendlyFilename], ...]
  *
  * Sync keys: fm (meta), f0-f15 (chunks)
  */
@@ -31,6 +31,7 @@
   function unpackV1Item(arr) {
     if (!Array.isArray(arr) || arr.length < 2 || !arr[0]) return null;
     const width = (typeof arr[6] === 'number' && arr[6] > 0) ? arr[6] : '';
+    const friendlyFilename = (typeof arr[7] === 'string') ? arr[7] : '';
     return {
       url: String(arr[0]),
       ts: (typeof arr[1] === 'number') ? arr[1] : 0,
@@ -39,7 +40,8 @@
         language: String(arr[3] ?? ''),
         altText: String(arr[4] ?? ''),
         translation: String(arr[5] ?? ''),
-        width: width
+        width: width,
+        friendlyFilename: friendlyFilename
       }
     };
   }
@@ -109,7 +111,8 @@
       const transIdx = ensureString((typeof m.translation === 'string') ? m.translation : '');
       const width = (typeof m.width === 'number' && m.width > 0) ? m.width : '';
 
-      const row = [urlVal, ts, catIdx, langIdx, altText, transIdx, width];
+      const friendlyFilename = (typeof m.friendlyFilename === 'string') ? m.friendlyFilename : '';
+      const row = [urlVal, ts, catIdx, langIdx, altText, transIdx, width, friendlyFilename];
 
       // Truncate trailing defaults (0 for indices, '' for strings)
       while (row.length > 2) {
@@ -154,6 +157,7 @@
       const transIdx = (typeof arr[5] === 'number') ? arr[5] : 0;
       const widthRaw = arr[6];
       const width = (typeof widthRaw === 'number' && widthRaw > 0) ? widthRaw : '';
+      const friendlyFilename = (typeof arr[7] === 'string') ? arr[7] : '';
 
       return {
         url,
@@ -163,7 +167,8 @@
           language: String(strings[langIdx] ?? ''),
           altText: altText,
           translation: String(strings[transIdx] ?? ''),
-          width: width
+          width: width,
+          friendlyFilename: friendlyFilename
         }
       };
     }).filter(Boolean);

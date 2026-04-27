@@ -1,5 +1,145 @@
------------------------------------------------
-# TO-DO
+ --------------------------------------------------------------------------------
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|         PROMPTS IN PROGRESS                                                    |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+ --------------------------------------------------------------------------------
+
+_________________
+### Recent Media
+
+- I've added a toggle to the "Layout" section in the settings panel right below the "Show "Finish Editing" Button" section. This toggle controls whether or not the "Recent Media" button (#latestMediaTab) is visible to the user. I've added `#latestMediaTab { display: none }` to style.css because I want it to be hidden by default. If the user decides that they want it to be displayed, they need to toggle the setting to ON. Save their choice to sync storage and ensure it's included in our Export settings.
+
+________________
+### Upload button is busted
+
+- The Upload button that is available in the Media Picker when the Media Database tab is active is not currently working.
+- It does not throw any errors in the console when clicked.
+
+_________________
+### Text Highlighting Upgrade
+I want to extend the Text Highlighting function so that it will check more locations on the page. Right now it is just checking the email desktop iframe.
+
+Going forward I'd like it to scan the text located in the Preheader, Subject Line, and the ALT Text of images located in the email desktop iframe. Here are where the Preheader and Subject Line elements can be found:
+
+Preheader: `cb-preheader.e-input-textarea`
+Subject Line: 
+
+For the ALT Text, if the user has the ALT Text Preview feature activated, the text will be visibly present to the user on top of the images. So you can apply the appropriate highlights to that visible text. If the user does NOT have the ALT Text Preview feature activated, 
+
+For the Preheader and Subject Line, the elements that hold them are only available in the DOM conditionally based on the appropriate vertical-nav panel being active. So while we can wait until the panel is active to find them and highlight text if needed, once the panel is deactivated and removed from the DOM we will need to remember if there were any matching text strings so that we can continue to report those to the Preflight panel's Text Analysis feature.
+
+#TODO: 
+ - Element locations, 
+ - tell or ask them what to do when the alt text preview feature is disabled
+ - Document the conditional text options available in the subject line
+
+___________________
+### Image Zoom
+
+In all three tabs of the Image Picker, I want the user to be able to adjust the zoom level of the image thumbnails that get displayed when they are using Grid View. 
+
+- To display the lowest zoom level, the thumbnails should use `object-fit: contain;` in the Recent Images and Favorite Images tabs where we display thumbnails using the <img> tag. Meanwhile, the Media Database tab relies on `background-image`, so there we need to use `background-size: contain`. Lets call that zoom level 1.
+
+- When the user increases the zoom level, it should be increased relative to the available space. For example, if the container that the image sits in has an aspect ratio of 1/1 and the image itself also has an aspect ratio of 1/1, the increase in size for zoom level 2 should be minimal. Conversely, if the image aspect ratio is 10/1, then a level 2 zoom should be more substantial by comparison.
+
+- Lets implement 5 levels of zoom.
+
+- Use the HTML entity for U+F048 as the icon text string for zooming out. Use this for the icon attribute: `ac-icon_zoomout`
+- Use the HTML entity for U+F047 as the icon text string for zooming in. Use this for the icon attribute: `ac-icon_zoomin`
+
+Here is the code for the icons:
+
+<e-icon icon="{icon}">
+  <div aria-hidden="true" class="e-icon-wrapper">
+    <div class="e-icon">{html-entity}</div>
+  </div>
+</e-icon>
+
+Place the controls in `.gem-image-picker-controls` right before `.gem-img-picker-cols-control`.
+
+When the user can't zoom in or out any further, the icon for that action should be dimmed and disabled.
+Zoom level should be synced across the Media Database, Recent Images, and Favorite Images tabs.
+Zoom level should be logged in storage so that it will be remembered across sessions, page loads, and other browser tabs.
+
+The thumbnails in the Media Database look like this in the DOM:
+
+
+#TODO: 
+ - Show them what the media databae thumbnails look like
+
+
+___________________
+### "Title" hiding
+
+Emarsys's link edit dialog features an input field for the user to specify text to be used in the links `title` attribute. The `title` attribute is considered poor for accessibility. So by default I've added some CSS to the `styles.css` file that hides that field from the user to discourage its use. 
+
+I want to add a toggle to the Settings panel so that users can override this. Add it to the XXX section and add this sub-label description underneath it: "Titles on links are considered poor for accessibility. Gemma hides the field by default to dissuade users from using it. Toggle this on to restore its visibility."
+
+The default value for the toggle should be off which is equal to the CSS hiding the field. Toggling it to on should stop the CSS from hiding it. I've already added the appropriate CSS to the `style.css` file. It looks like this: `[for="input-title"], cb-personalizable-input-with-context { display:none }`.
+
+
+___________________
+### Add file type icons to the List View in the Recent Images and Favorite Images tabs
+
+We need to add a new columnn to the list view. It should be the first column in each row. 
+
+The contents should be an icon. Use this code:
+
+<e-icon icon="{icon name}">
+  <div aria-hidden="true" class="e-icon-wrapper">
+    <div class="e-icon">{html-entity}</div>
+  </div>
+</e-icon>
+
+Use this to swap into the icon code. Use the correct corresponding values based on the file extension of the image URL in that row. If none of them match, don't insert any icon.
+
+U+F0EB = JPG / JPEG, icon name = "file-jpg"
+U+F0E7 = GIF, icon name = "file-gif"
+U+F0ED = PNG, icon name = "file-png"
+
+
+
+ --------------------------------------------------------------------------------
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|         TO-DO                                                                  |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+ --------------------------------------------------------------------------------
+
+- Add aspect ratio output to the image picker.
+
+- Tighten up gaps in thumbnail grid when its maxed out.
+
+- ESC needs to work when media db iframe has focus
+
+- Upload drop window doesnt seem fully usable in iframe window
+
+- Ensure that switching tabs while uploading still works.
+- Prevent or warn the user from switching folders, closing image picker, closing browser window if that disrupt the upload.
+
+- Save a log of past upload successes and failures?
+
+- Show a better looking progress tracker for uploads?
+
+- The "width" input image picker doesn't save the input if i hit enter before blurring.
+
+- Make image alt text checker smart so that it only checks when it detects image changes.
+
+- Image picker should show the desktop version minimized in the corner while looking at the mobile tab.
+
+- In the campaign search, the filters should be expanded if any are selected.
+
+- Add a Grid/List toggle to the settings panel.
+
+- Flag the image that is currently being used in the active tab with a glow?
+
 
 Create a "Warnings" panel.
   - Bad/missing links
@@ -53,13 +193,18 @@ The block reset button in the toolbar should have a confirmation prompt.
 
 add text highlighting to the subject line, preview text, and conditional text editors
 
-Add a red notification dot on the links panel for bad or missing links, or untracked links
- - '_blank' should be considered an invalid URL
-
 Add a gear icon to the content block toolbar to open the settings panel and scroll to a new section where they can toggle icons on or off
 
------------------------------------------------
-# COMPLETE
+
+ --------------------------------------------------------------------------------
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|         COMPLETE                                                               |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+ --------------------------------------------------------------------------------
 
 ✓ The mobile image picker view retains the desktop image preview even if the mobile image is not set. This corrects itself after the user clicks away from the focus that is automatically applied to the URL field. Lets fix that.
 

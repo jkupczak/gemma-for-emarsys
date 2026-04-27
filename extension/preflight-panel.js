@@ -11,6 +11,7 @@ function initializePreflightPanel() {
   const PREFLIGHT_URL_NEVER_CHECK_KEY = 'urlPreflightNeverCheck';
   const PREFLIGHT_ALERT_COUNT_KEY = 'gemPreflightAlertCount';
   const PREFLIGHT_SECTION_COLLAPSE_STATE_KEY = 'gemPreflightSectionCollapseStateV1';
+  const GEM_TEXT_HIGHLIGHTS_RENDERED_EVENT = 'gem:text-highlights-rendered';
   const PREFLIGHT_DEFAULT_TOTAL_THRESHOLD_VALUE = 3;
   const PREFLIGHT_DEFAULT_SINGULAR_THRESHOLD_VALUE = 2;
   const PREFLIGHT_DEFAULT_THRESHOLD_UNIT = 'MB';
@@ -25,6 +26,12 @@ function initializePreflightPanel() {
   let boundPreviewIframe = null;
   let boundPreviewIframeLoadHandler = null;
   let imageHoverTooltipEl = null;
+  let highlightDrivenTextRefreshTimer = null;
+  let latestImageAlertCount = 0;
+  let latestAccessibilityAlertCount = 0;
+  let latestLinksAlertCount = 0;
+  let latestNotifyAlertCount = 0;
+  let latestTextAnalysisSnapshot = null;
   const CONTACT_PREVIEW_IFRAME_SELECTOR = '.cp-contact_preview__preview vce-iframes-container iframe';
   const CONTACT_PREVIEW_LINK_VERIFY_DEBOUNCE_MS = 550;
 
@@ -221,12 +228,12 @@ function initializePreflightPanel() {
 
   function createPreflightTabHTML() {
     return `
-<cb-vertical-tab id="gem-preflight-tab" value="tooltips.preflight" icon="ac-action-finish">
+<cb-vertical-tab id="gem-preflight-tab" value="tooltips.preflight" icon="rocket">
   <e-verticalnav-item class="gem-e-verticalnav-item gem-preflight-nav-item">
     <div class="e-verticalnavitem">
       <e-tooltip placement="right" content="Preflight" role="tooltip" aria-description="Preflight">
         <div class="e-verticalnavitem__icon e-svgclickfix">
-          <e-icon icon="ac-action-finish"><div aria-hidden="true" class="e-icon-wrapper"><div class="e-icon">&#xF008;</div></div></e-icon>
+          <e-icon icon="rocket"><div aria-hidden="true" class="e-icon-wrapper"><div class="e-icon">&#xF168;</div></div></e-icon>
         </div>
       </e-tooltip>
       <span class="gem-preflight-alert-pip" data-role="preflightAlertPip" style="display:none;">0</span>
@@ -248,7 +255,7 @@ function initializePreflightPanel() {
       <div class="gem-preflight-collapsible-section" data-role="textAnalysisSection">
         <div class="gem-preflight-subsection-title">
           <div class="gem-preflight-subsection-title-main">
-            <span>Text Analysis</span>
+            <span>Text</span>
             <span class="gem-preflight-section-pip gem-preflight-section-pip--muted" data-role="textAnalysisSectionAlertPip">0</span>
           </div>
           <div class="gem-preflight-header-actions">
@@ -258,22 +265,25 @@ function initializePreflightPanel() {
           </div>
         </div>
         <div class="gem-preflight-collapsible-body" data-role="textAnalysisSectionBody">
-          <div class="gem-preflight-metrics gem-preflight-links-metrics">
-            <div class="gem-preflight-metric-row">
-              <div class="gem-preflight-metric-label">Total text matches</div>
-              <div class="gem-preflight-metric-value" data-metric="textMatchesTotal">Scanning...</div>
+          <div class="gem-preflight-subsection-description" data-role="textAnalysisInfo" style="display:none;"></div>
+          <div data-role="textAnalysisResultsWrap">
+            <div class="gem-preflight-metrics gem-preflight-links-metrics">
+              <div class="gem-preflight-metric-row">
+                <div class="gem-preflight-metric-label">Total text matches</div>
+                <div class="gem-preflight-metric-value" data-metric="textMatchesTotal">Scanning...</div>
+              </div>
+              <div class="gem-preflight-metric-row">
+                <div class="gem-preflight-metric-label">Total "Notify" matches</div>
+                <div class="gem-preflight-metric-value" data-metric="textNotifyMatchesTotal">Scanning...</div>
+              </div>
             </div>
-            <div class="gem-preflight-metric-row">
-              <div class="gem-preflight-metric-label">Total "Notify" matches</div>
-              <div class="gem-preflight-metric-value" data-metric="textNotifyMatchesTotal">Scanning...</div>
-            </div>
-          </div>
-          <div data-role="notifyMatchesWrap">
-            <div class="gem-preflight-subsection-description">
-              Unique "Notify" matches
-            </div>
-            <div class="gem-preflight-accessibility-table" data-role="notifyMatchesTable">
-              <div class="gem-preflight-image-breakdown-empty">Scanning...</div>
+            <div data-role="notifyMatchesWrap">
+              <div class="gem-preflight-subsection-description">
+                Unique "Notify" matches
+              </div>
+              <div class="gem-preflight-accessibility-table" data-role="notifyMatchesTable">
+                <div class="gem-preflight-image-breakdown-empty">Scanning...</div>
+              </div>
             </div>
           </div>
         </div>
@@ -428,6 +438,7 @@ function initializePreflightPanel() {
           </div>
         </div>
       </div>
+      <div class="gem-preflight-section-divider" aria-hidden="true"></div>
       <div class="gem-preflight-footnote" data-metric="statusText"></div>
     </div>
   </div>
@@ -455,6 +466,8 @@ function initializePreflightPanel() {
       linksTable: panel.querySelector('[data-role="linksTable"]'),
       notifyMatchesTable: panel.querySelector('[data-role="notifyMatchesTable"]'),
       notifyMatchesWrap: panel.querySelector('[data-role="notifyMatchesWrap"]'),
+      textAnalysisResultsWrap: panel.querySelector('[data-role="textAnalysisResultsWrap"]'),
+      textAnalysisInfo: panel.querySelector('[data-role="textAnalysisInfo"]'),
       skippedUrlsWrap: panel.querySelector('[data-role="skippedUrlsWrap"]'),
       skippedUrlsToggle: panel.querySelector('[data-role="skippedUrlsToggle"]'),
       skippedUrlsTable: panel.querySelector('[data-role="skippedUrlsTable"]'),
@@ -484,6 +497,18 @@ function initializePreflightPanel() {
     }
     pip.textContent = String(Math.min(99, safe));
     pip.style.display = '';
+  }
+
+  function persistAndUpdateOverallAlertPip() {
+    const alertCount = Math.max(
+      0,
+      (Number.parseInt(String(latestImageAlertCount), 10) || 0) +
+      (Number.parseInt(String(latestAccessibilityAlertCount), 10) || 0) +
+      (Number.parseInt(String(latestLinksAlertCount), 10) || 0) +
+      (Number.parseInt(String(latestNotifyAlertCount), 10) || 0)
+    );
+    chrome.storage.local.set({ [PREFLIGHT_ALERT_COUNT_KEY]: alertCount });
+    updateAlertPip(alertCount);
   }
 
   function updateSectionPip(pipEl, count) {
@@ -981,6 +1006,10 @@ function initializePreflightPanel() {
     if (initialScanRetryTimer) {
       clearTimeout(initialScanRetryTimer);
       initialScanRetryTimer = null;
+    }
+    if (highlightDrivenTextRefreshTimer) {
+      clearTimeout(highlightDrivenTextRefreshTimer);
+      highlightDrivenTextRefreshTimer = null;
     }
     disconnectContactPreviewObserver();
     if (preflightLiveSessionSaveTimer) {
@@ -2369,6 +2398,96 @@ function initializePreflightPanel() {
     });
   }
 
+  function loadTextHighlightingUsageState() {
+    return new Promise((resolve) => {
+      try {
+        chrome.storage.sync.get({ highlightTerms: {}, enableHighlighting: true }, (res) => {
+          const terms = (res && res.highlightTerms && typeof res.highlightTerms === 'object') ? res.highlightTerms : {};
+          resolve({
+            enabled: !!res.enableHighlighting,
+            totalRules: Object.keys(terms).length
+          });
+        });
+      } catch (_) {
+        resolve({ enabled: true, totalRules: 0 });
+      }
+    });
+  }
+
+  function renderTextAnalysisGuidance(els, usage) {
+    if (!els || !els.textAnalysisInfo) return;
+    const infoEl = els.textAnalysisInfo;
+    if (!usage.enabled) {
+      infoEl.textContent = 'Text analysis is paused because "Enable text highlighting overlays" is off. Turn it on in Settings > Text Highlighting Configuration.';
+      infoEl.style.display = '';
+      return;
+    }
+    if (!usage.totalRules) {
+      infoEl.textContent = 'Add at least one text highlighting rule in Settings > Text Highlighting Configuration to start tracking text analysis matches.';
+      infoEl.style.display = '';
+      return;
+    }
+    infoEl.textContent = '';
+    infoEl.style.display = 'none';
+  }
+
+  function renderTextAnalysisPayloadToUi(panel, els, payload) {
+    if (!panel || !els || !payload) return;
+    const textMatchesTotalEl = panel.querySelector('[data-metric="textMatchesTotal"]');
+    const textNotifyMatchesTotalEl = panel.querySelector('[data-metric="textNotifyMatchesTotal"]');
+    if (!textMatchesTotalEl || !textNotifyMatchesTotalEl || !els.notifyMatchesWrap || !els.notifyMatchesTable) return;
+    textMatchesTotalEl.textContent = String(payload.totalMatches || 0);
+    textNotifyMatchesTotalEl.textContent = String(payload.totalNotifyMatches || 0);
+    const notifyRows = Array.isArray(payload.notifyRows) ? payload.notifyRows : [];
+    if (!notifyRows.length) {
+      els.notifyMatchesWrap.style.display = 'none';
+      els.notifyMatchesTable.innerHTML = '<div class="gem-preflight-image-breakdown-empty">No "Notify" text matches found.</div>';
+    } else {
+      els.notifyMatchesWrap.style.display = '';
+      els.notifyMatchesTable.innerHTML = notifyRows.map((row) => `
+        <div class="gem-preflight-image-breakdown-row">
+          <div class="gem-preflight-image-breakdown-name" title="${escapeHtmlText(row.label || '')}">${escapeHtmlText(row.label || '')}</div>
+          <div class="gem-preflight-image-breakdown-size">${String(row.count || 0)}</div>
+        </div>
+      `).join('');
+    }
+    updateTextAnalysisSectionPip(payload.totalNotifyMatches || 0);
+  }
+
+  async function initializeTextAnalysisSectionState() {
+    const els = getPreflightPanelEls();
+    if (!els || !els.panel) return;
+    const panel = els.panel;
+    const textMatchesTotalEl = panel.querySelector('[data-metric="textMatchesTotal"]');
+    const textNotifyMatchesTotalEl = panel.querySelector('[data-metric="textNotifyMatchesTotal"]');
+    if (!textMatchesTotalEl || !textNotifyMatchesTotalEl || !els.notifyMatchesWrap || !els.textAnalysisResultsWrap) return;
+    const usage = await loadTextHighlightingUsageState();
+    renderTextAnalysisGuidance(els, usage);
+
+    if (!usage.enabled || !usage.totalRules) {
+      els.textAnalysisResultsWrap.style.display = usage.enabled ? '' : 'none';
+      textMatchesTotalEl.textContent = '0';
+      textNotifyMatchesTotalEl.textContent = '0';
+      els.notifyMatchesWrap.style.display = 'none';
+      updateTextAnalysisSectionPip(0);
+      latestNotifyAlertCount = 0;
+      latestTextAnalysisSnapshot = { totalMatches: 0, totalNotifyMatches: 0, notifyRows: [] };
+      persistAndUpdateOverallAlertPip();
+      syncPreflightSectionCollapseUI(panel, 'textAnalysis', true);
+      return;
+    }
+
+    els.textAnalysisResultsWrap.style.display = '';
+    if (latestTextAnalysisSnapshot) {
+      renderTextAnalysisPayloadToUi(panel, els, latestTextAnalysisSnapshot);
+      return;
+    }
+
+    textMatchesTotalEl.textContent = '--';
+    textNotifyMatchesTotalEl.textContent = '--';
+    els.notifyMatchesWrap.style.display = 'none';
+  }
+
   function compileHighlightRegex(pattern) {
     try {
       return new RegExp(pattern, 'gi');
@@ -2474,6 +2593,57 @@ function initializePreflightPanel() {
     return { totalMatches, totalNotifyMatches, notifyRows };
   }
 
+  async function refreshTextAnalysisFromCurrentPreview(options = {}) {
+    const usage = await loadTextHighlightingUsageState();
+    latestNotifyAlertCount = 0;
+    persistAndUpdateOverallAlertPip();
+
+    if (options.updatePanelUi && isPreflightActive()) {
+      const els = getPreflightPanelEls();
+      if (els && els.panel) {
+        renderTextAnalysisGuidance(els, usage);
+        if (els.textAnalysisResultsWrap) {
+          els.textAnalysisResultsWrap.style.display = usage.enabled ? '' : 'none';
+        }
+        if (!usage.enabled || !usage.totalRules) {
+          const textMatchesTotalEl = els.panel.querySelector('[data-metric="textMatchesTotal"]');
+          const textNotifyMatchesTotalEl = els.panel.querySelector('[data-metric="textNotifyMatchesTotal"]');
+          if (textMatchesTotalEl) textMatchesTotalEl.textContent = '0';
+          if (textNotifyMatchesTotalEl) textNotifyMatchesTotalEl.textContent = '0';
+          if (els.notifyMatchesWrap) els.notifyMatchesWrap.style.display = 'none';
+          updateTextAnalysisSectionPip(0);
+          syncPreflightSectionCollapseUI(els.panel, 'textAnalysis', true);
+          return;
+        }
+      }
+    }
+
+    if (!usage.enabled || !usage.totalRules) return;
+
+    const iframe = document.querySelector(PREVIEW_IFRAME_SELECTOR);
+    const doc = iframe && iframe.contentDocument ? iframe.contentDocument : null;
+    if (!doc || !doc.documentElement) return;
+    const textAnalysis = await analyzeTextInPreviewDoc(doc);
+    latestTextAnalysisSnapshot = textAnalysis;
+    latestNotifyAlertCount = textAnalysis.totalNotifyMatches || 0;
+    persistAndUpdateOverallAlertPip();
+
+    if (!options.updatePanelUi || !isPreflightActive()) return;
+    const panel = document.querySelector(PRELIGHT_PANEL_TAG);
+    if (!panel) return;
+    const els = getPreflightPanelEls();
+    if (!els || !els.notifyMatchesTable || !els.notifyMatchesWrap) return;
+    renderTextAnalysisPayloadToUi(panel, els, textAnalysis);
+  }
+
+  function scheduleTextAnalysisRefreshFromHighlightEvent() {
+    if (highlightDrivenTextRefreshTimer) clearTimeout(highlightDrivenTextRefreshTimer);
+    highlightDrivenTextRefreshTimer = setTimeout(() => {
+      highlightDrivenTextRefreshTimer = null;
+      void refreshTextAnalysisFromCurrentPreview({ updatePanelUi: true });
+    }, 140);
+  }
+
   function formatBytes(bytes) {
     if (!Number.isFinite(bytes) || bytes < 0) return '0 B';
     if (bytes === 0) return '0 B';
@@ -2504,10 +2674,8 @@ function initializePreflightPanel() {
     const statusEl = panel.querySelector('[data-metric="statusText"]');
     const linksTotalEl = panel.querySelector('[data-metric="linksTotal"]');
     const linksUniqueEl = panel.querySelector('[data-metric="linksUnique"]');
-    const textMatchesTotalEl = panel.querySelector('[data-metric="textMatchesTotal"]');
-    const textNotifyMatchesTotalEl = panel.querySelector('[data-metric="textNotifyMatchesTotal"]');
     const els = getPreflightPanelEls();
-    if (!refsEl || !uniqueEl || !sizeEl || !statusEl || !networkUniqueEl || !embeddedUniqueEl || !speedEstimatesEl || !textMatchesTotalEl || !textNotifyMatchesTotalEl || !els || !els.imageBreakdownTable || !els.linksTable || !els.accessibilityWarningsTable || !els.notifyMatchesTable || !els.notifyMatchesWrap) return;
+    if (!refsEl || !uniqueEl || !sizeEl || !statusEl || !networkUniqueEl || !embeddedUniqueEl || !speedEstimatesEl || !els || !els.imageBreakdownTable || !els.linksTable || !els.accessibilityWarningsTable) return;
 
     if (payload.state === 'loading') {
       refsEl.textContent = 'Scanning...';
@@ -2527,10 +2695,6 @@ function initializePreflightPanel() {
       updateAccessibilitySectionPip(0);
       if (linksTotalEl) linksTotalEl.textContent = 'Scanning...';
       if (linksUniqueEl) linksUniqueEl.textContent = 'Scanning...';
-      textMatchesTotalEl.textContent = 'Scanning...';
-      textNotifyMatchesTotalEl.textContent = 'Scanning...';
-      els.notifyMatchesWrap.style.display = 'none';
-      els.notifyMatchesTable.innerHTML = '<div class="gem-preflight-image-breakdown-empty">Scanning...</div>';
       cachedLinksAnalysis = null;
       cachedSkippedLinkRows = [];
       clearContactPreviewRenderedRows();
@@ -2540,7 +2704,6 @@ function initializePreflightPanel() {
       renderSkippedUrlsSection();
       syncLiveVerifyAllButtonState();
       updateLinksSectionPip(0);
-      updateTextAnalysisSectionPip(0);
       return;
     }
 
@@ -2600,30 +2763,6 @@ function initializePreflightPanel() {
         syncLiveVerifyAllButtonState();
         updateLinksSectionPip(0);
       }
-      if (payload.textPayload) {
-        textMatchesTotalEl.textContent = String(payload.textPayload.totalMatches || 0);
-        textNotifyMatchesTotalEl.textContent = String(payload.textPayload.totalNotifyMatches || 0);
-        const notifyRows = Array.isArray(payload.textPayload.notifyRows) ? payload.textPayload.notifyRows : [];
-        if (!notifyRows.length) {
-          els.notifyMatchesWrap.style.display = 'none';
-          els.notifyMatchesTable.innerHTML = '<div class="gem-preflight-image-breakdown-empty">No "Notify" text matches found.</div>';
-        } else {
-          els.notifyMatchesWrap.style.display = '';
-          els.notifyMatchesTable.innerHTML = notifyRows.map((row) => `
-            <div class="gem-preflight-image-breakdown-row">
-              <div class="gem-preflight-image-breakdown-name" title="${escapeHtmlText(row.label || '')}">${escapeHtmlText(row.label || '')}</div>
-              <div class="gem-preflight-image-breakdown-size">${String(row.count || 0)}</div>
-            </div>
-          `).join('');
-        }
-        updateTextAnalysisSectionPip(payload.textPayload.totalNotifyMatches || 0);
-      } else {
-        textMatchesTotalEl.textContent = '--';
-        textNotifyMatchesTotalEl.textContent = '--';
-        els.notifyMatchesWrap.style.display = '';
-        els.notifyMatchesTable.innerHTML = '<div class="gem-preflight-image-breakdown-empty">Unable to scan text matches.</div>';
-        updateTextAnalysisSectionPip(0);
-      }
       return;
     }
 
@@ -2673,24 +2812,6 @@ function initializePreflightPanel() {
       setupLinksLiveVerifyInteractions();
     }
 
-    const textPayload = payload.text || { totalMatches: 0, totalNotifyMatches: 0, notifyRows: [] };
-    textMatchesTotalEl.textContent = String(textPayload.totalMatches || 0);
-    textNotifyMatchesTotalEl.textContent = String(textPayload.totalNotifyMatches || 0);
-    const notifyRows = Array.isArray(textPayload.notifyRows) ? textPayload.notifyRows : [];
-    if (!notifyRows.length) {
-      els.notifyMatchesWrap.style.display = 'none';
-      els.notifyMatchesTable.innerHTML = '<div class="gem-preflight-image-breakdown-empty">No "Notify" text matches found.</div>';
-    } else {
-      els.notifyMatchesWrap.style.display = '';
-      els.notifyMatchesTable.innerHTML = notifyRows.map((row) => `
-        <div class="gem-preflight-image-breakdown-row">
-          <div class="gem-preflight-image-breakdown-name" title="${escapeHtmlText(row.label || '')}">${escapeHtmlText(row.label || '')}</div>
-          <div class="gem-preflight-image-breakdown-size">${String(row.count || 0)}</div>
-        </div>
-      `).join('');
-    }
-    updateTextAnalysisSectionPip(textPayload.totalNotifyMatches || 0);
-
     const rows = Array.isArray(payload.imageBreakdownRows) ? payload.imageBreakdownRows : [];
     if (!rows.length) {
       els.imageBreakdownTable.innerHTML = '<div class="gem-preflight-image-breakdown-empty">No network image URLs found.</div>';
@@ -2734,7 +2855,6 @@ function initializePreflightPanel() {
     const refs = collectImageReferencesFromPreviewDoc(doc);
     const uniqueUrls = Array.from(new Set(refs));
     const accessibilityWarnings = collectLinkedImageMissingAltWarnings(doc);
-    const textAnalysis = await analyzeTextInPreviewDoc(doc);
     await loadPreflightNeverCheckUrls();
     const linkAnalysis = analyzeLinksInPreviewDoc(doc);
     const linksPayload = {
@@ -2752,14 +2872,15 @@ function initializePreflightPanel() {
       ? await fetchUniqueDownloadSize(uniqueUrls)
       : { ok: true, knownBytes: 0, unknownCount: 0, networkCount: networkUniqueUrls.length, unknownDetails: [], measurements: [] };
     if (!sizeData || sizeData.ok === false) {
-      const fallbackAlertCount = (accessibilityWarnings.length || 0) + (linkAnalysis.linksAlertCount || 0) + (textAnalysis.totalNotifyMatches || 0);
-      chrome.storage.local.set({ [PREFLIGHT_ALERT_COUNT_KEY]: fallbackAlertCount });
-      updateAlertPip(fallbackAlertCount);
+      latestImageAlertCount = 0;
+      latestAccessibilityAlertCount = accessibilityWarnings.length || 0;
+      latestLinksAlertCount = linkAnalysis.linksAlertCount || 0;
+      latestNotifyAlertCount = latestNotifyAlertCount || 0;
+      persistAndUpdateOverallAlertPip();
       await updateImagesMetricsUI({
         state: 'error',
         message: sizeData && sizeData.error ? `Unable to measure image sizes: ${sizeData.error}` : 'Unable to measure image sizes.',
-        linksPayload,
-        textPayload: textAnalysis
+        linksPayload
       });
       return { ok: false, reason: 'measure-failed', totalReferences: 0, totalLinkAnchors: linkAnalysis.totalAnchors };
     }
@@ -2791,10 +2912,12 @@ function initializePreflightPanel() {
     const imageAlertCount = (totalExceeded ? 1 : 0) + singularExceededCount;
     const accessibilityAlertCount = accessibilityWarnings.length;
     const linksAlertCount = linkAnalysis.linksAlertCount || 0;
-    const notifyAlertCount = textAnalysis.totalNotifyMatches || 0;
-    const alertCount = imageAlertCount + accessibilityAlertCount + linksAlertCount + notifyAlertCount;
-    chrome.storage.local.set({ [PREFLIGHT_ALERT_COUNT_KEY]: alertCount });
-    updateAlertPip(alertCount);
+    const notifyAlertCount = latestNotifyAlertCount || 0;
+    latestImageAlertCount = imageAlertCount;
+    latestAccessibilityAlertCount = accessibilityAlertCount;
+    latestLinksAlertCount = linksAlertCount;
+    latestNotifyAlertCount = notifyAlertCount;
+    persistAndUpdateOverallAlertPip();
 
     const unknownSuffix = sizeData.unknownCount > 0 ? ` (+ ${sizeData.unknownCount} unknown)` : '';
     if (isPreflightActive()) {
@@ -2822,7 +2945,6 @@ function initializePreflightPanel() {
         imagesAlertCount: imageAlertCount,
         accessibilityAlertCount,
         links: linksPayload,
-        text: textAnalysis,
         imageBreakdownRows: includeImageWeight ? imageBreakdownRows : [],
         accessibilityWarningRows: accessibilityWarnings.map((row) => ({ ...row, url: row.url || '' })),
         statusText: includeImageWeight
@@ -2875,6 +2997,7 @@ function initializePreflightPanel() {
         });
       });
     }
+    void initializeTextAnalysisSectionState();
 
     setPermissionGateVisible(true);
     initializePermissionGateState();
@@ -3068,6 +3191,7 @@ function initializePreflightPanel() {
     chrome.storage.local.get({ [PREFLIGHT_ALERT_COUNT_KEY]: 0 }, (res) => {
       updateAlertPip(res[PREFLIGHT_ALERT_COUNT_KEY] || 0);
     });
+    window.addEventListener(GEM_TEXT_HIGHLIGHTS_RENDERED_EVENT, scheduleTextAnalysisRefreshFromHighlightEvent);
     bindInitialCalculationToPreviewIframe();
     observeForPreviewIframeAndRunInitialCalculation();
     chrome.storage.onChanged.addListener((changes, namespace) => {
@@ -3086,6 +3210,9 @@ function initializePreflightPanel() {
       ) {
         maybeRunInitialAlertCalculation();
         if (isPreflightActive()) scheduleScan(10);
+      }
+      if (changes.enableHighlighting || changes.highlightTerms) {
+        if (isPreflightActive()) void initializeTextAnalysisSectionState();
       }
     });
     return true;

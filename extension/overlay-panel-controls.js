@@ -834,6 +834,7 @@ function initializeOverlayPanelControls() {
               view: 'grid',
               density: 'small',
               source: 'seen',
+              listThumbs: false,
               gridCols: 6,
               favGroupBy: 'category',
               seenGroupBy: 'path',
@@ -848,6 +849,7 @@ function initializeOverlayPanelControls() {
             const view = prefs && (prefs.view === 'grid' ? 'grid' : 'table');
             const density = prefs && (prefs.density === 'medium' || prefs.density === 'large' ? prefs.density : 'small');
             const source = normalizeRecentImagesPickerSource(prefs && prefs.source);
+            const listThumbs = !!(prefs && prefs.listThumbs);
             const gridColsRaw = prefs && Number(prefs.gridCols);
             const gridCols =
               Number.isFinite(gridColsRaw) ? Math.min(10, Math.max(2, Math.round(gridColsRaw))) : 6;
@@ -860,12 +862,12 @@ function initializeOverlayPanelControls() {
             const seenSortBy = normalizeRecentImagesPickerSeenSortBy(prefs && prefs.seenSortBy);
             const favSortOrder = normalizeRecentImagesPickerSortOrder(prefs && prefs.favSortOrder);
             const seenSortOrder = normalizeRecentImagesPickerSortOrder(prefs && prefs.seenSortOrder);
-            callback({ view, density, source, gridCols, favGroupBy, seenGroupBy, favSortBy, seenSortBy, favSortOrder, seenSortOrder });
+            callback({ view, density, source, listThumbs, gridCols, favGroupBy, seenGroupBy, favSortBy, seenSortBy, favSortOrder, seenSortOrder });
           }
         );
       } catch (e) {
         callback({
-          view: 'grid', density: 'small', source: normalizeRecentImagesPickerSource('seen'), gridCols: 6,
+          view: 'grid', density: 'small', source: normalizeRecentImagesPickerSource('seen'), listThumbs: false, gridCols: 6,
           favGroupBy: 'category', seenGroupBy: 'path',
           favSortBy: 'category', seenSortBy: 'lastSeen', favSortOrder: 'desc', seenSortOrder: 'desc'
         });
@@ -877,6 +879,7 @@ function initializeOverlayPanelControls() {
         const view = prefs && (prefs.view === 'grid' ? 'grid' : 'table');
         const density = prefs && (prefs.density === 'medium' || prefs.density === 'large' ? prefs.density : 'small');
         const source = normalizeRecentImagesPickerSource(prefs && prefs.source);
+        const listThumbs = !!(prefs && prefs.listThumbs);
         const gridColsRaw = prefs && Number(prefs.gridCols);
         const gridCols = Number.isFinite(gridColsRaw) ? Math.min(10, Math.max(2, Math.round(gridColsRaw))) : 6;
         const favGroupBy =
@@ -890,7 +893,7 @@ function initializeOverlayPanelControls() {
         const seenSortOrder = normalizeRecentImagesPickerSortOrder(prefs && prefs.seenSortOrder);
         chrome.storage.local.set({
           [GEM_RECENT_IMAGES_PICKER_PREFS_KEY]: {
-            view, density, source, gridCols, favGroupBy, seenGroupBy,
+            view, density, source, listThumbs, gridCols, favGroupBy, seenGroupBy,
             favSortBy, seenSortBy, favSortOrder, seenSortOrder
           }
         });
@@ -905,6 +908,7 @@ function initializeOverlayPanelControls() {
         source: normalizeRecentImagesPickerSource(
           p.source != null ? p.source : (picker.dataset.gemRecentImagesSource || 'seen')
         ),
+        listThumbs: p.listThumbs != null ? !!p.listThumbs : picker.dataset.gemRecentImagesListThumbs === '1',
         gridCols: p.gridCols != null ? p.gridCols : Number(picker.dataset.gemRecentImagesGridCols || 6),
         favGroupBy: p.favGroupBy != null ? p.favGroupBy : (picker.dataset.gemFavoriteImagesGroupBy || 'category'),
         seenGroupBy: p.seenGroupBy != null ? p.seenGroupBy : (picker.dataset.gemSeenImagesGroupBy || 'path'),
@@ -1420,17 +1424,29 @@ function initializeOverlayPanelControls() {
       const doc = iframe.contentDocument;
       const content = recentPicker.querySelector('#gem-image-picker-content');
       if (!content) return;
-      const colsWrap = content.querySelector('.gem-mediadb-header-cols-wrap');
-      const viewToggleBtn = content.querySelector('.gem-mediadb-toggle-view-btn');
-      if (!colsWrap && !viewToggleBtn) return;
+      const colsWrap = content.querySelector('.gem-img-picker-cols-control');
+      const segmented = content.querySelector('.gem-image-picker-view-segmented');
+      const gridOpt = content.querySelector('.gem-image-picker-view-option[data-view-target="grid"]');
+      const listOpt = content.querySelector('.gem-image-picker-view-option[data-view-target="table"]');
+      const hasViewControl = !!(segmented || gridOpt || listOpt);
+      if (!colsWrap && !hasViewControl) return;
       const mode = getGemMediaDbIframeViewModeFromDoc(doc);
       const gridCols = Math.min(10, Math.max(2, Number(recentPicker.dataset.gemRecentImagesGridCols || 6)));
       if (colsWrap) {
         colsWrap.style.display = mode === 'grid' ? 'flex' : 'none';
       }
-      if (viewToggleBtn) {
-        viewToggleBtn.disabled = mode === 'unknown';
-        viewToggleBtn.textContent = mode === 'grid' ? 'Show List' : 'Show Grid';
+      if (segmented) segmented.classList.toggle('gem-image-picker-view-segmented--disabled', mode === 'unknown');
+      if (gridOpt) {
+        gridOpt.disabled = mode === 'unknown';
+        gridOpt.classList.toggle('gem-image-picker-view-option--active', mode === 'grid');
+      }
+      if (listOpt) {
+        listOpt.disabled = mode === 'unknown';
+        listOpt.classList.toggle('gem-image-picker-view-option--active', mode === 'list');
+      }
+      const uploadBtn = content.querySelector('.gem-mediadb-upload-btn');
+      if (uploadBtn) {
+        uploadBtn.disabled = mode === 'unknown';
       }
       if (doc && doc.documentElement) {
         if (mode === 'grid') {
@@ -1452,6 +1468,45 @@ function initializeOverlayPanelControls() {
           }
         }
       }
+    }
+
+    function waitForMediaDbUploadAndClick(iframe, opts) {
+      const timeoutMs = (opts && opts.timeoutMs) || 15000;
+      const intervalMs = (opts && opts.intervalMs) || 50;
+      return new Promise((resolve) => {
+        const start = Date.now();
+        const tick = () => {
+          let iframeRef = iframe;
+          try {
+            if (!iframeRef || !iframeRef.isConnected) iframeRef = gemMediaDbPickerIframeEl;
+            const doc = iframeRef && iframeRef.contentDocument;
+            const el = doc && doc.querySelector('div.mediadb-upload');
+            if (el) {
+              el.click();
+              resolve(true);
+              return;
+            }
+          } catch (_) {}
+          if (Date.now() - start >= timeoutMs) {
+            resolve(false);
+            return;
+          }
+          setTimeout(tick, intervalMs);
+        };
+        tick();
+      });
+    }
+
+    function triggerGemMediaDbUploadFromPicker(picker, modal) {
+      if (!picker || !modal) return;
+      if (!getGemMediaDbPickerIframeSrc()) return;
+      const cur = normalizeRecentImagesPickerSource(picker.dataset.gemRecentImagesSource || 'seen');
+      if (cur !== 'mediaDb') {
+        picker.dataset.gemRecentImagesSource = 'mediaDb';
+        saveRecentImagesPickerPrefs(buildRecentImagesPickerPrefsPayload(picker, { source: 'mediaDb' }));
+        showRecentImagesPicker(modal);
+      }
+      void waitForMediaDbUploadAndClick(gemMediaDbPickerIframeEl);
     }
 
     function notifyGemMediaDbIframeLayoutChange(iframe) {
@@ -1992,19 +2047,86 @@ function initializeOverlayPanelControls() {
           (typeof w === 'string' ? parseInt(w.trim(), 10) : NaN);
         return Number.isFinite(n) && n > 0 ? Math.trunc(n) : '';
       };
-      const clean = {
-        category: (meta && typeof meta.category === 'string') ? meta.category.trim() : '',
-        language: (meta && typeof meta.language === 'string') ? meta.language.trim() : '',
-        altText: (meta && typeof meta.altText === 'string') ? meta.altText.trim() : '',
-        translation: (meta && typeof meta.translation === 'string') ? meta.translation.trim() : '',
-        width: normalizeWidth(meta && meta.width)
-      };
       getFavoriteImageMetaMap((map) => {
         const next = { ...(map || {}) };
+        const existing = (next && next[u] && typeof next[u] === 'object') ? next[u] : {};
+        const clean = {
+          category: (meta && typeof meta.category === 'string') ? meta.category.trim() : '',
+          language: (meta && typeof meta.language === 'string') ? meta.language.trim() : '',
+          altText: (meta && typeof meta.altText === 'string') ? meta.altText.trim() : '',
+          translation: (meta && typeof meta.translation === 'string') ? meta.translation.trim() : '',
+          width: normalizeWidth(meta && meta.width),
+          // Read-only metadata sourced from Recently Seen; never user-authored.
+          friendlyFilename: (existing && typeof existing.friendlyFilename === 'string') ? existing.friendlyFilename.trim() : ''
+        };
         next[u] = clean;
         saveFavoriteImageMetaMap(next, () => callback && callback(true));
       });
     }
+
+    function syncFavoriteFilenameFromRecentlySeen(url, friendlyFilename, callback) {
+      const u = normalizeRecentImageUrlCandidate(url);
+      const ff = String(friendlyFilename || '').trim();
+      if (!u || !ff) return callback && callback(false);
+      getFavoriteImages((favList) => {
+        const isFav = (Array.isArray(favList) ? favList : []).some((x) => x && x.url === u);
+        if (!isFav) return callback && callback(false);
+        getFavoriteImageMetaMap((map) => {
+          const next = { ...(map || {}) };
+          const existing = (next[u] && typeof next[u] === 'object') ? next[u] : {};
+          const current = (typeof existing.friendlyFilename === 'string') ? existing.friendlyFilename.trim() : '';
+          if (current === ff) return callback && callback(false);
+          next[u] = { ...existing, friendlyFilename: ff };
+          saveFavoriteImageMetaMap(next, () => callback && callback(true));
+        });
+      });
+    }
+
+    function syncFavoriteFilenamesFromRecentlySeenList(seenList, callback) {
+      const rows = Array.isArray(seenList) ? seenList : [];
+      const filenameByUrl = new Map();
+      rows.forEach((row) => {
+        const u = normalizeRecentImageUrlCandidate(row && row.url);
+        const ff = String((row && row.friendlyFilename) || '').trim();
+        if (!u || !ff) return;
+        filenameByUrl.set(u, ff);
+      });
+      if (!filenameByUrl.size) return callback && callback(false);
+      getFavoriteImages((favList) => {
+        const favSet = new Set((Array.isArray(favList) ? favList : []).map((x) => x && x.url).filter(Boolean));
+        if (!favSet.size) return callback && callback(false);
+        getFavoriteImageMetaMap((map) => {
+          const next = { ...(map || {}) };
+          let changed = false;
+          filenameByUrl.forEach((ff, u) => {
+            if (!favSet.has(u)) return;
+            const existing = (next[u] && typeof next[u] === 'object') ? next[u] : {};
+            const current = String(existing.friendlyFilename || '').trim();
+            if (current === ff) return;
+            next[u] = { ...existing, friendlyFilename: ff };
+            changed = true;
+          });
+          if (!changed) return callback && callback(false);
+          saveFavoriteImageMetaMap(next, () => callback && callback(true));
+        });
+      });
+    }
+
+    function initializeFavoriteFilenameSyncFromRecentlySeen() {
+      if (initializeFavoriteFilenameSyncFromRecentlySeen._initialized) return;
+      initializeFavoriteFilenameSyncFromRecentlySeen._initialized = true;
+      try {
+        chrome.storage.onChanged.addListener((changes, namespace) => {
+          if (namespace !== 'local' || !changes || !changes[GEM_RECENTLY_SEEN_IMAGES_STORAGE_KEY]) return;
+          const nextVal = changes[GEM_RECENTLY_SEEN_IMAGES_STORAGE_KEY].newValue;
+          syncFavoriteFilenamesFromRecentlySeenList(Array.isArray(nextVal) ? nextVal : []);
+        });
+      } catch (_) {}
+      getRecentlySeenImages((list) => {
+        syncFavoriteFilenamesFromRecentlySeenList(list);
+      });
+    }
+    try { window.initializeFavoriteFilenameSyncFromRecentlySeen = initializeFavoriteFilenameSyncFromRecentlySeen; } catch (_) {}
 
     // ------------------------------------------------------------
     // Favorite Category collapse state
@@ -2429,12 +2551,12 @@ function initializeOverlayPanelControls() {
 
       const buildSharedImagePickerHeader = ({ sourceTabs, addFavoriteBtn = '', rightControls = '', searchBlock = '' }) => `
             <div class="gem-image-list-header" style="padding:0; background: var(--token-box-alternate-background); position:sticky; z-index:3; top:0">
-            <div style="display:flex; align-items:center; justify-content:space-between; width:100%; margin-bottom:10px; background-color: var(--token-tab-default-background);">
+            <div style="border-radius: 0 0 0 6px; border: 1px solid var(--token-box-default-border);border-top: 0; border-right: 0; display:flex; align-items:center; justify-content:space-between; width:100%; margin-bottom:10px; background-color: var(--token-tab-default-background);">
               <div style="display:flex; gap:10px; align-items:center; width:100%;">
                 <div class="e-tabs e-tabs-dialogheader">
                 ${sourceTabs}
                 ${addFavoriteBtn}
-                <div style="display:flex; gap:10px; align-items:center; justify-content:flex-end; margin-left:auto;">
+                <div class="gem-image-picker-controls">
                   ${rightControls}
                 </div>
                 </div>
@@ -2443,6 +2565,106 @@ function initializeOverlayPanelControls() {
             ${searchBlock}
             </div>
           `.trim();
+
+      const buildSharedImagePickerControls = ({
+        collapseExpandAllBtn = '',
+        gridColsControl = '',
+        listThumbsToggleControl = '',
+        currentView = 'grid',
+        viewToggleDisabled = false,
+        uploadControl = '',
+        addFavoriteControl = ''
+      } = {}) => `
+            <div class="gem-image-picker-shared-controls" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+              ${collapseExpandAllBtn}
+              ${gridColsControl}
+              ${listThumbsToggleControl}
+              <div class="gem-image-picker-view-segmented${viewToggleDisabled ? ' gem-image-picker-view-segmented--disabled' : ''}" role="group" aria-label="Image view mode">
+                <button type="button" class="gem-image-picker-view-option ${currentView === 'grid' ? 'gem-image-picker-view-option--active' : ''}" data-view-target="grid"${viewToggleDisabled ? ' disabled' : ''}><span class="gem-image-picker-view-option__label">Grid</span></button>
+                <button type="button" class="gem-image-picker-view-option ${currentView === 'table' ? 'gem-image-picker-view-option--active' : ''}" data-view-target="table"${viewToggleDisabled ? ' disabled' : ''}><span class="gem-image-picker-view-option__label">List</span></button>
+              </div>
+              ${uploadControl}
+              ${addFavoriteControl}
+            </div>
+          `.trim();
+
+      const buildGridColsControl = ({
+        value = 6,
+        hidden = false,
+        extraInputClasses = ''
+      } = {}) => {
+        const v = Math.min(10, Math.max(2, Number(value || 6)));
+        const extra = String(extraInputClasses || '').trim();
+        const inputClasses = ['gem-fav-grid-cols-slider', extra].filter(Boolean).join(' ');
+        return `
+              <div class="gem-img-picker-cols-control"${hidden ? ' style="display:none;align-items:center;gap:8px;"' : ''}>
+                <span aria-label="Columns" title="Columns"><e-icon icon="th-large"><div aria-hidden="true" class="e-icon-wrapper"><div class="e-icon">&#xF17E;</div></div></e-icon></span>
+                <input class="${inputClasses}" type="range" min="2" max="10" step="1" value="${escape(String(v))}">
+              </div>
+            `.trim();
+      };
+
+      const buildRowMenuTrigger = (url, source, isFav) => `
+            <button
+              type="button"
+              class="gem-image-row-menu gem-image-row-menu-trigger"
+              aria-label="More actions"
+              title="More actions"
+              aria-haspopup="menu"
+              aria-expanded="false"
+              data-url="${String(url || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')}"
+              data-source="${String(source || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')}"
+              data-is-fav="${isFav ? '1' : '0'}"
+            ></button>
+          `.trim();
+
+      const ensureSharedRowMenuPopover = (pickerHost) => {
+        let popover = document.getElementById('gem-image-row-menu-popover-single');
+        if (popover) return popover;
+        popover = document.createElement('div');
+        popover.id = 'gem-image-row-menu-popover-single';
+        popover.className = 'e-dropdown e-dropdown-popper e-popover gem-image-row-menu-popover gem-image-row-menu-popover--floating';
+        popover.innerHTML = `
+          <div class="e-dropdown__content e-dropdown__content-visible e-popover">
+            <span class="e-dropdown__item gem-image-row-menu-item" data-action="add-to-page"><e-icon icon="plus" type="table"><div aria-hidden="true" class="e-icon-wrapper"><div class="e-icon e-icon-table">&#xF155;</div></div></e-icon>Add To Page</span>
+            <span class="e-dropdown__item gem-image-row-menu-item" data-action="preview"><e-icon icon="eye" type="table"><div aria-hidden="true" class="e-icon-wrapper"><div class="e-icon e-icon-table">&#xF0DD;</div></div></e-icon>Preview</span>
+            <span class="e-dropdown__item gem-image-row-menu-item" data-action="copy-url"><e-icon icon="files" type="table"><div aria-hidden="true" class="e-icon-wrapper"><div class="e-icon e-icon-table">&#xF0F4;</div></div></e-icon>Copy URL</span>
+            <span class="e-dropdown__item gem-image-row-menu-item gem-image-row-menu-item--favorite" data-action="favorite-toggle"><e-icon icon="star" type="table"><div aria-hidden="true" class="e-icon-wrapper"><div class="e-icon e-icon-table">&#xF175;</div></div></e-icon><span class="gem-image-row-menu-favorite-label">Add to Favorites</span></span>
+          </div>
+          <div class="e-popover__arrow"></div>
+        `.trim();
+        (pickerHost || document.body).appendChild(popover);
+        return popover;
+      };
+
+      const formatPickerSearchTermsHtml = (terms) => {
+        const list = Array.isArray(terms) ? terms : [];
+        if (!list.length) return '';
+        const escapeHtml = (s) =>
+          String(s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+        const decodeTermForDisplay = (rawTerm) => {
+          const raw = String(rawTerm || '');
+          try {
+            // Show human-readable regex/text terms when storage contains URL-encoded content.
+            return decodeURIComponent(raw);
+          } catch (_) {
+            return raw;
+          }
+        };
+        const tokens = list.map((o) => {
+          const raw = escapeHtml(decodeTermForDisplay(o && o.term));
+          const text = o && o.isRegex ? `/${raw}/` : raw;
+          return `<strong>${text}</strong>`;
+        });
+        if (tokens.length === 1) return tokens[0];
+        if (tokens.length === 2) return `${tokens[0]} and ${tokens[1]}`;
+        return `${tokens.slice(0, -1).join(', ')}, and ${tokens[tokens.length - 1]}`;
+      };
 
       // Create picker container once
       let picker = leftPanelContainer.querySelector('#gem-recent-images-picker');
@@ -2516,6 +2738,131 @@ function initializeOverlayPanelControls() {
 
           // Delegate clicks for selecting
           picker.addEventListener('click', (e) => {
+            const getSharedRowMenu = () => document.getElementById('gem-image-row-menu-popover-single');
+            const closeRowMenus = () => {
+              picker.querySelectorAll('.gem-image-row-menu-trigger[aria-expanded="true"]').forEach((trigger) => {
+                trigger.setAttribute('aria-expanded', 'false');
+              });
+              const popover = getSharedRowMenu();
+              if (popover) {
+                popover.classList.remove('gem-image-row-menu-popover--visible');
+              }
+              picker._gemRowMenuContext = null;
+            };
+            const inRowMenu = e.target.closest && (e.target.closest('.gem-image-row-menu') || e.target.closest('#gem-image-row-menu-popover-single'));
+            if (!inRowMenu) closeRowMenus();
+
+            const rowMenuTrigger = e.target.closest && e.target.closest('.gem-image-row-menu-trigger');
+            if (rowMenuTrigger) {
+              e.preventDefault();
+              e.stopPropagation();
+              const wasOpen = rowMenuTrigger.getAttribute('aria-expanded') === 'true';
+              closeRowMenus();
+              if (!wasOpen) {
+                rowMenuTrigger.setAttribute('aria-expanded', 'true');
+                const popover = ensureSharedRowMenuPopover(picker);
+                const source = rowMenuTrigger.getAttribute('data-source') || '';
+                const url = rowMenuTrigger.getAttribute('data-url') || '';
+                const isFav = rowMenuTrigger.getAttribute('data-is-fav') === '1';
+                picker._gemRowMenuContext = { source, url, isFav };
+                const favLabel = popover.querySelector('.gem-image-row-menu-favorite-label');
+                if (favLabel) favLabel.textContent = isFav ? 'Unfavorite' : 'Add to Favorites';
+
+                popover.classList.add('gem-image-row-menu-popover--visible');
+                const rect = rowMenuTrigger.getBoundingClientRect();
+                const popRect = popover.getBoundingClientRect();
+                const margin = 8;
+                const left = Math.max(margin, Math.min(window.innerWidth - popRect.width - margin, rect.right - popRect.width));
+                const top = Math.min(window.innerHeight - popRect.height - margin, rect.bottom + 6);
+                popover.style.left = `${left}px`;
+                popover.style.top = `${Math.max(margin, top)}px`;
+              }
+              return;
+            }
+
+            const rowMenuItem = e.target.closest && e.target.closest('#gem-image-row-menu-popover-single .gem-image-row-menu-item[data-action]');
+            if (rowMenuItem) {
+              e.preventDefault();
+              e.stopPropagation();
+              const action = rowMenuItem.getAttribute('data-action') || '';
+              const ctx = picker._gemRowMenuContext || {};
+              const source = ctx.source || '';
+              const url = ctx.url || '';
+              closeRowMenus();
+              if (!url) return;
+
+              if (action === 'add-to-page') {
+                insertImageUrlIntoImagePropertiesModal(modal, url);
+                return;
+              }
+              if (action === 'preview') {
+                if (source === 'favorites') {
+                  openFavoriteImageMetaModal(modal, url, { mode: 'edit' });
+                } else {
+                  openRecentlySeenImageDetailsModal(modal, url);
+                }
+                return;
+              }
+              if (action === 'copy-url') {
+                const copyFallback = () => {
+                  try {
+                    const ta = document.createElement('textarea');
+                    ta.value = url;
+                    ta.setAttribute('readonly', '');
+                    ta.style.position = 'fixed';
+                    ta.style.opacity = '0';
+                    document.body.appendChild(ta);
+                    ta.select();
+                    document.execCommand('copy');
+                    ta.remove();
+                    if (window.gemShowToast) window.gemShowToast('Copied image URL.', { type: 'success', duration: 2200 });
+                  } catch (_) {
+                    if (window.gemShowToast) window.gemShowToast('Could not copy URL.', { type: 'error', duration: 2600 });
+                  }
+                };
+                try {
+                  if (navigator && navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(url).then(() => {
+                      if (window.gemShowToast) window.gemShowToast('Copied image URL.', { type: 'success', duration: 2200 });
+                    }).catch(copyFallback);
+                  } else {
+                    copyFallback();
+                  }
+                } catch (_) {
+                  copyFallback();
+                }
+                return;
+              }
+              if (action === 'favorite-toggle') {
+                toggleFavoriteImageUrl(url, (isFavNow) => {
+                  const nextFav = !!isFavNow;
+                  // Update all overflow triggers for this URL without full table rebuild.
+                  picker.querySelectorAll(`.gem-image-row-menu-trigger[data-url="${CSS.escape(url)}"]`).forEach((trigger) => {
+                    trigger.setAttribute('data-is-fav', nextFav ? '1' : '0');
+                  });
+                  // Keep existing star button affordances in sync where present (grid tiles, details views).
+                  picker.querySelectorAll(`.gem-recent-image-fav-btn[data-url="${CSS.escape(url)}"]`).forEach((btn) => {
+                    btn.classList.toggle('gem-recent-image-fav-btn--active', nextFav);
+                    const title = nextFav ? 'Unfavorite' : 'Favorite';
+                    btn.setAttribute('title', title);
+                    btn.setAttribute('aria-label', title);
+                    btn.textContent = nextFav ? '★' : '☆';
+                  });
+                  const pop = getSharedRowMenu();
+                  const favLabel = pop && pop.querySelector('.gem-image-row-menu-favorite-label');
+                  if (favLabel && picker._gemRowMenuContext && picker._gemRowMenuContext.url === url) {
+                    favLabel.textContent = nextFav ? 'Unfavorite' : 'Add to Favorites';
+                  }
+
+                  // In Favorites source, an unfavorite changes row membership; refresh that list.
+                  if (source === 'favorites' && !nextFav) {
+                    showRecentImagesPicker(modal);
+                  }
+                });
+                return;
+              }
+            }
+
             const settingsBtn = e.target.closest && e.target.closest('.gem-search-settings-btn');
             if (settingsBtn) {
               e.preventDefault();
@@ -2610,7 +2957,7 @@ function initializeOverlayPanelControls() {
           if (seenRemoveGroupBtn) {
             e.preventDefault();
             e.stopPropagation();
-            const header = seenRemoveGroupBtn.closest && seenRemoveGroupBtn.closest('.gem-seen-cat-header');
+            const header = seenRemoveGroupBtn.closest && seenRemoveGroupBtn.closest('.gem-picker-cat-header');
             if (!header) return;
             const gKey = header.getAttribute('data-cat') || '';
             const seenGroupByAttr = header.getAttribute('data-seen-groupby') || 'path';
@@ -2659,30 +3006,60 @@ function initializeOverlayPanelControls() {
             return;
           }
 
-          const mdViewToggle = e.target.closest && e.target.closest('.gem-mediadb-toggle-view-btn');
-          if (mdViewToggle && !mdViewToggle.disabled) {
+          const viewOptionBtn = e.target.closest && e.target.closest('.gem-image-picker-view-option[data-view-target]');
+          if (viewOptionBtn && !viewOptionBtn.disabled) {
             e.preventDefault();
             e.stopPropagation();
-            const iframeEl = gemMediaDbPickerIframeEl;
-            const idoc = iframeEl && iframeEl.contentDocument;
-            const mode = getGemMediaDbIframeViewModeFromDoc(idoc);
-            const inner =
-              mode === 'list'
-                ? (idoc && idoc.querySelector('[data-e-tooltip="Thumbnails"]'))
-                : (mode === 'grid' ? (idoc && idoc.querySelector('[data-e-tooltip="List view"]')) : null);
-            if (mode === 'list' || mode === 'grid') {
-              const nextView = mode === 'list' ? 'grid' : 'table';
-              if (iframeEl) iframeEl._gemMediaDbApplyingPickerViewToIframe = true;
-              picker.dataset.gemRecentImagesView = nextView === 'grid' ? 'grid' : 'table';
-              saveRecentImagesPickerPrefs(buildRecentImagesPickerPrefsPayload(picker, { view: picker.dataset.gemRecentImagesView }));
-              if (inner) inner.click();
-              if (iframeEl) {
-                setTimeout(() => {
-                  iframeEl._gemMediaDbApplyingPickerViewToIframe = false;
-                  scheduleGemMediaDbLayoutChromeRefresh(iframeEl);
-                }, 350);
+            const nextView = viewOptionBtn.getAttribute('data-view-target') === 'table' ? 'table' : 'grid';
+            const activeSource = normalizeRecentImagesPickerSource(picker.dataset.gemRecentImagesSource || 'seen');
+            if (activeSource === 'mediaDb') {
+              const iframeEl = gemMediaDbPickerIframeEl;
+              const idoc = iframeEl && iframeEl.contentDocument;
+              const mode = getGemMediaDbIframeViewModeFromDoc(idoc);
+              const currentView = mode === 'grid' ? 'grid' : (mode === 'list' ? 'table' : '');
+              if (!currentView || nextView === currentView) return;
+              const inner =
+                mode === 'list'
+                  ? (idoc && idoc.querySelector('[data-e-tooltip="Thumbnails"]'))
+                  : (mode === 'grid' ? (idoc && idoc.querySelector('[data-e-tooltip="List view"]')) : null);
+              if (mode === 'list' || mode === 'grid') {
+                if (iframeEl) iframeEl._gemMediaDbApplyingPickerViewToIframe = true;
+                picker.dataset.gemRecentImagesView = nextView === 'grid' ? 'grid' : 'table';
+                saveRecentImagesPickerPrefs(buildRecentImagesPickerPrefsPayload(picker, { view: picker.dataset.gemRecentImagesView }));
+                if (inner) inner.click();
+                if (iframeEl) {
+                  setTimeout(() => {
+                    iframeEl._gemMediaDbApplyingPickerViewToIframe = false;
+                    scheduleGemMediaDbLayoutChromeRefresh(iframeEl);
+                  }, 350);
+                }
+              }
+            } else {
+              const curView = picker.dataset.gemRecentImagesView === 'grid' ? 'grid' : 'table';
+              if (nextView !== curView) {
+                picker.dataset.gemRecentImagesView = nextView;
+                saveRecentImagesPickerPrefs(buildRecentImagesPickerPrefsPayload(picker, { view: picker.dataset.gemRecentImagesView }));
+                showRecentImagesPicker(modal);
               }
             }
+            return;
+          }
+
+          const mdUploadBtn = e.target.closest && e.target.closest('.gem-mediadb-upload-btn');
+          if (mdUploadBtn && !mdUploadBtn.disabled) {
+            e.preventDefault();
+            e.stopPropagation();
+            triggerGemMediaDbUploadFromPicker(picker, modal);
+            return;
+          }
+          const listThumbsBtn = e.target.closest && e.target.closest('.gem-list-thumbs-toggle-btn');
+          if (listThumbsBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+            const isOn = picker.dataset.gemRecentImagesListThumbs === '1';
+            picker.dataset.gemRecentImagesListThumbs = isOn ? '0' : '1';
+            saveRecentImagesPickerPrefs(buildRecentImagesPickerPrefsPayload(picker, { listThumbs: picker.dataset.gemRecentImagesListThumbs === '1' }));
+            showRecentImagesPicker(modal);
             return;
           }
 
@@ -2727,7 +3104,7 @@ function initializeOverlayPanelControls() {
             if (currentSource === 'favorites') {
               getFavoriteCategoryCollapseMap((map) => {
                 const collapseMap = map || {};
-                const groupHeaders = picker.querySelectorAll('.gem-fav-cat-header');
+                const groupHeaders = picker.querySelectorAll('.gem-picker-cat-header');
                 const action = determineAction(collapseMap, groupHeaders);
                 const shouldCollapse = action === 'collapse';
 
@@ -2758,7 +3135,7 @@ function initializeOverlayPanelControls() {
             } else if (currentSource === 'seen') {
               getRecentlySeenImageGroupCollapseMap((map) => {
                 const collapseMap = map || {};
-                const groupHeaders = picker.querySelectorAll('.gem-seen-cat-header');
+                const groupHeaders = picker.querySelectorAll('.gem-picker-cat-header');
                 const action = determineAction(collapseMap, groupHeaders);
                 const shouldCollapse = action === 'collapse';
 
@@ -2862,7 +3239,23 @@ function initializeOverlayPanelControls() {
           for (const t of tokens) {
             const term = String(t).trim();
             if (!term) continue;
-            if (existingTerms.has(term.toLowerCase())) continue;
+            const normalizedTerm = term.toLowerCase();
+            if (existingTerms.has(normalizedTerm)) {
+              // Enter on an existing saved term should reactivate that pill
+              // (instead of silently clearing input and doing nothing).
+              contextPills.forEach((p) => {
+                if (!p) return;
+                const pTerm = String((p && p.term) || '').trim().toLowerCase();
+                if (pTerm !== normalizedTerm) return;
+                const idx = Number(p._idx);
+                if (!Number.isInteger(idx) || idx < 0 || idx >= pills.length) return;
+                if (pills[idx] && !pills[idx].active) {
+                  pills[idx].active = true;
+                  changed = true;
+                }
+              });
+              continue;
+            }
             existingTerms.add(term.toLowerCase());
             pills.push({ term, active: true, isRegex: regexOn, label: '', context: ctx });
             changed = true;
@@ -2979,15 +3372,7 @@ function initializeOverlayPanelControls() {
           }
         }, true);
 
-        // Toggle view (table vs grid)
-        picker.addEventListener('click', (e) => {
-          const toggleBtn = e.target.closest && e.target.closest('.gem-recent-images-toggle-view-btn');
-          if (!toggleBtn) return;
-          picker.dataset.gemRecentImagesView = picker.dataset.gemRecentImagesView === 'grid' ? 'table' : 'grid';
-          saveRecentImagesPickerPrefs(buildRecentImagesPickerPrefsPayload(picker, { view: picker.dataset.gemRecentImagesView }));
-          // Re-render (stay open)
-          showRecentImagesPicker(modal);
-        });
+        // Shared view toggle is handled in the main delegated click handler above.
       }
 
       if (picker) picker._gemImagePropsModalRef = modal;
@@ -3016,6 +3401,7 @@ function initializeOverlayPanelControls() {
             picker.dataset.gemRecentImagesView = applied.view;
             picker.dataset.gemRecentImagesGridDensity = applied.density;
             picker.dataset.gemRecentImagesSource = normalizeRecentImagesPickerSource(applied.source);
+            picker.dataset.gemRecentImagesListThumbs = applied.listThumbs ? '1' : '0';
             picker.dataset.gemRecentImagesGridCols = String(applied.gridCols || 6);
             picker.dataset.gemFavoriteImagesGroupBy = applied.favGroupBy || 'category';
             picker.dataset.gemSeenImagesGroupBy = applied.seenGroupBy || 'path';
@@ -3038,6 +3424,7 @@ function initializeOverlayPanelControls() {
       if (source === 'mediaDb') {
         destroyGemSearchPillSortables(picker);
         picker.style.display = '';
+        const iframeSrc = getGemMediaDbPickerIframeSrc();
 
         const sourceTabs = `
               <div class="e-tabs__title ${source === 'mediaDb' ? 'e-tabs__title-active' : ''}" data-tab="mediaDb">
@@ -3050,21 +3437,22 @@ function initializeOverlayPanelControls() {
                 <div class="e-tabs__separator">Favorite Images</div>
               </div>
           `.trim();
-
-        const iframeSrc = getGemMediaDbPickerIframeSrc();
         const gridColsMedia = Math.min(10, Math.max(2, Number(picker.dataset.gemRecentImagesGridCols || 6)));
         picker.style.setProperty('--gem-recent-grid-cols', String(gridColsMedia));
-        const mediaDbRightControls = iframeSrc
-          ? `
-              <div class="gem-mediadb-header-controls" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-                <div class="gem-mediadb-header-cols-wrap" style="display:none;align-items:center;gap:8px;">
-                  <label style="font-size:12px;opacity:0.75;">Cols</label>
-                  <input class="gem-fav-grid-cols-slider gem-mediadb-grid-cols-slider" type="range" min="2" max="10" step="1" value="${gridColsMedia}">
-                </div>
-                <button type="button" class="e-btn gem-mediadb-toggle-view-btn" disabled>Show Grid</button>
-              </div>
-            `.trim()
+        const mediaDbGridColsControl = buildGridColsControl({
+          value: gridColsMedia,
+          hidden: true,
+          extraInputClasses: 'gem-mediadb-grid-cols-slider'
+        });
+        const mediaDbUploadControl = iframeSrc
+          ? `<button type="button" class="e-btn e-btn-primary gem-mediadb-upload-btn" disabled><e-icon icon="cloud-upload"><div aria-hidden="true" class="e-icon-wrapper"><div class="e-icon">&#xF0AC;</div></div></e-icon>Upload</button>`
           : '';
+        const mediaDbRightControls = buildSharedImagePickerControls({
+          gridColsControl: mediaDbGridColsControl,
+          currentView: picker.dataset.gemRecentImagesView === 'grid' ? 'grid' : 'table',
+          viewToggleDisabled: true,
+          uploadControl: mediaDbUploadControl
+        });
         const header = buildSharedImagePickerHeader({ sourceTabs, rightControls: mediaDbRightControls });
         pickerContent.innerHTML = header;
 
@@ -3128,16 +3516,14 @@ function initializeOverlayPanelControls() {
               .replace(/'/g, '&#39;');
 
           const viewMode = picker.dataset.gemRecentImagesView === 'grid' ? 'grid' : 'table';
-          const toggleLabel = viewMode === 'grid' ? 'Show List' : 'Show Grid';
+          const listThumbsOn = picker.dataset.gemRecentImagesListThumbs === '1';
           const gridCols = Math.min(10, Math.max(2, Number(picker.dataset.gemRecentImagesGridCols || 6)));
           picker.style.setProperty('--gem-recent-grid-cols', String(gridCols));
 
           const title =
             source === 'favorites' ? 'Favorite Images' :
             'Recent Images';
-          const addFavoriteBtn = source === 'favorites'
-            ? `<button class="e-btn gem-favorite-images-add-btn" type="button">Add</button>`
-            : '';
+          const addFavoriteBtn = '';
 
           const sourceTabs = `
               <div class="e-tabs__title ${source === 'mediaDb' ? 'e-tabs__title-active' : ''}" data-tab="mediaDb">
@@ -3390,7 +3776,7 @@ function initializeOverlayPanelControls() {
                 <option value="path" ${seenSortBy === 'path' ? 'selected' : ''}>Folder Path</option>
                 <option value="lastSeen" ${seenSortBy === 'lastSeen' ? 'selected' : ''}>Last Seen</option>
                 <option value="lastUsed" ${seenSortBy === 'lastUsed' ? 'selected' : ''}>Last Used</option>
-                <option value="filename" ${seenSortBy === 'filename' ? 'selected' : ''}>Filename</option>
+                <option value="filename" ${seenSortBy === 'filename' ? 'selected' : ''}>Name</option>
               </select>
               </div>
               ${orderIconStack(
@@ -3415,7 +3801,7 @@ function initializeOverlayPanelControls() {
           const regexActive = source === 'favorites' ? picker.dataset.gemFavRegex === '1' : picker.dataset.gemSeenRegex === '1';
           const favSearch = (source === 'favorites' || source === 'seen')
             ? `
-              <div id="gem-search-container" style="margin-top:12px;padding:0 16px;display:flex; flex-direction: column; gap:0;align-items:flex-start;">
+              <div id="gem-search-container" style="margin-top:12px;padding:0 16px 0 0;display:flex; flex-direction: column; gap:0;align-items:flex-start;">
                 <div style="flex:1;display:flex;flex-direction:row;gap:12px;min-width:100%;">
                   <div class="gem-search-input-wrap" style="width:100%">
                     <input class="e-input e-input-search gem-image-search ${source === 'favorites' ? 'gem-favorite-images-search' : 'gem-seen-images-search'}" placeholder="Search ${source === 'favorites' ? 'favorite images' : 'recent images'}" type="search" value="${escape(source === 'favorites' ? (picker.dataset.gemFavoriteImagesSearch || '') : (picker.dataset.gemSeenImagesSearch || ''))}">
@@ -3427,7 +3813,7 @@ function initializeOverlayPanelControls() {
                 </div>
                 <button type="button" class="gem-search-settings-btn" title="Manage saved searches">⚙</button>
                 </div>
-                  <div class="gem-search-pills" data-pills-source="${source}" style="padding:16px 0; ">
+                  <div class="gem-search-pills" data-pills-source="${source}">
                     ${pillsHtml}
                   </div>
               </div>
@@ -3444,29 +3830,31 @@ function initializeOverlayPanelControls() {
             : '';
 
           const gridColsControl = (viewMode === 'grid')
-            ? `
-              <div style="display:flex; align-items:center; gap:8px;">
-                <label style="font-size:12px; opacity:0.75;">Cols</label>
-                <input class="gem-fav-grid-cols-slider" type="range" min="2" max="10" step="1" value="${escape(String(gridCols))}">
-              </div>
-            `.trim()
+            ? buildGridColsControl({ value: gridCols })
+            : '';
+          const listThumbsToggleControl = (viewMode === 'table' && (source === 'favorites' || source === 'seen'))
+            ? `<button class="e-btn gem-list-thumbs-toggle-btn ${listThumbsOn ? 'e-btn-primary' : ''}" type="button" title="Toggle list thumbnails">List Thumbs: ${listThumbsOn ? 'On' : 'Off'}</button>`
             : '';
 
           const header = buildSharedImagePickerHeader({
             sourceTabs,
             addFavoriteBtn,
-            rightControls: `
-                  ${collapseExpandAllBtn}
-                  ${gridColsControl}
-                  <button class="e-btn gem-recent-images-toggle-view-btn" type="button">${toggleLabel}</button>
-                `.trim(),
+            rightControls: buildSharedImagePickerControls({
+              collapseExpandAllBtn,
+              gridColsControl,
+              listThumbsToggleControl,
+              currentView: viewMode === 'grid' ? 'grid' : 'table',
+              addFavoriteControl: source === 'favorites'
+                ? `<button type="button" class="e-btn e-btn-primary gem-favorite-images-add-btn"><e-icon icon="star"><div aria-hidden="true" class="e-icon-wrapper"><div class="e-icon">&#xF175;</div></div></e-icon>Add Favorite</button>`
+                : ''
+            }),
             searchBlock: favSearch
           });
 
           const empty = rows.length === 0
             ? (source === 'favorites'
-              ? '<div style="margin-top:10px; padding:0 16px 16px 16px; opacity:0.7;">No favorites yet. Favorite an image from Recent Images or add one here.</div>'
-              : '<div style="margin-top:10px; padding:0 16px 16px 16px; opacity:0.7;">No recent images yet. Browse Media DB images or use an image in the editor to start collecting them.</div>')
+              ? '<div class="gem-img-picker-search-results">No favorites yet. Favorite an image from Recent Images or add one here.</div>'
+              : '<div class="gem-img-picker-search-results">No recent images yet. Browse Media DB images or use an image in the editor to start collecting them.</div>')
             : '';
 
           const dateLabel = 'Last Seen';
@@ -3500,8 +3888,9 @@ function initializeOverlayPanelControls() {
                   const language = (m.language || '').trim();
                   const altText = (m.altText || '').trim();
                   const translation = (m.translation || '').trim();
+                  const friendlyFilename = (m.friendlyFilename || '').trim();
                   const lastUsed = lastUsedMap.get(url) || r.ts || 0;
-                  return { url, category, language, altText, translation, lastUsed };
+                  return { url, category, language, altText, translation, friendlyFilename, lastUsed };
                 });
 
                 const matchesQuery = (it) => {
@@ -3515,9 +3904,9 @@ function initializeOverlayPanelControls() {
                   });
                 };
                 const filtered = items.filter(matchesQuery);
-                const termsDisplay = terms.length > 0 ? terms.map((o) => `'${escape(o.term)}'`).join(', ') : '';
+                const termsDisplay = formatPickerSearchTermsHtml(terms);
                 const searchSummary = terms.length > 0 && filtered.length > 0
-                  ? `<div style="padding:0 16px 16px 16px; opacity:0.7;">Found ${filtered.length} matches for ${termsDisplay}.</div>`
+                  ? `<div class="gem-img-picker-search-results">Found ${filtered.length} matches for ${termsDisplay}.</div>`
                   : '';
 
                 const effectiveGroupBy = groupBy === 'none' ? 'category' : groupBy;
@@ -3572,7 +3961,7 @@ function initializeOverlayPanelControls() {
                   const caret = isCollapsed ? '▸' : '▾';
                   const showEdit = groupBy === 'category';
                   return `
-                    <div class="gem-fav-cat-header" data-group-key="${escape(storageKey)}" data-cat="${escape(gKey)}">
+                    <div class="gem-picker-cat-header" data-group-key="${escape(storageKey)}" data-cat="${escape(gKey)}">
                       <button class="e-btn e-btn-borderless e-btn-onlyicon gem-fav-cat-toggle" type="button" data-group-key="${escape(storageKey)}" aria-label="Toggle" title="Toggle">
                         ${caret}
                       </button>
@@ -3626,8 +4015,27 @@ function initializeOverlayPanelControls() {
                 };
 
                 const renderTableRows = (catItems) => {
+                  const deriveFilenameFromUrl = (rawUrl) => {
+                    const u = String(rawUrl || '').trim();
+                    if (!u) return '';
+                    try {
+                      const parsed = new URL(u, window.location.href);
+                      const pathname = String(parsed.pathname || '');
+                      const seg = pathname.split('/').filter(Boolean).pop() || '';
+                      return seg || u;
+                    } catch (_) {
+                      const noHash = u.split('#')[0];
+                      const noQuery = noHash.split('?')[0];
+                      const seg = noQuery.split('/').filter(Boolean).pop() || '';
+                      return seg || u;
+                    }
+                  };
+                  const renderRowMenu = (url, source, isFav) => {
+                    return buildRowMenuTrigger(url, source, isFav);
+                  };
                   return catItems.map((it) => {
                     const metaText = [it.altText].filter(Boolean).join(' • ');
+                    const filename = (it.friendlyFilename || '').trim() || deriveFilenameFromUrl(it.url);
                     const colA = (effectiveGroupBy === 'category')
                       ? (it.language || '')
                       : (effectiveGroupBy === 'translation')
@@ -3638,25 +4046,31 @@ function initializeOverlayPanelControls() {
                       : (effectiveGroupBy === 'translation')
                         ? (it.language || '')
                         : (it.translation || ''); // language
+                    const previewCell = listThumbsOn
+                      ? `<td style="padding:6px; width:140px; vertical-align:middle;">
+                          <img class="gem-checkered-canvas" src="${escape(it.url)}" style="display:block; width:128px; height:70px; object-fit:contain; border-radius:4px;" />
+                        </td>`
+                      : '';
                     return `
                       <tr>
-                        <td style="padding:6px; width:140px; vertical-align:middle;">
-                          <img class="gem-checkered-canvas" src="${escape(it.url)}" style="display:block; width:128px; height:70px; object-fit:contain; border-radius:4px;" />
-                        </td>
-                        <td style="padding:6px; vertical-align:middle; word-break:break-word;">${escape(it.url)}</td>
-                        <td style="padding:6px; vertical-align:middle; word-break:break-word;">${escape(colA || '')}</td>
-                        <td style="padding:6px; vertical-align:middle; word-break:break-word;">${escape(colB || '')}</td>
-                        <td style="padding:6px; vertical-align:middle;">
+                        ${previewCell}
+                        <td>${escape(filename)}</td>
+                        <td>${escape(colA || '')}</td>
+                        <td>${escape(colB || '')}</td>
+                        <td>
                           <div>${escape(formatRecentImageDate(it.lastUsed || 0))}</div>
                           ${metaText ? `<div class="gem-recent-image-meta2" title="${escape(metaText)}">${escape(metaText)}</div>` : ''}
                         </td>
-                        <td style="padding:6px; vertical-align:middle; text-align:right; white-space:nowrap;">
-                          <button class="e-btn e-btn-borderless e-btn-onlyicon gem-recent-image-edit-btn gem-recent-image-edit-btn--table" type="button" data-url="${escape(it.url)}" aria-label="Edit metadata" title="Edit metadata">
-                            <span class="gem-recent-image-edit">✎</span>
-                          </button>
-                          <button class="e-btn e-btn-primary gem-recent-image-use-btn" type="button" data-url="${escape(it.url)}">
-                            Insert
-                          </button>
+                        <td>
+                          <div class="gem-image-row-actions">
+                            <button class="e-btn e-btn-borderless e-btn-onlyicon gem-recent-image-edit-btn gem-recent-image-edit-btn--table" type="button" data-url="${escape(it.url)}" aria-label="Edit metadata" title="Edit metadata">
+                              <span class="gem-recent-image-edit">✎</span>
+                            </button>
+                            <button class="e-btn e-btn-primary gem-recent-image-use-btn" type="button" data-url="${escape(it.url)}">
+                              Insert
+                            </button>
+                            ${renderRowMenu(it.url, 'favorites', true)}
+                          </div>
                         </td>
                       </tr>
                     `;
@@ -3669,7 +4083,7 @@ function initializeOverlayPanelControls() {
                     sortedItems.sort((a, b) => compareFavPickerItems(a, b, favSortBy, favSortDesc));
                     if (viewMode === 'grid') {
                       return `
-                        <div class="gem-fav-cat-section">
+                        <div class="gem-picker-cat-section gem-picker-cat-section--not-collapsible gem-picker-cat-section--expanded">
                           <div class="gem-recent-images-grid">
                             ${sortedItems.map(renderGridItem).join('')}
                           </div>
@@ -3677,22 +4091,22 @@ function initializeOverlayPanelControls() {
                       `.trim();
                     }
                     return `
-                      <div class="gem-fav-cat-section">
-                        <table data-e-version="2" class="e-table e-table-bordered gem-recent-images-table" style="width:100%; font-size: 14px; margin-top:8px;">
+                      <div class="gem-picker-cat-section gem-picker-cat-section--not-collapsible gem-picker-cat-section--expanded">
+                        <div class="gem-picker-list-table-wrapper"><table data-e-version="2" class="e-table e-table-condensed gem-picker-list-table" style="width:100%; font-size: 14px">
                           <thead>
                             <tr>
-                              <th style="width:140px;">Preview</th>
-                              <th>URL</th>
+                              ${listThumbsOn ? '<th style="width:140px;">Preview</th>' : ''}
+                              <th>Name</th>
                               <th style="width:140px;">Language</th>
                               <th style="width:140px;">Translation</th>
                               <th style="width:160px;">${dateLabel}</th>
-                              <th style="width:160px; text-align:right;">Use</th>
+                              <th></th>
                             </tr>
                           </thead>
                           <tbody>
                             ${renderTableRows(sortedItems)}
                           </tbody>
-                        </table>
+                        </table></div>
                       </div>
                     `.trim();
                   }
@@ -3705,9 +4119,11 @@ function initializeOverlayPanelControls() {
                     const legacyKey = (groupBy === 'category') ? (gKey || '') : null;
                     const isCollapsedRaw = !!collapse[storageKey] || (legacyKey != null && !!collapse[legacyKey]);
                     const isCollapsed = isCollapsedRaw;
+                    const sectionStateClass = isCollapsed ? 'gem-picker-cat-section--collapsed' : 'gem-picker-cat-section--expanded';
+                    const sectionCollapseClass = 'gem-picker-cat-section--collapsible';
                     if (viewMode === 'grid') {
                       return `
-                        <div class="gem-fav-cat-section">
+                        <div class="gem-picker-cat-section ${sectionCollapseClass} ${sectionStateClass}">
                           ${headerHtml}
                           ${isCollapsed ? '' : `
                             <div class="gem-recent-images-grid">
@@ -3719,24 +4135,24 @@ function initializeOverlayPanelControls() {
                     }
 
                     return `
-                      <div class="gem-fav-cat-section">
+                      <div class="gem-picker-cat-section ${sectionCollapseClass} ${sectionStateClass}">
                         ${headerHtml}
                         ${isCollapsed ? '' : `
-                          <table data-e-version="2" class="e-table e-table-bordered gem-recent-images-table" style="width:100%; font-size: 14px; margin-top:8px;">
+                          <div class="gem-picker-list-table-wrapper"><table data-e-version="2" class="e-table e-table-condensed gem-picker-list-table" style="width:100%; font-size: 14px">
                             <thead>
                               <tr>
-                                <th style="width:140px;">Preview</th>
-                                <th>URL</th>
+                                ${listThumbsOn ? '<th style="width:140px;">Preview</th>' : ''}
+                                <th>Name</th>
                                 <th style="width:140px;">${effectiveGroupBy === 'category' ? 'Language' : (effectiveGroupBy === 'translation' ? 'Category' : 'Category')}</th>
                                 <th style="width:140px;">${effectiveGroupBy === 'category' ? 'Translation' : (effectiveGroupBy === 'translation' ? 'Language' : 'Translation')}</th>
                                 <th style="width:160px;">${dateLabel}</th>
-                                <th style="width:160px; text-align:right;">Use</th>
+                                <th></th>
                               </tr>
                             </thead>
                             <tbody>
                               ${renderTableRows(catItems)}
                             </tbody>
-                          </table>
+                          </table></div>
                         `}
                       </div>
                     `;
@@ -3748,7 +4164,7 @@ function initializeOverlayPanelControls() {
                   const contentContainer = document.createElement('div');
                   contentContainer.innerHTML = `
                     ${searchSummary}
-                    ${terms.length > 0 && filtered.length === 0 ? `<div style="padding:0 16px 16px 16px; opacity:0.7;">No matches found for ${termsDisplay}.</div>` : ''}
+                    ${terms.length > 0 && filtered.length === 0 ? `<div class="gem-img-picker-search-results">No matches found for ${termsDisplay}.</div>` : ''}
                     <div class="gem-img-picker-list-wrapper">
                     ${buildCategorySections()}
                     </div>
@@ -3786,7 +4202,7 @@ function initializeOverlayPanelControls() {
                   pickerContent.innerHTML = `
                     ${header}
                     ${searchSummary}
-                    ${terms.length > 0 && filtered.length === 0 ? `<div style="padding:0 16px 16px 16px; opacity:0.7;">No matches found for ${termsDisplay}.</div>` : ''}
+                    ${terms.length > 0 && filtered.length === 0 ? `<div class="gem-img-picker-search-results">No matches found for ${termsDisplay}.</div>` : ''}
                     <div class="gem-img-picker-list-wrapper">
                     ${buildCategorySections()}
                     </div>
@@ -3836,9 +4252,9 @@ function initializeOverlayPanelControls() {
                 });
               };
               const filtered = items.filter(matchesQuery);
-              const seenTermsDisplay = seenTerms.length > 0 ? seenTerms.map((o) => `'${escape(o.term)}'`).join(', ') : '';
+              const seenTermsDisplay = formatPickerSearchTermsHtml(seenTerms);
               const searchSummary = seenTerms.length > 0 && filtered.length > 0
-                ? `<div style="padding:0 16px 16px 16px; opacity:0.7;">Found ${filtered.length} matches for ${seenTermsDisplay}.</div>`
+                ? `<div class="gem-img-picker-search-results">Found ${filtered.length} matches for ${seenTermsDisplay}.</div>`
                 : '';
 
               const groupMap = new Map();
@@ -3891,7 +4307,7 @@ function initializeOverlayPanelControls() {
                 const isCollapsed = isCollapsedRaw;
                 const caret = isCollapsed ? '▸' : '▾';
                 return `
-                  <div class="gem-seen-cat-header" data-group-key="${escape(storageKey)}" data-cat="${escape(gKey)}" data-seen-groupby="${escape(seenGroupBy)}">
+                  <div class="gem-picker-cat-header" data-group-key="${escape(storageKey)}" data-cat="${escape(gKey)}" data-seen-groupby="${escape(seenGroupBy)}">
                     <button class="e-btn e-btn-borderless e-btn-onlyicon gem-seen-cat-toggle" type="button" data-group-key="${escape(storageKey)}" aria-label="Toggle" title="Toggle">
                       ${caret}
                     </button>
@@ -3946,30 +4362,34 @@ function initializeOverlayPanelControls() {
               };
 
               const renderTableRows = (catItems) => {
+                const renderRowMenu = (url, source, isFav) => {
+                  return buildRowMenuTrigger(url, source, isFav);
+                };
                 return catItems.map((it) => {
                   const url = it.url || '';
                   const ts = it.ts || 0;
                   const friendlyFilename = it.friendlyFilename || '';
                   const isFav = favSet.has(url);
-                  const star = isFav ? '★' : '☆';
-                  const starTitle = isFav ? 'Unfavorite' : 'Favorite';
-                  return `
-                    <tr>
-                      <td style="padding:6px; width:140px; vertical-align:middle; position:relative;">
+                  const previewCell = listThumbsOn
+                    ? `<td style="padding:6px; width:140px; vertical-align:middle; position:relative;">
                         <img class="gem-checkered-canvas" src="${escape(url)}" style="display:block; width:128px; height:70px; object-fit:contain; border-radius:4px;" />
                         <button class="gem-recent-image-info-btn gem-recent-image-info-btn--table" type="button" data-url="${escape(url)}" aria-label="View image details" title="View image details" style="position:absolute; top:8px; left:8px; background:rgba(255,255,255,0.9); border:1px solid #ccc; border-radius:50%; width:20px; height:20px; display:flex; align-items:center; justify-content:center; font-size:12px; cursor:pointer;">
                           ℹ
                         </button>
-                      </td>
-                      <td style="padding:6px; vertical-align:middle; word-break:break-word;">${escape(friendlyFilename || url)}</td>
-                      <td style="padding:6px; vertical-align:middle;">${escape(formatRecentImageDate(ts))}</td>
-                      <td style="padding:6px; vertical-align:middle; text-align:right; white-space:nowrap;">
-                        <button class="e-btn e-btn-borderless e-btn-onlyicon gem-recent-image-fav-btn gem-recent-image-fav-btn--table ${isFav ? 'gem-recent-image-fav-btn--active' : ''}" type="button" data-url="${escape(url)}" aria-label="${starTitle}" title="${starTitle}">
-                          ${star}
-                        </button>
-                        <button class="e-btn e-btn-primary gem-recent-image-use-btn" type="button" data-url="${escape(url)}">
-                          Use
-                        </button>
+                      </td>`
+                    : '';
+                  return `
+                    <tr>
+                      ${previewCell}
+                      <td>${escape(friendlyFilename || url)}</td>
+                      <td>${escape(formatRecentImageDate(ts))}</td>
+                      <td>
+                        <div class="gem-image-row-actions">
+                          <button class="e-btn e-btn-primary gem-recent-image-use-btn" type="button" data-url="${escape(url)}">
+                            Use
+                          </button>
+                          ${renderRowMenu(url, 'seen', isFav)}
+                        </div>
                       </td>
                     </tr>
                   `;
@@ -3982,7 +4402,7 @@ function initializeOverlayPanelControls() {
                   flatItems.sort((a, b) => compareSeenPickerItems(a, b, seenSortBy, seenSortDesc));
                   if (viewMode === 'grid') {
                     return `
-                      <div class="gem-seen-cat-section">
+                      <div class="gem-picker-cat-section gem-picker-cat-section--not-collapsible gem-picker-cat-section--expanded">
                         <div class="gem-recent-images-grid">
                           ${flatItems.map(renderGridItem).join('')}
                         </div>
@@ -3990,20 +4410,20 @@ function initializeOverlayPanelControls() {
                     `.trim();
                   }
                   return `
-                    <div class="gem-seen-cat-section">
-                      <table data-e-version="2" class="e-table e-table-bordered gem-recent-images-table" style="width:100%; font-size: 14px; margin-top:8px;">
+                    <div class="gem-picker-cat-section gem-picker-cat-section--not-collapsible gem-picker-cat-section--expanded">
+                      <div class="gem-picker-list-table-wrapper"><table data-e-version="2" class="e-table e-table-condensed gem-picker-list-table" style="width:100%; font-size: 14px">
                         <thead>
                           <tr>
-                            <th style="width:140px;">Preview</th>
-                            <th>Filename</th>
+                            ${listThumbsOn ? '<th style="width:140px;">Preview</th>' : ''}
+                            <th>Name</th>
                             <th style="width:160px;">${dateLabel}</th>
-                            <th style="width:160px; text-align:right;">Use</th>
+                            <th></th>
                           </tr>
                         </thead>
                         <tbody>
                           ${renderTableRows(flatItems)}
                         </tbody>
-                      </table>
+                      </table></div>
                     </div>
                   `.trim();
                 }
@@ -4015,9 +4435,11 @@ function initializeOverlayPanelControls() {
                   const storageKey = `seen:${seenGroupBy}:${gKey === SEEN_LAST_USED_NONE ? SEEN_LAST_USED_NONE : (gKey || '')}`;
                   const isCollapsedRaw = !!collapse[storageKey];
                   const isCollapsed = isCollapsedRaw;
+                  const sectionStateClass = isCollapsed ? 'gem-picker-cat-section--collapsed' : 'gem-picker-cat-section--expanded';
+                  const sectionCollapseClass = 'gem-picker-cat-section--collapsible';
                   if (viewMode === 'grid') {
                     return `
-                      <div class="gem-seen-cat-section">
+                      <div class="gem-picker-cat-section ${sectionCollapseClass} ${sectionStateClass}">
                         ${headerHtml}
                         ${isCollapsed ? '' : `
                           <div class="gem-recent-images-grid">
@@ -4029,22 +4451,22 @@ function initializeOverlayPanelControls() {
                   }
 
                   return `
-                    <div class="gem-seen-cat-section">
+                    <div class="gem-picker-cat-section ${sectionCollapseClass} ${sectionStateClass}">
                       ${headerHtml}
                       ${isCollapsed ? '' : `
-                        <table data-e-version="2" class="e-table e-table-bordered gem-recent-images-table" style="width:100%; font-size: 14px; margin-top:8px;">
+                        <div class="gem-picker-list-table-wrapper"><table data-e-version="2" class="e-table e-table-condensed gem-picker-list-table" style="width:100%; font-size: 14px">
                           <thead>
                             <tr>
-                              <th style="width:140px;">Preview</th>
-                              <th>Filename</th>
+                              ${listThumbsOn ? '<th style="width:140px;">Preview</th>' : ''}
+                              <th>Name</th>
                               <th style="width:160px;">${dateLabel}</th>
-                              <th style="width:160px; text-align:right;">Use</th>
+                              <th></th>
                             </tr>
                           </thead>
                           <tbody>
                             ${renderTableRows(catItems)}
                           </tbody>
-                        </table>
+                        </table></div>
                       `}
                     </div>
                   `;
@@ -4056,7 +4478,7 @@ function initializeOverlayPanelControls() {
                 const contentContainer = document.createElement('div');
                 contentContainer.innerHTML = `
                   ${searchSummary}
-                  ${seenTerms.length > 0 && filtered.length === 0 ? `<div style="padding:0 16px 16px 16px; opacity:0.7;">No matches found for ${seenTermsDisplay}.</div>` : ''}
+                  ${seenTerms.length > 0 && filtered.length === 0 ? `<div class="gem-img-picker-search-results">No matches found for ${seenTermsDisplay}.</div>` : ''}
                   <div class="gem-img-picker-list-wrapper">
                   ${buildCategorySections()}
                   </div>
@@ -4095,7 +4517,7 @@ function initializeOverlayPanelControls() {
                 pickerContent.innerHTML = `
                   ${header}
                   ${searchSummary}
-                  ${seenTerms.length > 0 && filtered.length === 0 ? `<div style="padding:0 16px 16px 16px; opacity:0.7;">No matches found for ${seenTermsDisplay}.</div>` : ''}
+                  ${seenTerms.length > 0 && filtered.length === 0 ? `<div class="gem-img-picker-search-results">No matches found for ${seenTermsDisplay}.</div>` : ''}
                   <div class="gem-img-picker-list-wrapper">
                   ${buildCategorySections()}
                   </div>
@@ -4342,7 +4764,7 @@ function initializeOverlayPanelControls() {
           bodyHtml: `
             <div class="gem-image-modal__metadata">
               <div class="e-field"><label class="e-field__label">URL</label><div class="gem-image-modal__url gem-seen-details-url"></div></div>
-              <div class="e-field gem-seen-details-filename-row"><label class="e-field__label">Filename</label><div class="gem-seen-details-filename" style="word-wrap: break-word;"></div></div>
+              <div class="e-field gem-seen-details-filename-row"><label class="e-field__label">Name</label><div class="gem-seen-details-filename" style="word-wrap: break-word;"></div></div>
               <div class="e-field gem-seen-details-path-row"><label class="e-field__label">Path</label><div class="gem-seen-details-path"></div></div>
               <div class="e-field"><label class="e-field__label">Last Seen</label><div class="gem-seen-details-last-seen"></div></div>
               <div class="e-field"><label class="e-field__label">Last Used</label><div class="gem-seen-details-last-used"></div></div>
@@ -4494,6 +4916,7 @@ function initializeOverlayPanelControls() {
           const altText = (meta.altText || '');
           const translation = (meta.translation || '');
           const width = (meta.width || '');
+          const friendlyFilename = (meta.friendlyFilename || '');
           const startingUrl = mode === 'create' ? '' : u;
           const orderedUrls = mode === 'edit' ? (() => {
             const fromPicker = getImagePickerNavigableUrls(modal);
@@ -4513,6 +4936,10 @@ function initializeOverlayPanelControls() {
         ` : '';
 
         const metaFieldsHtml = `
+          <div class="e-field gem-favorite-image-meta-filename-row" ${friendlyFilename ? '' : 'style="display:none;"'}>
+            <label class="e-field__label">Name</label>
+            <div class="gem-image-modal__url gem-favorite-image-meta-filename">${String(friendlyFilename).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+          </div>
           <div class="e-field">
             <label class="e-field__label">Category</label>
             <input class="e-input gem-favorite-image-meta-category" type="text" value="${String(category).replace(/&/g, '&amp;').replace(/"/g, '&quot;')}" />
@@ -4665,11 +5092,16 @@ function initializeOverlayPanelControls() {
             const altInput = overlay.querySelector('.gem-favorite-image-meta-alttext');
             const trnInput = overlay.querySelector('.gem-favorite-image-meta-translation');
             const widthInput = overlay.querySelector('.gem-favorite-image-meta-width');
+            const filenameRow = overlay.querySelector('.gem-favorite-image-meta-filename-row');
+            const filenameEl = overlay.querySelector('.gem-favorite-image-meta-filename');
             if (catInput) catInput.value = liveMeta.category || '';
             if (langInput) langInput.value = liveMeta.language || '';
             if (altInput) altInput.value = liveMeta.altText || '';
             if (trnInput) trnInput.value = liveMeta.translation || '';
             if (widthInput) widthInput.value = liveMeta.width || '';
+            const ff = (typeof liveMeta.friendlyFilename === 'string') ? liveMeta.friendlyFilename.trim() : '';
+            if (filenameRow) filenameRow.style.display = ff ? '' : 'none';
+            if (filenameEl) filenameEl.textContent = ff;
           });
           getFavoriteImages((liveFavList) => {
             const liveSet = new Set((Array.isArray(liveFavList) ? liveFavList : []).map((x) => x && x.url).filter(Boolean));
@@ -4853,7 +5285,8 @@ function initializeOverlayPanelControls() {
                     language: incoming.language || (existing.language || ''),
                     altText: incoming.altText || (existing.altText || ''),
                     translation: incoming.translation || (existing.translation || ''),
-                    width: (incoming.width !== '' ? incoming.width : (existing.width || ''))
+                    width: (incoming.width !== '' ? incoming.width : (existing.width || '')),
+                    friendlyFilename: (typeof existing.friendlyFilename === 'string') ? existing.friendlyFilename : ''
                   };
                   upsertFavoriteImageMeta(targetUrl, merged, () => {
                     close();
@@ -5926,6 +6359,11 @@ function initializeOverlayPanelControls() {
 
   // Initialize the Image Properties modal handler
   initializeImagePropertiesModalHandler();
+  if (typeof initializeFavoriteFilenameSyncFromRecentlySeen === 'function') {
+    initializeFavoriteFilenameSyncFromRecentlySeen();
+  } else if (typeof window.initializeFavoriteFilenameSyncFromRecentlySeen === 'function') {
+    window.initializeFavoriteFilenameSyncFromRecentlySeen();
+  }
 
   // Initialize the compact email tools dropdown
   initializeCompactEmailTools();

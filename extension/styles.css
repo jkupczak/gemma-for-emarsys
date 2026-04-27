@@ -1,8 +1,3 @@
-html body {
-    /* overwrite emarsys default line-height of 24px (= 1.714) */
-    line-height: 1.6;
-}
-
 /* ------------------------------------------------------------------------------------------------ */
 /* Hiding Disabled Features that require an account upgrade */
 /* ------------------------------------------------------------------------------------------------ */
@@ -23,15 +18,6 @@ vce-code-editor-toolbar {
     gap: 1.5px;
 }
 /* ------------------------------------------------------------------------------------------------ */
-
-
-/* Image Checkered Canvas Background */
-.gem-checkered-canvas {
-    background-color: var(--token-box-default-background);
-    background-image: linear-gradient(45deg, var(--token-background-strong) 25%, transparent 25%, transparent 75%, var(--token-background-strong) 75%, var(--token-background-strong)), linear-gradient(45deg, var(--token-background-strong) 25%, transparent 25%, transparent 75%, var(--token-background-strong) 75%, var(--token-background-strong));
-    background-position: 0px 0px, 10px 10px;
-    background-size: 20px 20px;
-}
 
 /* Cleanup… */
 .e-layout__application:before { /* its a small square that appears in the top left corner of the application */
@@ -174,7 +160,6 @@ cb-personalizable-input-with-context > vce-code-editor {
     border-right: 0 !important;
 }
 .gem-enhanced-image-properties-dialog #gem-image-properties-left-panel {
-    border-left: 1px solid var(--token-box-default-border);
     background: var(--token-box-alternate-background);
 }
 
@@ -216,7 +201,7 @@ e-float-container .gem-enhanced-image-properties-dialog {
         height: 64px !important;
     }
     & .e-tabs:before {
-        top: 64px !important;
+        display: none !important;
     }
     & header.e-dialog__header {
         padding:0;
@@ -246,11 +231,12 @@ e-float-container .gem-enhanced-image-properties-dialog {
 }
 
 /* Recent Images picker (Image Properties) - zebra striping like MediaDB popup */
-.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-recent-images-table tbody tr:nth-child(odd) {
-    background-color: var(--token-neutral-100) !important;
+.gem-enhanced-image-properties-dialog .gem-picker-list-table tbody tr:nth-child(odd) {
+   background: color-mix(in srgb, var(--token-neutral-100) 25%, transparent) !important;
 }
-.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-recent-images-table tbody tr:hover {
-    background-color: var(--token-blue-200) !important;
+
+.gem-enhanced-image-properties-dialog .gem-picker-list-table tbody tr:hover {
+    background-color: var(--token-blue-100) !important;
 }
 
 /* Recent Images picker - grid view */
@@ -258,6 +244,7 @@ e-float-container .gem-enhanced-image-properties-dialog {
     /* Thumb height scales inversely with grid cols: 10 cols = 120px, 2 cols = 180px */
     --gem-recent-thumb-h: calc(120px + 20px * (10 - var(--gem-recent-grid-cols)));
     --gem-recent-grid-cols: 6;
+    overflow-y: scroll;
 }
 
 .gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-recent-images-grid {
@@ -312,9 +299,9 @@ e-float-container .gem-enhanced-image-properties-dialog {
     min-height: 360px;
     width: 100%;
     border: 0;
-    background: transparent;
     position: relative;
     z-index: 2;
+    background: transparent; /* var(--token-box-alternate-background) */
 }
 
 @keyframes gem-media-db-spinner-rotate {
@@ -329,7 +316,7 @@ vce-code-editor-toolbar .code-editor-toolbar-container {
 .gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-recent-image-tile {
     position: relative;
     border: 1px solid var(--token-box-default-border);
-    border-radius: 5px;
+    border-radius: 6px;
     overflow: hidden;
     background: var(--token-box-default-background);
     box-shadow: 0px 4px 8px rgb(0 0 0 / 0.075), 0px 1px 1px 0px rgb(0 0 0 / 0.05);
@@ -356,6 +343,7 @@ vce-code-editor-toolbar .code-editor-toolbar-container {
     flex-wrap: wrap;
     gap: 6px;
     row-gap: 9px;
+    padding:16px 0 16px 1px !important;
 }
 .gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-search-pill {
     margin-top: 0;
@@ -451,6 +439,7 @@ vce-code-editor-toolbar .code-editor-toolbar-container {
 .gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-search-input-wrap input.gem-image-search {
     padding-right: 110px;
     height: 58px;
+    border-radius: 6px !important;
 }
 .gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-regex-toggle {
     position: absolute;
@@ -604,7 +593,8 @@ vce-code-editor-toolbar .code-editor-toolbar-container {
     pointer-events: none;
     color: var(--token-icon-default-text);
 }
-.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-recent-images-table tbody tr:hover .gem-recent-image-fav-btn--table {
+
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-picker-list-table tbody tr:hover .gem-recent-image-fav-btn--table {
     opacity: 1;
     pointer-events: auto;
 }
@@ -840,25 +830,6 @@ vce-code-editor-toolbar .code-editor-toolbar-container {
 }
 
 /* Favorites category grouping UI */
-.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-fav-cat-section {
-    margin-top: 14px;
-}
-.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-image-list-header + .gem-fav-cat-section {
-    margin-top: 0;
-}
-.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-fav-cat-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 16px;
-    padding: 8px 0;
-    border-bottom: 1px solid var(--token-box-default-border);
-    border-radius: 0;
-}
-
-.gem-enhanced-image-properties-dialog #gem-recent-images-picker[data-gem-recent-images-view="table"] .gem-fav-cat-header {
-    border:0 !important
-}
 .gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-fav-cat-title {
     display: flex;
     align-items: baseline;
@@ -872,16 +843,15 @@ vce-code-editor-toolbar .code-editor-toolbar-container {
     opacity: 0.7;
     font-size: 12px;
 }
-.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-seen-cat-header {
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-picker-cat-header {
     display: flex;
     align-items: center;
     gap: 8px;
-    margin-bottom: 16px;
+    margin: 0;
     padding: 8px 0;
-    border-bottom: 1px solid var(--token-box-default-border);
     border-radius: 0;
 }
-.gem-enhanced-image-properties-dialog #gem-recent-images-picker[data-gem-recent-images-view="table"] .gem-seen-cat-header {
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker[data-gem-recent-images-view="table"] .gem-picker-cat-header {
     border:0 !important
 }
 .gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-seen-cat-remove-group {
@@ -1278,6 +1248,9 @@ gem-preflight .gem-preflight-image-breakdown-header {
     gap: 8px;
     padding: 8px 10px;
     border-bottom: 1px solid var(--token-box-default-border);
+}
+gem-preflight .gem-preflight-image-breakdown--collapsed .gem-preflight-image-breakdown-header {
+    border-bottom: none;
 }
 
 gem-preflight .gem-preflight-image-breakdown-title {
@@ -1923,7 +1896,7 @@ html:has(.gem-enhanced-image-properties-dialog) {
 }
 
 .gem-fav-grid-cols-slider {
-    max-width: 300px;
+    max-width: 80px;
     width: 100%;
     accent-color: var(--token-primary-500);
 }
@@ -1976,7 +1949,7 @@ html:has(.gem-enhanced-image-properties-dialog) {
         background: none !important;
     }
     & .e-tabs-dialogheader .e-tabs__title:first-child {
-        margin-left: 8px !important;
+        margin-left: 0px !important;
     }
     & .e-tabs-dialogheader {
         width: 100%;
@@ -2233,6 +2206,7 @@ cb-device-preview > .e-section > .e-section__content { overflow: hidden }
     height: 58px;
     padding: 22px 20px 0 10px;
     background-position: calc(100% - 6px) calc(100% - 8px), 50% calc(100% + 1px);
+    border-radius: 6px !important;
 }
 
 .gem-search-group-by-container {
@@ -2260,5 +2234,242 @@ input.gem-input, select.gem-select {
 }
 
 .gem-img-picker-list-wrapper {
-    padding: 0 16px 16px;
+    padding: 0 16px 16px 0;
+}
+
+.gem-enhanced-image-properties-dialog {
+    background: var(--token-box-alternate-background) !important;
+}
+
+.gem-enhanced-image-properties-dialog > .e-dialog__container {
+    margin: 16px;
+    border-radius: 6px !important;
+    border: 1px solid var(--token-box-default-border) !important;
+    box-shadow: rgba(0, 0, 0, 0.075) 0px 4px 8px, rgba(0, 0, 0, 0.05) 0px 1px 1px 0px;
+}
+
+.gem-img-picker-search-results {
+    margin-top:10px; padding:0 16px 16px 0; opacity:1
+}
+
+
+[data-gem-recent-images-source="mediaDb"] .gem-image-list-header > div {
+    margin-bottom:0 !important;
+}
+
+.gem-image-list-header .e-tabs__title {
+    padding: 8px 4px !important;
+}
+
+.gem-image-list-header .e-tabs.e-tabs-dialogheader {
+    padding-left: 6px;
+}
+
+#latestMediaTab { display: none }
+
+/* Hide the Title field and label on links */
+e-float-container .e-field:has(label[for="input-url"]) + .e-field:has(cb-personalizable-input-with-context.link-editor-title) 
+{ 
+    display:none !important;
+}
+
+.gem-img-picker-cols-control {
+    display:flex; align-items:center; gap:8px;   
+    border-width: 1px;
+    border-style: solid;
+    border-image: initial;
+    border-color: var(--token-button-default-border);
+    border-radius: 8px;
+    padding: 0px 16px;
+    font-size: 14px;
+    line-height: calc(var(--token-button-default-height) - 2px);
+}
+
+.gem-image-picker-controls {
+    display:flex; 
+    gap:10px; 
+    align-items:center; 
+    justify-content:flex-end; 
+    margin-left:auto
+}
+
+.gem-image-picker-view-segmented {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid var(--token-button-default-border);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.gem-image-picker-view-option {
+    appearance: none;
+    border: 0;
+    border-right: 1px solid var(--token-button-default-border);
+    padding: 0 12px;
+    line-height: calc(var(--token-button-default-height) - 2px);
+    font-size: 14px;
+    font-weight: 600;
+    background-color: var(--token-button-default-background);
+    color: var(--token-button-default-text);
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.gem-image-picker-view-option__label {
+    font: inherit;
+    color: inherit;
+}
+
+.gem-image-picker-view-option:last-child {
+    border-right: 0;
+}
+
+.gem-image-picker-view-option.gem-image-picker-view-option--active {
+    background-color: var(--token-button-highlight-background);
+    color: var(--token-button-highlight-text);
+}
+
+.gem-image-picker-view-segmented--disabled .gem-image-picker-view-option,
+.gem-image-picker-view-option:disabled {
+    opacity: 0.55;
+    cursor: default;
+}
+
+.gem-image-row-menu {
+    position: relative;
+    display: inline-flex;
+    height: 100%;
+    margin-left: 6px;
+    width:26px; height:26px;
+}
+
+
+.gem-image-row-menu-trigger {
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--token-icon-default-text);
+}
+
+.gem-image-row-menu-trigger:hover {
+    color: var(--token-button-highlight-background);
+}
+
+.gem-image-row-menu-trigger::before {
+    content: "\F135";
+    font-family: var(--token-icon-default-fontFamily);
+    font-size: var(--token-icon-default-sizeSmall);
+    line-height: 1;
+    color: currentColor;
+    display: inline-block;
+}
+
+[data-e-version="2"].e-table.gem-picker-list-table td:has(.gem-recent-image-use-btn) {
+    white-space: nowrap;
+}
+
+[data-e-version="2"].e-table.gem-picker-list-table td:has(.gem-recent-image-use-btn) .gem-recent-image-edit-btn--table,
+[data-e-version="2"].e-table.gem-picker-list-table td:has(.gem-recent-image-use-btn) .gem-recent-image-use-btn,
+[data-e-version="2"].e-table.gem-picker-list-table td:has(.gem-recent-image-use-btn) .gem-image-row-menu-trigger {
+    vertical-align: middle;
+}
+
+[data-e-version="2"].e-table.gem-picker-list-table td:has(.gem-image-row-actions) {
+    padding-top: 0;
+    padding-bottom: 0;
+}
+
+[data-e-version="2"].e-table.gem-picker-list-table td:has(.gem-image-row-actions) .gem-image-row-actions {
+    min-height: 100%;
+    height: 100%;
+}
+
+.gem-image-row-menu-popover {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 20;
+    min-width: 170px;
+    display: none;
+}
+
+.gem-image-row-menu--open .gem-image-row-menu-popover {
+    display: block;
+}
+
+.gem-image-row-menu-popover--floating {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: auto;
+    display: none;
+    z-index: 2147483647;
+}
+
+.gem-image-row-menu-popover--floating.gem-image-row-menu-popover--visible {
+    display: block;
+}
+
+.gem-image-row-menu-popover .e-dropdown__content {
+    background: var(--token-box-default-background);
+    border: 1px solid var(--token-box-default-border);
+    border-radius: 6px;
+    box-shadow: 0 8px 18px rgb(0 0 0 / 20%);
+    padding: 6px 0;
+}
+
+.gem-image-row-menu-popover .e-dropdown__item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    cursor: pointer;
+}
+
+.gem-image-row-menu-popover .e-dropdown__item:hover {
+    background: var(--token-button-highlight-background);
+    color: var(--token-button-highlight-text);
+}
+
+.gem-picker-list-table-wrapper {
+    border: 1px solid var(--token-tableCell-default-border);
+    border-radius: 9px;
+    overflow: hidden;
+}
+
+.gem-picker-cat-section--collapsible {
+    background: rgba(0 0 0 / 0.1);
+    border-radius: 9px;
+    padding: 0 8px 8px;
+    margin: 8px 0;
+}
+
+.gem-picker-cat-section--collapsible.gem-picker-cat-section--collapsed {
+    padding: 0 8px 0;
+}
+
+[data-e-version="2"].e-table.gem-picker-list-table tbody tr:first-child:not(.e-datagrid__row) td:first-child,
+[data-e-version="2"].e-table.gem-picker-list-table tbody tr:first-child:not(.e-datagrid__row) td:last-child {
+    border-radius: 0 !important;
+}
+.gem-picker-list-table { 
+    background: var(--token-box-alternate-background) !important;
+}
+.gem-picker-list-table thead tr {
+    background: var(--token-tableCell-default-background);
+}
+
+.gem-picker-list-table [data-e-version="2"].e-table td:first-child, 
+.gem-picker-list-table [data-e-version="2"].e-table th:first-child {
+    padding-left: 16px;
+}
+.gem-picker-list-table td:first-child {
+    width:100%;
+}
+.gem-picker-list-table td {
+    white-space: nowrap;
 }

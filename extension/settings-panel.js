@@ -855,16 +855,18 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
             <p class="sub-label">
               Keep a mobile preview of your email visible next to your desktop view while you make edits. You can turn it on here, via the <span class="gem-e-icon">&#61747;</span> icon next to your email, or use the keyboard shortcut CMD+SHIFT+F or CTRL+SHIFT+F at any time.
             </p>
-            <div class="gem-setting-condensed" style="display: flex; gap: 12px; align-items: center;">
-              <label for="opt-mobile-preview-width" style="flex: 1;">Width (px)</label>
-              <input type="number" id="opt-mobile-preview-width" min="200" max="800" step="1" style="width: 120px;" />
-            </div>
-            <div class="gem-setting-condensed" style="display: flex; gap: 12px; align-items: center;">
-              <label for="opt-mobile-preview-scale" style="flex: 1;">Scale</label>
-              <select id="opt-mobile-preview-scale" style="width: 120px;">
-                <option value="1">100%</option>
-                <option value="0.5">50%</option>
-              </select>
+            <div class="gem-setting-section">
+              <div class="gem-setting-condensed" style="display: flex; gap: 12px; align-items: center;">
+                <label for="opt-mobile-preview-width" style="flex: 1;">Width (px)</label>
+                <input type="number" id="opt-mobile-preview-width" min="200" max="800" step="1" style="width: 120px;" />
+              </div>
+              <div class="gem-setting-condensed" style="display: flex; gap: 12px; align-items: center;">
+                <label for="opt-mobile-preview-scale" style="flex: 1;">Scale</label>
+                <select id="opt-mobile-preview-scale" style="width: 120px;">
+                  <option value="1">100%</option>
+                  <option value="0.5">50%</option>
+                </select>
+              </div>
             </div>
           </div>
 
@@ -873,6 +875,16 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
               <label for="opt-show-finish-editing-btn">Show "Finish Editing" Button</label>
               <div class="gem-e-switch--fat e-switch">
                 <input type="checkbox" class="e-switch__input" id="opt-show-finish-editing-btn" checked>
+                <label class="e-switch__toggle" for="opt-show-finish-editing-btn"></label>
+              </div>
+            </div>
+          </div>
+
+          <div class="gem-setting">
+            <div class="gem-e-switch-wrapper">
+              <label for="opt-show-finish-editing-btn">Show "Recent Media" Button in Vertical Nav</label>
+              <div class="gem-e-switch--fat e-switch">
+                <input type="checkbox" class="e-switch__input" id="opt-show-finish-editing-btn">
                 <label class="e-switch__toggle" for="opt-show-finish-editing-btn"></label>
               </div>
             </div>

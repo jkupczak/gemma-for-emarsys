@@ -132,6 +132,10 @@ p:has(+ [data-gem-paste-allow-disabled]) { margin-bottom: 0 !important; }
   overflow: hidden;
 }
 
+.gem-setting-section:last-child {
+  margin-bottom:0;
+}
+
 .gem-setting-section h3 {
   margin: 0;
   padding: 16px 20px;

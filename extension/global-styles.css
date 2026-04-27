@@ -10,6 +10,10 @@
     border-bottom: 1px solid transparent;
 }
 
+html body {
+    /* overwrite emarsys default line-height of 24px (= 1.714) */
+    line-height: 1.6;
+}
 
 /* Scrollbar overrides 
 ------------------------------------------------------------ */
@@ -429,4 +433,12 @@ span.gem-e-icon {
 
 #gem-nav-notes-item {
     margin-top: auto;
+}
+
+/* Image Checkered Canvas Background */
+.gem-checkered-canvas {
+    background-color: var(--token-box-default-background);
+    background-image: linear-gradient(45deg, var(--token-background-strong) 25%, transparent 25%, transparent 75%, var(--token-background-strong) 75%, var(--token-background-strong)), linear-gradient(45deg, var(--token-background-strong) 25%, transparent 25%, transparent 75%, var(--token-background-strong) 75%, var(--token-background-strong));
+    background-position: 0px 0px, 10px 10px;
+    background-size: 20px 20px;
 }

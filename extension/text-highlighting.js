@@ -2,6 +2,7 @@ console.log("text-highlighting.js loaded");
 
 // Global variables for dynamic configuration
 let PLACEHOLDERS = [];
+const GEM_TEXT_HIGHLIGHTS_RENDERED_EVENT = "gem:text-highlights-rendered";
 
 function normalizeHighlightTermData(termData) {
   if (typeof termData === 'string') {
@@ -320,6 +321,14 @@ function highlightMatchesInIframe(iframe) {
       }
     }
   }
+
+  // Notify other modules (e.g., Preflight text analysis) that visible highlight overlays changed.
+  window.dispatchEvent(new CustomEvent(GEM_TEXT_HIGHLIGHTS_RENDERED_EVENT, {
+    detail: {
+      overlayCount: container.childElementCount || 0,
+      ts: Date.now()
+    }
+  }));
 }
 
 // Observe DOM until iframe appears with a ready document + body
