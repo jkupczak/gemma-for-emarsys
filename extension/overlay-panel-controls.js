@@ -944,6 +944,114 @@ function initializeOverlayPanelControls() {
       return looksLikeUrl ? s : '';
     }
 
+    function inferActiveImagePropertiesTab(modal) {
+      if (!modal || !modal.querySelector) return 'desktop';
+      try {
+        // Prefer the mounted editor scope over tab-title classes (which can be transiently duplicated).
+        const editor = modal.querySelector('vce-html-editor');
+        if (editor && editor.closest) {
+          const scope = editor.closest('.e-dialog__content') || editor;
+          const hasMobileVisibilityControls = !!(scope.querySelector && scope.querySelector('#imageVisibilitySwitch_showImageOnMobile, #imageVisibilitySwitch_hideImageOnMobile, #imageVisibilitySwitch_useAlternateImage'));
+          if (hasMobileVisibilityControls) return 'mobile';
+          return 'desktop';
+        }
+      } catch (_) {}
+      try {
+        const activeTabEl = modal.querySelector('.e-tabs__title.e-tabs__title-active[data-tab="mobile"], .e-tabs__title.e-tabs__title-active[data-tab="desktop"]');
+        return (activeTabEl && activeTabEl.getAttribute('data-tab') === 'mobile') ? 'mobile' : 'desktop';
+      } catch (_) {}
+      return 'desktop';
+    }
+
+    function collectSelectedImageUrlsForPicker(modal) {
+      const urls = new Set();
+      const addSingle = (raw) => {
+        const normalized = normalizeRecentImageUrlCandidate(raw);
+        if (normalized) {
+          urls.clear();
+          urls.add(normalized);
+        }
+      };
+      if (!modal) return urls;
+      const activeTab = inferActiveImagePropertiesTab(modal);
+
+      try {
+        const activeEditor = getActiveImageUrlCodeMirror(modal);
+        const activeEditorUrl = activeEditor && activeEditor.value;
+        if (activeEditorUrl) {
+          addSingle(activeEditorUrl);
+          return urls;
+        }
+      } catch (_) {}
+
+      try {
+        const container =
+          modal.querySelector('.e-dialog.e-dialog-active .e-dialog__container') ||
+          modal.querySelector('.e-dialog-active .e-dialog__container') ||
+          modal.querySelector('.e-dialog__container');
+        if (container) {
+          if (activeTab === 'mobile') {
+            addSingle(container._gemPreviewImgUrlMobile);
+            const mobileImg = container._gemPreviewImgMobile;
+            if (!urls.size && mobileImg) addSingle(mobileImg.getAttribute('src') || mobileImg.src || '');
+          } else {
+            addSingle(container._gemPreviewImgUrlDesktop);
+            const desktopImg = container._gemPreviewImgDesktop;
+            if (!urls.size && desktopImg) addSingle(desktopImg.getAttribute('src') || desktopImg.src || '');
+          }
+        }
+      } catch (_) {}
+
+      if (!urls.size) {
+        if (activeTab === 'mobile') addSingle(modal._gemPendingLastUsedImageUrlMobile);
+        else addSingle(modal._gemPendingLastUsedImageUrlDesktop);
+      }
+
+      return urls;
+    }
+
+    function applySelectedImageClassToMediaDbIframe(iframe, selectedUrls) {
+      if (!iframe || !iframe.contentDocument) return;
+      const doc = iframe.contentDocument;
+      const selected = selectedUrls instanceof Set ? selectedUrls : new Set();
+      const nodes = Array.from(doc.querySelectorAll('.file-thumbnail.card-wrapper, tr.file-table-row'));
+      nodes.forEach((node) => {
+        try {
+          const clip = node.querySelector && node.querySelector('[copy-to-clipboard]');
+          const rawUrl = clip && clip.getAttribute ? (clip.getAttribute('copy-to-clipboard') || '') : '';
+          const normalized = normalizeRecentImageUrlCandidate(rawUrl);
+          node.classList.toggle('gem-selected-image', !!(normalized && selected.has(normalized)));
+        } catch (_) {}
+      });
+    }
+
+    function refreshSelectedImageMatchesInPicker(modal) {
+      if (!modal || !modal.querySelector) return;
+      const selectedUrls = collectSelectedImageUrlsForPicker(modal);
+      const picker = modal.querySelector('#gem-recent-images-picker');
+      if (picker) {
+        const isSelected = (rawUrl) => {
+          const normalized = normalizeRecentImageUrlCandidate(rawUrl);
+          return !!(normalized && selectedUrls.has(normalized));
+        };
+        Array.from(picker.querySelectorAll('.gem-img-picker-tile')).forEach((tile) => {
+          try {
+            const btn = tile.querySelector('.gem-recent-image-use-btn[data-url]');
+            const rawUrl = btn && btn.getAttribute ? (btn.getAttribute('data-url') || '') : '';
+            tile.classList.toggle('gem-selected-image', isSelected(rawUrl));
+          } catch (_) {}
+        });
+        Array.from(picker.querySelectorAll('.gem-picker-list-table tbody tr')).forEach((row) => {
+          try {
+            const btn = row.querySelector('.gem-recent-image-use-btn[data-url]');
+            const rawUrl = btn && btn.getAttribute ? (btn.getAttribute('data-url') || '') : '';
+            row.classList.toggle('gem-selected-image', isSelected(rawUrl));
+          } catch (_) {}
+        });
+      }
+      applySelectedImageClassToMediaDbIframe(gemMediaDbPickerIframeEl, selectedUrls);
+    }
+
     function looksLikeImageUrl(url) {
       const s = String(url || '');
       if (!s) return false;
@@ -1349,8 +1457,43 @@ function initializeOverlayPanelControls() {
       try {
         if (doc.querySelector('[data-e-tooltip="List view"]')) return 'grid';
         if (doc.querySelector('[data-e-tooltip="Thumbnails"]')) return 'list';
+        // Emarsys UI variants (tooltip/title/aria) — keep grid/list sync best-effort.
+        if (doc.querySelector('[data-e-tooltip*="List view" i], [title*="List view" i], [aria-label*="List view" i]')) return 'grid';
+        if (doc.querySelector('[data-e-tooltip*="Thumbnails" i], [title*="Thumbnails" i], [aria-label*="Thumbnails" i]')) return 'list';
       } catch (_) {}
       return 'unknown';
+    }
+
+    /** Root node for the Media DB upload widget (Angular template uses `mediadb-upload` on a div). */
+    function findMediaDbUploadRoot(doc) {
+      if (!doc || !doc.querySelector) return null;
+      return (
+        doc.querySelector('.mediadb-upload')
+        || doc.querySelector('div.mediadb-upload')
+        || doc.querySelector('.e-layout__action.mediadb-upload')
+      );
+    }
+
+    /**
+     * Open the native file picker / Emarsys upload UI. Must run synchronously (or microtask) from the
+     * user's click on our Upload button — async timers break the user-activation chain for <input type="file">.
+     */
+    function tryClickMediaDbUploadInIframe(iframe) {
+      try {
+        const iframeRef = iframe && iframe.isConnected ? iframe : gemMediaDbPickerIframeEl;
+        const doc = iframeRef && iframeRef.contentDocument;
+        const root = findMediaDbUploadRoot(doc);
+        if (!root) return false;
+        const fileInput = root.querySelector('input.mediadb-upload__input[type="file"], input[type="file"].mediadb-upload__input');
+        if (fileInput) {
+          fileInput.click();
+          return true;
+        }
+        root.click();
+        return true;
+      } catch (_) {
+        return false;
+      }
     }
 
     /** Align Media DB iframe thumbnails vs list with `picker.dataset.gemRecentImagesView` (grid | table). */
@@ -1446,7 +1589,14 @@ function initializeOverlayPanelControls() {
       }
       const uploadBtn = content.querySelector('.gem-mediadb-upload-btn');
       if (uploadBtn) {
-        uploadBtn.disabled = mode === 'unknown';
+        // Do not tie Upload to grid/list detection; Emarsys can change tooltips and leave mode "unknown"
+        // while the upload control is still present — that would leave the button disabled forever.
+        const uploadRoot = findMediaDbUploadRoot(doc);
+        const angularDisabled = uploadRoot && (
+          uploadRoot.classList.contains('mediadb-upload--disabled')
+          || uploadRoot.classList.contains('mediadb-upload--uploading')
+        );
+        uploadBtn.disabled = !uploadRoot || !!angularDisabled;
       }
       if (doc && doc.documentElement) {
         if (mode === 'grid') {
@@ -1468,21 +1618,22 @@ function initializeOverlayPanelControls() {
           }
         }
       }
+      try {
+        const modalRef = gemMediaDbIframeClickModalRef;
+        const selectedUrls = collectSelectedImageUrlsForPicker(modalRef);
+        applySelectedImageClassToMediaDbIframe(iframe, selectedUrls);
+      } catch (_) {}
     }
 
     function waitForMediaDbUploadAndClick(iframe, opts) {
       const timeoutMs = (opts && opts.timeoutMs) || 15000;
       const intervalMs = (opts && opts.intervalMs) || 50;
+      if (tryClickMediaDbUploadInIframe(iframe)) return Promise.resolve(true);
       return new Promise((resolve) => {
         const start = Date.now();
         const tick = () => {
-          let iframeRef = iframe;
           try {
-            if (!iframeRef || !iframeRef.isConnected) iframeRef = gemMediaDbPickerIframeEl;
-            const doc = iframeRef && iframeRef.contentDocument;
-            const el = doc && doc.querySelector('div.mediadb-upload');
-            if (el) {
-              el.click();
+            if (tryClickMediaDbUploadInIframe(iframe)) {
               resolve(true);
               return;
             }
@@ -1493,7 +1644,7 @@ function initializeOverlayPanelControls() {
           }
           setTimeout(tick, intervalMs);
         };
-        tick();
+        setTimeout(tick, intervalMs);
       });
     }
 
@@ -1501,12 +1652,24 @@ function initializeOverlayPanelControls() {
       if (!picker || !modal) return;
       if (!getGemMediaDbPickerIframeSrc()) return;
       const cur = normalizeRecentImagesPickerSource(picker.dataset.gemRecentImagesSource || 'seen');
+      const runWait = () => void waitForMediaDbUploadAndClick(gemMediaDbPickerIframeEl);
       if (cur !== 'mediaDb') {
         picker.dataset.gemRecentImagesSource = 'mediaDb';
         saveRecentImagesPickerPrefs(buildRecentImagesPickerPrefsPayload(picker, { source: 'mediaDb' }));
         showRecentImagesPicker(modal);
+        // Stay on the user-activation chain: sync first, then one microtask (not rAF/delays first).
+        if (tryClickMediaDbUploadInIframe(gemMediaDbPickerIframeEl)) return;
+        queueMicrotask(() => {
+          if (tryClickMediaDbUploadInIframe(gemMediaDbPickerIframeEl)) return;
+          runWait();
+        });
+      } else {
+        if (tryClickMediaDbUploadInIframe(gemMediaDbPickerIframeEl)) return;
+        queueMicrotask(() => {
+          if (tryClickMediaDbUploadInIframe(gemMediaDbPickerIframeEl)) return;
+          runWait();
+        });
       }
-      void waitForMediaDbUploadAndClick(gemMediaDbPickerIframeEl);
     }
 
     function notifyGemMediaDbIframeLayoutChange(iframe) {
@@ -3474,6 +3637,9 @@ function initializeOverlayPanelControls() {
           }
           ensureGemMediaDbPickerIframePreloaded();
           setupGemMediaDbIframeBridge(mediaPane, modal);
+          try {
+            applySelectedImageClassToMediaDbIframe(gemMediaDbPickerIframeEl, collectSelectedImageUrlsForPicker(modal));
+          } catch (_) {}
         } else if (!hasMissing) {
           mediaPane.innerHTML = `<div class="gem-media-db-missing-session" style="padding:16px; opacity:0.85;">Media Database requires a <code>session_id</code> in the page URL. Open the editor from Emarsys with a valid session and try again.</div>`;
         }
@@ -3506,6 +3672,11 @@ function initializeOverlayPanelControls() {
           const render = (listForRender) => {
           const rows = (Array.isArray(listForRender) ? [...listForRender] : [])
             .filter((x) => x && typeof x.url === 'string' && x.url.trim());
+          const selectedImageUrls = collectSelectedImageUrlsForPicker(modal);
+          const isSelectedImageUrl = (rawUrl) => {
+            const normalized = normalizeRecentImageUrlCandidate(rawUrl);
+            return !!(normalized && selectedImageUrls.has(normalized));
+          };
 
           const escape = (s) =>
             String(s)
@@ -3995,8 +4166,9 @@ function initializeOverlayPanelControls() {
                   const extraParts = extraPartsRaw
                     .filter((v) => !!v && v !== label);
                   const extraText = extraParts.join(' • ');
+                  const selectedClass = isSelectedImageUrl(it.url) ? ' gem-selected-image' : '';
                   return `
-                    <div class="gem-recent-image-tile gem-checkered-canvas">
+                    <div class="gem-img-picker-tile gem-checkered-canvas${selectedClass}">
                       <button class="gem-recent-image-edit-btn" type="button" data-url="${escape(it.url)}" aria-label="${editTitle}" title="${editTitle}">
                         ✎
                       </button>
@@ -4052,7 +4224,7 @@ function initializeOverlayPanelControls() {
                         </td>`
                       : '';
                     return `
-                      <tr>
+                      <tr class="${isSelectedImageUrl(it.url) ? 'gem-selected-image' : ''}">
                         ${previewCell}
                         <td>${escape(filename)}</td>
                         <td>${escape(colA || '')}</td>
@@ -4339,8 +4511,9 @@ function initializeOverlayPanelControls() {
                     <div class="gem-recent-image-used-notice">${escape(usedLabel)}</div>
                   `.trim();
                 }
+                const selectedClass = isSelectedImageUrl(url) ? ' gem-selected-image' : '';
                 return `
-                  <div class="gem-recent-image-tile">
+                  <div class="gem-img-picker-tile${selectedClass}">
                     <button class="gem-recent-image-info-btn" type="button" data-url="${escape(url)}" aria-label="View image details" title="View image details">
                       ℹ
                     </button>
@@ -4379,7 +4552,7 @@ function initializeOverlayPanelControls() {
                       </td>`
                     : '';
                   return `
-                    <tr>
+                    <tr class="${isSelectedImageUrl(url) ? 'gem-selected-image' : ''}">
                       ${previewCell}
                       <td>${escape(friendlyFilename || url)}</td>
                       <td>${escape(formatRecentImageDate(ts))}</td>
@@ -5933,6 +6106,7 @@ function initializeOverlayPanelControls() {
             ensurePreviewCanvasPlacement();
             syncPreviewVisibilityToTab();
             ensureImageAltTextSwapButton(modal);
+            refreshSelectedImageMatchesInPicker(modal);
           }, 0);
         }, true);
       }
@@ -5942,6 +6116,21 @@ function initializeOverlayPanelControls() {
       // for a brief stabilization window and not steal the first click.
       container._gemRecentImagesPickerOpenedAt = Date.now();
       showRecentImagesPicker(modal);
+      refreshSelectedImageMatchesInPicker(modal);
+
+      if (!container._gemSelectedImageRealtimeBound) {
+        container._gemSelectedImageRealtimeBound = true;
+        modal.addEventListener('input', (e) => {
+          const target = e.target;
+          if (!(target instanceof HTMLElement)) return;
+          if (
+            target.matches('vce-codemirror textarea') ||
+            !!target.closest('vce-codemirror .CodeMirror')
+          ) {
+            refreshSelectedImageMatchesInPicker(modal);
+          }
+        }, true);
+      }
 
       // Emarsys can re-render dialog content right after open (especially when our picker loads prefs),
       // which may temporarily detach the preview canvas and park it. Re-attach a few times to ensure
@@ -6045,11 +6234,13 @@ function initializeOverlayPanelControls() {
             // Image sizing no longer needed
           }
           syncPreviewVisibilityToTab();
+          refreshSelectedImageMatchesInPicker(modal);
         } else {
           // Hide the relevant tab image if URL is not valid or null (disabled state)
           if (targetTab === 'mobile' && previewImgMobile) previewImgMobile.style.display = 'none';
           if (targetTab === 'desktop' && previewImgDesktop) previewImgDesktop.style.display = 'none';
           previewLog('preview hidden (invalid url)', { debugId: container._gemPreviewDebugId, targetTab, imageUrl });
+          refreshSelectedImageMatchesInPicker(modal);
         }
       };
 
@@ -6099,6 +6290,7 @@ function initializeOverlayPanelControls() {
                   syncMobilePreviewSourceFromControls();
                   ensurePreviewCanvasPlacement();
                   syncPreviewVisibilityToTab();
+                  refreshSelectedImageMatchesInPicker(modal);
                 } else {
                   // Desktop disabled means hide desktop preview.
                   updateImageInPreviewCanvas(null, tabContext);
@@ -6108,11 +6300,13 @@ function initializeOverlayPanelControls() {
                 updateImageInPreviewCanvas(newImageUrl, tabContext);
                 // Track values for commit-time "Last Used" updates.
                 storeTrackedImageUrlForTab(tabContext, newImageUrl);
+                refreshSelectedImageMatchesInPicker(modal);
               } else if (tabContext === 'mobile') {
                 // Keep mobile preview aligned with radio state even when no direct URL is present.
                 syncMobilePreviewSourceFromControls();
                 ensurePreviewCanvasPlacement();
                 syncPreviewVisibilityToTab();
+                refreshSelectedImageMatchesInPicker(modal);
               }
             }
           });
@@ -6130,6 +6324,7 @@ function initializeOverlayPanelControls() {
           const tabContext = inferPreviewTabFromEditor(htmlEditor);
           updateImageInPreviewCanvas(currentImageUrl, tabContext);
           storeTrackedImageUrlForTab(tabContext, currentImageUrl);
+          refreshSelectedImageMatchesInPicker(modal);
         }
 
         console.log("[Gem] Set up attribute observer for vce-html-editor");

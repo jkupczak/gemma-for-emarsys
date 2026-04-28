@@ -113,9 +113,9 @@ U+F0ED = PNG, icon name = "file-png"
 |                                                                                |
  --------------------------------------------------------------------------------
 
-- Add aspect ratio output to the image picker.
+- Leverage "Created" date from the MB to apply "New!" labels for images created in the last 1 or X days?
 
-- Tighten up gaps in thumbnail grid when its maxed out.
+- Add aspect ratio output to the image picker.
 
 - ESC needs to work when media db iframe has focus
 
@@ -130,15 +130,11 @@ U+F0ED = PNG, icon name = "file-png"
 
 - The "width" input image picker doesn't save the input if i hit enter before blurring.
 
-- Make image alt text checker smart so that it only checks when it detects image changes.
-
 - Image picker should show the desktop version minimized in the corner while looking at the mobile tab.
 
 - In the campaign search, the filters should be expanded if any are selected.
 
 - Add a Grid/List toggle to the settings panel.
-
-- Flag the image that is currently being used in the active tab with a glow?
 
 
 Create a "Warnings" panel.

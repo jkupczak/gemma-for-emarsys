@@ -22,6 +22,8 @@ const GEM_PREFLIGHT_TOTAL_IMAGE_WEIGHT_THRESHOLD_UNIT_KEY = 'gemPreflightTotalIm
 const GEM_PREFLIGHT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_VALUE_KEY = 'gemPreflightSingularImageWeightThresholdValue';
 const GEM_PREFLIGHT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_UNIT_KEY = 'gemPreflightSingularImageWeightThresholdUnit';
 const GEM_PREFLIGHT_URL_NEVER_CHECK_KEY = 'urlPreflightNeverCheck';
+const GEM_PREFLIGHT_ENABLE_LIVE_LINK_VERIFY_KEY = 'gemPreflightEnableLiveLinkVerify';
+const GEM_PREFLIGHT_HIDE_LINKS_SECTION_KEY = 'gemPreflightHideLinksSection';
 const GEM_PREFLIGHT_DEFAULT_TOTAL_IMAGE_WEIGHT_THRESHOLD_VALUE = 3;
 const GEM_PREFLIGHT_DEFAULT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_VALUE = 2;
 const GEM_PREFLIGHT_DEFAULT_IMAGE_WEIGHT_THRESHOLD_UNIT = 'MB';
@@ -1080,7 +1082,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         <h2>Preflight Settings</h2>
 
         <div class="gem-setting-section" id="gem-settings-preflight-settings">
-          <h3>Image Alerts</h3>
+          <h3>Preflight Image Alerts</h3>
           <div class="gem-setting gem-setting-condensed" style="display:flex; gap:12px; align-items:center;">
             <label for="opt-preflight-total-image-weight-threshold-value" style="flex:1;">Total Image Weight Threshold</label>
             <input type="number" id="opt-preflight-total-image-weight-threshold-value" min="0.1" step="0.1" style="width:100px;" value="3" />
@@ -1104,16 +1106,37 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
           </div>
         </div>
         <div class="gem-setting-section" id="gem-settings-preflight-url-never-check">
-          <h3>Preflight URL Never-Check List</h3>
-          <p class="gem-setting-info">URLs listed here are skipped by Preflight for both formatting and live checks.</p>
+          <h3>Preflight Link Alerts</h3>
           <div class="gem-setting">
-            <button id="gem-manage-preflight-never-check-btn" class="e-btn"type="button">Manage URL Blocklist</button>
-            <div id="gem-preflight-never-check-summary" class="sub-label" style="margin-top:8px;">No URLs are currently blocked.</div>
+            <button id="gem-preflight-grant-link-access-btn" class="e-btn e-btn-primary" type="button">Grant Access to Live Verify</button>
+            <p class="sub-label" style="margin-top:8px;">
+              Requests host access for live link verification and re-enables the Links section if it was previously hidden.
+            </p>
           </div>
+          <div class="gem-setting">
+            <div class="gem-e-switch-wrapper">
+              <label for="opt-preflight-enable-live-link-verify">Enable Live Verify</label>
+              <div class="gem-e-switch--fat e-switch">
+                <input type="checkbox" class="e-switch__input" id="opt-preflight-enable-live-link-verify">
+                <label class="e-switch__toggle" for="opt-preflight-enable-live-link-verify"></label>
+              </div>
+            </div>
+            <p class="sub-label">
+              Live verify opens your links in a new tab and follows them all the way through to the destination page. When disabled, Live verify buttons and automatic Contact Preview link verification are turned off in Preflight.
+            </p>
+          </div>
+          <div class="gem-setting">
+          <div style="display: flex; justify-content: space-between; align-items: anchor-center;">
+            <div style="max-width:70%;"><span style="font-weight: 600; font-size: 16px;">URL Skip List</span>
+            </div><button id="gem-manage-preflight-never-check-btn" class="e-btn"type="button">Manage URLs</button></div>
+            
+                                  <p class="sub-label" style="margin-top:8px;">Manage a list of URLs that you would like the Preflight QA process to skip. <span id="gem-preflight-never-check-summary">No URLs are currently skipped.</span></p>
+          </div>
+
         </div>
 
         <div class="gem-setting-section">
-          <h3>Text Highlighting</h3>
+          <h3>Preflight Text Alerts</h3>
         <div class="gem-setting">
           <div class="gem-e-switch-wrapper">
             <label for="opt-enable-highlighting">Enable text highlighting overlays</label>
@@ -1123,7 +1146,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
             </div>
           </div>
           <p class="sub-label">
-            Creates overlays to help you quickly identify and highlight specific text in your email.
+            Creates overlays to help you quickly identify and highlight specific text in your email. Upgrade your highlights to "Alerts" to get notified in the preflight panel when your email contains the highlighted text.
           </p>
         </div>
           <div id="highlight-terms-list">
@@ -1333,7 +1356,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
     const summary = document.getElementById("gem-preflight-never-check-summary");
     if (!summary) return;
     const count = Array.isArray(urls) ? urls.length : 0;
-    summary.textContent = count === 0 ? "No URLs are currently blocked." : `${count} URL${count === 1 ? "" : "s"} currently blocked.`;
+    summary.textContent = count === 0 ? "No URLs are currently skipped." : `${count} URL${count === 1 ? "" : "s"} currently skipped.`;
   }
 
   function showPreflightNeverCheckModal(urls) {
@@ -1355,7 +1378,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         <h3 style="margin:0 0 8px 0;">Preflight URL Never-Check List</h3>
         <p class="sub-label" style="margin:0 0 10px 0;">URLs listed here are skipped by Preflight formatting and live checks.</p>
         <div id="gem-preflight-never-check-modal-list" class="gem-scrollable" style="padding:0 8px 0 0; overflow:auto; max-height:90vh;">
-          ${escapedRows || '<div class="sub-label">No URLs are currently blocked.</div>'}
+          ${escapedRows || '<div class="sub-label">No URLs are currently skipped.</div>'}
         </div>
         <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:12px;">
           <button id="gem-preflight-never-check-clear-all-btn" type="button" class="e-btn">Clear all</button>
@@ -1447,7 +1470,8 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         [GEM_PREFLIGHT_TOTAL_IMAGE_WEIGHT_THRESHOLD_VALUE_KEY]: GEM_PREFLIGHT_DEFAULT_TOTAL_IMAGE_WEIGHT_THRESHOLD_VALUE,
         [GEM_PREFLIGHT_TOTAL_IMAGE_WEIGHT_THRESHOLD_UNIT_KEY]: GEM_PREFLIGHT_DEFAULT_IMAGE_WEIGHT_THRESHOLD_UNIT,
         [GEM_PREFLIGHT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_VALUE_KEY]: GEM_PREFLIGHT_DEFAULT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_VALUE,
-        [GEM_PREFLIGHT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_UNIT_KEY]: GEM_PREFLIGHT_DEFAULT_IMAGE_WEIGHT_THRESHOLD_UNIT
+        [GEM_PREFLIGHT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_UNIT_KEY]: GEM_PREFLIGHT_DEFAULT_IMAGE_WEIGHT_THRESHOLD_UNIT,
+        [GEM_PREFLIGHT_ENABLE_LIVE_LINK_VERIFY_KEY]: false
       }, (settings) => {
         syncThemeSwatchUI(settings[GEM_THEME_MODE_STORAGE_KEY]);
 
@@ -1525,6 +1549,8 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         if (preflightSingularValueEl) preflightSingularValueEl.value = String(settings[GEM_PREFLIGHT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_VALUE_KEY] ?? GEM_PREFLIGHT_DEFAULT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_VALUE);
         const preflightSingularUnitEl = document.getElementById("opt-preflight-singular-image-weight-threshold-unit");
         if (preflightSingularUnitEl) preflightSingularUnitEl.value = (settings[GEM_PREFLIGHT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_UNIT_KEY] || GEM_PREFLIGHT_DEFAULT_IMAGE_WEIGHT_THRESHOLD_UNIT) === 'KB' ? 'KB' : 'MB';
+        const preflightLiveVerifyEnabledEl = document.getElementById("opt-preflight-enable-live-link-verify");
+        if (preflightLiveVerifyEnabledEl) preflightLiveVerifyEnabledEl.checked = settings[GEM_PREFLIGHT_ENABLE_LIVE_LINK_VERIFY_KEY] === true;
 
         const widthInput = document.getElementById("opt-mobile-preview-width");
         if (widthInput) widthInput.value = settings.mobilePreviewWidth || 414;
@@ -1659,7 +1685,9 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
             [GEM_PREFLIGHT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_VALUE_KEY]:
               Math.max(0.1, parseFloat(document.getElementById("opt-preflight-singular-image-weight-threshold-value")?.value || String(GEM_PREFLIGHT_DEFAULT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_VALUE)) || GEM_PREFLIGHT_DEFAULT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_VALUE),
             [GEM_PREFLIGHT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_UNIT_KEY]:
-              (document.getElementById("opt-preflight-singular-image-weight-threshold-unit")?.value === 'KB') ? 'KB' : 'MB'
+              (document.getElementById("opt-preflight-singular-image-weight-threshold-unit")?.value === 'KB') ? 'KB' : 'MB',
+            [GEM_PREFLIGHT_ENABLE_LIVE_LINK_VERIFY_KEY]:
+              document.getElementById("opt-preflight-enable-live-link-verify")?.checked ?? false
           };
 
           // Apply immediately + cache synchronously for next page load
@@ -1706,6 +1734,32 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
     }
 
     const handlers = _gemSettingsBoundHandlers;
+    const syncGrantLinkAccessButtonVisibility = () => {
+      const btn = document.getElementById("gem-preflight-grant-link-access-btn");
+      if (!btn) return;
+      const wrap = btn.closest(".gem-setting");
+      chrome.runtime.sendMessage({ action: 'preflightCheckLinkHostAccess' }, (res) => {
+        const granted = !!(res && res.ok && res.granted);
+        if (wrap) wrap.style.display = granted ? "none" : "";
+        else btn.style.display = granted ? "none" : "";
+      });
+    };
+    const grantLinkAccessBtn = document.getElementById("gem-preflight-grant-link-access-btn");
+    if (grantLinkAccessBtn && grantLinkAccessBtn.dataset.gemBound !== "true") {
+      grantLinkAccessBtn.dataset.gemBound = "true";
+      grantLinkAccessBtn.addEventListener("click", () => {
+        grantLinkAccessBtn.disabled = true;
+        chrome.runtime.sendMessage({ action: 'preflightEnsureLinkHostAccess' }, (res) => {
+          grantLinkAccessBtn.disabled = false;
+          const granted = !!(res && res.ok && res.granted);
+          if (granted) {
+            chrome.storage.sync.set({ [GEM_PREFLIGHT_HIDE_LINKS_SECTION_KEY]: false });
+            syncGrantLinkAccessButtonVisibility();
+          }
+        });
+      });
+    }
+    syncGrantLinkAccessButtonVisibility();
     const manageNeverCheckBtn = document.getElementById("gem-manage-preflight-never-check-btn");
     if (manageNeverCheckBtn && manageNeverCheckBtn.dataset.gemBound !== "true") {
       manageNeverCheckBtn.dataset.gemBound = "true";
@@ -1752,7 +1806,8 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
       "opt-preflight-total-image-weight-threshold-value",
       "opt-preflight-total-image-weight-threshold-unit",
       "opt-preflight-singular-image-weight-threshold-value",
-      "opt-preflight-singular-image-weight-threshold-unit"
+      "opt-preflight-singular-image-weight-threshold-unit",
+      "opt-preflight-enable-live-link-verify"
     ];
 
     settingsIds.forEach((id) => {
@@ -2464,6 +2519,10 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
     }
     if (changes[GEM_PREFLIGHT_URL_NEVER_CHECK_KEY]) {
       loadPreflightNeverCheckList();
+    }
+    if (changes[GEM_PREFLIGHT_ENABLE_LIVE_LINK_VERIFY_KEY]) {
+      const el = document.getElementById("opt-preflight-enable-live-link-verify");
+      if (el) el.checked = changes[GEM_PREFLIGHT_ENABLE_LIVE_LINK_VERIFY_KEY].newValue === true;
     }
   });
 

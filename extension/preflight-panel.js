@@ -9,6 +9,8 @@ function initializePreflightPanel() {
   const PREFLIGHT_SINGULAR_THRESHOLD_VALUE_KEY = 'gemPreflightSingularImageWeightThresholdValue';
   const PREFLIGHT_SINGULAR_THRESHOLD_UNIT_KEY = 'gemPreflightSingularImageWeightThresholdUnit';
   const PREFLIGHT_URL_NEVER_CHECK_KEY = 'urlPreflightNeverCheck';
+  const PREFLIGHT_ENABLE_LIVE_LINK_VERIFY_KEY = 'gemPreflightEnableLiveLinkVerify';
+  const PREFLIGHT_HIDE_LINKS_SECTION_KEY = 'gemPreflightHideLinksSection';
   const PREFLIGHT_ALERT_COUNT_KEY = 'gemPreflightAlertCount';
   const PREFLIGHT_SECTION_COLLAPSE_STATE_KEY = 'gemPreflightSectionCollapseStateV1';
   const GEM_TEXT_HIGHLIGHTS_RENDERED_EVENT = 'gem:text-highlights-rendered';
@@ -28,7 +30,8 @@ function initializePreflightPanel() {
   let imageHoverTooltipEl = null;
   let highlightDrivenTextRefreshTimer = null;
   let latestImageAlertCount = 0;
-  let latestAccessibilityAlertCount = 0;
+  let latestAccessibilityMissingAltCount = 0;
+  let latestLinkTitlesAlertCount = 0;
   let latestLinksAlertCount = 0;
   let latestNotifyAlertCount = 0;
   let latestTextAnalysisSnapshot = null;
@@ -43,6 +46,16 @@ function initializePreflightPanel() {
   let contactPreviewDebounceTimer = null;
   let contactPreviewBoundIframe = null;
   let contactPreviewLoadHandler = null;
+  /** Live updates for Accessibility > linked images missing ALT (desktop preview iframe only). */
+  let previewDocAccessibilityObserver = null;
+  let previewDocAccessibilityObserverDoc = null;
+  let accessibilityLiveRefreshTimer = null;
+  /** Last linked-image missing-ALT rows from live iframe observer (used when skipping scan on panel open). */
+  let cachedAccessibilityMissingAltRows = [];
+  /** Last "links with title" rows from live iframe observer or full scan (used when skipping scan on panel open). */
+  let cachedLinkTitleRows = [];
+  let preflightLiveLinkVerifyEnabled = false;
+  let preflightHideLinksSection = false;
   let editorLinkLiveVerifyAllInFlight = false;
   /** Editor `rowKey` → synthetic row shown after Contact Preview renders personalization (cleared on editor rescan). */
   const contactPreviewRenderedRowByEditorKey = new Map();
@@ -54,6 +67,7 @@ function initializePreflightPanel() {
 
   const GEM_PREFLIGHT_LIVE_SESSION_KEY = 'gemPreflightLinkLiveSessionV1';
   let preflightLiveSessionSaveTimer = null;
+  let linkRowMenuAlignRaf = null;
 
   function isChromeStorageSessionAvailable() {
     return typeof chrome !== 'undefined' && chrome.storage && chrome.storage.session;
@@ -308,9 +322,23 @@ function initializePreflightPanel() {
           <div class="gem-preflight-accessibility-table" data-role="accessibilityWarningsTable">
             <div class="gem-preflight-image-breakdown-empty">Scanning...</div>
           </div>
+          <div class="gem-preflight-subsection-description gem-preflight-subsection-description--with-help">
+            <span>Links with titles</span>
+            <e-tooltip
+              placement="top"
+              content="Title attributes aren’t reliably accessible—many screen readers ignore them, and they don’t work on touch or keyboard navigation."
+              role="tooltip"
+              aria-description="Title attributes aren’t reliably accessible—many screen readers ignore them, and they don’t work on touch or keyboard navigation."
+            >
+              <span class="gem-preflight-subsection-help-icon" tabindex="0" aria-label="Why links with titles are flagged"></span>
+            </e-tooltip>
+          </div>
+          <div class="gem-preflight-accessibility-table" data-role="linkTitlesTable">
+            <div class="gem-preflight-image-breakdown-empty">Scanning...</div>
+          </div>
         </div>
       </div>
-      <div class="gem-preflight-section-divider" aria-hidden="true"></div>
+      <div class="gem-preflight-section-divider" aria-hidden="true" data-role="linksSectionDivider"></div>
       <div class="gem-preflight-collapsible-section" data-role="linksSection">
         <div class="gem-preflight-subsection-title gem-preflight-subsection-title--spaced">
           <div class="gem-preflight-subsection-title-main">
@@ -318,11 +346,6 @@ function initializePreflightPanel() {
             <span class="gem-preflight-section-pip gem-preflight-section-pip--muted" data-role="linksSectionAlertPip">0</span>
           </div>
           <div class="gem-preflight-header-actions gem-preflight-links-header-actions">
-            <div class="gem-preflight-section-actions">
-              <button type="button" class="e-datagrid__item_action gem-borderless-btn gem-preflight-live-links-all-btn" data-role="liveVerifyAllLinksBtn" title="Live HTTP(S) check for all eligible links (requests host access)" aria-label="Live verify all links">
-                <span class="gem-preflight-live-links-btn-label">Live verify all</span>
-              </button>
-            </div>
             <button type="button" class="gem-preflight-section-toggle" data-role="toggleSectionBtn" data-section-key="links" aria-expanded="true" title="Collapse Links" aria-label="Collapse Links">
               <span class="gem-preflight-section-toggle-arrow" aria-hidden="true">▾</span>
             </button>
@@ -355,6 +378,10 @@ function initializePreflightPanel() {
                 <div class="gem-preflight-image-breakdown-empty">No skipped URLs.</div>
               </div>
             </div>
+          </div>
+          <div class="gem-preflight-links-permission-actions" data-role="linksPermissionActions" style="display:none;">
+            <button type="button" class="e-btn e-btn-primary" data-role="grantLinkAccessBtn">Grant Access to Live Verify</button>
+            <button type="button" class="e-btn" data-role="denyLinksSectionBtn">Deny Access</button>
           </div>
         </div>
       </div>
@@ -393,7 +420,7 @@ function initializePreflightPanel() {
               Estimate cold-cache image download weight for this email. This requests temporary image-host access so Gemma can measure unique image resources across any domain used in your email.
             </div>
             <button type="button" class="e-btn e-btn-primary gem-preflight-enable-image-access-btn" data-role="enableImageAccessBtn">
-              Analyze Image Download Weight
+              Grant Access to Analyze Images
             </button>
             <div class="gem-preflight-footnote" data-metric="permissionStatus"></div>
           </div>
@@ -469,11 +496,17 @@ function initializePreflightPanel() {
       textAnalysisResultsWrap: panel.querySelector('[data-role="textAnalysisResultsWrap"]'),
       textAnalysisInfo: panel.querySelector('[data-role="textAnalysisInfo"]'),
       skippedUrlsWrap: panel.querySelector('[data-role="skippedUrlsWrap"]'),
+      linksSection: panel.querySelector('[data-role="linksSection"]'),
+      linksSectionDivider: panel.querySelector('[data-role="linksSectionDivider"]'),
       skippedUrlsToggle: panel.querySelector('[data-role="skippedUrlsToggle"]'),
       skippedUrlsTable: panel.querySelector('[data-role="skippedUrlsTable"]'),
       liveVerifyAllLinksBtn: panel.querySelector('[data-role="liveVerifyAllLinksBtn"]'),
       liveLinkFootnote: panel.querySelector('[data-role="liveLinkFootnote"]'),
+      linksPermissionActions: panel.querySelector('[data-role="linksPermissionActions"]'),
+      grantLinkAccessBtn: panel.querySelector('[data-role="grantLinkAccessBtn"]'),
+      denyLinksSectionBtn: panel.querySelector('[data-role="denyLinksSectionBtn"]'),
       accessibilityWarningsTable: panel.querySelector('[data-role="accessibilityWarningsTable"]'),
+      linkTitlesTable: panel.querySelector('[data-role="linkTitlesTable"]'),
       linksSectionPip: panel.querySelector('[data-role="linksSectionAlertPip"]'),
       textAnalysisSectionPip: panel.querySelector('[data-role="textAnalysisSectionAlertPip"]'),
       permissionStatus: panel.querySelector('[data-metric="permissionStatus"]'),
@@ -503,7 +536,8 @@ function initializePreflightPanel() {
     const alertCount = Math.max(
       0,
       (Number.parseInt(String(latestImageAlertCount), 10) || 0) +
-      (Number.parseInt(String(latestAccessibilityAlertCount), 10) || 0) +
+      (Number.parseInt(String(latestAccessibilityMissingAltCount), 10) || 0) +
+      (Number.parseInt(String(latestLinkTitlesAlertCount), 10) || 0) +
       (Number.parseInt(String(latestLinksAlertCount), 10) || 0) +
       (Number.parseInt(String(latestNotifyAlertCount), 10) || 0)
     );
@@ -546,6 +580,7 @@ function initializePreflightPanel() {
   const LINK_HREF_MAX_LENGTH = 2000;
   const EMARSYS_FULL_URL_TOKEN = '#HTML_BROWSE_HREF#';
   const EMARSYS_TOKEN_PLACEHOLDER_URL = 'https://emarsys-token.invalid/';
+  const LIVE_VERIFY_HELP_TEXT = 'Live verify only runs when the href begins with http:// or https://. mailto:, tel:, fragments, templated-only hrefs, and other schemes are skipped - use Contact Preview for personalized links.';
   const LINK_ISSUE_LABELS = {
     MISSING_HREF: 'Missing href',
     EMPTY_HREF: 'Empty href',
@@ -998,6 +1033,134 @@ function initializePreflightPanel() {
     });
   }
 
+  function disconnectPreviewDocAccessibilityObserver() {
+    if (previewDocAccessibilityObserver) {
+      try {
+        previewDocAccessibilityObserver.disconnect();
+      } catch (_) {}
+      previewDocAccessibilityObserver = null;
+    }
+    previewDocAccessibilityObserverDoc = null;
+  }
+
+  function renderAccessibilityWarningsIntoTable(tableEl, warnings) {
+    if (!tableEl) return;
+    const rows = Array.isArray(warnings) ? warnings : [];
+    if (!rows.length) {
+      tableEl.innerHTML = '<div class="gem-preflight-image-breakdown-empty">No linked images with missing ALT text.</div>';
+      return;
+    }
+    tableEl.innerHTML = rows.map((row) => `
+      <div class="gem-preflight-image-breakdown-row">
+        <div class="gem-preflight-image-breakdown-name" data-image-url="${escapeHtmlText(row.url || '')}">${escapeHtmlText(row.filename)}</div>
+        <div class="gem-preflight-image-breakdown-size gem-preflight-image-breakdown-size--alert">Missing ALT</div>
+      </div>
+    `).join('');
+  }
+
+  function renderLinkTitlesTable(tableEl, warnings) {
+    if (!tableEl) return;
+    const rows = Array.isArray(warnings) ? warnings : [];
+    if (!rows.length) {
+      tableEl.innerHTML = '<div class="gem-preflight-image-breakdown-empty">No links with title attributes.</div>';
+      return;
+    }
+    tableEl.innerHTML = rows.map((row) => {
+      const nameCell = row.kind === 'image' && row.imageUrl
+        ? `<div class="gem-preflight-image-breakdown-name" data-image-url="${escapeHtmlText(row.imageUrl)}">${escapeHtmlText(row.displayName)}</div>`
+        : `<div class="gem-preflight-image-breakdown-name">${escapeHtmlText(row.displayName)}</div>`;
+      return `<div class="gem-preflight-image-breakdown-row">${nameCell}<div class="gem-preflight-image-breakdown-size gem-preflight-image-breakdown-size--alert">Remove Title</div></div>`;
+    }).join('');
+  }
+
+  function getAccessibilityCombinedAlertCount() {
+    return (
+      (Number.parseInt(String(latestAccessibilityMissingAltCount), 10) || 0) +
+      (Number.parseInt(String(latestLinkTitlesAlertCount), 10) || 0)
+    );
+  }
+
+  function refreshLinkedImageMissingAltFromPreview() {
+    const iframe = document.querySelector(PREVIEW_IFRAME_SELECTOR);
+    const doc = iframe && iframe.contentDocument;
+    if (!doc || !doc.documentElement) return;
+    const warnings = collectLinkedImageMissingAltWarnings(doc);
+    cachedAccessibilityMissingAltRows = warnings.map((w) => ({
+      url: w.url || '',
+      filename: w.filename || ''
+    }));
+    latestAccessibilityMissingAltCount = warnings.length || 0;
+    persistAndUpdateOverallAlertPip();
+    if (!isPreflightActive()) return;
+    const els = getPreflightPanelEls();
+    if (!els || !els.accessibilityWarningsTable) return;
+    renderAccessibilityWarningsIntoTable(els.accessibilityWarningsTable, warnings);
+    updateAccessibilitySectionPip(getAccessibilityCombinedAlertCount());
+  }
+
+  function refreshLinkTitlesFromPreview() {
+    const iframe = document.querySelector(PREVIEW_IFRAME_SELECTOR);
+    const doc = iframe && iframe.contentDocument;
+    if (!doc || !doc.documentElement) return;
+    const warnings = collectLinksWithTitleWarnings(doc);
+    cachedLinkTitleRows = warnings.map((w) => ({
+      kind: w.kind,
+      displayName: w.displayName || '',
+      imageUrl: w.imageUrl || ''
+    }));
+    latestLinkTitlesAlertCount = warnings.length || 0;
+    persistAndUpdateOverallAlertPip();
+    if (!isPreflightActive()) return;
+    const els = getPreflightPanelEls();
+    if (!els || !els.linkTitlesTable) return;
+    renderLinkTitlesTable(els.linkTitlesTable, warnings);
+    updateAccessibilitySectionPip(getAccessibilityCombinedAlertCount());
+  }
+
+  function scheduleAccessibilitySectionLiveRefresh() {
+    if (accessibilityLiveRefreshTimer) clearTimeout(accessibilityLiveRefreshTimer);
+    accessibilityLiveRefreshTimer = setTimeout(() => {
+      accessibilityLiveRefreshTimer = null;
+      try {
+        refreshLinkedImageMissingAltFromPreview();
+        refreshLinkTitlesFromPreview();
+      } catch (_) {}
+    }, 200);
+  }
+
+  /**
+   * Watches the desktop preview iframe document for DOM / attribute changes that can affect
+   * `a[href] img` missing-alt warnings, without re-running the full image-weight scan.
+   */
+  function setupPreviewDocAccessibilityObserver(iframe) {
+    if (!iframe) return;
+    let doc = null;
+    try {
+      doc = iframe.contentDocument;
+    } catch (_) {
+      doc = null;
+    }
+    const root = doc && (doc.documentElement || doc.body);
+    if (!root) return;
+    if (previewDocAccessibilityObserver && previewDocAccessibilityObserverDoc === doc) return;
+
+    disconnectPreviewDocAccessibilityObserver();
+    previewDocAccessibilityObserverDoc = doc;
+    previewDocAccessibilityObserver = new MutationObserver(() => {
+      scheduleAccessibilitySectionLiveRefresh();
+    });
+    try {
+      previewDocAccessibilityObserver.observe(root, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['alt', 'src', 'srcset', 'href', 'class', 'style', 'title']
+      });
+    } catch (_) {
+      disconnectPreviewDocAccessibilityObserver();
+    }
+  }
+
   function cleanupPreflightLifecycle() {
     if (refreshTimer) {
       clearTimeout(refreshTimer);
@@ -1010,6 +1173,16 @@ function initializePreflightPanel() {
     if (highlightDrivenTextRefreshTimer) {
       clearTimeout(highlightDrivenTextRefreshTimer);
       highlightDrivenTextRefreshTimer = null;
+    }
+    if (accessibilityLiveRefreshTimer) {
+      clearTimeout(accessibilityLiveRefreshTimer);
+      accessibilityLiveRefreshTimer = null;
+    }
+    if (linkRowMenuAlignRaf) {
+      try {
+        cancelAnimationFrame(linkRowMenuAlignRaf);
+      } catch (_) {}
+      linkRowMenuAlignRaf = null;
     }
     disconnectContactPreviewObserver();
     if (preflightLiveSessionSaveTimer) {
@@ -1131,6 +1304,67 @@ function initializePreflightPanel() {
     });
 
     return warnings;
+  }
+
+  function truncateBreakdownLabelForPreflight(text, maxLen = 40) {
+    const t = String(text || '').trim().replace(/\s+/g, ' ');
+    if (t.length <= maxLen) return t;
+    return `${t.slice(0, maxLen - 1)}…`;
+  }
+
+  function getAnchorVisibleTextSummary(anchorEl, doc) {
+    const owner = doc || (anchorEl && anchorEl.ownerDocument);
+    if (!owner || !anchorEl) return '';
+    try {
+      const walker = owner.createTreeWalker(anchorEl, NodeFilter.SHOW_TEXT, null);
+      const parts = [];
+      let n;
+      while ((n = walker.nextNode())) {
+        const t = String(n.nodeValue || '').replace(/\s+/g, ' ').trim();
+        if (t) parts.push(t);
+      }
+      return parts.join(' ').trim();
+    } catch (_) {
+      return String(anchorEl.textContent || '').replace(/\s+/g, ' ').trim();
+    }
+  }
+
+  function collectLinksWithTitleWarnings(doc) {
+    const rows = [];
+    const base = doc.baseURI || window.location.href;
+    doc.querySelectorAll('a[href]').forEach((a) => {
+      try {
+        const titleAttr = a.getAttribute('title');
+        if (typeof titleAttr !== 'string' || titleAttr.trim().length === 0) return;
+        const textSummary = getAnchorVisibleTextSummary(a, doc);
+        if (textSummary.length > 0) {
+          rows.push({
+            kind: 'text',
+            displayName: truncateBreakdownLabelForPreflight(textSummary)
+          });
+          return;
+        }
+        const img = a.querySelector('img');
+        if (img) {
+          const src = img.getAttribute('src') || img.currentSrc || '';
+          const normalized = normalizeUrl(src, base);
+          if (!normalized) return;
+          rows.push({
+            kind: 'image',
+            displayName: extractFilename(normalized),
+            imageUrl: normalized
+          });
+          return;
+        }
+        const href = (a.getAttribute('href') || '').trim();
+        const fallback = href || '(empty link)';
+        rows.push({
+          kind: 'text',
+          displayName: truncateBreakdownLabelForPreflight(fallback)
+        });
+      } catch (_) {}
+    });
+    return rows;
   }
 
   function isDownloadableNetworkUrl(url) {
@@ -1271,6 +1505,17 @@ function initializePreflightPanel() {
     );
   }
 
+  function getRenderedCompanionRowForEditorRow(row) {
+    if (!row || row.isContactPreviewRenderedRow) return null;
+    return contactPreviewRenderedRowByEditorKey.get(row.rowKey) || null;
+  }
+
+  function getPreferredLiveVerifyRow(row) {
+    const companion = getRenderedCompanionRowForEditorRow(row);
+    if (companion && rowEligibleForPreflightLiveVerify(companion)) return companion;
+    return row;
+  }
+
   function shouldCreateContactPreviewRenderedCompanion(editorRow, previewAnchor, previewDoc) {
     if (!editorRow || !previewAnchor || !previewDoc) return false;
     const meta = computeLinkFetchMetadata(previewAnchor, previewDoc);
@@ -1322,7 +1567,9 @@ function initializePreflightPanel() {
     }
   }
 
-  function mergeEditorRowsWithContactPreviewRendered(baseRows) {
+  function mergeEditorRowsWithContactPreviewRendered(baseRows, opts = {}) {
+    const includeRenderedRows = !!opts.includeRenderedRows;
+    if (!includeRenderedRows) return Array.isArray(baseRows) ? baseRows.slice() : [];
     const out = [];
     (baseRows || []).forEach((row) => {
       out.push(row);
@@ -1501,14 +1748,15 @@ function initializePreflightPanel() {
   }
 
   function buildLiveStatusPresentation(row) {
-    const st = linkLiveState.get(row.rowKey);
+    const targetRow = getPreferredLiveVerifyRow(row);
+    const statusRowKey = (targetRow && targetRow.rowKey) || (row && row.rowKey);
+    const st = linkLiveState.get(statusRowKey);
     const stDetail = String((st && (st.detailText || st.detail)) || '').trim();
-    if (!rowEligibleForPreflightLiveVerify(row)) {
+    if (!rowEligibleForPreflightLiveVerify(targetRow)) {
       return {
         className: 'gem-preflight-live-chip--skipped',
         label: 'Skipped',
-        detailText:
-          'Live verify only runs when the href begins with http:// or https://. mailto:, tel:, fragments, templated-only hrefs, and other schemes are skipped — use Contact Preview for personalized links.'
+        detailText: ''
       };
     }
     if (!st || st.phase === 'idle') {
@@ -1531,7 +1779,7 @@ function initializePreflightPanel() {
     else if (st.category === 'serverError' || st.category === 'networkError') chipClass = 'gem-preflight-live-chip--error';
     const detailParts = [
       stDetail,
-      st.finalUrl && row.fetchCandidateUrl && st.finalUrl !== row.fetchCandidateUrl ? `Final: ${st.finalUrl}` : ''
+      st.finalUrl && targetRow && targetRow.fetchCandidateUrl && st.finalUrl !== targetRow.fetchCandidateUrl ? `Final: ${st.finalUrl}` : ''
     ].filter(Boolean);
     return { className: chipClass, label, detailText: detailParts.join(' ') };
   }
@@ -1545,10 +1793,10 @@ function initializePreflightPanel() {
     const menuKey = `${inSkippedSection ? 'skipped' : 'main'}:${row.rowKey}`;
     const isOpen = openLinkRowMenuKey === menuKey;
     const neverItem = !isSkipped && !inSkippedSection
-      ? '<button type="button" class="gem-preflight-links-row-menu-item" data-action="gem-url-never-check">Never check</button>'
+      ? '<button type="button" class="gem-preflight-links-row-menu-item" data-action="gem-url-never-check">Always skip</button>'
       : '';
     const alwaysItem = isSkipped
-      ? '<button type="button" class="gem-preflight-links-row-menu-item" data-action="gem-url-always-check">Always check</button>'
+      ? '<button type="button" class="gem-preflight-links-row-menu-item" data-action="gem-url-always-check">Never Skip</button>'
       : '';
     const menuItems = `${neverItem}${alwaysItem}`;
     if (!menuItems) return '';
@@ -1560,60 +1808,78 @@ function initializePreflightPanel() {
     </div>`;
   }
 
+  function scheduleOpenLinkRowMenuAlignment() {
+    if (linkRowMenuAlignRaf) {
+      try {
+        cancelAnimationFrame(linkRowMenuAlignRaf);
+      } catch (_) {}
+      linkRowMenuAlignRaf = null;
+    }
+    linkRowMenuAlignRaf = requestAnimationFrame(() => {
+      linkRowMenuAlignRaf = null;
+      const panel = document.querySelector(PRELIGHT_PANEL_TAG);
+      if (!panel) return;
+      const panelRect = panel.getBoundingClientRect();
+      const menus = Array.from(panel.querySelectorAll('.gem-preflight-links-row-menu.gem-preflight-links-row-menu--open'));
+      if (!menus.length) return;
+      const pad = 8;
+      menus.forEach((menu) => {
+        if (!menu || !menu.classList) return;
+        menu.classList.remove('gem-preflight-links-row-menu--align-left', 'gem-preflight-links-row-menu--align-right');
+        menu.classList.add('gem-preflight-links-row-menu--align-right');
+        let rect = menu.getBoundingClientRect();
+        if (rect.left < (panelRect.left + pad)) {
+          menu.classList.remove('gem-preflight-links-row-menu--align-right');
+          menu.classList.add('gem-preflight-links-row-menu--align-left');
+          rect = menu.getBoundingClientRect();
+        }
+        if (rect.right > (panelRect.right - pad)) {
+          menu.classList.remove('gem-preflight-links-row-menu--align-left');
+          menu.classList.add('gem-preflight-links-row-menu--align-right');
+        }
+      });
+    });
+  }
+
   function renderLinksTableHtml(lrows, opts = {}) {
     const inSkippedSection = !!opts.isSkippedSection;
-    return lrows
-      .map((row) => {
-        const rk = encodeURIComponent(row.rowKey || '');
-        const live = inSkippedSection
-          ? {
-              className: 'gem-preflight-live-chip--skipped',
-              label: 'Skipped by setting',
-              detailText: 'This URL is listed in Never check and is excluded from formatting and live checks.'
-            }
-          : buildLiveStatusPresentation(row);
-        const isCpRendered = !!row.isContactPreviewRenderedRow;
-        const cpBadge = isCpRendered
-          ? '<div class="gem-preflight-links-row-cp-badge">Contact Preview — rendered URL</div>'
-          : '';
-        const cpBtn =
-          !inSkippedSection && row.hasTemplateTokens && !isCpRendered
-            ? '<button type="button" class="gem-preflight-live-links-row-btn gem-preflight-live-links-row-btn--secondary" data-action="gem-open-contact-preview" title="Open Emarsys Contact Preview" aria-label="Open Contact Preview">Preview</button>'
+    if (inSkippedSection) {
+      return lrows
+        .map((row) => {
+          const rk = encodeURIComponent(row.rowKey || '');
+          const live = {
+            className: 'gem-preflight-live-chip--skipped',
+            label: 'Skipped by setting',
+            detailText: 'This URL is listed in the Skip List and is excluded from formatting and live checks.'
+          };
+          const cpBadge = row.isContactPreviewRenderedRow
+            ? '<div class="gem-preflight-links-row-cp-badge">Contact Preview - rendered URL</div>'
             : '';
-        const verifyBtn = !inSkippedSection && rowEligibleForPreflightLiveVerify(row)
-          ? `<button type="button" class="gem-preflight-live-links-row-btn" data-action="gem-live-verify-one" data-gem-link-row-key="${rk}" title="Live verify this URL" aria-label="Live verify this link">↗</button>`
-          : '';
-        const menuBtn = buildPreflightLinkRowMenuHtml(row, { isSkippedSection: inSkippedSection });
-        const liveDetail = String(live.detailText || '').trim();
-        const liveDetailBlock = liveDetail
-          ? `<div class="gem-preflight-live-debug">${escapeHtmlText(liveDetail)}</div>`
-          : '';
-        const actionsInner = `${verifyBtn}${cpBtn}${menuBtn}`;
-        const actionsBlock = actionsInner
-          ? `<div class="gem-preflight-links-row-actions">${actionsInner}</div>`
-          : '';
-        const issueLabels = Array.isArray(row.issueLabels) ? row.issueLabels : [];
-        const issueCount = issueLabels.length;
-        const lintSummaryTitle = issueCount > 0 ? escapeHtmlText(issueLabels.join(', ')) : '';
-        const lintCell = inSkippedSection
-          ? ''
-          : issueCount > 0
+          const menuBtn = buildPreflightLinkRowMenuHtml(row, { isSkippedSection: true });
+          const liveDetail = String(live.detailText || '').trim();
+          const liveDetailBlock = liveDetail
+            ? `<div class="gem-preflight-live-debug">${escapeHtmlText(liveDetail)}</div>`
+            : '';
+          const issueLabels = Array.isArray(row.issueLabels) ? row.issueLabels : [];
+          const issueCount = issueLabels.length;
+          const lintSummaryTitle = issueCount > 0 ? escapeHtmlText(issueLabels.join(', ')) : '';
+          const lintCell = issueCount > 0
             ? `<span class="gem-preflight-links-lint-pip" title="${lintSummaryTitle}" aria-label="${issueCount} link issue${issueCount === 1 ? '' : 's'}">${String(Math.min(99, issueCount))}</span>`
             : `<span class="gem-preflight-links-lint-ok" title="No static link issues" aria-label="No link issues"><span aria-hidden="true">&#10003;</span></span>`;
-        const issuesBlock =
-          issueCount > 0
-            ? `<div class="gem-preflight-links-row-line3" role="region" aria-label="Link issues">
+          const issuesBlock =
+            issueCount > 0
+              ? `<div class="gem-preflight-links-row-line3" role="region" aria-label="Link issues">
             <ul class="gem-preflight-links-issue-list">
               ${issueLabels.map((lab) => `<li>${escapeHtmlText(lab)}</li>`).join('')}
             </ul>
           </div>`
-            : '';
-        return `
-        <div class="gem-preflight-links-row${isCpRendered ? ' gem-preflight-links-row--cp-rendered' : ''}">
+              : '';
+          return `
+        <div class="gem-preflight-links-row">
           <div class="gem-preflight-links-row-line1">
             <div class="gem-preflight-links-row-main">
               ${cpBadge}
-              <div class="gem-preflight-image-breakdown-name gem-preflight-link-href" title="${escapeHtmlText(row.displayHref)}">${escapeHtmlText(row.displayHref)}${row.referenceCount > 1 ? ` (${row.referenceCount}×)` : ''}</div>
+              <div class="gem-preflight-image-breakdown-name gem-preflight-link-href" title="${escapeHtmlText(row.displayHref)}">${escapeHtmlText(row.displayHref)}${row.referenceCount > 1 ? ` (${row.referenceCount}x)` : ''}</div>
             </div>
             <div class="gem-preflight-links-row-lint">${lintCell}</div>
           </div>
@@ -1623,10 +1889,91 @@ function initializePreflightPanel() {
               <span class="gem-preflight-live-chip ${live.className}">${escapeHtmlText(live.label)}</span>
               ${liveDetailBlock}
             </div>
-            ${actionsBlock}
+            <div class="gem-preflight-links-row-actions">${menuBtn}</div>
           </div>
         </div>`;
+        })
+        .join('');
+    }
+    return lrows
+      .map((row) => {
+        const rk = encodeURIComponent(row.rowKey || '');
+        if (row.isContactPreviewRenderedRow) return '';
+        const renderedCompanion = contactPreviewRenderedRowByEditorKey.get(row.rowKey) || null;
+        const renderedDisplayHref = renderedCompanion ? String(renderedCompanion.displayHref || '').trim() : '';
+        const originalDisplayHref = String(row.displayHref || '').trim();
+        const showRenderedHref = !!(renderedDisplayHref && renderedDisplayHref !== originalDisplayHref);
+        const live = buildLiveStatusPresentation(row);
+        const preferredLiveRow = getPreferredLiveVerifyRow(row);
+        const canCheck = rowEligibleForPreflightLiveVerify(preferredLiveRow);
+        const liveState = linkLiveState.get((preferredLiveRow && preferredLiveRow.rowKey) || row.rowKey);
+        const hasLiveResultState = !!(liveState && liveState.phase && liveState.phase !== 'idle');
+        const showLiveSection = preflightLiveLinkVerifyEnabled === true;
+        const needsContactPreviewForLiveVerify = !rowEligibleForPreflightLiveVerify(row) && !!row.hasTemplateTokens && !renderedCompanion;
+        const showVerifyContactPreviewChip =
+          showLiveSection &&
+          live.className === 'gem-preflight-live-chip--skipped' &&
+          needsContactPreviewForLiveVerify;
+        const liveValueHtml = !showLiveSection
+          ? ''
+          : canCheck && !hasLiveResultState
+            ? `<button type="button" class="gem-preflight-live-check-link" data-action="gem-live-verify-one" data-gem-link-row-key="${rk}" title="Live verify this URL" aria-label="Live verify this link">Check</button>`
+            : `<span class="gem-preflight-live-chip ${live.className}">${escapeHtmlText(live.label)}</span>${showVerifyContactPreviewChip ? '<button type="button" class="gem-preflight-live-chip gem-preflight-live-chip-btn gem-preflight-live-chip--neutral" data-action="gem-open-contact-preview" title="Open Emarsys Contact Preview to render URL" aria-label="Open Contact Preview">Verify</button>' : ''}`;
+        const liveDetail = showLiveSection ? String(live.detailText || '').trim() : '';
+        const liveDetailBlock = liveDetail
+          ? `<div class="gem-preflight-live-debug gem-preflight-links-stacked-subtext">${escapeHtmlText(liveDetail)}</div>`
+          : '';
+        const menuBtn = buildPreflightLinkRowMenuHtml(row, { isSkippedSection: false });
+        const issueLabels = Array.isArray(row.issueLabels) ? row.issueLabels : [];
+        const issueCount = issueLabels.length;
+        const formattingStatus = issueCount > 0
+          ? `<span class="gem-preflight-links-format-count" aria-label="${issueCount} formatting issue${issueCount === 1 ? '' : 's'}">${String(Math.min(99, issueCount))}</span>`
+          : '<span class="gem-preflight-live-chip gem-preflight-live-chip--ok" aria-label="No formatting issues">Passed</span>';
+        const formattingIssuesBlock = issueCount > 0
+          ? `<div class="gem-preflight-links-stacked-subtext" role="region" aria-label="Formatting issues">
+              <ul class="gem-preflight-links-issue-list">
+                ${issueLabels.map((lab) => `<li>${escapeHtmlText(lab)}</li>`).join('')}
+              </ul>
+            </div>`
+          : '';
+        return `
+        <div class="gem-preflight-links-table">
+        <div class="gem-preflight-links-row gem-preflight-links-row--stacked">
+          <div class="gem-preflight-links-stacked-url-row">
+            <div class="gem-preflight-image-breakdown-name gem-preflight-link-href" title="${escapeHtmlText(row.displayHref)}">${escapeHtmlText(row.displayHref)}${row.referenceCount > 1 ? ` (${row.referenceCount}x)` : ''}</div>
+            ${menuBtn ? `<div class="gem-preflight-links-row-actions">${menuBtn}</div>` : ''}
+          </div>
+          ${showRenderedHref
+            ? `<div class="gem-preflight-links-stacked-subtext"><span class="gem-preflight-links-stacked-label-inline">Rendered URL:</span> ${escapeHtmlText(renderedDisplayHref)}</div>`
+            : ''
+          }
+          ${showLiveSection
+            ? `<div class="gem-preflight-links-stacked-kv-row">
+              <div class="gem-preflight-links-stacked-kv-label gem-preflight-links-stacked-kv-label--with-help">
+                <span>Live Verify</span>
+                <e-tooltip
+                  placement="top"
+                  content="${escapeHtmlText(LIVE_VERIFY_HELP_TEXT)}"
+                  role="tooltip"
+                  aria-description="${escapeHtmlText(LIVE_VERIFY_HELP_TEXT)}"
+                >
+                  <span class="gem-preflight-subsection-help-icon gem-preflight-links-help-icon" tabindex="0" aria-label="About Live Verify checks"></span>
+                </e-tooltip>
+              </div>
+              <div class="gem-preflight-links-stacked-kv-value">${liveValueHtml}</div>
+            </div>
+            ${liveDetailBlock}`
+            : ''
+          }
+          <div class="gem-preflight-links-stacked-kv-row">
+            <div class="gem-preflight-links-stacked-kv-label">Formatting</div>
+            <div class="gem-preflight-links-stacked-kv-value">${formattingStatus}</div>
+          </div>
+          ${formattingIssuesBlock}
+        </div>
+        </div>`;
       })
+      .filter(Boolean)
       .join('');
   }
 
@@ -1637,9 +1984,10 @@ function initializePreflightPanel() {
       syncLiveVerifyAllButtonState();
       return;
     }
-    const merged = mergeEditorRowsWithContactPreviewRendered(lrows);
+    const merged = mergeEditorRowsWithContactPreviewRendered(lrows, { includeRenderedRows: false });
     linksTableEl.innerHTML = renderLinksTableHtml(merged, { isSkippedSection: false });
     syncLiveVerifyAllButtonState();
+    scheduleOpenLinkRowMenuAlignment();
   }
 
   function renderSkippedUrlsSection() {
@@ -1653,6 +2001,7 @@ function initializePreflightPanel() {
     }
     els.skippedUrlsWrap.style.display = '';
     els.skippedUrlsTable.innerHTML = renderLinksTableHtml(rows, { isSkippedSection: true });
+    scheduleOpenLinkRowMenuAlignment();
   }
 
   function syncLiveVerifyAllButtonState() {
@@ -1660,7 +2009,15 @@ function initializePreflightPanel() {
     if (!els || !els.liveVerifyAllLinksBtn) return;
     const lrows = (cachedLinksAnalysis && cachedLinksAnalysis.rows) || [];
     const ready = isDesktopPreviewDocReady() && lrows.length > 0;
-    els.liveVerifyAllLinksBtn.disabled = !ready || editorLinkLiveVerifyAllInFlight;
+    const enabled = preflightLiveLinkVerifyEnabled === true;
+    els.liveVerifyAllLinksBtn.disabled = !enabled || !ready || editorLinkLiveVerifyAllInFlight;
+    if (!enabled) {
+      els.liveVerifyAllLinksBtn.title = 'Enable Live Verify in Settings > Link Alerts';
+      els.liveVerifyAllLinksBtn.setAttribute('aria-label', 'Enable Live Verify in Settings > Link Alerts');
+    } else {
+      els.liveVerifyAllLinksBtn.title = 'Live HTTP(S) check for all eligible links (requests host access)';
+      els.liveVerifyAllLinksBtn.setAttribute('aria-label', 'Live verify all links');
+    }
   }
 
   function refreshLinksTableFromCache() {
@@ -1822,6 +2179,7 @@ function initializePreflightPanel() {
   }
 
   async function runLiveVerifyAllLinks() {
+    if (!preflightLiveLinkVerifyEnabled) return;
     if (!cachedLinksAnalysis || editorLinkLiveVerifyAllInFlight) return;
     const rows = mergeEditorRowsWithContactPreviewRendered(cachedLinksAnalysis.rows || []).filter((r) =>
       rowEligibleForPreflightLiveVerify(r)
@@ -1844,11 +2202,14 @@ function initializePreflightPanel() {
   }
 
   async function runLiveVerifyOneRow(rowKey) {
+    if (!preflightLiveLinkVerifyEnabled) return;
     if (!cachedLinksAnalysis || !rowKey) return;
     const row = findLinkRowByRowKey(rowKey);
-    if (!row || row.hasTemplateTokens || !rowEligibleForPreflightLiveVerify(row)) return;
+    if (!row) return;
+    const preferredRow = getPreferredLiveVerifyRow(row);
+    if (!preferredRow || preferredRow.hasTemplateTokens || !rowEligibleForPreflightLiveVerify(preferredRow)) return;
     const m = new Map();
-    m.set(row.fetchCandidateUrl, new Set([row.rowKey]));
+    m.set(preferredRow.fetchCandidateUrl, new Set([preferredRow.rowKey]));
     await executeLiveVerifyFromUrlMap(m, 'editor', { mappingMode: 'editor-row', forceNetworkFetch: true });
   }
 
@@ -2180,6 +2541,10 @@ function initializePreflightPanel() {
 
   async function runContactPreviewLinkLiveVerifyPass() {
     if (!isPreflightActive() || contactPreviewVerifyInFlight) return;
+    if (!preflightLiveLinkVerifyEnabled) {
+      setLiveLinkFootnoteText('Live verify is disabled in Settings > Link Alerts.', true);
+      return;
+    }
     if (!cachedLinksAnalysis) return;
     const iframe = document.querySelector(CONTACT_PREVIEW_IFRAME_SELECTOR);
     if (!iframe) {
@@ -2303,6 +2668,110 @@ function initializePreflightPanel() {
         runLiveVerifyAllLinks();
       });
     }
+  }
+
+  function applyLiveVerifyEnabledState(enabled) {
+    preflightLiveLinkVerifyEnabled = enabled === true;
+    if (isPreflightActive()) {
+      refreshLinksTableFromCache();
+      renderSkippedUrlsSection();
+      syncLiveVerifyAllButtonState();
+      if (!preflightLiveLinkVerifyEnabled) {
+        setLiveLinkFootnoteText('Live verify is disabled in Settings > Link Alerts.', true);
+      } else {
+        setLiveLinkFootnoteText('', false);
+        scheduleContactPreviewLinkVerify();
+      }
+    }
+  }
+
+  function applyLinksSectionVisibilityState(hidden) {
+    preflightHideLinksSection = hidden === true;
+    const els = getPreflightPanelEls();
+    if (els && els.linksSection) els.linksSection.style.display = preflightHideLinksSection ? 'none' : '';
+    if (els && els.linksSectionDivider) els.linksSectionDivider.style.display = preflightHideLinksSection ? 'none' : '';
+    if (preflightHideLinksSection) {
+      latestLinksAlertCount = 0;
+      persistAndUpdateOverallAlertPip();
+      updateLinksSectionPip(0);
+    }
+  }
+
+  function saveLinksSectionHiddenSetting(hidden) {
+    return new Promise((resolve) => {
+      try {
+        chrome.storage.sync.set({ [PREFLIGHT_HIDE_LINKS_SECTION_KEY]: hidden === true }, () => resolve());
+      } catch (_) {
+        resolve();
+      }
+    });
+  }
+
+  function loadLinksSectionHiddenSetting() {
+    return new Promise((resolve) => {
+      try {
+        chrome.storage.sync.get({ [PREFLIGHT_HIDE_LINKS_SECTION_KEY]: false }, (res) => {
+          applyLinksSectionVisibilityState(!!(res && res[PREFLIGHT_HIDE_LINKS_SECTION_KEY]));
+          resolve(preflightHideLinksSection);
+        });
+      } catch (_) {
+        applyLinksSectionVisibilityState(false);
+        resolve(false);
+      }
+    });
+  }
+
+  async function refreshLinksPermissionActionsUI() {
+    const els = getPreflightPanelEls();
+    if (!els || !els.linksPermissionActions || preflightHideLinksSection) return;
+    const hasAccess = await hasLinkHostAccess();
+    if (!isPreflightActive()) return;
+    els.linksPermissionActions.style.display = hasAccess ? 'none' : '';
+  }
+
+  function setupLinksPermissionActions() {
+    const els = getPreflightPanelEls();
+    if (!els) return;
+    if (els.grantLinkAccessBtn && els.grantLinkAccessBtn.dataset.gemBound !== 'true') {
+      els.grantLinkAccessBtn.dataset.gemBound = 'true';
+      els.grantLinkAccessBtn.addEventListener('click', async () => {
+        els.grantLinkAccessBtn.disabled = true;
+        const granted = await ensureLinkHostAccess();
+        els.grantLinkAccessBtn.disabled = false;
+        if (!isPreflightActive()) return;
+        if (granted) {
+          await saveLinksSectionHiddenSetting(false);
+          applyLinksSectionVisibilityState(false);
+          setLiveLinkFootnoteText('', false);
+          refreshLinksTableFromCache();
+          renderSkippedUrlsSection();
+          scheduleContactPreviewLinkVerify();
+        }
+        void refreshLinksPermissionActionsUI();
+      });
+    }
+    if (els.denyLinksSectionBtn && els.denyLinksSectionBtn.dataset.gemBound !== 'true') {
+      els.denyLinksSectionBtn.dataset.gemBound = 'true';
+      els.denyLinksSectionBtn.addEventListener('click', async () => {
+        await saveLinksSectionHiddenSetting(true);
+        applyLinksSectionVisibilityState(true);
+      });
+    }
+    void refreshLinksPermissionActionsUI();
+  }
+
+  function loadLiveVerifyEnabledSetting() {
+    return new Promise((resolve) => {
+      try {
+        chrome.storage.sync.get({ [PREFLIGHT_ENABLE_LIVE_LINK_VERIFY_KEY]: false }, (res) => {
+          applyLiveVerifyEnabledState(!!(res && res[PREFLIGHT_ENABLE_LIVE_LINK_VERIFY_KEY]));
+          resolve(preflightLiveLinkVerifyEnabled);
+        });
+      } catch (_) {
+        applyLiveVerifyEnabledState(false);
+        resolve(false);
+      }
+    });
   }
 
   function setPermissionGateVisible(isVisible, message = '') {
@@ -2675,7 +3144,7 @@ function initializePreflightPanel() {
     const linksTotalEl = panel.querySelector('[data-metric="linksTotal"]');
     const linksUniqueEl = panel.querySelector('[data-metric="linksUnique"]');
     const els = getPreflightPanelEls();
-    if (!refsEl || !uniqueEl || !sizeEl || !statusEl || !networkUniqueEl || !embeddedUniqueEl || !speedEstimatesEl || !els || !els.imageBreakdownTable || !els.linksTable || !els.accessibilityWarningsTable) return;
+    if (!refsEl || !uniqueEl || !sizeEl || !statusEl || !networkUniqueEl || !embeddedUniqueEl || !speedEstimatesEl || !els || !els.imageBreakdownTable || !els.linksTable || !els.accessibilityWarningsTable || !els.linkTitlesTable) return;
 
     if (payload.state === 'loading') {
       refsEl.textContent = 'Scanning...';
@@ -2689,10 +3158,16 @@ function initializePreflightPanel() {
       statusEl.textContent = payload.message || '';
       if (totalSizeAlertableEl) totalSizeAlertableEl.classList.remove('gem-preflight-metric-value--alert');
       els.imageBreakdownTable.innerHTML = '<div class="gem-preflight-image-breakdown-empty">Scanning...</div>';
-      els.accessibilityWarningsTable.innerHTML = '<div class="gem-preflight-image-breakdown-empty">Scanning...</div>';
+      const preserveA11y = !!payload.preserveAccessibilityUi;
+      if (!preserveA11y) {
+        els.accessibilityWarningsTable.innerHTML = '<div class="gem-preflight-image-breakdown-empty">Scanning...</div>';
+        els.linkTitlesTable.innerHTML = '<div class="gem-preflight-image-breakdown-empty">Scanning...</div>';
+      }
       syncImageWeightDetailsCollapseUI(els.imageBreakdownWrap, false);
       updateImagesSectionPip(0);
-      updateAccessibilitySectionPip(0);
+      if (!preserveA11y) {
+        updateAccessibilitySectionPip(0);
+      }
       if (linksTotalEl) linksTotalEl.textContent = 'Scanning...';
       if (linksUniqueEl) linksUniqueEl.textContent = 'Scanning...';
       cachedLinksAnalysis = null;
@@ -2719,10 +3194,15 @@ function initializePreflightPanel() {
       statusEl.textContent = payload.message || 'Unable to scan preview iframe.';
       if (totalSizeAlertableEl) totalSizeAlertableEl.classList.remove('gem-preflight-metric-value--alert');
       els.imageBreakdownTable.innerHTML = '<div class="gem-preflight-image-breakdown-empty">Unable to load image details.</div>';
-      els.accessibilityWarningsTable.innerHTML = '<div class="gem-preflight-image-breakdown-empty">Unable to load accessibility warnings.</div>';
+      if (!payload.preserveAccessibilityUi) {
+        els.accessibilityWarningsTable.innerHTML = '<div class="gem-preflight-image-breakdown-empty">Unable to load accessibility warnings.</div>';
+        els.linkTitlesTable.innerHTML = '<div class="gem-preflight-image-breakdown-empty">Unable to load accessibility warnings.</div>';
+      }
       syncImageWeightDetailsCollapseUI(els.imageBreakdownWrap, false);
       updateImagesSectionPip(0);
-      updateAccessibilitySectionPip(0);
+      if (!payload.preserveAccessibilityUi) {
+        updateAccessibilitySectionPip(0);
+      }
       if (payload.linksPayload) {
         const skippedCount = Array.isArray(payload.linksPayload.skippedRows) ? payload.linksPayload.skippedRows.length : 0;
         if (linksTotalEl) linksTotalEl.textContent = String(payload.linksPayload.totalAnchors);
@@ -2837,13 +3317,21 @@ function initializePreflightPanel() {
       </div>
     `).join('');
     }
+
+    const linkTitleRows = Array.isArray(payload.linkTitleRows) ? payload.linkTitleRows : [];
+    renderLinkTitlesTable(els.linkTitlesTable, linkTitleRows);
   }
 
   async function scanAndRenderImageMetrics(opts = {}) {
     const includeImageWeight = opts.includeImageWeight !== false;
+    const skipAccessibilityScan = opts.skipAccessibilityScan === true;
     const scanToken = Date.now();
     currentScanToken = scanToken;
-    await updateImagesMetricsUI({ state: 'loading', message: 'Scanning desktop preview...' });
+    await updateImagesMetricsUI({
+      state: 'loading',
+      message: 'Scanning desktop preview...',
+      preserveAccessibilityUi: skipAccessibilityScan
+    });
 
     const iframe = document.querySelector(PREVIEW_IFRAME_SELECTOR);
     const doc = iframe && iframe.contentDocument ? iframe.contentDocument : null;
@@ -2854,7 +3342,16 @@ function initializePreflightPanel() {
 
     const refs = collectImageReferencesFromPreviewDoc(doc);
     const uniqueUrls = Array.from(new Set(refs));
-    const accessibilityWarnings = collectLinkedImageMissingAltWarnings(doc);
+    const accessibilityWarnings = skipAccessibilityScan
+      ? cachedAccessibilityMissingAltRows.map((r) => ({ url: r.url || '', filename: r.filename || '' }))
+      : collectLinkedImageMissingAltWarnings(doc);
+    const linkTitleWarnings = skipAccessibilityScan
+      ? cachedLinkTitleRows.map((r) => ({
+        kind: r.kind === 'image' ? 'image' : 'text',
+        displayName: r.displayName || '',
+        imageUrl: r.imageUrl || ''
+      }))
+      : collectLinksWithTitleWarnings(doc);
     await loadPreflightNeverCheckUrls();
     const linkAnalysis = analyzeLinksInPreviewDoc(doc);
     const linksPayload = {
@@ -2862,7 +3359,7 @@ function initializePreflightPanel() {
       uniqueCount: linkAnalysis.uniqueCount,
       rows: linkAnalysis.rows,
       skippedRows: linkAnalysis.skippedRows,
-      linksAlertCount: linkAnalysis.linksAlertCount,
+      linksAlertCount: preflightHideLinksSection ? 0 : (linkAnalysis.linksAlertCount || 0),
       anchorRowKeysInOrder: linkAnalysis.anchorRowKeysInOrder
     };
     const networkUniqueUrls = uniqueUrls.filter(isDownloadableNetworkUrl);
@@ -2873,14 +3370,18 @@ function initializePreflightPanel() {
       : { ok: true, knownBytes: 0, unknownCount: 0, networkCount: networkUniqueUrls.length, unknownDetails: [], measurements: [] };
     if (!sizeData || sizeData.ok === false) {
       latestImageAlertCount = 0;
-      latestAccessibilityAlertCount = accessibilityWarnings.length || 0;
-      latestLinksAlertCount = linkAnalysis.linksAlertCount || 0;
+      if (!skipAccessibilityScan) {
+        latestAccessibilityMissingAltCount = accessibilityWarnings.length || 0;
+        latestLinkTitlesAlertCount = linkTitleWarnings.length || 0;
+      }
+      latestLinksAlertCount = preflightHideLinksSection ? 0 : (linkAnalysis.linksAlertCount || 0);
       latestNotifyAlertCount = latestNotifyAlertCount || 0;
       persistAndUpdateOverallAlertPip();
       await updateImagesMetricsUI({
         state: 'error',
         message: sizeData && sizeData.error ? `Unable to measure image sizes: ${sizeData.error}` : 'Unable to measure image sizes.',
-        linksPayload
+        linksPayload,
+        preserveAccessibilityUi: skipAccessibilityScan
       });
       return { ok: false, reason: 'measure-failed', totalReferences: 0, totalLinkAnchors: linkAnalysis.totalAnchors };
     }
@@ -2910,11 +3411,25 @@ function initializePreflightPanel() {
       : 0;
     const singularExceeded = singularExceededCount > 0 || (includeImageWeight && singularThresholdBytes > 0 && maxSingleImageBytes >= singularThresholdBytes);
     const imageAlertCount = (totalExceeded ? 1 : 0) + singularExceededCount;
-    const accessibilityAlertCount = accessibilityWarnings.length;
-    const linksAlertCount = linkAnalysis.linksAlertCount || 0;
+    const missingAltCount = accessibilityWarnings.length;
+    const linkTitlesCount = linkTitleWarnings.length;
+    const accessibilityAlertCount = missingAltCount + linkTitlesCount;
+    const linksAlertCount = preflightHideLinksSection ? 0 : (linkAnalysis.linksAlertCount || 0);
     const notifyAlertCount = latestNotifyAlertCount || 0;
     latestImageAlertCount = imageAlertCount;
-    latestAccessibilityAlertCount = accessibilityAlertCount;
+    latestAccessibilityMissingAltCount = missingAltCount;
+    latestLinkTitlesAlertCount = linkTitlesCount;
+    if (!skipAccessibilityScan) {
+      cachedAccessibilityMissingAltRows = accessibilityWarnings.map((w) => ({
+        url: w.url || '',
+        filename: w.filename || ''
+      }));
+      cachedLinkTitleRows = linkTitleWarnings.map((w) => ({
+        kind: w.kind === 'image' ? 'image' : 'text',
+        displayName: w.displayName || '',
+        imageUrl: w.imageUrl || ''
+      }));
+    }
     latestLinksAlertCount = linksAlertCount;
     latestNotifyAlertCount = notifyAlertCount;
     persistAndUpdateOverallAlertPip();
@@ -2947,20 +3462,25 @@ function initializePreflightPanel() {
         links: linksPayload,
         imageBreakdownRows: includeImageWeight ? imageBreakdownRows : [],
         accessibilityWarningRows: accessibilityWarnings.map((row) => ({ ...row, url: row.url || '' })),
+        linkTitleRows: linkTitleWarnings.map((row) => ({
+          kind: row.kind === 'image' ? 'image' : 'text',
+          displayName: row.displayName || '',
+          imageUrl: row.imageUrl || ''
+        })),
         statusText: includeImageWeight
-          ? `Measured ${sizeData.networkCount - sizeData.unknownCount} of ${sizeData.networkCount} unique network image URLs${sizeData.unknownCount > 0 ? ' (missing headers/CORS/auth blocked for unknown items).' : '.'} Estimate reflects unique image payload bytes for cold cache and excludes protocol overhead/proxy behavior. Threshold alerts: total ${thresholds.totalValue} ${thresholds.totalUnit}, singular ${thresholds.singularValue} ${thresholds.singularUnit}. Link checks: ${linksAlertCount} issue(s). Accessibility warnings: ${accessibilityAlertCount} linked image(s) missing ALT text. Text "Notify" matches: ${notifyAlertCount}.`
-          : `Image weight analysis requires permission. Link checks: ${linksAlertCount} issue(s). Accessibility warnings: ${accessibilityAlertCount} linked image(s) missing ALT text. Text "Notify" matches: ${notifyAlertCount}.`
+          ? `Measured ${sizeData.networkCount - sizeData.unknownCount} of ${sizeData.networkCount} unique network image URLs${sizeData.unknownCount > 0 ? ' (missing headers/CORS/auth blocked for unknown items).' : '.'} Estimate reflects unique image payload bytes for cold cache and excludes protocol overhead/proxy behavior. Threshold alerts: total ${thresholds.totalValue} ${thresholds.totalUnit}, singular ${thresholds.singularValue} ${thresholds.singularUnit}. Link checks: ${linksAlertCount} issue(s). Accessibility: ${missingAltCount} linked image(s) missing ALT; ${linkTitlesCount} link(s) with title attributes. Text "Notify" matches: ${notifyAlertCount}.`
+          : `Image weight analysis requires permission. Link checks: ${linksAlertCount} issue(s). Accessibility: ${missingAltCount} linked image(s) missing ALT; ${linkTitlesCount} link(s) with title attributes. Text "Notify" matches: ${notifyAlertCount}.`
       });
     }
     return { ok: true, reason: 'success', totalReferences: refs.length, totalLinkAnchors: linkAnalysis.totalAnchors };
   }
 
-  function scheduleScan(ms = 350) {
+  function scheduleScan(ms = 350, scanOpts = {}) {
     if (!isPreflightActive()) return;
     if (refreshTimer) clearTimeout(refreshTimer);
     refreshTimer = setTimeout(() => {
       refreshTimer = null;
-      scanAndRenderImageMetrics();
+      scanAndRenderImageMetrics(scanOpts);
     }, ms);
   }
 
@@ -2983,12 +3503,19 @@ function initializePreflightPanel() {
     setupSkippedUrlsToggle();
     setupSectionCollapseToggles();
     setupLinksLiveVerifyInteractions();
+    setupLinksPermissionActions();
     observeContactPreviewIframe();
     const els = getPreflightPanelEls();
     if (els && els.skippedUrlsWrap) syncSkippedUrlsCollapseUI(els.skippedUrlsWrap, true);
     if (els && els.panel) {
       updateTextAnalysisSectionPip(0);
-      updateAccessibilitySectionPip(0);
+      updateAccessibilitySectionPip(getAccessibilityCombinedAlertCount());
+      if (els.accessibilityWarningsTable) {
+        renderAccessibilityWarningsIntoTable(els.accessibilityWarningsTable, cachedAccessibilityMissingAltRows);
+      }
+      if (els.linkTitlesTable) {
+        renderLinkTitlesTable(els.linkTitlesTable, cachedLinkTitleRows);
+      }
       updateLinksSectionPip(0);
       updateImagesSectionPip(0);
       void readSectionCollapseState().then((state) => {
@@ -2999,6 +3526,7 @@ function initializePreflightPanel() {
     }
     void initializeTextAnalysisSectionState();
 
+    void loadLinksSectionHiddenSetting();
     setPermissionGateVisible(true);
     initializePermissionGateState();
   }
@@ -3026,15 +3554,17 @@ function initializePreflightPanel() {
 
   async function initializePermissionGateState() {
     setupOpenSettingsButton();
+    await loadLinksSectionHiddenSetting();
+    setupLinksPermissionActions();
     const hasAccess = await hasImageHostAccess();
     if (!isPreflightActive()) return;
     if (!hasAccess) {
-      // Accessibility checks do not require host permissions.
-      scanAndRenderImageMetrics({ includeImageWeight: false });
+      // Accessibility is driven by the preview iframe observer; do not re-scan on panel open.
+      scanAndRenderImageMetrics({ includeImageWeight: false, skipAccessibilityScan: true });
     }
     if (hasAccess) {
       setPermissionGateVisible(false);
-      scheduleScan(10);
+      scheduleScan(10, { skipAccessibilityScan: true });
       setupManualRefreshButton();
       return;
     }
@@ -3132,7 +3662,15 @@ function initializePreflightPanel() {
   function bindInitialCalculationToPreviewIframe() {
     const iframe = document.querySelector(PREVIEW_IFRAME_SELECTOR);
     if (!iframe) return false;
-    if (boundPreviewIframe === iframe && boundPreviewIframeLoadHandler) return true;
+
+    if (boundPreviewIframe && boundPreviewIframe !== iframe) {
+      disconnectPreviewDocAccessibilityObserver();
+    }
+
+    if (boundPreviewIframe === iframe && boundPreviewIframeLoadHandler) {
+      setupPreviewDocAccessibilityObserver(iframe);
+      return true;
+    }
 
     if (boundPreviewIframe && boundPreviewIframeLoadHandler) {
       try {
@@ -3145,7 +3683,8 @@ function initializePreflightPanel() {
     };
 
     const onIframeLoad = () => {
-      runAutomaticAlertCalculationForLoadedIframe();
+      void runAutomaticAlertCalculationForLoadedIframe();
+      setupPreviewDocAccessibilityObserver(iframe);
     };
 
     iframe.addEventListener('load', onIframeLoad, true);
@@ -3156,6 +3695,7 @@ function initializePreflightPanel() {
       const doc = iframe.contentDocument;
       if (doc && doc.documentElement) {
         runOnce();
+        setupPreviewDocAccessibilityObserver(iframe);
       }
     } catch (_) {}
 
@@ -3191,6 +3731,7 @@ function initializePreflightPanel() {
     chrome.storage.local.get({ [PREFLIGHT_ALERT_COUNT_KEY]: 0 }, (res) => {
       updateAlertPip(res[PREFLIGHT_ALERT_COUNT_KEY] || 0);
     });
+    void loadLiveVerifyEnabledSetting();
     window.addEventListener(GEM_TEXT_HIGHLIGHTS_RENDERED_EVENT, scheduleTextAnalysisRefreshFromHighlightEvent);
     bindInitialCalculationToPreviewIframe();
     observeForPreviewIframeAndRunInitialCalculation();
@@ -3200,6 +3741,15 @@ function initializePreflightPanel() {
         if (isPreflightActive()) {
           reapplyNeverCheckSetToCachedRows();
         }
+        return;
+      }
+      if (changes[PREFLIGHT_ENABLE_LIVE_LINK_VERIFY_KEY]) {
+        applyLiveVerifyEnabledState(changes[PREFLIGHT_ENABLE_LIVE_LINK_VERIFY_KEY].newValue === true);
+        return;
+      }
+      if (changes[PREFLIGHT_HIDE_LINKS_SECTION_KEY]) {
+        applyLinksSectionVisibilityState(changes[PREFLIGHT_HIDE_LINKS_SECTION_KEY].newValue === true);
+        if (isPreflightActive()) void refreshLinksPermissionActionsUI();
         return;
       }
       if (

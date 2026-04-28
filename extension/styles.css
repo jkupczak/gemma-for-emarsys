@@ -313,7 +313,7 @@ vce-code-editor-toolbar .code-editor-toolbar-container {
     padding-left: 8px !important;
 }
 
-.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-recent-image-tile {
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-img-picker-tile {
     position: relative;
     border: 1px solid var(--token-box-default-border);
     border-radius: 6px;
@@ -330,10 +330,10 @@ vce-code-editor-toolbar .code-editor-toolbar-container {
     height: var(--gem-recent-thumb-h);
     object-fit: contain;
 }
-.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-recent-image-tile:hover .gem-recent-image-thumb {
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-img-picker-tile:hover .gem-recent-image-thumb {
     opacity: 0.25;
 }
-.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-recent-image-tile:hover .gem-recent-image-thumb {
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-img-picker-tile:hover .gem-recent-image-thumb {
     object-fit: cover;
 }
 
@@ -544,7 +544,7 @@ vce-code-editor-toolbar .code-editor-toolbar-container {
     opacity: 0;
     transition: opacity 120ms ease-in-out;
 }
-.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-recent-image-tile:hover .gem-recent-image-overlay {
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-img-picker-tile:hover .gem-recent-image-overlay {
     opacity: 1;
 }
 
@@ -570,7 +570,7 @@ vce-code-editor-toolbar .code-editor-toolbar-container {
     pointer-events: none;
     transition: opacity 120ms ease-in-out, background 120ms ease-in-out;
 }
-.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-recent-image-tile:hover .gem-recent-image-fav-btn {
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-img-picker-tile:hover .gem-recent-image-fav-btn {
     opacity: 1;
     pointer-events: auto;
 }
@@ -627,7 +627,7 @@ vce-code-editor-toolbar .code-editor-toolbar-container {
     opacity: 0;
     transition: opacity 120ms ease-in-out, background 120ms ease-in-out;
 }
-.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-recent-image-tile:hover .gem-recent-image-edit-btn {
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-img-picker-tile:hover .gem-recent-image-edit-btn {
     opacity: 1;
 }
 .gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-recent-image-edit-btn--table {
@@ -1238,7 +1238,37 @@ gem-preflight .gem-preflight-subsection-description {
     font-size: 12px;
     color: var(--token-font-strong);
     opacity: 0.8;
-    margin-bottom: 6px;
+    margin: 14px 0 6px;
+}
+
+gem-preflight .gem-preflight-subsection-description--with-help {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+gem-preflight .gem-preflight-subsection-help-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: none;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+    cursor: help;
+}
+
+gem-preflight .gem-preflight-subsection-help-icon::before {
+    content: "\F15D";
+    font-family: var(--token-icon-default-fontFamily);
+    font-size: var(--token-icon-default-sizeSmall);
+    font-weight: 400;
+    line-height: 1;
+    color: currentColor;
+    display: inline-block;
 }
 
 gem-preflight .gem-preflight-image-breakdown-header {
@@ -1340,6 +1370,17 @@ gem-preflight .gem-preflight-link-href {
 
 gem-preflight .gem-preflight-links-table {
     display: block;
+}
+
+gem-preflight .gem-preflight-links-table .gem-preflight-links-table {
+    margin-top: 8px;
+}
+
+gem-preflight .gem-preflight-links-permission-actions {
+    margin-top: 10px;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
 }
 
 gem-preflight .gem-preflight-links-row {
@@ -1468,6 +1509,97 @@ gem-preflight .gem-preflight-links-row-actions {
     align-items: flex-start;
 }
 
+gem-preflight .gem-preflight-links-row--stacked {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+gem-preflight .gem-preflight-links-stacked-url-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+gem-preflight .gem-preflight-links-stacked-kv-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    border-top: 1px solid var(--token-box-default-border);
+    padding-top: 6px;
+}
+
+gem-preflight .gem-preflight-links-stacked-kv-label {
+    font-size: 11px;
+    color: var(--token-font-default);
+    opacity: 0.9;
+}
+
+gem-preflight .gem-preflight-links-stacked-kv-label--with-help {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+gem-preflight .gem-preflight-links-help-icon {
+    width: 14px;
+    height: 14px;
+}
+
+gem-preflight .gem-preflight-links-stacked-kv-value {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+gem-preflight .gem-preflight-links-stacked-subtext {
+    font-size: 11px;
+    line-height: 1.35;
+    color: var(--token-font-strong);
+    opacity: 0.9;
+    white-space: normal;
+    word-break: break-word;
+}
+
+gem-preflight .gem-preflight-links-stacked-label-inline {
+    font-weight: 700;
+}
+
+gem-preflight .gem-preflight-live-check-link {
+    border: 0;
+    background: transparent;
+    color: var(--token-link-default, var(--token-blue-700, #1d4ed8));
+    font-size: 12px;
+    line-height: 1.2;
+    padding: 0;
+    cursor: pointer;
+    text-decoration: underline;
+}
+
+gem-preflight .gem-preflight-live-check-link:hover {
+    opacity: 0.9;
+}
+
+gem-preflight .gem-preflight-links-format-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    border-radius: 999px;
+    background: var(--token-red-600, #dc2626);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+    padding: 0 5px;
+    box-sizing: border-box;
+}
+
 gem-preflight .gem-preflight-live-links-row-btn {
     border: 1px solid var(--token-box-default-border, rgba(0, 0, 0, 0.15));
     border-radius: 6px;
@@ -1502,14 +1634,27 @@ gem-preflight .gem-preflight-links-row-menu {
     display: none;
     position: absolute;
     right: 0;
+    left: auto;
     top: calc(100% + 4px);
     z-index: 4;
     min-width: 130px;
+    max-width: min(240px, calc(100vw - 24px));
     padding: 4px;
     border: 1px solid var(--token-box-default-border, rgba(0, 0, 0, 0.16));
     border-radius: 8px;
     background: var(--token-box-default-background, #fff);
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.16);
+    box-sizing: border-box;
+}
+
+gem-preflight .gem-preflight-links-row-menu--align-right {
+    right: 0;
+    left: auto;
+}
+
+gem-preflight .gem-preflight-links-row-menu--align-left {
+    left: 0;
+    right: auto;
 }
 
 gem-preflight .gem-preflight-links-row-menu--open {
@@ -1575,6 +1720,11 @@ gem-preflight .gem-preflight-live-chip--warn {
 gem-preflight .gem-preflight-live-chip--error {
     background: rgba(220, 38, 38, 0.12);
     color: var(--token-red-600, #dc2626);
+}
+
+gem-preflight .gem-preflight-live-chip-btn {
+    border: 0;
+    cursor: pointer;
 }
 
 gem-preflight .gem-preflight-live-debug {
@@ -1923,7 +2073,7 @@ html:has(.gem-enhanced-image-properties-dialog) {
     transition: all 0.2s ease;
     color: var(--token-link-default-textActive);
 }
-.gem-recent-image-tile:hover .gem-recent-image-info-btn {
+.gem-img-picker-tile:hover .gem-recent-image-info-btn {
     display: flex
 }
 
@@ -2267,12 +2417,6 @@ input.gem-input, select.gem-select {
 
 #latestMediaTab { display: none }
 
-/* Hide the Title field and label on links */
-e-float-container .e-field:has(label[for="input-url"]) + .e-field:has(cb-personalizable-input-with-context.link-editor-title) 
-{ 
-    display:none !important;
-}
-
 .gem-img-picker-cols-control {
     display:flex; align-items:center; gap:8px;   
     border-width: 1px;
@@ -2296,8 +2440,6 @@ e-float-container .e-field:has(label[for="input-url"]) + .e-field:has(cb-persona
 .gem-image-picker-view-segmented {
     display: inline-flex;
     align-items: center;
-    border: 1px solid var(--token-button-default-border);
-    border-radius: 8px;
     overflow: hidden;
 }
 
@@ -2313,6 +2455,7 @@ e-float-container .e-field:has(label[for="input-url"]) + .e-field:has(cb-persona
     color: var(--token-button-default-text);
     cursor: pointer;
     white-space: nowrap;
+    width: 50%;
 }
 
 .gem-image-picker-view-option__label {
@@ -2324,10 +2467,28 @@ e-float-container .e-field:has(label[for="input-url"]) + .e-field:has(cb-persona
     border-right: 0;
 }
 
+
+.gem-image-picker-view-option.gem-image-picker-view-option {
+    border-width: 1px;
+    border-style: solid;
+}
 .gem-image-picker-view-option.gem-image-picker-view-option--active {
     background-color: var(--token-button-highlight-background);
+    border-color: var(--token-button-highlight-background);
     color: var(--token-button-highlight-text);
 }
+.gem-image-picker-view-option:not(.gem-image-picker-view-option--active) {
+    border-color: var(--token-button-default-border);
+}
+.gem-image-picker-view-option[data-view-target="grid"] {
+    border-radius: 9px 0 0 9px;
+    border-right: 0;
+}
+.gem-image-picker-view-option[data-view-target="table"] {
+    border-radius: 0 9px 9px 0;
+    border-left: 0;
+}
+
 
 .gem-image-picker-view-segmented--disabled .gem-image-picker-view-option,
 .gem-image-picker-view-option:disabled {
@@ -2472,4 +2633,19 @@ e-float-container .e-field:has(label[for="input-url"]) + .e-field:has(cb-persona
 }
 .gem-picker-list-table td {
     white-space: nowrap;
+}
+
+/* Selected Image Highlighting */
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-img-picker-tile.gem-selected-image {
+    border-color: var(--token-primary-500);
+    box-shadow: 0 0 6px var(--token-primary-500)
+}
+
+.gem-enhanced-image-properties-dialog #gem-recent-images-picker .gem-img-picker-tile.gem-selected-image .gem-recent-image-meta {
+    background: linear-gradient(360deg, var(--token-primary-500) -100%, transparent 50%);
+    opacity: 1;
+}
+
+tr.gem-selected-image {
+    box-shadow: inset 0 0 12px var(--token-primary-500);
 }

@@ -188,7 +188,7 @@ main.e-layout__content {
     border-radius: 0 !important;
 }
 
-.e-mediadb-section__content {
+.e-mediadb-section__content:has([ng-if="ctrl.state.isListView()"]) {
     border-radius: 0 0 9px 9px;
     border: 1px solid var(--token-tableCell-default-border);
     border-top: 0;
@@ -205,4 +205,19 @@ main.e-layout__content {
 .mediadb-table-header [data-e-version="2"].e-table {
     border-radius: 0 !important;
     border: 0 !important;
+}
+
+/* Selected Image Highlighting */
+.gem-selected-image .e-card {
+    border-color: var(--token-primary-500) !important;
+    box-shadow: 0 0 6px var(--token-primary-500) !important;
+}
+
+.gem-selected-image .e-card__lead {
+    background: linear-gradient(360deg, var(--token-primary-500) -100%, var(--token-box-alternate-background) 50%) !important;
+    opacity: 1 !important;
+}
+
+tr.gem-selected-image {
+    box-shadow: inset 0 0 12px var(--token-primary-500) !important;
 }

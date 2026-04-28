@@ -1,6 +1,6 @@
 {
   "name": "Gemma for Emarsys",
-  "version": "10.5.2",
+  "version": "11.0.0",
   "manifest_version": 3,
   "description": "Enhances the Emarsys email editor with a settings panel and more!",
   "permissions": ["storage", "tabs", "activeTab", "webNavigation"],

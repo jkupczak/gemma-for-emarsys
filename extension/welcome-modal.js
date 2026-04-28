@@ -33,7 +33,7 @@ function createWelcomeModalHTML() {
             <li><b>Rich Paste</b> Bold? Italics? You got it! Normally styled text that you copy and paste into your emails are reformatted to plain text. But not anymore! Gemma preserves bold, italics, underlines, links and more when copying and pasting from outside sources, or even from one content block to another.</li>
             <li><b>Image Picker</b> When adding an image to your email you'll now get a preview of it right next to the image editor. Makes adding ALT text much easier! You can also browse Recent Images and Favorite Images; last-used times appear in Image Details.</li>
             <li>
-              <b>Text Highlighting</b> Automatically highlight important text in the email editor preview. Edit what text is highlighted and what color the highlight is in the Settings panel.
+              <b>Preflight QA</b> Highlight important text, accessibility issues, image alt text, and more in the email editor preview. See a breakdown of your email's preflight QA results in the new Preflight QA panel.
             </li>
             <li><b>Mobile Previews</b> See a mobile preview of your email right next to your desktop view while you make edits. This is turned on by default and can be toggled from the settings menu or the <span class="gem-e-icon">&#xF133;</span> icon in the bottom left of the editor. You can also adjust width of it by dragging it or editing it in the settings panel.</li>
             <li><b>Custom Color Swatches</b> Custom color swatches are now permanent! Emarsys doesn't remember what colors you used when editing an email. But Gemma does. You can also add default presets that will always display at the top of the color picker (up to 8) from the settings panel.</li>
@@ -53,6 +53,7 @@ function createWelcomeModalHTML() {
               <li>Hover over the campaign title in the header to see a copy icon. Click it to <b>copy the campaign name</b> to your clipboard!</li>
               <li><b>Unsaved Draft Alerts</b> If your email has unsaved changes you'll now see an animated emoji in the Google Chrome tab until you save it.</li>
               <li>Normally, Emarsys names each Google Chrome tab the same: "Email Campaigns | Channels | Emarsys Marketing Platform". Tabs are now named after your emails' title instead.</li>  
+              <li>A Save progress indicator has been added to the header of the email editor. This allows you to see the progress of your save operation in real time, even when you can't see the "Save" button.</li>  
             </ul>
 
             <h5>Email Basics Panel</h5>
