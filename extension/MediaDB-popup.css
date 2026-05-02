@@ -1,9 +1,21 @@
-
 /* Media Database */
-.e-mediadb-breadcrumb { flex-direction: column !important; }
+.e-mediadb-breadcrumb .e-mediadb-breadcrumb__root.ng-binding[ng-click="directiveCtrl.selectRoot()"] {
+    font-size: 0 !important;
+    display: flex;
+}
+  
+.e-mediadb-breadcrumb .e-mediadb-breadcrumb__root.ng-binding[ng-click="directiveCtrl.selectRoot()"]::before {
+    content: "Home" !important;
+    display:block;
+    font-size: 16px !important;
+    background: rgba(0 0 0 / 0.1);
+    border-radius: 9px;
+    padding: 0 10px;
+}
 
-.e-mediadb-breadcrumb__root {
-    display: none !important;
+.e-mediadb-breadcrumb { 
+    flex-direction: row !important;
+    gap: 9px; 
 }
 
 .e-table tr.parent-folder-table-row {

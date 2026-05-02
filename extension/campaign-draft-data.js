@@ -16,11 +16,29 @@
     }
   }
 
+  // Only fields used from storage are _id and targeting.content.visibility
+  // (see campaign-block-targeting.js applyTargeting). Omit bulky block keys.
+  function slimBlockForDraftStorage(block) {
+    if (!block || typeof block !== "object") return null;
+    const id = block._id;
+    if (id === undefined || id === null || String(id).trim() === "") return null;
+    const out = { _id: id };
+    if (block.targeting) {
+      const visibility =
+        block.targeting.content && block.targeting.content.visibility != null
+          ? block.targeting.content.visibility
+          : "";
+      out.targeting = { content: { visibility } };
+    }
+    return out;
+  }
+
   function extractBlocksByLanguage(contents) {
     const result = {};
     for (const lang of Object.keys(contents)) {
-      if (contents[lang] && contents[lang].blocks) {
-        result[lang] = contents[lang].blocks;
+      const langEntry = contents[lang];
+      if (langEntry && Array.isArray(langEntry.blocks)) {
+        result[lang] = langEntry.blocks.map(slimBlockForDraftStorage).filter(Boolean);
       }
     }
     return result;

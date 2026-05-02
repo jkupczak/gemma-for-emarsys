@@ -40,6 +40,7 @@ function createWelcomeModalHTML() {
             </li>
             <li><b>Notes</b> Keep notes right in Emarsys! Find the Notes nav item in the vertical navigation and start taking notes right from any page.</li>
             <li><b>ALT Text Preview</b> Make it easier to QA ALT text by showing it when you hover over images in the email editor preview.</li>
+            <li><b>Recent Campaigns</b> See a list of your most recent campaigns in the left navigation. Click on a campaign to open it in a new tab. Click the pin icon to pin a campaign to the top of the list.</li>
           </ul>
 
           <div style="margin-top: 40px;">

@@ -29,8 +29,9 @@ console.log("[gem] storage-measurement.js loaded");
       name: "Blocks",
       color: "var(--token-turquoise-400)",
       match: (key) =>
-        key === "pinnedBlocks" ||
-        key === "hiddenBlocks",
+        key === "bm" ||
+        key === "b_meta" ||
+        /^b\d+$/.test(key),
     },
     {
       name: "Notes",

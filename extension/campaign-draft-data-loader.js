@@ -3,8 +3,8 @@
 // captured campaign block data to chrome.storage.local.
 (function () {
   const DRAFT_KEY_PREFIX = 'gemDraft_';
-  const MAX_ENTRIES = 100;
-  const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+  const MAX_ENTRIES = 50;
+  const MAX_AGE_MS = 15 * 24 * 60 * 60 * 1000; // 15 days
 
   function injectPageScript() {
     const existing = document.getElementById('gem-draft-data-script');
@@ -23,7 +23,7 @@
       const draftKeys = Object.keys(all).filter((k) => k.startsWith(DRAFT_KEY_PREFIX));
       const toRemove = [];
 
-      // Pass 1: remove anything older than 30 days
+      // Pass 1: remove anything older than MAX_AGE_MS
       const surviving = [];
       for (const key of draftKeys) {
         const entry = all[key];

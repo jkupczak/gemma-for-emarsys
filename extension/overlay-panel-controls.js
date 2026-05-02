@@ -2909,6 +2909,8 @@ function initializeOverlayPanelControls() {
               const popover = getSharedRowMenu();
               if (popover) {
                 popover.classList.remove('gem-image-row-menu-popover--visible');
+                const arrowClear = popover.querySelector('.e-popover__arrow');
+                if (arrowClear) arrowClear.style.left = '';
               }
               picker._gemRowMenuContext = null;
             };
@@ -2935,10 +2937,28 @@ function initializeOverlayPanelControls() {
                 const rect = rowMenuTrigger.getBoundingClientRect();
                 const popRect = popover.getBoundingClientRect();
                 const margin = 8;
-                const left = Math.max(margin, Math.min(window.innerWidth - popRect.width - margin, rect.right - popRect.width));
+                const popoverXOffset = 20;
+                const left = Math.max(
+                  margin,
+                  Math.min(window.innerWidth - popRect.width - margin, rect.right - popRect.width + popoverXOffset)
+                );
                 const top = Math.min(window.innerHeight - popRect.height - margin, rect.bottom + 6);
                 popover.style.left = `${left}px`;
                 popover.style.top = `${Math.max(margin, top)}px`;
+
+                const arrowEl = popover.querySelector('.e-popover__arrow');
+                if (arrowEl) {
+                  const ARROW_SIZE = 10;
+                  const inset = 8;
+                  const triggerCenterX = rect.left + rect.width / 2;
+                  const placeArrow = () => {
+                    const popW = popover.offsetWidth || popover.getBoundingClientRect().width;
+                    let arrowLeft = triggerCenterX - left - ARROW_SIZE / 2;
+                    arrowLeft = Math.max(inset, Math.min(popW - ARROW_SIZE - inset, arrowLeft));
+                    arrowEl.style.left = `${arrowLeft}px`;
+                  };
+                  requestAnimationFrame(placeArrow);
+                }
               }
               return;
             }

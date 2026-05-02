@@ -4,10 +4,139 @@ console.log("[gem] block-pinning.js loaded");
 function initializeBlockPinning() {
   console.log("[gem] Initializing block pinning and hiding");
 
-  // Storage keys
+  // Legacy storage keys
   const PINNED_BLOCKS_KEY = 'pinnedBlocks';
   const HIDDEN_BLOCKS_KEY = 'hiddenBlocks';
   const SHOW_HIDDEN_BLOCKS_KEY = 'showHiddenBlocks';
+  // New compressed/chunked storage keys
+  const BLOCKS_META_KEY = 'bm';
+  const BLOCKS_META_KEY_LEGACY = 'b_meta';
+  const BLOCKS_CHUNK_PREFIX = 'b';
+  const BLOCKS_CHUNK_SIZE = 8180;
+  const BLOCKS_MAX_CHUNKS = 16;
+  const BLOCKS_FORMAT_VERSION = 1;
+
+  function normalizeBlockList(list) {
+    const out = [];
+    const seen = new Set();
+    (Array.isArray(list) ? list : []).forEach((v) => {
+      const text = String(v == null ? '' : v).trim();
+      if (!text || seen.has(text)) return;
+      seen.add(text);
+      out.push(text);
+    });
+    return out;
+  }
+
+  function normalizeBlocksState(state) {
+    const data = state && typeof state === 'object' ? state : {};
+    return {
+      pinnedBlocks: normalizeBlockList(data.pinnedBlocks),
+      hiddenBlocks: normalizeBlockList(data.hiddenBlocks)
+    };
+  }
+
+  function blockChunkKey(i) {
+    return `${BLOCKS_CHUNK_PREFIX}${i}`;
+  }
+
+  function chunkString(str, size) {
+    const out = [];
+    for (let i = 0; i < str.length; i += size) out.push(str.slice(i, i + size));
+    return out;
+  }
+
+  function readCompressedBlocksState(callback) {
+    const keys = [BLOCKS_META_KEY, BLOCKS_META_KEY_LEGACY];
+    for (let i = 0; i < BLOCKS_MAX_CHUNKS; i += 1) keys.push(blockChunkKey(i));
+    chrome.storage.sync.get(keys, (res) => {
+      const meta = (res && (res[BLOCKS_META_KEY] || res[BLOCKS_META_KEY_LEGACY])) || null;
+      if (!meta || typeof meta.c !== 'number' || meta.c < 1) {
+        callback(normalizeBlocksState({}));
+        return;
+      }
+      let combined = '';
+      for (let i = 0; i < meta.c; i += 1) {
+        const ch = res[blockChunkKey(i)];
+        if (typeof ch !== 'string') {
+          callback(normalizeBlocksState({}));
+          return;
+        }
+        combined += ch;
+      }
+      let decompressed = combined;
+      if (typeof LZString !== 'undefined') {
+        decompressed = meta.enc === 'b64'
+          ? LZString.decompressFromBase64(combined)
+          : LZString.decompressFromUTF16(combined);
+      }
+      if (!decompressed) {
+        callback(normalizeBlocksState({}));
+        return;
+      }
+      try {
+        const parsed = JSON.parse(decompressed);
+        callback(normalizeBlocksState(parsed));
+      } catch (_) {
+        callback(normalizeBlocksState({}));
+      }
+    });
+  }
+
+  function writeCompressedBlocksState(state, callback) {
+    try {
+      const normalized = normalizeBlocksState(state);
+      const json = JSON.stringify(normalized);
+      const compressed = typeof LZString !== 'undefined'
+        ? LZString.compressToBase64(json)
+        : json;
+      const chunks = chunkString(compressed || json, BLOCKS_CHUNK_SIZE);
+      if (!chunks.length) chunks.push('');
+      if (chunks.length > BLOCKS_MAX_CHUNKS) {
+        if (callback) callback(new Error('Blocks storage full'));
+        return;
+      }
+      const meta = { v: BLOCKS_FORMAT_VERSION, c: chunks.length };
+      if (typeof LZString !== 'undefined') meta.enc = 'b64';
+      const toSet = { [BLOCKS_META_KEY]: meta };
+      chunks.forEach((ch, i) => {
+        toSet[blockChunkKey(i)] = ch;
+      });
+      const keysToRemove = [BLOCKS_META_KEY_LEGACY];
+      for (let i = chunks.length; i < BLOCKS_MAX_CHUNKS; i += 1) keysToRemove.push(blockChunkKey(i));
+      chrome.storage.sync.remove(keysToRemove, () => {
+        chrome.storage.sync.set(toSet, () => {
+          if (callback) {
+            if (chrome.runtime.lastError) callback(new Error(chrome.runtime.lastError.message));
+            else callback(null);
+          }
+        });
+      });
+    } catch (error) {
+      if (callback) callback(error);
+    }
+  }
+
+  function migrateLegacyBlockStorage(callback) {
+    chrome.storage.sync.get([BLOCKS_META_KEY, BLOCKS_META_KEY_LEGACY], (metaRes) => {
+      const hasCompressedMeta = !!(metaRes && (metaRes[BLOCKS_META_KEY] || metaRes[BLOCKS_META_KEY_LEGACY]));
+      if (hasCompressedMeta) {
+        if (callback) callback();
+        return;
+      }
+      chrome.storage.sync.get({ [PINNED_BLOCKS_KEY]: [], [HIDDEN_BLOCKS_KEY]: [] }, (legacyRes) => {
+        const nextState = normalizeBlocksState({
+          pinnedBlocks: legacyRes[PINNED_BLOCKS_KEY],
+          hiddenBlocks: legacyRes[HIDDEN_BLOCKS_KEY]
+        });
+        writeCompressedBlocksState(nextState, () => {
+          chrome.storage.sync.remove([PINNED_BLOCKS_KEY, HIDDEN_BLOCKS_KEY], () => {
+            if (callback) callback();
+          });
+        });
+      });
+    });
+  }
 
 
   // Function to get pinned blocks from storage
@@ -20,7 +149,7 @@ function initializeBlockPinning() {
     }
 
     try {
-      chrome.storage.sync.get({ [PINNED_BLOCKS_KEY]: [] }, (result) => {
+      readCompressedBlocksState((result) => {
         // Check again if chrome APIs are still available after async call
         if (!chrome || !chrome.storage || !chrome.storage.sync) {
           console.warn("[Gem] Chrome storage API became unavailable during async call");
@@ -28,7 +157,7 @@ function initializeBlockPinning() {
           return;
         }
 
-        callback(result[PINNED_BLOCKS_KEY] || []);
+        callback((result && result.pinnedBlocks) || []);
       });
     } catch (error) {
       console.error("[Gem] Error in getPinnedBlocks:", error);
@@ -46,12 +175,17 @@ function initializeBlockPinning() {
     }
 
     try {
-      chrome.storage.sync.set({ [PINNED_BLOCKS_KEY]: pinnedBlocks }, () => {
-        // Check if there was an error
-        if (chrome.runtime.lastError) {
-          console.error("[Gem] Error saving pinned blocks:", chrome.runtime.lastError);
-        }
-        if (callback) callback();
+      readCompressedBlocksState((state) => {
+        const next = normalizeBlocksState({
+          ...state,
+          pinnedBlocks
+        });
+        writeCompressedBlocksState(next, (err) => {
+          if (err) {
+            console.error("[Gem] Error saving pinned blocks:", err);
+          }
+          if (callback) callback();
+        });
       });
     } catch (error) {
       console.error("[Gem] Error in savePinnedBlocks:", error);
@@ -69,7 +203,7 @@ function initializeBlockPinning() {
     }
 
     try {
-      chrome.storage.sync.get({ [HIDDEN_BLOCKS_KEY]: [] }, (result) => {
+      readCompressedBlocksState((result) => {
         // Check again if chrome APIs are still available after async call
         if (!chrome || !chrome.storage || !chrome.storage.sync) {
           console.warn("[Gem] Chrome storage API became unavailable during async call");
@@ -77,7 +211,7 @@ function initializeBlockPinning() {
           return;
         }
 
-        callback(result[HIDDEN_BLOCKS_KEY] || []);
+        callback((result && result.hiddenBlocks) || []);
       });
     } catch (error) {
       console.error("[Gem] Error in getHiddenBlocks:", error);
@@ -95,12 +229,17 @@ function initializeBlockPinning() {
     }
 
     try {
-      chrome.storage.sync.set({ [HIDDEN_BLOCKS_KEY]: hiddenBlocks }, () => {
-        // Check if there was an error
-        if (chrome.runtime.lastError) {
-          console.error("[Gem] Error saving hidden blocks:", chrome.runtime.lastError);
-        }
-        if (callback) callback();
+      readCompressedBlocksState((state) => {
+        const next = normalizeBlocksState({
+          ...state,
+          hiddenBlocks
+        });
+        writeCompressedBlocksState(next, (err) => {
+          if (err) {
+            console.error("[Gem] Error saving hidden blocks:", err);
+          }
+          if (callback) callback();
+        });
       });
     } catch (error) {
       console.error("[Gem] Error in saveHiddenBlocks:", error);
@@ -476,11 +615,13 @@ function initializeBlockPinning() {
     });
   }
 
-  // Initial processing
-  processNewBlocks();
-  applyPinnedClasses();
-  applyHiddenClasses();
-  updateShowHiddenToggleButton();
+  // Initial processing after one-time legacy migration
+  migrateLegacyBlockStorage(() => {
+    processNewBlocks();
+    applyPinnedClasses();
+    applyHiddenClasses();
+    updateShowHiddenToggleButton();
+  });
 
   // Start monitoring for DOM changes
   monitorBlockList();
@@ -535,12 +676,13 @@ function initializeBlockPinning() {
   if (chrome && chrome.storage && chrome.storage.onChanged) {
     chrome.storage.onChanged.addListener((changes, namespace) => {
       if (namespace === 'sync') {
-        if (changes[PINNED_BLOCKS_KEY]) {
+        const didBlocksChange = !!changes[BLOCKS_META_KEY] ||
+          !!changes[BLOCKS_META_KEY_LEGACY] ||
+          Object.keys(changes).some((key) => /^b\d+$/.test(key));
+        if (didBlocksChange) {
           updateAllPinIcons();
-          applyPinnedClasses();
-        }
-        if (changes[HIDDEN_BLOCKS_KEY]) {
           updateAllHideIcons();
+          applyPinnedClasses();
           applyHiddenClasses();
           updateShowHiddenToggleButton();
         }
@@ -768,6 +910,16 @@ function initializeBlockPinning() {
       });
     });
   }
+
+  window.GemBlockStorage = window.GemBlockStorage || {};
+  window.GemBlockStorage.readState = readCompressedBlocksState;
+  window.GemBlockStorage.writeState = writeCompressedBlocksState;
+  window.GemBlockStorage.setHiddenBlocks = function setHiddenBlocks(hiddenBlocks, callback) {
+    readCompressedBlocksState((state) => {
+      const next = normalizeBlocksState({ ...state, hiddenBlocks });
+      writeCompressedBlocksState(next, callback || (() => {}));
+    });
+  };
 
   // Add toggle button for showing hidden blocks
   addShowHiddenToggleButton();

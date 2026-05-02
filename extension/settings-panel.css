@@ -153,7 +153,7 @@ p:has(+ [data-gem-paste-allow-disabled]) { margin-bottom: 0 !important; }
 .highlight-term-item {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   padding: 3px 0;
   transition: all 0.2s ease;
 }
@@ -166,7 +166,7 @@ p:has(+ [data-gem-paste-allow-disabled]) { margin-bottom: 0 !important; }
 
 .gem-highlight-term-mode {
   min-width: 96px;
-  height: 34px;
+  height: 36px;
   border: 1px solid var(--token-box-default-border);
   border-radius: 6px;
   background: var(--token-box-default-background);
@@ -266,13 +266,17 @@ p:has(+ [data-gem-paste-allow-disabled]) { margin-bottom: 0 !important; }
 
 .gem-add-term {
   display: flex;
-  gap: 12px;
+  gap: 8px;
   align-items: center;
   margin: 0 20px 20px;
-  padding: 16px;
+  padding: 9px;
   border: 2px dashed var(--token-box-default-border);
   border-radius: 8px;
   transition: all 0.2s ease;
+}
+
+.gem-add-term .gem-settings-input-wrap {
+  flex: 1;
 }
 
 .gem-add-term input[type="text"] {
@@ -291,15 +295,6 @@ p:has(+ [data-gem-paste-allow-disabled]) { margin-bottom: 0 !important; }
   box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
 
-.gem-add-term input[type="color"] {
-  width: 56px;
-  height: 40px;
-  border: 2px solid var(--token-box-default-border);
-  border-radius: 6px;
-  cursor: pointer;
-  transition: border-color 0.2s ease;
-}
-
 .gem-add-term input[type="color"]:hover {
   border-color: #667eea;
 }
@@ -308,25 +303,6 @@ p:has(+ [data-gem-paste-allow-disabled]) { margin-bottom: 0 !important; }
 .gem-setting-section-content-block-toolbar gem-e-icon {
   margin-right: 4px;
   transform: scale(0.9);
-}
-
-.gem-add-term button {
-  padding: 10px 16px;
-  background: var(--token-button-highlight-background);
-  color: white;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 600;
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 4px rgba(102, 126, 234, 0.3);
-}
-
-.gem-add-term button:hover {
-  background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.4);
 }
 
 .color-swatch-item {

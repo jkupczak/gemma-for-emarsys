@@ -138,29 +138,8 @@ try {
 // Default color swatches - globally available
 window.DEFAULT_COLOR_SWATCHES = ["#FE4D01", "", "", "", "", "", "", ""];
 
-// Default highlight terms - globally available for text-highlighting.js
-window.DEFAULT_HIGHLIGHT_TERMS = {
-  "\((price|prezzo|precio|preis|prix)\)": { color: "rgba(245, 46, 132, 0.40)", isRegex: true },
-  "\{\{[^”“‘’}]+\}\}": { color: "rgba(255, 230, 0, 0.40)", isRegex: true },
-  "((\$|£|€)(\s|\\xA0)?(\d|X)+|(\d|X)+(\s|\\xA0)?€)": { color: "rgba(255, 230, 0, 0.40)", isRegex: true },
-  "(name)": { color: "rgba(0, 180, 255, 0.40)", isRegex: false },
-  "(LearnLangAll)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
-  "(learnlang_a_ENG)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
-  "(learnlang_ALL)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
-  "(learnlang_l_ALL)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
-  "(learnlang_d_ALL)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
-  "(learnlang_d_l_ALL)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
-  "(Lernsprache_a_FRA)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
-  "(Lernsprache_fem_FRA)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
-  "(learnlang_d_l_ITA)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
-  "(LearnLangAll)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
-  "(learnlang_for_SWE)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
-  "(learnlang_nominative)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
-  "(learnlang_locative)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
-  "(learnlang_genitive)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
-  "(learnlang_adjective)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false },
-  "(learnlang_locative_po)": { color: "rgba(120, 255, 120, 0.40)", isRegex: false }
-};
+// Default highlight terms - fresh installs start with none.
+window.DEFAULT_HIGHLIGHT_TERMS = {};
 
 (function () {
   let panelEl = null;
@@ -359,7 +338,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
     {
       id: "blockVisibility",
       label: "Block Visibility",
-      syncKeys: ["hiddenBlocks", "pinnedBlocks"],
+      syncKeys: ["bm", "b_meta", ...Array.from({ length: 16 }, (_, i) => `b${i}`)],
       localKeys: []
     },
     {
@@ -1153,9 +1132,16 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
             <!-- Terms will be dynamically added here -->
           </div>
           <div class="gem-add-term">
-            <input type="text" id="new-term-text" placeholder="New term to highlight" />
+            <div class="gem-settings-input-wrap">
+              <input type="text" id="new-term-text" placeholder="New term to highlight" />
+              <button type="button" id="new-term-regex-toggle" class="gem-settings-regex-toggle" title="Use regular expression" aria-pressed="false">.*</button>
+            </div>
             <input type="color" id="new-term-color" class="color-swatch-color" value="#ffff00" />
-            <button id="add-term-btn">Add</button>
+            <select id="new-term-mode" class="gem-highlight-term-mode" title="Choose term behavior">
+              <option value="highlight" selected>Highlight</option>
+              <option value="notify">Notify</option>
+            </select>
+            <button id="add-term-btn" class="e-btn e-btn-primary">Add</button>
           </div>
         </div>
 
@@ -1173,13 +1159,6 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
             </div>
           </div>
           <div class="gem-setting-group">
-            <div class="gem-e-switch-wrapper">
-              <label for="opt-show-file-icon">Show filetype icons in media picker</label>
-              <div class="gem-e-switch--fat e-switch">
-                <input type="checkbox" class="e-switch__input" id="opt-show-file-icon" checked>
-                <label class="e-switch__toggle" for="opt-show-file-icon"></label>
-              </div>
-            </div>
             <div class="gem-e-switch-wrapper">
               <label for="opt-show-created-column">Show 'Created' column in media picker</label>
               <div class="gem-e-switch--fat e-switch">
@@ -1449,7 +1428,6 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         mobilePreviewWidth: 414,
         mobilePreviewScale: 0.5,
         mobileViewVisible: true,
-        showFileIcon: true,
         showCreatedColumn: true,
         showSizeColumn: true,
         showUserColumn: true,
@@ -1581,7 +1559,6 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
           }
         }, (mediaDBResult) => {
           const mediaDBSettings = mediaDBResult.gemMediaDBColumnVisibility;
-          document.getElementById("opt-show-file-icon").checked = mediaDBSettings.showFileIcon;
           document.getElementById("opt-show-created-column").checked = mediaDBSettings.showCreated;
           document.getElementById("opt-show-size-column").checked = mediaDBSettings.showSize;
           document.getElementById("opt-show-user-column").checked = mediaDBSettings.showUser;
@@ -1701,7 +1678,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
 
           // Save MediaDB settings separately
           const mediaDBSettings = {
-            showFileIcon: document.getElementById("opt-show-file-icon")?.checked ?? true,
+            showFileIcon: true,
             showCreated: document.getElementById("opt-show-created-column")?.checked ?? true,
             showSize: document.getElementById("opt-show-size-column")?.checked ?? true,
             showUser: document.getElementById("opt-show-user-column")?.checked ?? true
@@ -1719,8 +1696,57 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
         },
         unhideAllBlocksHandler() {
           if (!confirm("Are you sure you want to unhide all blocks? This will permanently show all blocks that were previously hidden.")) return;
+          const BLOCKS_META_KEY = "bm";
+          const BLOCKS_CHUNK_PREFIX = "b";
+          const BLOCKS_CHUNK_SIZE = 8180;
+          const BLOCKS_MAX_CHUNKS = 16;
+          const chunkBlockData = (text) => {
+            const out = [];
+            for (let i = 0; i < text.length; i += BLOCKS_CHUNK_SIZE) out.push(text.slice(i, i + BLOCKS_CHUNK_SIZE));
+            return out.length ? out : [""];
+          };
+          const persistUnhiddenBlocks = (done) => {
+            chrome.storage.sync.get(["bm", "b_meta", ...Array.from({ length: BLOCKS_MAX_CHUNKS }, (_, i) => `b${i}`)], (stored) => {
+              let pinnedBlocks = [];
+              try {
+                const meta = stored.bm || stored.b_meta;
+                if (meta && typeof meta.c === "number" && meta.c > 0) {
+                  let payload = "";
+                  for (let i = 0; i < Math.min(meta.c, BLOCKS_MAX_CHUNKS); i += 1) {
+                    if (typeof stored[`b${i}`] !== "string") {
+                      payload = "";
+                      break;
+                    }
+                    payload += stored[`b${i}`];
+                  }
+                  if (payload) {
+                    const decompressed = typeof LZString !== "undefined"
+                      ? LZString.decompressFromBase64(payload)
+                      : payload;
+                    const parsed = decompressed ? JSON.parse(decompressed) : {};
+                    pinnedBlocks = Array.isArray(parsed?.pinnedBlocks) ? parsed.pinnedBlocks.filter(Boolean) : [];
+                  }
+                }
+              } catch (_) {
+                pinnedBlocks = [];
+              }
+              const nextState = { pinnedBlocks, hiddenBlocks: [] };
+              const json = JSON.stringify(nextState);
+              const compressed = typeof LZString !== "undefined" ? LZString.compressToBase64(json) : json;
+              const chunks = chunkBlockData(compressed || json);
+              const toSet = { [BLOCKS_META_KEY]: { v: 1, c: chunks.length, enc: "b64" } };
+              chunks.forEach((chunk, i) => {
+                toSet[`${BLOCKS_CHUNK_PREFIX}${i}`] = chunk;
+              });
+              const stale = ["b_meta"];
+              for (let i = chunks.length; i < BLOCKS_MAX_CHUNKS; i += 1) stale.push(`b${i}`);
+              chrome.storage.sync.remove(stale, () => {
+                chrome.storage.sync.set(toSet, done);
+              });
+            });
+          };
           chrome.storage.local.set({ showHiddenBlocks: false });
-          chrome.storage.sync.set({ hiddenBlocks: [] }, () => {
+          persistUnhiddenBlocks(() => {
             if (chrome.runtime.lastError) {
               console.error("[Gem] Error clearing hidden blocks:", chrome.runtime.lastError);
               alert("Failed to unhide blocks. Please try again.");
@@ -1787,7 +1813,6 @@ window.DEFAULT_HIGHLIGHT_TERMS = {
       "opt-email-campaign-list-load-all",
       "opt-mobile-preview-width",
       "opt-mobile-preview-scale",
-      "opt-show-file-icon",
       "opt-show-created-column",
       "opt-show-size-column",
       "opt-show-user-column",

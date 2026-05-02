@@ -15,15 +15,18 @@ function buildNotesNavItem() {
   const li = document.createElement("li");
   li.className = "e-navigation__menu_list_item";
   li.id = GEM_NOTES_NAV_ID;
+  const mod = typeof window.GEM_MOD_KEY === "string" ? window.GEM_MOD_KEY : "CTRL";
   li.innerHTML = `
-    <button type="button" class="e-navigation__action" menu-item-id="notes">
-      <e-icon class="e-navigation__action_icon" color="inherit" icon="custom">
-        <div aria-hidden="true" class="e-icon-wrapper">
-          <div class="e-icon text-color-inherit"></div>
-        </div>
-      </e-icon>
-      <span class="e-navigation__action_text">Notes</span>
-    </button>
+    <e-tooltip placement="right" content="${mod}+;" role="tooltip" aria-description="Notes" style="width: 100%;">
+      <button type="button" class="e-navigation__action" menu-item-id="notes">
+        <e-icon class="e-navigation__action_icon" color="inherit" icon="custom">
+          <div aria-hidden="true" class="e-icon-wrapper">
+            <div class="e-icon text-color-inherit"></div>
+          </div>
+        </e-icon>
+        <span class="e-navigation__action_text">Notes</span>
+      </button>
+    </e-tooltip>
   `;
 
   li.querySelector("button").addEventListener("click", toggleNotesPanel);
@@ -247,7 +250,79 @@ function onNotesEsc(e) {
   if (e.key === "Escape") hideNotesPanel();
 }
 
+function notesShortcutTypingTarget() {
+  const ae = document.activeElement;
+  if (!ae) return false;
+  if (ae.id === "gem-notes-textarea") return false;
+  const tag = (ae.tagName || "").toLowerCase();
+  if (tag === "input" || tag === "textarea" || tag === "select") return true;
+  if (ae.isContentEditable) return true;
+  if (ae.closest && ae.closest('[contenteditable="true"]')) return true;
+  return false;
+}
+
+function setupNotesPanelShortcuts() {
+  function handleKeyDown(e) {
+    if (!(e.metaKey || e.ctrlKey)) return;
+    if (e.shiftKey || e.altKey) return;
+    if ((e.key || "") !== ";") return;
+    if (notesShortcutTypingTarget()) return;
+
+    toggleNotesPanel();
+    e.preventDefault();
+    e.stopPropagation();
+    if (typeof e.stopImmediatePropagation === "function") e.stopImmediatePropagation();
+  }
+
+  document.addEventListener("keydown", handleKeyDown, true);
+
+  function injectIntoIframe(iframe) {
+    try {
+      const iframeDoc = iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document);
+      if (!iframeDoc) return;
+      if (iframeDoc._gemNotesShortcutHandler) return;
+      iframeDoc.addEventListener("keydown", handleKeyDown, true);
+      iframeDoc._gemNotesShortcutHandler = true;
+    } catch (_) {}
+  }
+
+  function waitForIframeReady(iframe) {
+    try {
+      if (iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document)) {
+        injectIntoIframe(iframe);
+        return;
+      }
+      iframe.addEventListener("load", () => setTimeout(() => injectIntoIframe(iframe), 50));
+      let attempts = 0;
+      const tick = () => {
+        attempts++;
+        try {
+          if (iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document)) {
+            injectIntoIframe(iframe);
+            return;
+          }
+        } catch (_) {}
+        if (attempts < 40) setTimeout(tick, 100);
+      };
+      setTimeout(tick, 100);
+    } catch (_) {}
+  }
+
+  document.querySelectorAll("iframe").forEach(waitForIframeReady);
+  const iframeObserver = new MutationObserver((mutations) => {
+    mutations.forEach((m) => {
+      m.addedNodes.forEach((node) => {
+        if (!node || node.nodeType !== Node.ELEMENT_NODE) return;
+        if (node.tagName === "IFRAME") waitForIframeReady(node);
+        else if (node.querySelectorAll) node.querySelectorAll("iframe").forEach(waitForIframeReady);
+      });
+    });
+  });
+  iframeObserver.observe(document.documentElement, { childList: true, subtree: true });
+}
+
 // ── Init ────────────────────────────────────────────────────────────────
 
 scanForNav();
 observeNav();
+setupNotesPanelShortcuts();

@@ -9,17 +9,6 @@
  --------------------------------------------------------------------------------
 
 _________________
-### Recent Media
-
-- I've added a toggle to the "Layout" section in the settings panel right below the "Show "Finish Editing" Button" section. This toggle controls whether or not the "Recent Media" button (#latestMediaTab) is visible to the user. I've added `#latestMediaTab { display: none }` to style.css because I want it to be hidden by default. If the user decides that they want it to be displayed, they need to toggle the setting to ON. Save their choice to sync storage and ensure it's included in our Export settings.
-
-________________
-### Upload button is busted
-
-- The Upload button that is available in the Media Picker when the Media Database tab is active is not currently working.
-- It does not throw any errors in the console when clicked.
-
-_________________
 ### Text Highlighting Upgrade
 I want to extend the Text Highlighting function so that it will check more locations on the page. Right now it is just checking the email desktop iframe.
 
@@ -71,38 +60,6 @@ The thumbnails in the Media Database look like this in the DOM:
 #TODO: 
  - Show them what the media databae thumbnails look like
 
-
-___________________
-### "Title" hiding
-
-Emarsys's link edit dialog features an input field for the user to specify text to be used in the links `title` attribute. The `title` attribute is considered poor for accessibility. So by default I've added some CSS to the `styles.css` file that hides that field from the user to discourage its use. 
-
-I want to add a toggle to the Settings panel so that users can override this. Add it to the XXX section and add this sub-label description underneath it: "Titles on links are considered poor for accessibility. Gemma hides the field by default to dissuade users from using it. Toggle this on to restore its visibility."
-
-The default value for the toggle should be off which is equal to the CSS hiding the field. Toggling it to on should stop the CSS from hiding it. I've already added the appropriate CSS to the `style.css` file. It looks like this: `[for="input-title"], cb-personalizable-input-with-context { display:none }`.
-
-
-___________________
-### Add file type icons to the List View in the Recent Images and Favorite Images tabs
-
-We need to add a new columnn to the list view. It should be the first column in each row. 
-
-The contents should be an icon. Use this code:
-
-<e-icon icon="{icon name}">
-  <div aria-hidden="true" class="e-icon-wrapper">
-    <div class="e-icon">{html-entity}</div>
-  </div>
-</e-icon>
-
-Use this to swap into the icon code. Use the correct corresponding values based on the file extension of the image URL in that row. If none of them match, don't insert any icon.
-
-U+F0EB = JPG / JPEG, icon name = "file-jpg"
-U+F0E7 = GIF, icon name = "file-gif"
-U+F0ED = PNG, icon name = "file-png"
-
-
-
  --------------------------------------------------------------------------------
 |                                                                                |
 |                                                                                |
@@ -113,15 +70,15 @@ U+F0ED = PNG, icon name = "file-png"
 |                                                                                |
  --------------------------------------------------------------------------------
 
+- Add a "Recent campaigns" list in the left nav? Pull out menu that lists as many as we can fit in the full vh of the page.
+
 - Leverage "Created" date from the MB to apply "New!" labels for images created in the last 1 or X days?
 
 - Add aspect ratio output to the image picker.
 
 - ESC needs to work when media db iframe has focus
 
-- Upload drop window doesnt seem fully usable in iframe window
-
-- Ensure that switching tabs while uploading still works.
+- Ensure that switching tabs while uploading still works. > Yes, changing tabs doesn't break upload.
 - Prevent or warn the user from switching folders, closing image picker, closing browser window if that disrupt the upload.
 
 - Save a log of past upload successes and failures?

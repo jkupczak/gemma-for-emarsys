@@ -6,6 +6,107 @@
 try { importScripts('debug-logging-gate.js'); } catch (_) {}
 
 console.log("[Gem] Background script loading...");
+let recentCampaignOpenTabsCache = { byCampaignId: {}, openCampaignUrls: {}, openCampaignKeys: {} };
+
+function rcGetCampaignIdFromTabUrl(url) {
+  try {
+    const raw = String(url || '');
+    if (!raw) return null;
+    const parsed = new URL(url);
+    const routeCandidates = [];
+    const routeFromQuery = parsed.searchParams.get("r");
+    if (routeFromQuery) routeCandidates.push(routeFromQuery);
+    const hash = parsed.hash || "";
+    if (hash.includes("?")) {
+      const hashQuery = hash.slice(hash.indexOf("?") + 1);
+      const hashParams = new URLSearchParams(hashQuery);
+      const hashRoute = hashParams.get("r");
+      if (hashRoute) routeCandidates.push(hashRoute);
+    }
+    const normalizedRoutes = routeCandidates.map((r) => {
+      try { return decodeURIComponent(r || ""); } catch (_) { return String(r || ""); }
+    });
+    const hasCampaignRoute = normalizedRoutes.some((r) => String(r).includes("contentBlocks/campaign")) ||
+      raw.includes("contentBlocks/campaign");
+    if (!hasCampaignRoute) return null;
+    const idFromQuery = (parsed.searchParams.get("id") || "").trim();
+    if (idFromQuery) return idFromQuery;
+    const idMatch = raw.match(/[?&#]id=([^&#]+)/i);
+    if (!idMatch || !idMatch[1]) return null;
+    return decodeURIComponent(idMatch[1]).trim() || null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function rcIdForCanonicalCampaignQuery(id) {
+  const s = String(id || "").trim();
+  if (!s) return "";
+  return /^[a-zA-Z0-9_-]+$/.test(s) ? s : encodeURIComponent(s);
+}
+
+function rcCollectDecodedRouteCandidates(parsed, rawStr) {
+  const routeCandidates = [];
+  const routeFromQuery = parsed.searchParams.get("r");
+  if (routeFromQuery) routeCandidates.push(routeFromQuery);
+  const hash = parsed.hash || "";
+  if (hash.includes("?")) {
+    const hashQuery = hash.slice(hash.indexOf("?") + 1);
+    const hashParams = new URLSearchParams(hashQuery);
+    const hashRoute = hashParams.get("r");
+    if (hashRoute) routeCandidates.push(hashRoute);
+  }
+  const normalizedRoutes = routeCandidates.map((r) => {
+    try {
+      return decodeURIComponent(r || "");
+    } catch (_) {
+      return String(r || "");
+    }
+  });
+  return (
+    normalizedRoutes.some((r) => String(r).includes("contentBlocks/campaign")) ||
+    String(rawStr || "").includes("contentBlocks/campaign")
+  );
+}
+
+/** Canonical campaign URL: no hash, no session_id, literal r=contentBlocks/campaign (not %2F). */
+function rcCanonicalCampaignTabUrl(tabUrl) {
+  try {
+    const raw = String(tabUrl || "").trim();
+    if (!raw) return null;
+    const parsed = new URL(raw);
+    if (!(parsed.pathname || "").includes("bootstrap.php")) return null;
+    if (!rcCollectDecodedRouteCandidates(parsed, raw)) return null;
+    const id = rcGetCampaignIdFromTabUrl(raw);
+    if (!id) return null;
+    const idForQuery = rcIdForCanonicalCampaignQuery(id);
+    if (!idForQuery) return null;
+    return `${parsed.origin}${parsed.pathname}?r=contentBlocks/campaign&id=${idForQuery}`;
+  } catch (_) {
+    return null;
+  }
+}
+
+function rcGetNormalizedCampaignUrl(url) {
+  return rcCanonicalCampaignTabUrl(url);
+}
+
+function rcGetCampaignMatchKey(url, knownId) {
+  try {
+    const raw = String(url || "").trim();
+    if (!raw) return null;
+    const parsed = new URL(raw);
+    if (!(parsed.pathname || "").includes("bootstrap.php")) return null;
+    if (!rcCollectDecodedRouteCandidates(parsed, raw)) return null;
+    const id = String(knownId || rcGetCampaignIdFromTabUrl(raw) || "").trim();
+    if (!id) return null;
+    const idForQuery = rcIdForCanonicalCampaignQuery(id);
+    if (!idForQuery) return null;
+    return `${parsed.origin}${parsed.pathname}?r=contentBlocks/campaign&id=${idForQuery}`;
+  } catch (_) {
+    return null;
+  }
+}
 
 function bgLog(...args) {
   try { console.log("[Gem] BG]", ...args); } catch (e) {}
@@ -148,6 +249,115 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       sendToTab(sender.tab.id, { action: "openSettings" });
     }
     return;
+  }
+
+  function getCampaignIdFromTabUrl(url) {
+    try {
+      const raw = String(url || '');
+      if (!raw) return null;
+      const parsed = new URL(url);
+      const routeCandidates = [];
+      const routeFromQuery = parsed.searchParams.get("r");
+      if (routeFromQuery) routeCandidates.push(routeFromQuery);
+
+      // Some variants carry route-like params in hash fragments.
+      const hash = parsed.hash || "";
+      if (hash.includes("?")) {
+        const hashQuery = hash.slice(hash.indexOf("?") + 1);
+        const hashParams = new URLSearchParams(hashQuery);
+        const hashRoute = hashParams.get("r");
+        if (hashRoute) routeCandidates.push(hashRoute);
+      }
+
+      const normalizedRoutes = routeCandidates.map((r) => {
+        try { return decodeURIComponent(r || ""); } catch (_) { return String(r || ""); }
+      });
+      const hasCampaignRoute = normalizedRoutes.some((r) => String(r).includes("contentBlocks/campaign")) ||
+        raw.includes("contentBlocks/campaign");
+      if (!hasCampaignRoute) return null;
+
+      const idFromQuery = (parsed.searchParams.get("id") || "").trim();
+      if (idFromQuery) return idFromQuery;
+
+      // Fallback for unusual URL encodings/orderings.
+      const idMatch = raw.match(/[?&#]id=([^&#]+)/i);
+      if (!idMatch || !idMatch[1]) return null;
+      return decodeURIComponent(idMatch[1]).trim() || null;
+    } catch (_) {
+      const raw = String(url || '');
+      if (!raw || !raw.includes("contentBlocks/campaign")) return null;
+      const idMatch = raw.match(/[?&#]id=([^&#]+)/i);
+      if (!idMatch || !idMatch[1]) return null;
+      try { return decodeURIComponent(idMatch[1]).trim() || null; } catch (_) { return idMatch[1].trim() || null; }
+    }
+  }
+
+  function getNormalizedCampaignUrl(url) {
+    return rcGetNormalizedCampaignUrl(url);
+  }
+
+  function getCampaignMatchKey(url, knownId) {
+    return rcGetCampaignMatchKey(url, knownId);
+  }
+
+  if (action === "getOpenCampaignTabs") {
+    sendResponse({
+      ok: true,
+      byCampaignId: { ...(recentCampaignOpenTabsCache.byCampaignId || {}) },
+      openCampaignUrls: { ...(recentCampaignOpenTabsCache.openCampaignUrls || {}) },
+      openCampaignKeys: { ...(recentCampaignOpenTabsCache.openCampaignKeys || {}) }
+    });
+    return true;
+  }
+
+  if (action === "focusOrOpenCampaignTab") {
+    const campaignId = String(msg.campaignId || "").trim();
+    const targetUrl = String(msg.targetUrl || "").trim();
+    if (!campaignId || !targetUrl) {
+      sendResponse({ ok: false, reason: "missing_campaign_id_or_url" });
+      return;
+    }
+    chrome.tabs.query({}, (tabs) => {
+      const emarsysTabs = (Array.isArray(tabs) ? tabs : []).filter((tab) => {
+        const tabUrl = String(tab && tab.url ? tab.url : '');
+        return !!tabUrl && /https?:\/\/([^/]+\.)?emarsys\.net\//i.test(tabUrl);
+      });
+      const existing = emarsysTabs.find((tab) => {
+        const id = getCampaignIdFromTabUrl(tab && tab.url);
+        return id === campaignId && tab.id != null;
+      });
+      if (existing && existing.id != null) {
+        chrome.tabs.update(existing.id, { active: true }, () => {
+          const windowId = existing.windowId;
+          if (windowId != null) chrome.windows.update(windowId, { focused: true }, () => {});
+          sendResponse({ ok: true, mode: "focused", tabId: existing.id });
+        });
+        return;
+      }
+      const targetKey = getCampaignMatchKey(targetUrl, campaignId);
+      if (targetKey) {
+        const byUrl = emarsysTabs.find((tab) => {
+          const key = getCampaignMatchKey(tab && tab.url);
+          return key && key === targetKey && tab.id != null;
+        });
+        if (byUrl && byUrl.id != null) {
+          chrome.tabs.update(byUrl.id, { active: true }, () => {
+            const windowId = byUrl.windowId;
+            if (windowId != null) chrome.windows.update(windowId, { focused: true }, () => {});
+            sendResponse({ ok: true, mode: "focused", tabId: byUrl.id });
+          });
+          return;
+        }
+      }
+      chrome.tabs.create({ url: targetUrl, active: true }, (tab) => {
+        if (chrome.runtime.lastError) {
+          sendResponse({ ok: false, reason: chrome.runtime.lastError.message || "create_failed" });
+          return;
+        }
+        sendResponse({ ok: true, mode: "opened", tabId: tab && tab.id != null ? tab.id : null });
+      });
+    });
+    return true;
   }
 
   const PREFLIGHT_NETWORK_ORIGINS = ['https://*/*', 'http://*/*'];
@@ -546,3 +756,43 @@ chrome.action.onClicked.addListener(async (tab) => {
 });
 
 bgLog("Background service worker initialized");
+
+function broadcastRecentCampaignOpenTabsUpdated() {
+  chrome.tabs.query({}, (tabs) => {
+    (Array.isArray(tabs) ? tabs : []).forEach((tab) => {
+      if (tab && tab.id != null) {
+        chrome.tabs.sendMessage(tab.id, { action: "recentCampaignOpenTabsUpdated" }, () => {});
+      }
+    });
+  });
+}
+
+function refreshRecentCampaignOpenTabsCache() {
+  chrome.tabs.query({}, (tabs) => {
+    const byCampaignId = {};
+    const openCampaignUrls = {};
+    const openCampaignKeys = {};
+    (Array.isArray(tabs) ? tabs : []).forEach((tab) => {
+      const tabUrl = String(tab && tab.url ? tab.url : '');
+      if (!tabUrl || !/https?:\/\/([^/]+\.)?emarsys\.net\//i.test(tabUrl)) return;
+      const id = rcGetCampaignIdFromTabUrl(tabUrl);
+      const normalizedUrl = rcGetNormalizedCampaignUrl(tabUrl);
+      const matchKey = rcGetCampaignMatchKey(tabUrl, id);
+      if (tab.id == null) return;
+      if (id && !byCampaignId[id]) byCampaignId[id] = tab.id;
+      if (normalizedUrl) openCampaignUrls[normalizedUrl] = tab.id;
+      if (matchKey) openCampaignKeys[matchKey] = tab.id;
+    });
+    const next = { byCampaignId, openCampaignUrls, openCampaignKeys };
+    const prev = JSON.stringify(recentCampaignOpenTabsCache || {});
+    const curr = JSON.stringify(next);
+    recentCampaignOpenTabsCache = next;
+    if (prev !== curr) broadcastRecentCampaignOpenTabsUpdated();
+  });
+}
+
+chrome.tabs.onUpdated.addListener(() => refreshRecentCampaignOpenTabsCache());
+chrome.tabs.onRemoved.addListener(() => refreshRecentCampaignOpenTabsCache());
+chrome.tabs.onActivated.addListener(() => refreshRecentCampaignOpenTabsCache());
+chrome.windows.onFocusChanged.addListener(() => refreshRecentCampaignOpenTabsCache());
+refreshRecentCampaignOpenTabsCache();

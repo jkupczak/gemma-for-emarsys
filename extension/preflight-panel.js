@@ -363,7 +363,7 @@ function initializePreflightPanel() {
             </div>
           </div>
           <div class="gem-preflight-live-link-footnote" data-role="liveLinkFootnote" style="display:none;"></div>
-          <div class="gem-preflight-accessibility-table gem-preflight-links-table" data-role="linksTable">
+          <div class="gem-preflight-accessibility-table" data-role="linksTable">
             <div class="gem-preflight-image-breakdown-empty">Scanning...</div>
           </div>
           <div class="gem-preflight-image-breakdown gem-preflight-skipped-urls" data-role="skippedUrlsWrap">

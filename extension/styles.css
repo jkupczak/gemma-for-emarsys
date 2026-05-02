@@ -1229,8 +1229,6 @@ gem-preflight .gem-preflight-image-breakdown {
 
 gem-preflight .gem-preflight-accessibility-table {
     margin-top: 8px;
-    border: 1px solid var(--token-box-default-border);
-    border-radius: 8px;
     background: var(--token-box-default-background);
 }
 
@@ -1370,6 +1368,8 @@ gem-preflight .gem-preflight-link-href {
 
 gem-preflight .gem-preflight-links-table {
     display: block;
+    border: 1px solid var(--token-box-default-border);
+    border-radius: 8px;
 }
 
 gem-preflight .gem-preflight-links-table .gem-preflight-links-table {
@@ -1529,6 +1529,14 @@ gem-preflight .gem-preflight-links-stacked-kv-row {
     gap: 10px;
     border-top: 1px solid var(--token-box-default-border);
     padding-top: 6px;
+    margin: 0 9px;
+}
+
+gem-preflight .gem-preflight-links-stacked-url-row + .gem-preflight-links-stacked-kv-row {
+    margin: 2px -10px 0 -10px;
+    padding-top: 10px;
+    padding-left: 18px;
+    padding-right: 18px;
 }
 
 gem-preflight .gem-preflight-links-stacked-kv-label {
@@ -2415,8 +2423,6 @@ input.gem-input, select.gem-select {
     padding-left: 6px;
 }
 
-#latestMediaTab { display: none }
-
 .gem-img-picker-cols-control {
     display:flex; align-items:center; gap:8px;   
     border-width: 1px;
@@ -2573,6 +2579,19 @@ input.gem-input, select.gem-select {
 
 .gem-image-row-menu-popover--floating.gem-image-row-menu-popover--visible {
     display: block;
+}
+
+#gem-image-row-menu-popover-single > .e-popover__arrow {
+    position: absolute;
+    top: -5px;
+    width: 10px;
+    height: 10px;
+    margin: 0;
+    box-sizing: border-box;
+    background: var(--token-box-default-background);
+    transform: rotate(45deg);
+    transform-origin: center;
+    pointer-events: none;
 }
 
 .gem-image-row-menu-popover .e-dropdown__content {

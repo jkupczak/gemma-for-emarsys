@@ -5,16 +5,6 @@ html {
     --gem-recent-grid-cols: 6;
 }
 
-.e-mediadb-breadcrumb .e-mediadb-breadcrumb__root.ng-binding[ng-click="directiveCtrl.selectRoot()"] {
-    font-size: 0 !important;
-    display: flex;
-}
-  
-.e-mediadb-breadcrumb .e-mediadb-breadcrumb__root.ng-binding[ng-click="directiveCtrl.selectRoot()"]::before {
-    content: "Home" !important;
-    font-size: 16px !important;
-}
-
 html, body { background-color: transparent !important; }
 
 .e-mediadb > .e-layout.e-layout-fullheight.e-layout-without_navigation {
@@ -23,7 +13,7 @@ html, body { background-color: transparent !important; }
 
 .e-mediadb .e-layout__header {
     margin: 0 !important;
-    padding: 16px 16px 16px 6px !important;
+    padding: 16px 16px 16px 0px !important;
     background: var(--token-box-alternate-background);
     z-index: 9;
     position: sticky;
@@ -220,4 +210,8 @@ main.e-layout__content {
 
 tr.gem-selected-image {
     box-shadow: inset 0 0 12px var(--token-primary-500) !important;
+}
+
+span[editable-text="fileCtrl.file.name"] e-icon[icon] {
+    display: none !important;
 }

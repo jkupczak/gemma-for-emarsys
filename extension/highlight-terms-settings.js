@@ -138,13 +138,15 @@
   function addNewTerm() {
     const textInput = document.getElementById("new-term-text");
     const colorInput = document.getElementById("new-term-color");
+    const regexBtn = document.getElementById("new-term-regex-toggle");
+    const modeSelect = document.getElementById("new-term-mode");
 
-    if (!textInput || !colorInput) return;
+    if (!textInput || !colorInput || !regexBtn || !modeSelect) return;
 
     const newTerm = textInput.value.trim();
     const newColor = hexToRgba(colorInput.value);
-    const newIsRegex = false;
-    const newMode = 'highlight';
+    const newIsRegex = regexBtn.classList.contains('gem-settings-regex-toggle--active');
+    const newMode = modeSelect.value === 'notify' ? 'notify' : 'highlight';
 
     if (newTerm) {
       chrome.storage.sync.get({ highlightTerms: {} }, (settings) => {
@@ -157,10 +159,23 @@
           container.appendChild(termItem);
 
           textInput.value = "";
+          regexBtn.classList.remove('gem-settings-regex-toggle--active');
+          regexBtn.setAttribute('aria-pressed', 'false');
         });
       });
     }
   }
+
+  (function bindNewTermRegexToggle() {
+    const regexBtn = document.getElementById("new-term-regex-toggle");
+    if (!regexBtn || regexBtn.dataset.gemBound === 'true') return;
+    regexBtn.dataset.gemBound = 'true';
+    regexBtn.addEventListener("click", () => {
+      const nowActive = !regexBtn.classList.contains('gem-settings-regex-toggle--active');
+      regexBtn.classList.toggle('gem-settings-regex-toggle--active', nowActive);
+      regexBtn.setAttribute('aria-pressed', String(nowActive));
+    });
+  })();
 
   window.GemHighlightTerms = {
     load: loadHighlightTerms,
