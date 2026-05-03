@@ -142,6 +142,51 @@ function initializeKeyboardShortcuts() {
     }
   }
 
+  /** Image picker embeds Media DB in an iframe with this class (see overlay-panel-controls.js). */
+  function gemGetMediaDbPickerIframeFromEvent(event) {
+    try {
+      const fe = event.view && event.view.frameElement;
+      if (!fe || !fe.classList || !fe.classList.contains('gem-media-db-iframe')) return null;
+      return fe;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function gemGetImagePropertiesDialogFromIframeEvent(event) {
+    const fe = gemGetMediaDbPickerIframeFromEvent(event);
+    if (!fe) return null;
+    try {
+      return fe.closest('.e-dialog.e-dialog-active') || fe.closest('.e-dialog-active');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function gemToggleImagePickerDesktopMobileTab(event) {
+    const modal = gemGetImagePropertiesDialogFromIframeEvent(event);
+    if (!modal) return false;
+    const mobile = modal.querySelector('.e-tabs__title[data-tab="mobile"]');
+    const desktop = modal.querySelector('.e-tabs__title[data-tab="desktop"]');
+    if (!mobile || !desktop) return false;
+    const active = modal.querySelector(
+      '.e-tabs__title.e-tabs__title-active[data-tab="mobile"], .e-tabs__title.e-tabs__title-active[data-tab="desktop"]'
+    );
+    const onMobile = active && active.getAttribute('data-tab') === 'mobile';
+    (onMobile ? desktop : mobile).click();
+    return true;
+  }
+
+  function gemClickImagePickerOkButton(event) {
+    const modal = gemGetImagePropertiesDialogFromIframeEvent(event);
+    if (!modal) return false;
+    const ok =
+      modal.querySelector('.e-dialog__container button.ok-btn') ||
+      modal.querySelector('button.ok-btn');
+    if (!ok) return false;
+    ok.click();
+    return true;
+  }
 
   // Function to toggle mobile preview visibility
   function toggleMobilePreview() {
@@ -408,20 +453,21 @@ function initializeKeyboardShortcuts() {
       }
     }
 
+    function bindKeyboardShortcutIframeReload(iframe) {
+      if (!iframe || iframe._gemKeyboardShortcutIframeLoadBound) return;
+      iframe._gemKeyboardShortcutIframeLoadBound = true;
+      iframe.addEventListener('load', () => {
+        setTimeout(() => injectIntoIframe(iframe), 50);
+      });
+    }
+
   // Function to wait for iframe to be ready and inject
   function waitForIframeReady(iframe) {
+      bindKeyboardShortcutIframeReload(iframe);
       if (iframe.contentDocument && iframe.contentDocument.readyState === 'complete') {
         // Iframe is already loaded
         injectIntoIframe(iframe);
       } else {
-        // Wait for iframe to load
-        iframe.addEventListener('load', () => {
-          // Give it a moment for content to be ready
-          setTimeout(() => {
-            injectIntoIframe(iframe);
-          }, 100);
-        });
-
         // Also try periodically for up to 5 seconds in case load event doesn't fire
         let attempts = 0;
         const checkReady = () => {
@@ -446,18 +492,22 @@ function initializeKeyboardShortcuts() {
     const existingIframes = document.querySelectorAll('iframe');
     existingIframes.forEach(waitForIframeReady);
 
-    // Monitor for new iframes being added
+    // Monitor for new iframes being added (including nested, e.g. Media DB in image picker)
     const observer = new MutationObserver((mutations) => {
       mutations.forEach((mutation) => {
         mutation.addedNodes.forEach((node) => {
+          if (!node || node.nodeType !== Node.ELEMENT_NODE) return;
           if (node.tagName === 'IFRAME') {
             waitForIframeReady(node);
+          } else if (node.querySelectorAll) {
+            node.querySelectorAll('iframe').forEach(waitForIframeReady);
           }
         });
       });
     });
 
-    observer.observe(document.body, {
+    const obsRoot = document.body || document.documentElement;
+    observer.observe(obsRoot, {
       childList: true,
       subtree: true
     });
@@ -490,7 +540,54 @@ function initializeKeyboardShortcuts() {
       !event.altKey &&
       (event.code === 'Period' || event.key === '.' || event.key === '>');
 
+    const isDesktopMobileToggleShortcut =
+      (event.metaKey || event.ctrlKey) &&
+      !event.shiftKey &&
+      !event.altKey &&
+      String(event.key || '').toLowerCase() === 'd';
+
+    const isEnterKey = event.key === 'Enter' && !event.isComposing;
+
+    const fromGemMediaDbIframe = !!gemGetMediaDbPickerIframeFromEvent(event);
+    let iframeActiveEl = null;
+    if (fromGemMediaDbIframe) {
+      try {
+        iframeActiveEl = event.view && event.view.document ? event.view.document.activeElement : null;
+      } catch (_) {
+        iframeActiveEl = null;
+      }
+    }
+    const iframeTyping = fromGemMediaDbIframe && isTypingTarget(iframeActiveEl);
+
+    // In the Media DB iframe we only wire save, OK (Enter), and Desktop/Mobile (⌘D). Other Gem shortcuts stay inert.
+    if (fromGemMediaDbIframe) {
+      if (isMobilePreviewShortcut || isExpandedModeShortcut || isLangPrevShortcut || isLangNextShortcut) {
+        return;
+      }
+    }
+
+    if (isEnterKey && fromGemMediaDbIframe && !iframeTyping) {
+      if (gemClickImagePickerOkButton(event)) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+        return false;
+      }
+    }
+
+    if (isDesktopMobileToggleShortcut && fromGemMediaDbIframe) {
+      if (gemToggleImagePickerDesktopMobileTab(event)) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+        return false;
+      }
+    }
+
     if (isSaveShortcut) {
+      if (fromGemMediaDbIframe && iframeTyping) {
+        return;
+      }
       console.log("[Gem] Save shortcut detected:", event.metaKey ? 'CMD+S' : 'CTRL+S', "in context:", event.target.ownerDocument === document ? "main" : "iframe");
 
       // Prevent default browser save behavior

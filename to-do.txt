@@ -60,7 +60,7 @@ The thumbnails in the Media Database look like this in the DOM:
 #TODO: 
  - Show them what the media databae thumbnails look like
 
- --------------------------------------------------------------------------------
+o- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - o
 |                                                                                |
 |                                                                                |
 |                                                                                |
@@ -68,9 +68,7 @@ The thumbnails in the Media Database look like this in the DOM:
 |                                                                                |
 |                                                                                |
 |                                                                                |
- --------------------------------------------------------------------------------
-
-- Add a "Recent campaigns" list in the left nav? Pull out menu that lists as many as we can fit in the full vh of the page.
+o- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - o
 
 - Leverage "Created" date from the MB to apply "New!" labels for images created in the last 1 or X days?
 

@@ -4,6 +4,10 @@ const GEM_NOTES_STORAGE_KEY = "gemNotes";
 const GEM_NOTES_NAV_ID = "gem-nav-notes-item";
 const GEM_NOTES_PANEL_ID = "gem-notes-panel";
 const GEM_NOTES_BACKDROP_ID = "gem-notes-backdrop";
+/** Dispatched so recent-campaigns.js can close before notes opens (Cmd+;). */
+const GEM_CLOSE_RECENT_CAMPAIGNS_EVENT = "gem-close-recent-campaigns-panel";
+/** Dispatched so notes.js can close before recent opens (Cmd+.). */
+const GEM_CLOSE_NOTES_EVENT = "gem-close-notes-panel";
 
 let notesPanel = null;
 let notesBackdrop = null;
@@ -17,7 +21,7 @@ function buildNotesNavItem() {
   li.id = GEM_NOTES_NAV_ID;
   const mod = typeof window.GEM_MOD_KEY === "string" ? window.GEM_MOD_KEY : "CTRL";
   li.innerHTML = `
-    <e-tooltip placement="right" content="${mod}+;" role="tooltip" aria-description="Notes" style="width: 100%;">
+    <e-tooltip placement="top" content="${mod}+;" role="tooltip" aria-description="Notes" style="width: 100%;">
       <button type="button" class="e-navigation__action" menu-item-id="notes">
         <e-icon class="e-navigation__action_icon" color="inherit" icon="custom">
           <div aria-hidden="true" class="e-icon-wrapper">
@@ -203,10 +207,12 @@ function createNotesPanel() {
 
   notesBackdrop = backdrop;
   notesPanel = panel;
+  panel.dataset.gemPanelOpen = "0";
 }
 
 function showNotesPanel() {
   if (!notesPanel) createNotesPanel();
+  notesPanel.dataset.gemPanelOpen = "1";
 
   const textarea = notesPanel.querySelector("#gem-notes-textarea");
   chrome.storage.sync.get(GEM_NOTES_STORAGE_KEY, (result) => {
@@ -232,10 +238,15 @@ function showNotesPanel() {
 
 function hideNotesPanel() {
   if (!notesPanel) return;
+  notesPanel.dataset.gemPanelOpen = "0";
   notesPanel.style.transform = "translateX(-100%)";
   notesBackdrop.style.opacity = "0";
   notesBackdrop.style.pointerEvents = "none";
   document.removeEventListener("keydown", onNotesEsc);
+  try {
+    const ae = document.activeElement;
+    if (ae && notesPanel.contains(ae) && typeof ae.blur === "function") ae.blur();
+  } catch (_) {}
 }
 
 function toggleNotesPanel() {
@@ -254,6 +265,15 @@ function notesShortcutTypingTarget() {
   const ae = document.activeElement;
   if (!ae) return false;
   if (ae.id === "gem-notes-textarea") return false;
+  // Allow Cmd+; while Recent Campaigns search is focused (same pattern as recent-campaigns.js).
+  if (
+    ae.classList &&
+    ae.classList.contains("gem-recent-campaigns-search") &&
+    ae.closest &&
+    ae.closest("#gem-recent-campaigns-panel")
+  ) {
+    return false;
+  }
   const tag = (ae.tagName || "").toLowerCase();
   if (tag === "input" || tag === "textarea" || tag === "select") return true;
   if (ae.isContentEditable) return true;
@@ -268,7 +288,14 @@ function setupNotesPanelShortcuts() {
     if ((e.key || "") !== ";") return;
     if (notesShortcutTypingTarget()) return;
 
-    toggleNotesPanel();
+    const recentEl = document.getElementById("gem-recent-campaigns-panel");
+    const recentOpen = !!(recentEl && recentEl.classList.contains("gem-recent-campaigns-panel--open"));
+    if (recentOpen) {
+      document.dispatchEvent(new CustomEvent(GEM_CLOSE_RECENT_CAMPAIGNS_EVENT, { bubbles: true }));
+      showNotesPanel();
+    } else {
+      toggleNotesPanel();
+    }
     e.preventDefault();
     e.stopPropagation();
     if (typeof e.stopImmediatePropagation === "function") e.stopImmediatePropagation();
@@ -286,13 +313,22 @@ function setupNotesPanelShortcuts() {
     } catch (_) {}
   }
 
+  /** Same-origin iframes (e.g. Media DB in the image picker) get a new document on each navigation — reinject after `load`. */
+  function bindNotesShortcutIframeReload(iframe) {
+    if (!iframe || iframe._gemNotesShortcutIframeLoadBound) return;
+    iframe._gemNotesShortcutIframeLoadBound = true;
+    iframe.addEventListener("load", () => {
+      setTimeout(() => injectIntoIframe(iframe), 50);
+    });
+  }
+
   function waitForIframeReady(iframe) {
     try {
+      bindNotesShortcutIframeReload(iframe);
       if (iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document)) {
         injectIntoIframe(iframe);
         return;
       }
-      iframe.addEventListener("load", () => setTimeout(() => injectIntoIframe(iframe), 50));
       let attempts = 0;
       const tick = () => {
         attempts++;
@@ -319,6 +355,10 @@ function setupNotesPanelShortcuts() {
     });
   });
   iframeObserver.observe(document.documentElement, { childList: true, subtree: true });
+
+  document.addEventListener(GEM_CLOSE_NOTES_EVENT, () => {
+    hideNotesPanel();
+  });
 }
 
 // ── Init ────────────────────────────────────────────────────────────────

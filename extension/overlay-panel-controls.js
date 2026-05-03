@@ -319,6 +319,23 @@ function setupSaveButtonSync() {
 function initializeOverlayPanelControls() {
   console.log("[Gem] Initializing overlay panel controls");
 
+  function gemMediaDbIframeFieldHasTypingFocus(ev) {
+    try {
+      const w = ev.view;
+      const fe = w && w.frameElement;
+      if (!fe || !fe.classList || !fe.classList.contains('gem-media-db-iframe') || !w.document) return false;
+      const ae = w.document.activeElement;
+      if (!ae) return false;
+      const tag = (ae.tagName || '').toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') return true;
+      if (ae.isContentEditable) return true;
+      if (ae.closest && ae.closest('[contenteditable="true"]')) return true;
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   // Function to handle Escape key presses
   function handleEscapeKey(event) {
     // Only handle Escape key
@@ -353,6 +370,30 @@ function initializeOverlayPanelControls() {
       event.stopImmediatePropagation();
       return false;
     }
+
+    if (gemMediaDbIframeFieldHasTypingFocus(event)) {
+      return;
+    }
+    try {
+      const w = event.view;
+      const fe = w && w.frameElement;
+      if (fe && fe.classList && fe.classList.contains('gem-media-db-iframe')) {
+        const dialogEl = fe.closest('.e-dialog.e-dialog-active') || fe.closest('.e-dialog-active');
+        if (dialogEl) {
+          const closeBtn =
+            dialogEl.querySelector('button[aria-label="Close Dialog"]') ||
+            dialogEl.querySelector('.e-dialog__close') ||
+            dialogEl.querySelector('button.e-dialog__close');
+          if (closeBtn) {
+            closeBtn.click();
+            event.preventDefault();
+            event.stopPropagation();
+            event.stopImmediatePropagation();
+            return false;
+          }
+        }
+      }
+    } catch (_) {}
 
       console.log("[Gem] Escape key pressed, checking for open overlay panels");
 
@@ -408,20 +449,21 @@ function initializeOverlayPanelControls() {
       }
     }
 
+    function bindEscapeShortcutIframeReload(iframe) {
+      if (!iframe || iframe._gemEscapeShortcutIframeLoadBound) return;
+      iframe._gemEscapeShortcutIframeLoadBound = true;
+      iframe.addEventListener('load', () => {
+        setTimeout(() => injectIntoIframe(iframe), 50);
+      });
+    }
+
     // Function to wait for iframe to be ready and inject
     function waitForIframeReady(iframe) {
+      bindEscapeShortcutIframeReload(iframe);
       if (iframe.contentDocument && iframe.contentDocument.readyState === 'complete') {
         // Iframe is already loaded
         injectIntoIframe(iframe);
       } else {
-        // Wait for iframe to load
-        iframe.addEventListener('load', () => {
-          // Give it a moment for content to be ready
-          setTimeout(() => {
-            injectIntoIframe(iframe);
-          }, 100);
-        });
-
         // Also try periodically for up to 5 seconds in case load event doesn't fire
         let attempts = 0;
         const checkReady = () => {
@@ -446,18 +488,22 @@ function initializeOverlayPanelControls() {
     const existingIframes = document.querySelectorAll('iframe');
     existingIframes.forEach(waitForIframeReady);
 
-    // Monitor for new iframes being added
+    // Monitor for new iframes being added (including nested, e.g. Media DB in image picker)
     const observer = new MutationObserver((mutations) => {
       mutations.forEach((mutation) => {
         mutation.addedNodes.forEach((node) => {
+          if (!node || node.nodeType !== Node.ELEMENT_NODE) return;
           if (node.tagName === 'IFRAME') {
             waitForIframeReady(node);
+          } else if (node.querySelectorAll) {
+            node.querySelectorAll('iframe').forEach(waitForIframeReady);
           }
         });
       });
     });
 
-    observer.observe(document.body, {
+    const obsRoot = document.body || document.documentElement;
+    observer.observe(obsRoot, {
       childList: true,
       subtree: true
     });

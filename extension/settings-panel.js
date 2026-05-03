@@ -2362,18 +2362,25 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
       }
     }
 
+    function bindSettingsShortcutIframeReload(iframe) {
+      if (!iframe || iframe._gemSettingsShortcutIframeLoadBound) return;
+      iframe._gemSettingsShortcutIframeLoadBound = true;
+      iframe.addEventListener('load', () => {
+        setTimeout(() => injectIntoIframe(iframe), 50);
+      });
+    }
+
     function waitForIframeReady(iframe) {
       try {
+        bindSettingsShortcutIframeReload(iframe);
         // If we can access the iframe document at all, attach immediately.
         if (iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document)) {
           injectIntoIframe(iframe);
           return;
         }
 
-        // Otherwise wait for load
+        // Otherwise retry briefly in case load doesn't fire (SPA behaviors)
         {
-          iframe.addEventListener('load', () => setTimeout(() => injectIntoIframe(iframe), 50));
-          // Also retry briefly in case load doesn't fire (SPA behaviors)
           let attempts = 0;
           const tick = () => {
             attempts++;
