@@ -135,6 +135,7 @@ html {
     scrollbar-color: var(--token-border-default) var(--token-background-dark) !important;
     scrollbar-width: thin;
     overflow-y: scroll;
+    background: var(--token-box-alternate-background) !important;
 }
 html::-webkit-scrollbar-thumb {
     background: var(--token-border-default);

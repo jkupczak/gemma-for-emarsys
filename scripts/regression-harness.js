@@ -115,7 +115,9 @@ runCheck('syntax check for edited files', () => {
     'keyword-swap.js',
     'debug-logging-gate.js',
     'platform.js',
-    'background.js'
+    'background.js',
+    'emarsys-auth.js',
+    'recent-campaigns.js'
   ];
 
   filesToCheck.forEach((fileName) => {

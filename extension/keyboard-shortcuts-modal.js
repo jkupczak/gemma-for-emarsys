@@ -22,7 +22,7 @@
             <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">${window.GEM_MOD_KEY}+G</kbd>
             <span>Open/Close Gemma Settings Panel</span>
 
-            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">${window.GEM_MOD_KEY}+.</kbd>
+            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">${window.GEM_MOD_KEY}+/</kbd>
             <span>Open/Close Recent Campaigns panel</span>
 
             <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">${window.GEM_MOD_KEY}+;</kbd>
@@ -33,9 +33,6 @@
 
             <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">${window.GEM_MOD_KEY}+S</kbd>
             <span>Save the current email</span>
-
-            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">${window.GEM_MOD_KEY}+/</kbd>
-            <span>Toggle the mobile email preview pane on and off</span>
 
             <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">${window.GEM_MOD_KEY}+SHIFT+,</kbd>
             <span>Cycle to the previous language version (when language selector is available)</span>
@@ -53,6 +50,9 @@
 
             <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">${window.GEM_MOD_KEY}+D</kbd>
             <span>Toggle between Desktop and Mobile tabs</span>
+
+            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">${window.GEM_MOD_KEY}+Click</kbd>
+            <span>On an inactive search pill in the Image Picker — activates it exclusively, deactivates all other pills, and clears the search input</span>
           </div>
         </div>
 

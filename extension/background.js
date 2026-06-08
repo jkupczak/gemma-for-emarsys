@@ -8,11 +8,50 @@ try { importScripts('debug-logging-gate.js'); } catch (_) {}
 console.log("[Gem] Background script loading...");
 let recentCampaignOpenTabsCache = { byCampaignId: {}, openCampaignUrls: {}, openCampaignKeys: {} };
 
+// --- Emarsys duplicate campaign ---
+
+async function duplicateEmarsysCampaign(sourceCampaignId, token) {
+  const id = String(sourceCampaignId || '').trim();
+  const bareToken = String(token || '').trim().replace(/^Bearer\s+/i, '');
+  if (!id || !bareToken) return { ok: false, reason: 'missing_id_or_token' };
+
+  const url = `https://email-campaign-list.gservice.emarsys.net/api/client/campaigns/${encodeURIComponent(id)}/duplicate`;
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${bareToken}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ campaignId: id }),
+    });
+    let data = null;
+    try { data = await res.json(); } catch (_) {}
+    if (!res.ok) return { ok: false, reason: 'api_error', status: res.status, data };
+    if (!data || !data.success || data.data == null || data.data.campaignId == null) {
+      return { ok: false, reason: 'unexpected_response', status: res.status, data };
+    }
+    return { ok: true, newCampaignId: data.data.campaignId };
+  } catch (err) {
+    return { ok: false, reason: 'fetch_error', error: err && err.message ? err.message : String(err) };
+  }
+}
+// --- End Emarsys duplicate ---
+
 function rcGetCampaignIdFromTabUrl(url) {
   try {
     const raw = String(url || '');
     if (!raw) return null;
     const parsed = new URL(url);
+
+    // campaignmanager.php?action=details&camp_id=... (e.g. after duplicate redirect)
+    if ((parsed.pathname || "").includes("campaignmanager.php")) {
+      if (parsed.searchParams.get("action") === "details") {
+        return (parsed.searchParams.get("camp_id") || "").trim() || null;
+      }
+      return null;
+    }
+
     const routeCandidates = [];
     const routeFromQuery = parsed.searchParams.get("r");
     if (routeFromQuery) routeCandidates.push(routeFromQuery);
@@ -28,7 +67,13 @@ function rcGetCampaignIdFromTabUrl(url) {
     });
     const hasCampaignRoute = normalizedRoutes.some((r) => String(r).includes("contentBlocks/campaign")) ||
       raw.includes("contentBlocks/campaign");
-    if (!hasCampaignRoute) return null;
+    if (!hasCampaignRoute) {
+      if ((parsed.pathname || "").includes("bootstrap.php")) {
+        const campId = (parsed.searchParams.get("camp_id") || "").trim();
+        if (campId) return campId;
+      }
+      return null;
+    }
     const idFromQuery = (parsed.searchParams.get("id") || "").trim();
     if (idFromQuery) return idFromQuery;
     const idMatch = raw.match(/[?&#]id=([^&#]+)/i);
@@ -110,6 +155,34 @@ function rcGetCampaignMatchKey(url, knownId) {
 
 function bgLog(...args) {
   try { console.log("[Gem] BG]", ...args); } catch (e) {}
+}
+
+/** Ask each campaign editor tab whether the draft save button shows unsaved work (see page-title-updater.js). */
+function queryTabsUnsavedDraftState(tabIds, callback) {
+  const tabUnsaved = {};
+  const unique = Array.from(
+    new Set(
+      (Array.isArray(tabIds) ? tabIds : [])
+        .map((n) => Number(n))
+        .filter((n) => Number.isFinite(n) && n > 0)
+    )
+  );
+  if (!unique.length) {
+    callback({});
+    return;
+  }
+  let pending = unique.length;
+  unique.forEach((tabId) => {
+    chrome.tabs.sendMessage(tabId, { action: "gemQueryUnsavedDraft" }, (res) => {
+      if (chrome.runtime.lastError) {
+        tabUnsaved[String(tabId)] = false;
+      } else {
+        tabUnsaved[String(tabId)] = !!(res && res.ok && res.unsaved);
+      }
+      pending -= 1;
+      if (pending <= 0) callback(tabUnsaved);
+    });
+  });
 }
 
 // Send a message to content scripts in a tab
@@ -301,11 +374,27 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   if (action === "getOpenCampaignTabs") {
-    sendResponse({
-      ok: true,
-      byCampaignId: { ...(recentCampaignOpenTabsCache.byCampaignId || {}) },
-      openCampaignUrls: { ...(recentCampaignOpenTabsCache.openCampaignUrls || {}) },
-      openCampaignKeys: { ...(recentCampaignOpenTabsCache.openCampaignKeys || {}) }
+    const byCampaignId = { ...(recentCampaignOpenTabsCache.byCampaignId || {}) };
+    const openCampaignUrls = { ...(recentCampaignOpenTabsCache.openCampaignUrls || {}) };
+    const openCampaignKeys = { ...(recentCampaignOpenTabsCache.openCampaignKeys || {}) };
+    const tabIdSet = new Set();
+    Object.values(byCampaignId).forEach((tid) => {
+      if (tid != null) tabIdSet.add(tid);
+    });
+    Object.values(openCampaignUrls).forEach((tid) => {
+      if (tid != null) tabIdSet.add(tid);
+    });
+    Object.values(openCampaignKeys).forEach((tid) => {
+      if (tid != null) tabIdSet.add(tid);
+    });
+    queryTabsUnsavedDraftState(Array.from(tabIdSet), (tabUnsaved) => {
+      sendResponse({
+        ok: true,
+        byCampaignId,
+        openCampaignUrls,
+        openCampaignKeys,
+        tabUnsaved
+      });
     });
     return true;
   }
@@ -323,7 +412,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         return !!tabUrl && /https?:\/\/([^/]+\.)?emarsys\.net\//i.test(tabUrl);
       });
       const existing = emarsysTabs.find((tab) => {
-        const id = getCampaignIdFromTabUrl(tab && tab.url);
+        const id = String(rcGetCampaignIdFromTabUrl(tab && tab.url) || "").trim();
         return id === campaignId && tab.id != null;
       });
       if (existing && existing.id != null) {
@@ -356,6 +445,70 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         }
         sendResponse({ ok: true, mode: "opened", tabId: tab && tab.id != null ? tab.id : null });
       });
+    });
+    return true;
+  }
+
+  if (action === "focusCampaignTab") {
+    const campaignId = String(msg.campaignId || "").trim();
+    if (!campaignId) {
+      sendResponse({ ok: false, reason: "missing_campaign_id" });
+      return;
+    }
+    const currentTabId = sender && sender.tab && sender.tab.id != null ? sender.tab.id : null;
+
+    function focusTabById(tabId, callback) {
+      chrome.tabs.update(tabId, { active: true }, () => {
+        if (chrome.runtime.lastError) {
+          callback({ ok: false, reason: chrome.runtime.lastError.message || "focus_failed" });
+          return;
+        }
+        chrome.tabs.get(tabId, (tab) => {
+          if (tab && tab.windowId != null) {
+            chrome.windows.update(tab.windowId, { focused: true }, () => {});
+          }
+          callback({ ok: true, mode: "focused", tabId });
+        });
+      });
+    }
+
+    const cachedTabId = recentCampaignOpenTabsCache.byCampaignId[campaignId];
+    if (cachedTabId != null && cachedTabId !== currentTabId) {
+      focusTabById(cachedTabId, sendResponse);
+      return true;
+    }
+
+    chrome.tabs.query({}, (tabs) => {
+      const match = (Array.isArray(tabs) ? tabs : []).find((tab) => {
+        if (currentTabId != null && tab.id === currentTabId) return false;
+        const id = String(rcGetCampaignIdFromTabUrl(tab && tab.url) || "").trim();
+        return id === campaignId && tab.id != null;
+      });
+      if (!match || match.id == null) {
+        sendResponse({ ok: false, reason: "no_matching_tab" });
+        return;
+      }
+      focusTabById(match.id, sendResponse);
+    });
+    return true;
+  }
+
+  if (action === 'isCampaignTabOpen') {
+    const campaignId = String(msg.campaignId || '').trim();
+    if (!campaignId) { sendResponse({ ok: true, open: false }); return; }
+    const currentTabId = sender && sender.tab && sender.tab.id != null ? sender.tab.id : null;
+    const cachedTabId = recentCampaignOpenTabsCache.byCampaignId[campaignId];
+    if (cachedTabId != null && cachedTabId !== currentTabId) {
+      sendResponse({ ok: true, open: true });
+      return;
+    }
+    chrome.tabs.query({}, (tabs) => {
+      const open = (Array.isArray(tabs) ? tabs : []).some((tab) => {
+        if (currentTabId != null && tab.id === currentTabId) return false;
+        const id = String(rcGetCampaignIdFromTabUrl(tab && tab.url) || '').trim();
+        return id === campaignId;
+      });
+      sendResponse({ ok: true, open });
     });
     return true;
   }
@@ -729,6 +882,41 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
+  if (action === 'ecPreviewCampaignChanged') {
+    const campaignId = String(msg.campaignId || '').trim();
+    if (campaignId && sender && sender.tab && sender.tab.id != null) {
+      chrome.tabs.sendMessage(
+        sender.tab.id,
+        { action: 'ecPreviewCampaignChanged', campaignId },
+        { frameId: 0 },
+        () => {}
+      );
+    }
+    return;
+  }
+
+  if (action === 'openInNewTab') {
+    const url = String(msg.url || '').trim();
+    if (url) {
+      const active = msg.active !== false;
+      chrome.tabs.create({ url, active });
+    }
+    return;
+  }
+
+  if (action === 'duplicateEmarsysCampaign') {
+    const campaignId = String(msg.campaignId || '').trim();
+    const token = String(msg.token || '').trim();
+    if (!campaignId || !token) {
+      sendResponse({ ok: false, reason: 'missing_campaign_id_or_token' });
+      return;
+    }
+    duplicateEmarsysCampaign(campaignId, token)
+      .then(sendResponse)
+      .catch(() => sendResponse({ ok: false, reason: 'fetch_error' }));
+    return true;
+  }
+
   bgLog("Unknown action:", action);
 });
 
@@ -791,8 +979,13 @@ function refreshRecentCampaignOpenTabsCache() {
   });
 }
 
-chrome.tabs.onUpdated.addListener(() => refreshRecentCampaignOpenTabsCache());
-chrome.tabs.onRemoved.addListener(() => refreshRecentCampaignOpenTabsCache());
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  refreshRecentCampaignOpenTabsCache();
+});
 chrome.tabs.onActivated.addListener(() => refreshRecentCampaignOpenTabsCache());
 chrome.windows.onFocusChanged.addListener(() => refreshRecentCampaignOpenTabsCache());
 refreshRecentCampaignOpenTabsCache();
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  refreshRecentCampaignOpenTabsCache();
+});

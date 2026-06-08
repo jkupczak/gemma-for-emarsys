@@ -577,6 +577,15 @@ function initializeOverlayPanelControls() {
     const PILL_CTX_FAV = 2;
     const PILL_CTX_BOTH = 3;
 
+    // In-memory collapse overrides for groups manually collapsed while a search
+    // is active. Cleared whenever search terms change so that a new search
+    // auto-expands all groups again, but preserved while the same search is
+    // active so the user can collapse groups at will.
+    const _gemFavSearchCollapseOverride = {};
+    const _gemSeenSearchCollapseOverride = {};
+    let _gemFavSearchKey = null;
+    let _gemSeenSearchKey = null;
+
     function toMinifiedPill(p) {
       const mp = { t: p.term, c: p.context || PILL_CTX_BOTH };
       if (p.isRegex) mp.r = 1;
@@ -1781,9 +1790,9 @@ function initializeOverlayPanelControls() {
           link.href = chrome.runtime.getURL(filename);
           doc.head.appendChild(link);
         };
-        inject('global-styles.css', 'gem-media-db-iframe-global');
-        inject('theme.css', 'gem-media-db-iframe-theme');
-        inject('media-database.css', 'gem-media-db-iframe-database');
+        inject('css--global-styles.css', 'gem-media-db-iframe-global');
+        inject('css--theme.css', 'gem-media-db-iframe-theme');
+        inject('css--media-database.css', 'gem-media-db-iframe-database');
       } catch (_) {}
     }
 
@@ -3154,9 +3163,37 @@ function initializeOverlayPanelControls() {
               const idx2 = parseInt(pillEl2.getAttribute('data-index') || '-1', 10);
               const pills2 = picker._gemSearchPills || [];
               if (idx2 < 0 || idx2 >= pills2.length) return;
-              pills2[idx2].active = !pills2[idx2].active;
-              picker._gemSearchPills = pills2;
-              chrome.storage.local.set({ [GEM_SEARCH_PILL_ACTIVE_KEY]: buildActiveMap(pills2) });
+
+              const isCurrentlyInactive = !pills2[idx2].active;
+              if (e.metaKey && isCurrentlyInactive) {
+                // Cmd+click on an inactive pill: activate it exclusively, deactivate all others
+                const pillsContainer = pillEl2.closest && pillEl2.closest('.gem-search-pills');
+                const source = (pillsContainer && pillsContainer.getAttribute('data-pills-source')) || '';
+                const ctx = source === 'favorites' ? PILL_CTX_FAV : PILL_CTX_SEEN;
+                pills2.forEach((p, i) => {
+                  if (!p || (p.context !== ctx && p.context !== undefined)) return;
+                  pills2[i] = { ...p, active: i === idx2 };
+                });
+                picker._gemSearchPills = pills2;
+                chrome.storage.local.set({ [GEM_SEARCH_PILL_ACTIVE_KEY]: buildActiveMap(pills2) });
+
+                // Clear the search input for this context
+                const isFav = source === 'favorites';
+                const searchInputEl = picker.querySelector(isFav ? '.gem-favorite-images-search' : '.gem-seen-images-search');
+                if (searchInputEl) searchInputEl.value = '';
+                picker.dataset[isFav ? 'gemFavoriteImagesSearch' : 'gemSeenImagesSearch'] = '';
+                chrome.storage.local.set({
+                  [GEM_IMAGE_SEARCH_TEXT_KEY]: {
+                    favorites: picker.dataset.gemFavoriteImagesSearch || '',
+                    seen: picker.dataset.gemSeenImagesSearch || ''
+                  }
+                });
+              } else {
+                pills2[idx2].active = !pills2[idx2].active;
+                picker._gemSearchPills = pills2;
+                chrome.storage.local.set({ [GEM_SEARCH_PILL_ACTIVE_KEY]: buildActiveMap(pills2) });
+              }
+
               showRecentImagesPicker(modal, { contentOnly: true });
               return;
             }
@@ -3165,6 +3202,19 @@ function initializeOverlayPanelControls() {
               e.preventDefault();
               e.stopPropagation();
               const groupKey = catToggleBtn.getAttribute('data-group-key') || '';
+              // While search is active, toggle the in-memory override instead of
+              // persisting to storage. This lets groups stay collapsed/expanded
+              // for the duration of the search without affecting the persistent state.
+              const favQRaw = String(picker.dataset.gemFavoriteImagesSearch || '').trim();
+              const favSearchPills = pillsForContext(picker._gemSearchPills || [], PILL_CTX_FAV);
+              const favSearchActive = favQRaw.length > 0 || favSearchPills.some(p => p.active && p.term);
+              if (favSearchActive) {
+                const cur = !!_gemFavSearchCollapseOverride[groupKey];
+                if (cur) { delete _gemFavSearchCollapseOverride[groupKey]; }
+                else { _gemFavSearchCollapseOverride[groupKey] = true; }
+                showRecentImagesPicker(modal, { contentOnly: true });
+                return;
+              }
               getFavoriteCategoryCollapseMap((map) => {
                 const next = { ...(map || {}) };
                 // Back-compat: older builds stored raw category keys (no prefix).
@@ -3214,6 +3264,18 @@ function initializeOverlayPanelControls() {
             e.preventDefault();
             e.stopPropagation();
             const groupKey = seenCatToggleBtn.getAttribute('data-group-key') || '';
+            // Same in-memory override pattern as favorites — during active search,
+            // don't touch storage; just toggle the ephemeral override.
+            const seenQRaw = String(picker.dataset.gemSeenImagesSearch || '').trim();
+            const seenSearchPills = pillsForContext(picker._gemSearchPills || [], PILL_CTX_SEEN);
+            const seenSearchActive = seenQRaw.length > 0 || seenSearchPills.some(p => p.active && p.term);
+            if (seenSearchActive) {
+              const cur = !!_gemSeenSearchCollapseOverride[groupKey];
+              if (cur) { delete _gemSeenSearchCollapseOverride[groupKey]; }
+              else { _gemSeenSearchCollapseOverride[groupKey] = true; }
+              showRecentImagesPicker(modal, { contentOnly: true });
+              return;
+            }
             getRecentlySeenImageGroupCollapseMap((map) => {
               const next = { ...(map || {}) };
               const cur = !!next[groupKey];
@@ -3331,59 +3393,109 @@ function initializeOverlayPanelControls() {
             };
 
             if (currentSource === 'favorites') {
-              getFavoriteCategoryCollapseMap((map) => {
-                const collapseMap = map || {};
+              const favQRaw = String(picker.dataset.gemFavoriteImagesSearch || '').trim();
+              const favSearchPills = pillsForContext(picker._gemSearchPills || [], PILL_CTX_FAV);
+              const favSearchActive = favQRaw.length > 0 || favSearchPills.some(p => p.active && p.term);
+
+              if (favSearchActive) {
+                // During search: determine action from the in-memory override map,
+                // then apply it there rather than touching persistent storage.
                 const groupHeaders = picker.querySelectorAll('.gem-picker-cat-header');
-                const action = determineAction(collapseMap, groupHeaders);
+                const overrideStates = Array.from(groupHeaders).map(h => {
+                  const k = h.getAttribute('data-group-key') || '';
+                  return k in _gemFavSearchCollapseOverride ? !!_gemFavSearchCollapseOverride[k] : false;
+                });
+                const allCollapsed = overrideStates.length > 0 && overrideStates.every(Boolean);
+                const action = allCollapsed ? 'expand' : 'collapse';
                 const shouldCollapse = action === 'collapse';
-
-                const next = { ...collapseMap };
-
-                // Apply the determined action to all groups
                 groupHeaders.forEach(header => {
                   const groupKey = header.getAttribute('data-group-key') || '';
                   if (groupKey) {
-                    // Handle legacy keys for backward compatibility
-                    let legacyKey = null;
-                    if (groupKey.startsWith('category:')) {
-                      legacyKey = groupKey.slice('category:'.length);
-                    }
-                    next[groupKey] = shouldCollapse;
-                    if (legacyKey != null && legacyKey !== groupKey) {
-                      next[legacyKey] = shouldCollapse;
-                    }
+                    if (shouldCollapse) { _gemFavSearchCollapseOverride[groupKey] = true; }
+                    else { delete _gemFavSearchCollapseOverride[groupKey]; }
                   }
                 });
+                picker.dataset.gemCollapseExpandAction = action;
+                showRecentImagesPicker(modal, { contentOnly: true });
+              } else {
+                getFavoriteCategoryCollapseMap((map) => {
+                  const collapseMap = map || {};
+                  const groupHeaders = picker.querySelectorAll('.gem-picker-cat-header');
+                  const action = determineAction(collapseMap, groupHeaders);
+                  const shouldCollapse = action === 'collapse';
 
-                saveFavoriteCategoryCollapseMap(next, () => {
-                  // Store the action we just performed
-                  picker.dataset.gemCollapseExpandAction = action;
-                  showRecentImagesPicker(modal);
+                  const next = { ...collapseMap };
+
+                  // Apply the determined action to all groups
+                  groupHeaders.forEach(header => {
+                    const groupKey = header.getAttribute('data-group-key') || '';
+                    if (groupKey) {
+                      // Handle legacy keys for backward compatibility
+                      let legacyKey = null;
+                      if (groupKey.startsWith('category:')) {
+                        legacyKey = groupKey.slice('category:'.length);
+                      }
+                      next[groupKey] = shouldCollapse;
+                      if (legacyKey != null && legacyKey !== groupKey) {
+                        next[legacyKey] = shouldCollapse;
+                      }
+                    }
+                  });
+
+                  saveFavoriteCategoryCollapseMap(next, () => {
+                    // Store the action we just performed
+                    picker.dataset.gemCollapseExpandAction = action;
+                    showRecentImagesPicker(modal);
+                  });
                 });
-              });
+              }
             } else if (currentSource === 'seen') {
-              getRecentlySeenImageGroupCollapseMap((map) => {
-                const collapseMap = map || {};
+              const seenQRaw = String(picker.dataset.gemSeenImagesSearch || '').trim();
+              const seenSearchPills = pillsForContext(picker._gemSearchPills || [], PILL_CTX_SEEN);
+              const seenSearchActive = seenQRaw.length > 0 || seenSearchPills.some(p => p.active && p.term);
+
+              if (seenSearchActive) {
                 const groupHeaders = picker.querySelectorAll('.gem-picker-cat-header');
-                const action = determineAction(collapseMap, groupHeaders);
+                const overrideStates = Array.from(groupHeaders).map(h => {
+                  const k = h.getAttribute('data-group-key') || '';
+                  return k in _gemSeenSearchCollapseOverride ? !!_gemSeenSearchCollapseOverride[k] : false;
+                });
+                const allCollapsed = overrideStates.length > 0 && overrideStates.every(Boolean);
+                const action = allCollapsed ? 'expand' : 'collapse';
                 const shouldCollapse = action === 'collapse';
-
-                const next = { ...collapseMap };
-
-                // Apply the determined action to all groups
                 groupHeaders.forEach(header => {
                   const groupKey = header.getAttribute('data-group-key') || '';
                   if (groupKey) {
-                    next[groupKey] = shouldCollapse;
+                    if (shouldCollapse) { _gemSeenSearchCollapseOverride[groupKey] = true; }
+                    else { delete _gemSeenSearchCollapseOverride[groupKey]; }
                   }
                 });
+                picker.dataset.gemCollapseExpandAction = action;
+                showRecentImagesPicker(modal, { contentOnly: true });
+              } else {
+                getRecentlySeenImageGroupCollapseMap((map) => {
+                  const collapseMap = map || {};
+                  const groupHeaders = picker.querySelectorAll('.gem-picker-cat-header');
+                  const action = determineAction(collapseMap, groupHeaders);
+                  const shouldCollapse = action === 'collapse';
 
-                saveRecentlySeenImageGroupCollapseMap(next, () => {
-                  // Store the action we just performed
-                  picker.dataset.gemCollapseExpandAction = action;
-                  showRecentImagesPicker(modal);
+                  const next = { ...collapseMap };
+
+                  // Apply the determined action to all groups
+                  groupHeaders.forEach(header => {
+                    const groupKey = header.getAttribute('data-group-key') || '';
+                    if (groupKey) {
+                      next[groupKey] = shouldCollapse;
+                    }
+                  });
+
+                  saveRecentlySeenImageGroupCollapseMap(next, () => {
+                    // Store the action we just performed
+                    picker.dataset.gemCollapseExpandAction = action;
+                    showRecentImagesPicker(modal);
+                  });
                 });
-              });
+              }
             }
             return;
           }
@@ -4106,6 +4218,15 @@ function initializeOverlayPanelControls() {
               ...(qRaw ? [{ term: qRaw.toLowerCase(), isRegex: favRegexOn }] : [])
             ];
 
+            // When terms change, clear manual collapse overrides so new searches
+            // auto-expand all groups. While the same search is active, overrides
+            // persist so users can freely collapse groups.
+            const _favTermsKey = terms.map(t => t.term + (t.isRegex ? '/r' : '')).join('\x00');
+            if (_favTermsKey !== _gemFavSearchKey) {
+              _gemFavSearchKey = _favTermsKey;
+              Object.keys(_gemFavSearchCollapseOverride).forEach(k => delete _gemFavSearchCollapseOverride[k]);
+            }
+
             // Build last-used map from recent images so we can sort missing-altText items by last used.
             getRecentlySeenImages((seenForLu) => {
               const lastUsedMap = new Map();
@@ -4194,7 +4315,9 @@ function initializeOverlayPanelControls() {
                   // Back-compat: older builds stored raw category keys (no prefix).
                   const legacyKey = (groupBy === 'category') ? (gKey || '') : null;
                   const isCollapsedRaw = !!collapse[storageKey] || (legacyKey != null && !!collapse[legacyKey]);
-                  const isCollapsed = isCollapsedRaw;
+                  const isCollapsed = terms.length > 0
+                    ? (storageKey in _gemFavSearchCollapseOverride ? !!_gemFavSearchCollapseOverride[storageKey] : false)
+                    : isCollapsedRaw;
                   const caret = isCollapsed ? '▸' : '▾';
                   const showEdit = groupBy === 'category';
                   return `
@@ -4356,7 +4479,9 @@ function initializeOverlayPanelControls() {
                     const storageKey = `${groupBy}:${gKey || ''}`;
                     const legacyKey = (groupBy === 'category') ? (gKey || '') : null;
                     const isCollapsedRaw = !!collapse[storageKey] || (legacyKey != null && !!collapse[legacyKey]);
-                    const isCollapsed = isCollapsedRaw;
+                    const isCollapsed = terms.length > 0
+                      ? (storageKey in _gemFavSearchCollapseOverride ? !!_gemFavSearchCollapseOverride[storageKey] : false)
+                      : isCollapsedRaw;
                     const sectionStateClass = isCollapsed ? 'gem-picker-cat-section--collapsed' : 'gem-picker-cat-section--expanded';
                     const sectionCollapseClass = 'gem-picker-cat-section--collapsible';
                     if (viewMode === 'grid') {
@@ -4466,6 +4591,12 @@ function initializeOverlayPanelControls() {
               ...(qRaw ? [{ term: qRaw.toLowerCase(), isRegex: seenRegexOn }] : [])
             ];
 
+            const _seenTermsKey = seenTerms.map(t => t.term + (t.isRegex ? '/r' : '')).join('\x00');
+            if (_seenTermsKey !== _gemSeenSearchKey) {
+              _gemSeenSearchKey = _seenTermsKey;
+              Object.keys(_gemSeenSearchCollapseOverride).forEach(k => delete _gemSeenSearchCollapseOverride[k]);
+            }
+
             getRecentlySeenImageGroupCollapseMap((collapseMap) => {
               const collapse = collapseMap || {};
 
@@ -4542,7 +4673,9 @@ function initializeOverlayPanelControls() {
                     : ((seenGroupBy === 'date' || seenGroupBy === 'lastUsed') ? 'Unknown Date' : 'No Path'));
                 const storageKey = `seen:${seenGroupBy}:${gKey === SEEN_LAST_USED_NONE ? SEEN_LAST_USED_NONE : (gKey || '')}`;
                 const isCollapsedRaw = !!collapse[storageKey];
-                const isCollapsed = isCollapsedRaw;
+                const isCollapsed = seenTerms.length > 0
+                  ? (storageKey in _gemSeenSearchCollapseOverride ? !!_gemSeenSearchCollapseOverride[storageKey] : false)
+                  : isCollapsedRaw;
                 const caret = isCollapsed ? '▸' : '▾';
                 return `
                   <div class="gem-picker-cat-header" data-group-key="${escape(storageKey)}" data-cat="${escape(gKey)}" data-seen-groupby="${escape(seenGroupBy)}">
@@ -4673,7 +4806,9 @@ function initializeOverlayPanelControls() {
                   const headerHtml = renderGroupHeader(gKey, catItems.length);
                   const storageKey = `seen:${seenGroupBy}:${gKey === SEEN_LAST_USED_NONE ? SEEN_LAST_USED_NONE : (gKey || '')}`;
                   const isCollapsedRaw = !!collapse[storageKey];
-                  const isCollapsed = isCollapsedRaw;
+                  const isCollapsed = seenTerms.length > 0
+                    ? (storageKey in _gemSeenSearchCollapseOverride ? !!_gemSeenSearchCollapseOverride[storageKey] : false)
+                    : isCollapsedRaw;
                   const sectionStateClass = isCollapsed ? 'gem-picker-cat-section--collapsed' : 'gem-picker-cat-section--expanded';
                   const sectionCollapseClass = 'gem-picker-cat-section--collapsible';
                   if (viewMode === 'grid') {

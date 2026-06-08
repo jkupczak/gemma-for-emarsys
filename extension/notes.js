@@ -6,7 +6,7 @@ const GEM_NOTES_PANEL_ID = "gem-notes-panel";
 const GEM_NOTES_BACKDROP_ID = "gem-notes-backdrop";
 /** Dispatched so recent-campaigns.js can close before notes opens (Cmd+;). */
 const GEM_CLOSE_RECENT_CAMPAIGNS_EVENT = "gem-close-recent-campaigns-panel";
-/** Dispatched so notes.js can close before recent opens (Cmd+.). */
+/** Dispatched so notes.js can close before recent opens (Cmd+/). */
 const GEM_CLOSE_NOTES_EVENT = "gem-close-notes-panel";
 
 let notesPanel = null;

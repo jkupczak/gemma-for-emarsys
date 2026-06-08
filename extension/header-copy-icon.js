@@ -130,7 +130,7 @@ function initializeHeaderCopyIcon() {
       }
     });
 
-    // Open email settings
+    // Open campaign editor modal
     editIcon.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();

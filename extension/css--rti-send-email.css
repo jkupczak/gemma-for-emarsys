@@ -1,0 +1,7 @@
+/* Custom styles for the RTI send email dialog (ac-send-email.html) */
+body {
+    background: var(--token-box-default-background) !important;
+}
+.e-cell:has([aria-description="Preview campaign"]) {
+    display: none !important;
+}

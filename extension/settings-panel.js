@@ -23,6 +23,7 @@ const GEM_PREFLIGHT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_VALUE_KEY = 'gemPreflightSin
 const GEM_PREFLIGHT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_UNIT_KEY = 'gemPreflightSingularImageWeightThresholdUnit';
 const GEM_PREFLIGHT_URL_NEVER_CHECK_KEY = 'urlPreflightNeverCheck';
 const GEM_PREFLIGHT_ENABLE_LIVE_LINK_VERIFY_KEY = 'gemPreflightEnableLiveLinkVerify';
+const GEM_SHARED_LINK_AUTO_SELECT_KEY = 'gemSharedLinkAutoSelect';
 const GEM_PREFLIGHT_HIDE_LINKS_SECTION_KEY = 'gemPreflightHideLinksSection';
 const GEM_PREFLIGHT_DEFAULT_TOTAL_IMAGE_WEIGHT_THRESHOLD_VALUE = 3;
 const GEM_PREFLIGHT_DEFAULT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_VALUE = 2;
@@ -752,6 +753,22 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
           </div>
         </div>
 
+        <div class="gem-setting-section">
+          <h3>Account Selection for Shared Links</h3>
+          <div class="gem-setting gem-setting-condensed">
+            <div class="gem-e-switch-wrapper">
+              <label for="opt-shared-link-auto-select">Automatically Select Account</label>
+              <div class="gem-e-switch--fat e-switch">
+                <input type="checkbox" class="e-switch__input" id="opt-shared-link-auto-select" checked>
+                <label class="e-switch__toggle" for="opt-shared-link-auto-select"></label>
+              </div>
+            </div>
+            <p class="sub-label">
+              When navigating to certain Emarsys links (such as links shared by teammates), Emarsys may show a security confirmation page asking you to select your active account. When enabled, Gemma will automatically confirm this for you so you land directly on the intended page.
+            </p>
+          </div>
+        </div>
+
         <h2>Email Editor Settings</h2>
 
         <div class="gem-setting-section">
@@ -821,7 +838,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
               </div>
             </div>
             <p class="sub-label">
-              An alternative layout that increases the total viewable area of your email by over 40%. You can turn it on here, via the <span class="gem-e-icon">&#61658;</span> icon next to your email, or use the keyboard shortcut CMD+/ or CTRL+/ at any time.
+              An alternative layout that increases the total viewable area of your email by over 40%. You can turn it on here, via the <span class="gem-e-icon">&#61658;</span> icon next to your email, or use the keyboard shortcut CMD+SHIFT+F or CTRL+SHIFT+F at any time.
             </p>
           </div>
           <div class="gem-setting">
@@ -834,7 +851,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
               </div>
             </div>
             <p class="sub-label">
-              Keep a mobile preview of your email visible next to your desktop view while you make edits. You can turn it on here, via the <span class="gem-e-icon">&#61747;</span> icon next to your email, or use the keyboard shortcut CMD+SHIFT+F or CTRL+SHIFT+F at any time.
+              Keep a mobile preview of your email visible next to your desktop view while you make edits. You can turn it on here or via the <span class="gem-e-icon">&#61747;</span> icon in the left navigation.
             </p>
             <div class="gem-setting-section">
               <div class="gem-setting-condensed" style="display: flex; gap: 12px; align-items: center;">
@@ -1449,7 +1466,8 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
         [GEM_PREFLIGHT_TOTAL_IMAGE_WEIGHT_THRESHOLD_UNIT_KEY]: GEM_PREFLIGHT_DEFAULT_IMAGE_WEIGHT_THRESHOLD_UNIT,
         [GEM_PREFLIGHT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_VALUE_KEY]: GEM_PREFLIGHT_DEFAULT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_VALUE,
         [GEM_PREFLIGHT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_UNIT_KEY]: GEM_PREFLIGHT_DEFAULT_IMAGE_WEIGHT_THRESHOLD_UNIT,
-        [GEM_PREFLIGHT_ENABLE_LIVE_LINK_VERIFY_KEY]: false
+        [GEM_PREFLIGHT_ENABLE_LIVE_LINK_VERIFY_KEY]: false,
+        [GEM_SHARED_LINK_AUTO_SELECT_KEY]: true
       }, (settings) => {
         syncThemeSwatchUI(settings[GEM_THEME_MODE_STORAGE_KEY]);
 
@@ -1529,6 +1547,9 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
         if (preflightSingularUnitEl) preflightSingularUnitEl.value = (settings[GEM_PREFLIGHT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_UNIT_KEY] || GEM_PREFLIGHT_DEFAULT_IMAGE_WEIGHT_THRESHOLD_UNIT) === 'KB' ? 'KB' : 'MB';
         const preflightLiveVerifyEnabledEl = document.getElementById("opt-preflight-enable-live-link-verify");
         if (preflightLiveVerifyEnabledEl) preflightLiveVerifyEnabledEl.checked = settings[GEM_PREFLIGHT_ENABLE_LIVE_LINK_VERIFY_KEY] === true;
+
+        const sharedLinkAutoSelectEl = document.getElementById("opt-shared-link-auto-select");
+        if (sharedLinkAutoSelectEl) sharedLinkAutoSelectEl.checked = settings[GEM_SHARED_LINK_AUTO_SELECT_KEY] !== false;
 
         const widthInput = document.getElementById("opt-mobile-preview-width");
         if (widthInput) widthInput.value = settings.mobilePreviewWidth || 414;
@@ -1664,7 +1685,9 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
             [GEM_PREFLIGHT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_UNIT_KEY]:
               (document.getElementById("opt-preflight-singular-image-weight-threshold-unit")?.value === 'KB') ? 'KB' : 'MB',
             [GEM_PREFLIGHT_ENABLE_LIVE_LINK_VERIFY_KEY]:
-              document.getElementById("opt-preflight-enable-live-link-verify")?.checked ?? false
+              document.getElementById("opt-preflight-enable-live-link-verify")?.checked ?? false,
+            [GEM_SHARED_LINK_AUTO_SELECT_KEY]:
+              document.getElementById("opt-shared-link-auto-select")?.checked ?? true
           };
 
           // Apply immediately + cache synchronously for next page load
@@ -1832,7 +1855,8 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
       "opt-preflight-total-image-weight-threshold-unit",
       "opt-preflight-singular-image-weight-threshold-value",
       "opt-preflight-singular-image-weight-threshold-unit",
-      "opt-preflight-enable-live-link-verify"
+      "opt-preflight-enable-live-link-verify",
+      "opt-shared-link-auto-select"
     ];
 
     settingsIds.forEach((id) => {

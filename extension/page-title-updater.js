@@ -250,3 +250,13 @@ if (document.readyState === 'loading') {
   // Page already loaded
   initializePageTitleUpdater();
 }
+
+// Recent Campaigns panel: background asks whether this tab has unsaved draft changes (same rule as checkUnsavedChanges).
+if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.onMessage) {
+  chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    if (!msg || msg.action !== "gemQueryUnsavedDraft") return;
+    const saveButton = document.querySelector("cb-draft-save-button button");
+    const isDisabled = saveButton && saveButton.hasAttribute("disabled");
+    sendResponse({ ok: true, unsaved: !isDisabled });
+  });
+}

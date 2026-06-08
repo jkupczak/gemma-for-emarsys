@@ -177,56 +177,55 @@ function initializeKeyboardShortcuts() {
     return true;
   }
 
+  /** Match content-block-toolbar: commit before OK; skip Gem / Emarsys search fields. */
+  function gemShouldCommitImagePickerInputField(el) {
+    if (!el || !el.matches) return false;
+    const tag = (el.tagName || '').toLowerCase();
+    if (tag !== 'input' && tag !== 'textarea' && tag !== 'select') return false;
+    if (el.matches('input[type="search"]')) return false;
+    if (
+      el.classList.contains('e-input-search') ||
+      el.classList.contains('gem-favorite-images-search') ||
+      el.classList.contains('gem-seen-images-search')
+    ) {
+      return false;
+    }
+    return true;
+  }
+
+  function gemBlurImagePickerCommitFields(modal, event) {
+    if (!modal) return;
+    try {
+      const od = modal.ownerDocument;
+      if (od) {
+        const ae = od.activeElement;
+        if (ae && modal.contains(ae) && gemShouldCommitImagePickerInputField(ae)) {
+          ae.blur();
+          ae.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      }
+      const w = event && event.view;
+      const fe = w && w.frameElement;
+      if (fe && modal.contains(fe) && w.document) {
+        const ae2 = w.document.activeElement;
+        if (ae2 && gemShouldCommitImagePickerInputField(ae2)) {
+          ae2.blur();
+          ae2.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      }
+    } catch (_) {}
+  }
+
   function gemClickImagePickerOkButton(event) {
     const modal = gemGetImagePropertiesDialogFromIframeEvent(event);
     if (!modal) return false;
+    gemBlurImagePickerCommitFields(modal, event);
     const ok =
       modal.querySelector('.e-dialog__container button.ok-btn') ||
       modal.querySelector('button.ok-btn');
     if (!ok) return false;
     ok.click();
     return true;
-  }
-
-  // Function to toggle mobile preview visibility
-  function toggleMobilePreview() {
-    // Check if chrome APIs are available (extension context not invalidated)
-    if (!chrome || !chrome.storage || !chrome.storage.sync) {
-      console.warn("[Gem] Chrome storage API not available - extension context may be invalidated");
-      return;
-    }
-
-    try {
-      // Get current mobile preview visibility state
-      chrome.storage.sync.get(['mobileViewVisible'], (result) => {
-        // Check again if chrome APIs are still available after async call
-        if (!chrome || !chrome.storage || !chrome.storage.sync) {
-          console.warn("[Gem] Chrome storage API became unavailable during async call");
-          return;
-        }
-
-        const storedVisible = result.mobileViewVisible !== false;
-        const frame = document.getElementById("gem-mobile-frame");
-        const currentState = frame ? frame.style.display !== "none" : false;
-        const newState = !currentState;
-
-        console.log("[Gem] Toggling mobile preview:", currentState, "->", newState, {
-          framePresent: !!frame,
-          storedMobileViewVisible: storedVisible,
-        });
-
-        const payload = { mobileViewVisible: newState };
-        if (newState) payload.enableMobilePreview = true;
-
-        chrome.storage.sync.set(payload, () => {
-          if (chrome.runtime.lastError) {
-            console.error("[Gem] Error toggling mobile preview:", chrome.runtime.lastError);
-          }
-        });
-      });
-    } catch (error) {
-      console.error("[Gem] Error in toggleMobilePreview:", error);
-    }
   }
 
   function getLanguageSelectorState() {
@@ -518,9 +517,6 @@ function initializeKeyboardShortcuts() {
     // Check for CMD+S (Mac) or CTRL+S (Windows/Linux)
     const isSaveShortcut = (event.metaKey || event.ctrlKey) && event.key === 's';
 
-    // Check for CMD+/ (Mac) or CTRL+/ (Windows/Linux) - Mobile Preview Toggle
-    const isMobilePreviewShortcut = (event.metaKey || event.ctrlKey) && event.key === '/';
-
     // Check for CMD+SHIFT+F (Mac) or CTRL+SHIFT+F (Windows/Linux) - Expanded Mode Toggle
     const isExpandedModeShortcut =
       (event.metaKey || event.ctrlKey) &&
@@ -561,7 +557,7 @@ function initializeKeyboardShortcuts() {
 
     // In the Media DB iframe we only wire save, OK (Enter), and Desktop/Mobile (⌘D). Other Gem shortcuts stay inert.
     if (fromGemMediaDbIframe) {
-      if (isMobilePreviewShortcut || isExpandedModeShortcut || isLangPrevShortcut || isLangNextShortcut) {
+      if (isExpandedModeShortcut || isLangPrevShortcut || isLangNextShortcut) {
         return;
       }
     }
@@ -597,19 +593,6 @@ function initializeKeyboardShortcuts() {
 
       // Trigger save
       triggerSave();
-
-      // Return false to ensure no further processing
-      return false;
-    } else if (isMobilePreviewShortcut) {
-      console.log("[Gem] Mobile preview toggle shortcut detected:", event.metaKey ? 'CMD+/' : 'CTRL+/');
-
-      // Prevent default browser search behavior
-      event.preventDefault();
-      event.stopPropagation();
-      event.stopImmediatePropagation();
-
-      // Toggle mobile preview visibility
-      toggleMobilePreview();
 
       // Return false to ensure no further processing
       return false;
@@ -696,7 +679,7 @@ function initializeKeyboardShortcuts() {
   // Monitor iframes and inject keyboard shortcuts into them
   monitorIframesForKeyboardShortcuts();
 
-  console.log("[Gem] Keyboard shortcuts initialized - CMD+S / CTRL+S will trigger save, CMD+/ / CTRL+/ will toggle mobile preview");
+  console.log("[Gem] Keyboard shortcuts initialized - CMD+S / CTRL+S will trigger save");
 }
 
 // Wait for page to be ready before initializing

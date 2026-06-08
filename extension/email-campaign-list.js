@@ -331,6 +331,7 @@
     otherRecentMutationRafId = requestAnimationFrame(() => {
       otherRecentMutationRafId = 0;
       scheduleOtherRecentCampaignScrape("grid-dom-mutation");
+      scheduleCampaignListOverflowMenuInject(0);
     });
   }
 
@@ -415,6 +416,7 @@
           otherRecentPagerFollowTimer2 = null;
         }
         scheduleOtherRecentCampaignScrape("pager-footer-click", 90);
+        scheduleCampaignListOverflowMenuInject(90);
         otherRecentPagerFollowTimer1 = setTimeout(() => {
           otherRecentPagerFollowTimer1 = null;
           runOtherRecentCampaignScrapeOnce("pager-followup-650ms");
@@ -830,6 +832,7 @@
       otherRecentDbg("init: campaign table present; wiring grid observer + debounced scrape");
       ensureOtherRecentGridObserver();
       scheduleOtherRecentCampaignScrape("tryBind");
+      scheduleCampaignListOverflowMenuInject(0);
       return true;
     };
     if (tryBind()) return;
@@ -859,6 +862,348 @@
     observer.observe(root, { childList: true, subtree: true });
   }
 
+  // ── Campaign list row: Edit Settings / Edit Content links (last tbody td) ──
+  const EDIT_LINKS_TABLE_SELECTOR =
+    "table.e-table.e-table-datagrid_overview.e-datagrid__table";
+  let editLinksInjectTimer = null;
+  let editLinksInjectRafId = 0;
+
+  function findCampaignListEditLinksTable() {
+    const scoped = [
+      `#campaign-list-container ${EDIT_LINKS_TABLE_SELECTOR}`,
+      `#main-datagrid ${EDIT_LINKS_TABLE_SELECTOR}`,
+      EDIT_LINKS_TABLE_SELECTOR
+    ];
+    for (const sel of scoped) {
+      let t = document.querySelector(sel);
+      if (t) return t;
+      t = querySelectorIncludingShadow(sel, document);
+      if (t) return t;
+    }
+    return findCampaignListTableQuiet();
+  }
+
+  function getEditContentHrefFromRow(row) {
+    if (!row || !row.querySelector) return "";
+    const editA =
+      row.querySelector('.e-tooltip[content="Edit"] a[href]') ||
+      row.querySelector('e-tooltip[content="Edit"] a[href]') ||
+      row.querySelector('td.e-table__col-actions .e-tooltip[content="Edit"] a[href]') ||
+      row.querySelector('td.e-table__col-actions e-tooltip[content="Edit"] a[href]') ||
+      row.querySelector('td.e-table__col-actions a.e-datagrid__item_action[aria-label="Edit"][href]') ||
+      row.querySelector('td.e-table__col-actions a[href*="action=content"]');
+    return editA ? String(editA.getAttribute("href") || "").trim() : "";
+  }
+
+  // ── Campaign list row: overflow menu ─────────────────────────────────────────
+  const GEM_LIST_ROW_MENU_CLASS = "gem-campaign-list-row-menu-wrap";
+  const ROW_ACTIONS_SELECTOR = ".e-datagrid__item_actions.e-inputgroup.e-inputgroup-inline";
+  const ROW_ACTIONS_SELECTOR_ALT = ".e-table__col.e-table__col.e-table__col-actions > div[class]";
+
+  /** @type {{ wrap: HTMLElement, trigger: HTMLButtonElement, menu: HTMLElement } | null} */
+  let openCampaignListRowMenu = null;
+  let campaignListRowMenuListenersInstalled = false;
+
+  function getListPageSessionId() {
+    try {
+      return new URL(window.location.href).searchParams.get("session_id") || "";
+    } catch (_) {
+      return "";
+    }
+  }
+
+  function closeCampaignListRowMenu() {
+    if (!openCampaignListRowMenu) return;
+    const { wrap, trigger, menu } = openCampaignListRowMenu;
+    menu.classList.remove(
+      "gem-recent-campaign-row-menu--open",
+      "gem-recent-campaign-row-menu--floating"
+    );
+    menu.style.removeProperty("top");
+    menu.style.removeProperty("left");
+    menu.style.removeProperty("visibility");
+    trigger.setAttribute("aria-expanded", "false");
+    // Return menu from body back to its wrap
+    if (menu.parentNode !== wrap) {
+      try { wrap.appendChild(menu); } catch (_) {}
+    }
+    openCampaignListRowMenu = null;
+  }
+
+  function positionCampaignListRowMenu(trigger, menu) {
+    menu.classList.add("gem-recent-campaign-row-menu--floating");
+    menu.style.visibility = "hidden";
+    const triggerRect = trigger.getBoundingClientRect();
+    const menuRect = menu.getBoundingClientRect();
+    const gap = 4;
+    let top = triggerRect.bottom + gap;
+    let left = triggerRect.right - menuRect.width;
+    if (top + menuRect.height > window.innerHeight - 8) {
+      top = triggerRect.top - menuRect.height - gap;
+    }
+    left = Math.max(8, Math.min(left, window.innerWidth - menuRect.width - 8));
+    top = Math.max(8, Math.min(top, window.innerHeight - menuRect.height - 8));
+    menu.style.top = `${Math.round(top)}px`;
+    menu.style.left = `${Math.round(left)}px`;
+    menu.style.visibility = "";
+  }
+
+  function openCampaignListRowMenuAt(wrap) {
+    closeCampaignListRowMenu();
+    const trigger = wrap.querySelector(".gem-recent-campaign-row-menu-trigger");
+    const menu = wrap.querySelector(".gem-recent-campaign-row-menu");
+    if (!trigger || !menu) return;
+    // Teleport menu to body to escape table stacking contexts
+    document.body.appendChild(menu);
+    menu.classList.add("gem-recent-campaign-row-menu--open");
+    trigger.setAttribute("aria-expanded", "true");
+    positionCampaignListRowMenu(trigger, menu);
+    openCampaignListRowMenu = { wrap, trigger, menu };
+  }
+
+  function ensureCampaignListRowMenuListeners() {
+    if (campaignListRowMenuListenersInstalled) return;
+    campaignListRowMenuListenersInstalled = true;
+    document.addEventListener(
+      "click",
+      (e) => {
+        if (!openCampaignListRowMenu) return;
+        if (openCampaignListRowMenu.wrap.contains(e.target)) return;
+        closeCampaignListRowMenu();
+      },
+      true
+    );
+    window.addEventListener("scroll", closeCampaignListRowMenu, true);
+    window.addEventListener("resize", closeCampaignListRowMenu);
+  }
+
+  function rowHasEditContentAction(actionsEl) {
+    if (!actionsEl || !actionsEl.querySelector) return false;
+    const editA =
+      actionsEl.querySelector('e-tooltip[content="Edit"] > a[href]') ||
+      actionsEl.querySelector('.e-tooltip[content="Edit"] > a[href]');
+    const href = editA ? String(editA.getAttribute("href") || "") : "";
+    return href.includes("action=content");
+  }
+
+  function buildCampaignListRowOverflowMenu(campaignId, menuOpts) {
+    const opts = menuOpts && typeof menuOpts === "object" ? menuOpts : {};
+    const showEditContent = opts.showEditContent === true;
+    const wrap = document.createElement("div");
+    wrap.className = GEM_LIST_ROW_MENU_CLASS;
+
+    const trigger = document.createElement("button");
+    trigger.type = "button";
+    trigger.className = "gem-recent-campaign-row-menu-trigger";
+    trigger.setAttribute("aria-haspopup", "menu");
+    trigger.setAttribute("aria-expanded", "false");
+    trigger.setAttribute("aria-label", `Options for campaign ${campaignId}`);
+
+    const menu = document.createElement("div");
+    menu.className = "gem-recent-campaign-row-menu";
+    menu.setAttribute("role", "menu");
+
+    function makeMenuItem(label) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "gem-recent-campaign-row-menu-item";
+      btn.setAttribute("role", "menuitem");
+      btn.textContent = label;
+      return btn;
+    }
+
+    function buildContentUrl() {
+      const sid = getListPageSessionId();
+      const url = new URL("/bootstrap.php", window.location.origin);
+      url.searchParams.set("r", "contentBlocks/campaign");
+      url.searchParams.set("id", campaignId);
+      if (sid) url.searchParams.set("session_id", sid);
+      return url.toString();
+    }
+
+    function buildSettingsUrl() {
+      const sid = getListPageSessionId();
+      const url = new URL("/campaignmanager.php", window.location.origin);
+      if (sid) url.searchParams.set("session_id", sid);
+      url.searchParams.set("action", "details");
+      url.searchParams.set("camp_id", campaignId);
+      url.searchParams.set("step", "camp3");
+      url.searchParams.set("sec", String(Date.now()));
+      return url.toString();
+    }
+
+    function navigateCampaignUrl(url, e) {
+      closeCampaignListRowMenu();
+      if (e && (e.ctrlKey || e.metaKey)) {
+        try {
+          chrome.runtime.sendMessage({ action: "openInNewTab", url, active: false });
+        } catch (_) {
+          window.open(url, "_blank");
+        }
+        return;
+      }
+      window.location.assign(url);
+    }
+
+    const switchItem = makeMenuItem("Switch to tab");
+    switchItem.classList.add("gem-recent-campaign-row-menu-item--hidden");
+    switchItem.addEventListener("click", (e) => {
+      e.stopPropagation();
+      closeCampaignListRowMenu();
+      chrome.runtime.sendMessage({
+        action: "focusCampaignTab",
+        campaignId: String(campaignId)
+      });
+    });
+    menu.appendChild(switchItem);
+
+    const editSettingsItem = makeMenuItem("Edit Settings");
+    editSettingsItem.addEventListener("click", (e) => {
+      e.stopPropagation();
+      navigateCampaignUrl(buildSettingsUrl(), e);
+    });
+    menu.appendChild(editSettingsItem);
+
+    if (showEditContent) {
+      const editContentItem = makeMenuItem("Edit Content");
+      editContentItem.addEventListener("click", (e) => {
+        e.stopPropagation();
+        navigateCampaignUrl(buildContentUrl(), e);
+      });
+      menu.appendChild(editContentItem);
+    }
+
+    const divider = document.createElement("div");
+    divider.className = "gem-recent-campaign-row-menu-divider";
+    divider.setAttribute("role", "separator");
+    menu.appendChild(divider);
+
+    const duplicateItem = document.createElement("button");
+    duplicateItem.type = "button";
+    duplicateItem.className = "gem-recent-campaign-row-menu-item";
+    duplicateItem.setAttribute("role", "menuitem");
+
+    const dupLabel = document.createElement("span");
+    dupLabel.textContent = "Duplicate";
+
+    const dupSpinner = document.createElement("span");
+    dupSpinner.className = "gem-recent-campaign-duplicate-spinner";
+    dupSpinner.setAttribute("aria-hidden", "true");
+    dupSpinner.hidden = true;
+
+    duplicateItem.appendChild(dupLabel);
+    duplicateItem.appendChild(dupSpinner);
+
+    duplicateItem.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (duplicateItem.disabled || duplicateItem.dataset.gemState === "busy") return;
+      if (typeof window.gemDuplicateCampaign !== "function") return;
+
+      duplicateItem.disabled = true;
+      duplicateItem.dataset.gemState = "busy";
+      dupSpinner.hidden = false;
+
+      const sessionId = getListPageSessionId();
+      window.gemDuplicateCampaign(campaignId, sessionId).then((res) => {
+        if (!res || !res.ok || res.newCampaignId == null) {
+          duplicateItem.disabled = false;
+          delete duplicateItem.dataset.gemState;
+          dupSpinner.hidden = true;
+          return;
+        }
+        const newUrl = new URL("/campaignmanager.php", window.location.origin);
+        if (sessionId) newUrl.searchParams.set("session_id", sessionId);
+        newUrl.searchParams.set("action", "details");
+        newUrl.searchParams.set("camp_id", String(res.newCampaignId));
+        newUrl.searchParams.set("step", "camp3");
+        newUrl.searchParams.set("sec", String(Date.now()));
+        window.location.assign(newUrl.toString());
+      });
+    });
+    menu.appendChild(duplicateItem);
+
+    trigger.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (openCampaignListRowMenu && openCampaignListRowMenu.wrap === wrap) {
+        closeCampaignListRowMenu();
+      } else {
+        ensureCampaignListRowMenuListeners();
+        chrome.runtime.sendMessage(
+          { action: "isCampaignTabOpen", campaignId: String(campaignId) },
+          (res) => {
+            if (chrome.runtime.lastError) {
+              switchItem.classList.add("gem-recent-campaign-row-menu-item--hidden");
+            } else if (res && res.ok && res.open) {
+              switchItem.classList.remove("gem-recent-campaign-row-menu-item--hidden");
+            } else {
+              switchItem.classList.add("gem-recent-campaign-row-menu-item--hidden");
+            }
+            openCampaignListRowMenuAt(wrap);
+          }
+        );
+      }
+    });
+
+    wrap.appendChild(trigger);
+    wrap.appendChild(menu);
+    return wrap;
+  }
+
+  function injectCampaignListOverflowMenus(table) {
+    if (!table || !table.querySelectorAll) return;
+    const rows = table.querySelectorAll("tbody tr");
+    rows.forEach((row) => {
+      const actionsEl =
+        row.querySelector(ROW_ACTIONS_SELECTOR) ||
+        row.querySelector(ROW_ACTIONS_SELECTOR_ALT);
+      if (!actionsEl) return;
+      if (actionsEl.querySelector(`.${GEM_LIST_ROW_MENU_CLASS}`)) return;
+
+      const contentHref = getEditContentHrefFromRow(row);
+      let campaignId = parseCampaignIdFromEditHref(contentHref);
+      if (!campaignId) campaignId = parseCampaignIdFromHiddenIdCell(row);
+      if (!campaignId) return;
+
+      actionsEl.appendChild(buildCampaignListRowOverflowMenu(campaignId, {
+        showEditContent: rowHasEditContentAction(actionsEl)
+      }));
+    });
+  }
+
+  function runCampaignListOverflowMenuInjectOnce() {
+    const table = findCampaignListEditLinksTable();
+    if (!table) return;
+    injectCampaignListOverflowMenus(table);
+  }
+
+  function scheduleCampaignListOverflowMenuInject(delayMs) {
+    const delay = Number.isFinite(delayMs) && delayMs >= 0 ? delayMs : 80;
+    if (editLinksInjectTimer) clearTimeout(editLinksInjectTimer);
+    editLinksInjectTimer = setTimeout(() => {
+      editLinksInjectTimer = null;
+      if (editLinksInjectRafId) return;
+      editLinksInjectRafId = requestAnimationFrame(() => {
+        editLinksInjectRafId = 0;
+        runCampaignListOverflowMenuInjectOnce();
+      });
+    }, delay);
+  }
+
+  function initCampaignListOverflowMenus() {
+    const tryInject = () => {
+      const table = findCampaignListEditLinksTable();
+      if (!table) return false;
+      ensureOtherRecentGridObserver();
+      scheduleCampaignListOverflowMenuInject(0);
+      return true;
+    };
+    if (tryInject()) return;
+    waitForCampaignTable(() => {
+      tryInject();
+    });
+  }
+
   init();
   initOtherRecentCampaignsScraper();
+  initCampaignListOverflowMenus();
 })();

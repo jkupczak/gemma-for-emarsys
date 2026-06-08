@@ -1,0 +1,48 @@
+/* Custom styles for the Event Center page (r=eventCenter/index) */
+e-float-container.js-rti-notification-container:has(.gem-event-modal--send-email) {
+
+    z-index: 999999999 !important;
+
+    & .js-rti-node-dialog {
+        padding: 0 !important;
+    }
+
+    & .js-rti-node-dialog .e-dialog__container {
+        width: 100% !important;
+        max-width: 100vw !important;
+        height: 100vh !important;
+    }
+
+    & .e-dialog__container {
+        border: none !important;
+        border-radius: 0 !important;
+    }
+
+    & .e-dialog__content > div:last-child {
+        height: -webkit-fill-available !important;
+    }
+
+    & .e-dialog__content div:has(iframe) {
+        display: flex !important;
+        align-items: stretch !important;
+        height: -webkit-fill-available !important;
+        width: 100% !important;
+        padding: 0 !important;
+        margin: 0 !important;
+    }
+
+    & .e-dialog__content div.e-margin-top-xs.e-padding-horizontal-2xs iframe {
+        width:50vw !important;
+    }
+
+    & .e-dialog__content iframe {
+        height: 100% !important;
+        border: none !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+
+    & #gem-ec-preview-iframe {
+        border-left: 1px solid var(--token-box-default-border) !important;
+    }
+}

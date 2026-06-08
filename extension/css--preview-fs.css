@@ -1,0 +1,64 @@
+/* Custom styles for the campaign preview page (preview_fs.php) */
+
+.gem-pfs-duplicate-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.gem-pfs-duplicate-btn[disabled] {
+    cursor: default;
+    pointer-events: none;
+    opacity: 0.6;
+}
+
+.gem-pfs-spinner {
+    display: inline-block;
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    border: 2px solid color-mix(in srgb, currentColor 30%, transparent);
+    border-top-color: currentColor;
+    animation: gem-pfs-spin 0.7s linear infinite;
+    flex-shrink: 0;
+}
+
+@keyframes gem-pfs-spin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+}
+
+.e-popup .e-container {
+    padding:0 !important;
+}
+.e-popup .e-container .e-tabs {
+    display: flex !important;
+    flex-direction: column !important;
+
+    & .e-tabs__panel__content {
+        padding: 0 !important;
+    }
+}
+
+
+.e-tabs > div:not(.e-tabs__panel) {
+
+    display: flex;
+    align-items: anchor-center;
+    gap: 0px;
+
+    & #functionButtonGroup {
+
+        margin-left: auto !important;
+        margin-right: 4px !important;
+
+    }
+}
+
+.e-iframecontainer>iframe {
+    height: 100% !important;
+}
+
+e-icon[icon="download"] {
+    display: none !important;
+}

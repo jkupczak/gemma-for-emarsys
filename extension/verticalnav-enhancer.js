@@ -70,7 +70,7 @@ function getExpandSvg(iconEntity = EXPAND_ICON_OFF) {
 
 function getMobileSvg(iconEntity = MOBILE_ICON_OFF) {
   return `
-    <div class="gem-e-verticalnavitem"><e-tooltip placement="right" content="Mobile View (` + window.GEM_MOD_KEY + `+/)" role="tooltip" aria-description="Mobile View">
+    <div class="gem-e-verticalnavitem"><e-tooltip placement="right" content="Mobile View" role="tooltip" aria-description="Mobile View">
       <div class="e-verticalnavitem__icon e-svgclickfix">
         <gem-e-icon icon="mediadb"><div aria-hidden="true" class="e-icon-wrapper"><div class="e-icon gem-mobile-icon-glyph">${iconEntity}</div></div></gem-e-icon>
       </div>
@@ -230,7 +230,7 @@ function createIconBar() {
       return;
     }
 
-    // Match keyboard shortcut (CMD+/): toggle storage and let mobile-view.js
+    // Toggle storage and let mobile-view.js
     // onChanged apply visibility / create the frame when missing.
     chrome.storage.sync.get({ mobileViewVisible: true }, (result) => {
       if (!chrome?.storage?.sync) return;

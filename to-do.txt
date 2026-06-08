@@ -70,38 +70,39 @@ o- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 |                                                                                |
 o- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - o
 
+Add a non-editable block above the subject line that shows the subject line, but with line breaks so that they can see the whole thing.
+
+Make the pull out menu on the left require a click to activate, and a longer hover to auto-activate
+
+When an image from Favorites is used, it gets added to Recent Images under "No Path". Maybe don't show it at all… or override that name to be "Favorites"?
+
+Opening the media database from the pullout menu should open it in the same screen, not a new window
+
+Media database should show how many images are in a folder. lazy loading might make the difficult. Could say "at least…" until we confirm that no more will load
+
+Revisit trying to create an image block that combines the features of the two that we use
+
+Add a note that says what size to set the image to based on half of the intrinsic width that Emarsys reports back about it
+
+Add a fullwidth banner when the user has pending preflight issues. provide an X to hide the banner for the rest of their session (24hr reset)
+
+Save and Continue button on the Email Settings page? After saving it pushes you to the next step instead of just refresing the page
+
+Remember when a language version has preflight errors. Store it and add it to the language picker.
+
+Add a "New!" chip on the email list for emails created today?
+
+Could I open the Email Settings page in an iframe above the content editor to save some time? Need to see if the user could save changes on the page, and then save changes on the editor without reloading first and not lose any data (one way or the other).
+
 - Leverage "Created" date from the MB to apply "New!" labels for images created in the last 1 or X days?
 
 - Add aspect ratio output to the image picker.
 
-- ESC needs to work when media db iframe has focus
-
-- Ensure that switching tabs while uploading still works. > Yes, changing tabs doesn't break upload.
 - Prevent or warn the user from switching folders, closing image picker, closing browser window if that disrupt the upload.
-
-- Save a log of past upload successes and failures?
-
-- Show a better looking progress tracker for uploads?
-
-- The "width" input image picker doesn't save the input if i hit enter before blurring.
 
 - Image picker should show the desktop version minimized in the corner while looking at the mobile tab.
 
 - In the campaign search, the filters should be expanded if any are selected.
-
-- Add a Grid/List toggle to the settings panel.
-
-
-Create a "Warnings" panel.
-  - Bad/missing links
-  - Detect when more than one unique price is shown across body, subject, preview text
-  - Detect images that are missing Alt text
-  - Detect total image weight of the email
-  - Alert them to images that are very large
-  - Allow text highlights to be preflight pips
-    - Should I recontextualize the entire text highlighting feature as a preflight feature?
-    - Preflight should list total highlights, total highlights labeled as warning, total as errors
-    - Needs to support subject line, preview text, and alt text
 
 Sometimes i cant open the edit snippet modal
 
@@ -130,21 +131,11 @@ Add disabled placeholders for the language and version selectboxes so that the U
 
 Search pills should take two clicks to close.
 
-Hide the "Title" input in the Links dialog by default. Provide a toggle to turn it back but explain why it was hidden by default.
-
-Keep track of session IDs and which one is most recent. Detect if we have any pages open with a different session ID and throw up a notice that saving could be affected and recomend a page refresh before making further edits.
-
 Can I create "drag for padding" functionality? Would need to ask the user to designate an integere based variable for top and bottom padding in the settings panel.
-
-When the Block Style Settings panel is empty, it should close on its own.
-
-In expanded mode, the block style settings should not cover the top row where we keep the email name and save button
 
 The block reset button in the toolbar should have a confirmation prompt.
 
 add text highlighting to the subject line, preview text, and conditional text editors
-
-Add a gear icon to the content block toolbar to open the settings panel and scroll to a new section where they can toggle icons on or off
 
 
  --------------------------------------------------------------------------------

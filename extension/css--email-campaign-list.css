@@ -1,0 +1,16 @@
+/* Custom styles for the Email Campaign List page (r=emailCampaignList/index) */
+.e-datagrid__item_actions.e-inputgroup.e-inputgroup-inline {
+    gap: 2px !important;
+}
+
+
+.e-datagrid__item_actions.e-inputgroup.e-inputgroup-inline .e-btn-onlyicon {
+    width: 30px !important;
+}
+
+.e-table__col.e-table__col.e-table__col-actions > div[class] {
+    display: flex;
+    gap: 2px;
+    align-items: end;
+    justify-content: end;
+}

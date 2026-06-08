@@ -7,6 +7,7 @@ console.log("[Gem] alt-text-preview.js loaded");
   const BUTTON_GROUP_SELECTOR = "cb-campaign-preview .e-buttongroup";
   const ANCHOR_SELECTOR = "cb-highlight-editables-switch";
   const OVERLAY_CONTAINER_ID = "gem-alt-text-overlay-container";
+  const STORAGE_OVERLAY_ACTIVE_KEY = "gemAltTextPreviewOverlayActive";
 
   let isActive = false;
   let settingEnabled = true;
@@ -31,10 +32,13 @@ console.log("[Gem] alt-text-preview.js loaded");
   function loadSettings(callback) {
     chrome.storage.sync.get({
       gemAltTextPreviewEnabled: true,
-      gemAltTextVisibility: "always-show"
+      gemAltTextVisibility: "always-show",
+      [STORAGE_OVERLAY_ACTIVE_KEY]: true
     }, (result) => {
       settingEnabled = result.gemAltTextPreviewEnabled !== false;
       settingVisibility = result.gemAltTextVisibility || "always-show";
+      const overlayActive = result[STORAGE_OVERLAY_ACTIVE_KEY] !== false;
+      isActive = settingEnabled && overlayActive;
       if (callback) callback();
     });
   }
@@ -44,15 +48,26 @@ console.log("[Gem] alt-text-preview.js loaded");
 
     if (changes.gemAltTextPreviewEnabled) {
       settingEnabled = changes.gemAltTextPreviewEnabled.newValue !== false;
-      if (settingEnabled && !isActive) {
-        isActive = true;
-        if (buttonEl) buttonEl.classList.add("e-btn-active");
-        enable();
-      } else if (!settingEnabled && isActive) {
-        disable();
+      if (settingEnabled) {
+        chrome.storage.sync.get({ [STORAGE_OVERLAY_ACTIVE_KEY]: true }, (r) => {
+          const overlayOn = r[STORAGE_OVERLAY_ACTIVE_KEY] !== false;
+          isActive = overlayOn;
+          if (buttonEl) buttonEl.classList.toggle("e-btn-active", isActive);
+          if (isActive) enable();
+          else disable();
+        });
+      } else {
+        if (isActive) disable();
         isActive = false;
         if (buttonEl) buttonEl.classList.remove("e-btn-active");
       }
+    }
+
+    if (changes[STORAGE_OVERLAY_ACTIVE_KEY] && settingEnabled) {
+      isActive = changes[STORAGE_OVERLAY_ACTIVE_KEY].newValue !== false;
+      if (buttonEl) buttonEl.classList.toggle("e-btn-active", isActive);
+      if (isActive) enable();
+      else disable();
     }
 
     if (changes.gemAltTextVisibility) {
@@ -136,6 +151,10 @@ console.log("[Gem] alt-text-preview.js loaded");
     } else {
       disable();
     }
+
+    try {
+      chrome.storage.sync.set({ [STORAGE_OVERLAY_ACTIVE_KEY]: isActive });
+    } catch (_) {}
   }
 
   function enable() {
@@ -472,8 +491,7 @@ console.log("[Gem] alt-text-preview.js loaded");
   // ── Init ──────────────────────────────────────────────
 
   loadSettings(() => {
-    if (settingEnabled) {
-      isActive = true;
+    if (isActive) {
       enable();
     }
     waitForButtonGroup();

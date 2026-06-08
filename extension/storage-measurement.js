@@ -4,6 +4,10 @@ console.log("[gem] storage-measurement.js loaded");
   const SYNC_QUOTA_BYTES = 102400;
   /** Default chrome.storage.local quota per extension (bytes) unless `unlimitedStorage` is granted. */
   const LOCAL_QUOTA_BYTES = 5242880;
+  /** Typical per-origin localStorage budget (browsers do not expose exact quota). */
+  const PAGE_LOCAL_QUOTA_BYTES = 5242880;
+  const GEM_THEME_MODE_LOCAL_KEY = "gemThemeMode";
+  const PAGE_LOCAL_POLL_MS = 2000;
   const MOUNT_ID = "gem-storage-meter-mount";
   const COMBINED_SECTION_ID = "gem-storage-meters";
   const STYLE_ID = "gem-storage-meter-style";
@@ -125,6 +129,29 @@ console.log("[gem] storage-measurement.js loaded");
     },
   ];
 
+  const PAGE_LOCAL_CATEGORIES = [
+    {
+      name: "Gemma",
+      color: "var(--token-amethyst-400)",
+      match: (key) => /^gem/i.test(key) || key === GEM_THEME_MODE_LOCAL_KEY,
+    },
+    {
+      name: "Inbox Preview",
+      color: "var(--token-sapphire-400)",
+      match: (key) => key.startsWith("inbox-preview::"),
+    },
+    {
+      name: "Test Mail",
+      color: "var(--token-turquoise-400)",
+      match: (key) => key.startsWith("test-mail::"),
+    },
+    {
+      name: "Other",
+      color: "#6b7280",
+      match: () => true,
+    },
+  ];
+
   function byteSize(key, value) {
     return new Blob([key]).size + new Blob([JSON.stringify(value)]).size;
   }
@@ -139,6 +166,40 @@ console.log("[gem] storage-measurement.js loaded");
 
     for (const [key, value] of Object.entries(data)) {
       const size = byteSize(key, value);
+      for (const bucket of buckets) {
+        if (bucket.match(key)) {
+          bucket.bytes += size;
+          break;
+        }
+      }
+    }
+
+    return buckets;
+  }
+
+  function pageLocalEntryByteSize(key, value) {
+    return new Blob([key]).size + new Blob([String(value ?? "")]).size;
+  }
+
+  function readPageLocalStorageEntries() {
+    const entries = {};
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!key) continue;
+        entries[key] = localStorage.getItem(key);
+      }
+    } catch (err) {
+      console.warn("[gem] storage-measurement page localStorage read error:", err);
+    }
+    return entries;
+  }
+
+  function categorizePageLocalStorage(entries) {
+    const buckets = PAGE_LOCAL_CATEGORIES.map((c) => ({ ...c, bytes: 0 }));
+
+    for (const [key, value] of Object.entries(entries)) {
+      const size = pageLocalEntryByteSize(key, value);
       for (const bucket of buckets) {
         if (bucket.match(key)) {
           bucket.bytes += size;
@@ -307,6 +368,9 @@ console.log("[gem] storage-measurement.js loaded");
         const syncTotal = syncBuckets.reduce((sum, b) => sum + b.bytes, 0);
         const localBuckets = categorize(localData, LOCAL_CATEGORIES);
         const localTotal = localBuckets.reduce((sum, b) => sum + b.bytes, 0);
+        const pageLocalEntries = readPageLocalStorageEntries();
+        const pageLocalBuckets = categorizePageLocalStorage(pageLocalEntries);
+        const pageLocalTotal = pageLocalBuckets.reduce((sum, b) => sum + b.bytes, 0);
 
         injectStyles();
 
@@ -320,14 +384,29 @@ console.log("[gem] storage-measurement.js loaded");
         section.className = "gem-setting-section";
         section.id = COMBINED_SECTION_ID;
 
-        appendMeterIntoSection(section, "Sync Storage", "", syncBuckets, syncTotal, SYNC_QUOTA_BYTES);
         appendMeterIntoSection(
           section,
-          "Local Storage",
+          "Extension Storage: Sync",
+          "",
+          syncBuckets,
+          syncTotal,
+          SYNC_QUOTA_BYTES
+        );
+        appendMeterIntoSection(
+          section,
+          "Extension Storage: Local",
           "gem-storage-meter-subtitle--local",
           localBuckets,
           localTotal,
           LOCAL_QUOTA_BYTES
+        );
+        appendMeterIntoSection(
+          section,
+          "Site Local Storage",
+          "gem-storage-meter-subtitle--local",
+          pageLocalBuckets,
+          pageLocalTotal,
+          PAGE_LOCAL_QUOTA_BYTES
         );
 
         mount.appendChild(section);
@@ -341,6 +420,7 @@ console.log("[gem] storage-measurement.js loaded");
     const mount = document.getElementById(MOUNT_ID);
     if (mount && !mount.dataset.gemStorageRendered) {
       mount.dataset.gemStorageRendered = "1";
+      ensurePageLocalStorageWatch();
       renderCombinedStorage(mount);
     }
   }
@@ -351,10 +431,25 @@ console.log("[gem] storage-measurement.js loaded");
     renderCombinedStorage(mount);
   }
 
+  let pageLocalPollId = null;
+
+  function ensurePageLocalStorageWatch() {
+    if (pageLocalPollId != null) return;
+    pageLocalPollId = setInterval(() => refreshStorageMetersIfMounted(), PAGE_LOCAL_POLL_MS);
+  }
+
   try {
     chrome.storage.onChanged.addListener((_changes, namespace) => {
       if (namespace === "local" || namespace === "sync") refreshStorageMetersIfMounted();
     });
+  } catch (_) {}
+
+  try {
+    window.addEventListener("storage", () => refreshStorageMetersIfMounted());
+  } catch (_) {}
+
+  try {
+    window.addEventListener("gem:page-localstorage-guard", () => refreshStorageMetersIfMounted());
   } catch (_) {}
 
   const observer = new MutationObserver(() => tryMount());

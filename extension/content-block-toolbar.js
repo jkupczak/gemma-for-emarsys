@@ -1148,20 +1148,18 @@ function setupEslTokenDoubleClickHandler() {
 function setupImagePropertiesEnterKeyHandler() {
   console.log("[gem] Setting up Image Properties Enter key handler");
 
-  // Function to check if Image Properties dialog is the topmost modal
-  function isImagePropertiesDialogTopmost() {
+  /** Topmost `.e-dialog__container` when its title is Image Properties, else null. */
+  function getTopmostImagePropertiesDialog() {
     const dialogs = document.querySelectorAll('.e-dialog__container');
-    if (dialogs.length === 0) return false;
+    if (dialogs.length === 0) return null;
 
-    // Get the topmost dialog (last one in DOM)
     const topmostDialog = dialogs[dialogs.length - 1];
-
-    // Check if it contains "Image Properties" in the title
     const titleElement = topmostDialog.querySelector('.e-dialog__title, h2, .dialog-title');
-    if (!titleElement) return false;
+    if (!titleElement) return null;
 
     const titleText = titleElement.textContent || titleElement.innerText || '';
-    return titleText.trim().toLowerCase().includes('image properties');
+    if (!titleText.trim().toLowerCase().includes('image properties')) return null;
+    return topmostDialog;
   }
 
   // Function to check if current focus is on a disallowed input
@@ -1183,6 +1181,30 @@ function setupImagePropertiesEnterKeyHandler() {
     return isSearchInput;
   }
 
+  /** Emarsys often commits dimension fields only on blur; skip search inputs we use for Gem pickers. */
+  function shouldCommitImagePropertyField(el) {
+    if (!el || !el.matches) return false;
+    const tag = (el.tagName || '').toLowerCase();
+    if (tag !== 'input' && tag !== 'textarea' && tag !== 'select') return false;
+    if (el.matches('input[type="search"]')) return false;
+    if (
+      el.classList.contains('e-input-search') ||
+      el.classList.contains('gem-favorite-images-search') ||
+      el.classList.contains('gem-seen-images-search')
+    ) {
+      return false;
+    }
+    return true;
+  }
+
+  function blurAndCommitImagePropertyField(el) {
+    if (!el) return;
+    try {
+      el.blur();
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    } catch (_) {}
+  }
+
   // Handle Enter key presses
   function handleEnterKey(event) {
     if (event.key !== 'Enter') return;
@@ -1198,25 +1220,22 @@ function setupImagePropertiesEnterKeyHandler() {
       }
     }
 
-    // Check if Image Properties dialog is open and topmost
-    if (!isImagePropertiesDialogTopmost()) return;
+    const imagePropsDialog = getTopmostImagePropertiesDialog();
+    if (!imagePropsDialog) return;
 
     // Check if focus is on a disallowed input
     if (isFocusOnDisallowedInput()) return;
 
-    // Emarsys doesn't always commit the "Image alternative text" value until blur.
-    // If Enter is pressed while focused on that field, blur before clicking OK.
+    // Emarsys often does not commit field values (alt text, width/height, etc.) until blur.
     try {
       const ae = document.activeElement;
-      if (ae && ae.matches && ae.matches('input[placeholder="Image alternative text"]')) {
-        ae.blur();
-        // Some UIs only commit on change/blur; fire change defensively.
-        ae.dispatchEvent(new Event('change', { bubbles: true }));
+      if (ae && imagePropsDialog.contains(ae) && shouldCommitImagePropertyField(ae)) {
+        blurAndCommitImagePropertyField(ae);
       }
     } catch (_) {}
 
-    // Find and click the OK button
-    const okButton = document.querySelector('.e-dialog__container button.ok-btn');
+    // OK on the same dialog we validated (not an older `.e-dialog__container` in the tree)
+    const okButton = imagePropsDialog.querySelector('button.ok-btn');
     if (okButton) {
       console.log("[gem] Enter key pressed in Image Properties dialog, clicking OK button");
       okButton.click();
