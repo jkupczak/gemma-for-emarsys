@@ -19,18 +19,15 @@ function buildNotesNavItem() {
   const li = document.createElement("li");
   li.className = "e-navigation__menu_list_item";
   li.id = GEM_NOTES_NAV_ID;
-  const mod = typeof window.GEM_MOD_KEY === "string" ? window.GEM_MOD_KEY : "CTRL";
   li.innerHTML = `
-    <e-tooltip placement="top" content="${mod}+;" role="tooltip" aria-description="Notes" style="width: 100%;">
-      <button type="button" class="e-navigation__action" menu-item-id="notes">
-        <e-icon class="e-navigation__action_icon" color="inherit" icon="custom">
-          <div aria-hidden="true" class="e-icon-wrapper">
-            <div class="e-icon text-color-inherit"></div>
-          </div>
-        </e-icon>
-        <span class="e-navigation__action_text">Notes</span>
-      </button>
-    </e-tooltip>
+    <button type="button" class="e-navigation__action" menu-item-id="notes">
+      <e-icon class="e-navigation__action_icon" color="inherit" icon="custom">
+        <div aria-hidden="true" class="e-icon-wrapper">
+          <div class="e-icon text-color-inherit"></div>
+        </div>
+      </e-icon>
+      <span class="e-navigation__action_text">Notes</span>
+    </button>
   `;
 
   li.querySelector("button").addEventListener("click", toggleNotesPanel);
@@ -122,6 +119,15 @@ function createNotesPanel() {
     flexShrink: "0",
   });
 
+  const titleRow = document.createElement("div");
+  Object.assign(titleRow.style, {
+    display: "flex",
+    alignItems: "baseline",
+    gap: "8px",
+    flex: "1",
+    minWidth: "0",
+  });
+
   const title = document.createElement("span");
   title.textContent = "Notes";
   Object.assign(title.style, {
@@ -129,6 +135,15 @@ function createNotesPanel() {
     fontSize: "15px",
     color: "var(--token-box-default-text, #333)",
   });
+
+  const shortcutHint = document.createElement("span");
+  shortcutHint.className = "gem-panel-shortcut-hint";
+  shortcutHint.textContent = typeof window.gemPanelShortcutLabel === "function"
+    ? window.gemPanelShortcutLabel(";")
+    : "[ CTRL + ; ]";
+
+  titleRow.appendChild(title);
+  titleRow.appendChild(shortcutHint);
 
   const closeBtn = document.createElement("button");
   closeBtn.textContent = "✕";
@@ -150,7 +165,7 @@ function createNotesPanel() {
     closeBtn.style.background = "none";
   });
 
-  header.appendChild(title);
+  header.appendChild(titleRow);
   header.appendChild(closeBtn);
 
   const textarea = document.createElement("textarea");

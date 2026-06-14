@@ -850,9 +850,12 @@ color-mix(in srgb, var(--token-gray-100, #dbeafe) 25%, transparent);
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 8px;
     padding: 14px 16px;
     border-bottom: 1px solid var(--token-box-default-border, #ccc);
     flex-shrink: 0;
+    box-sizing: border-box;
+    min-height: 52px;
 }
 
 .gem-recent-campaigns-panel-title {
@@ -861,6 +864,16 @@ color-mix(in srgb, var(--token-gray-100, #dbeafe) 25%, transparent);
     color: var(--token-box-default-text, #333);
     flex: 1;
     min-width: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.gem-panel-shortcut-hint {
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--token-font-secondary, rgba(0, 0, 0, 0.42));
+    white-space: nowrap;
 }
 
 .gem-recent-campaigns-panel-close {
@@ -924,13 +937,140 @@ color-mix(in srgb, var(--token-gray-100, #dbeafe) 25%, transparent);
     height: 100vh;
     z-index: 99999;
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     background: var(--token-box-default-background, #fff);
     border-right: 1px solid var(--token-box-default-border, #ccc);
     box-shadow: 4px 0 24px rgba(0, 0, 0, 0.18);
     transform: translateX(-100%);
-    transition: transform 0.25s ease;
+    transition: transform 0.25s ease, width 0.25s ease, max-width 0.25s ease;
     box-sizing: border-box;
+}
+
+.gem-recent-campaigns-panel-main {
+    display: flex;
+    flex-direction: column;
+    flex: 0 0 620px;
+    width: 620px;
+    min-width: 0;
+    height: 100%;
+    overflow: hidden;
+}
+
+.gem-recent-campaigns-panel--preview-open {
+    width: 1080px;
+    max-width: min(1080px, 100vw);
+}
+
+.gem-recent-campaigns-panel--preview-open .gem-recent-campaigns-panel-main {
+    flex: 0 0 400px;
+    width: 400px;
+}
+
+.gem-recent-campaigns-preview-column {
+    display: none;
+    flex: 0 0 680px;
+    width: 680px;
+    min-width: 0;
+    height: 100%;
+    flex-direction: column;
+    border-left: 1px solid var(--token-box-default-border, #ccc);
+    background: var(--token-box-default-background, #fff);
+    box-sizing: border-box;
+}
+
+.gem-recent-campaigns-panel--preview-open .gem-recent-campaigns-preview-column {
+    display: flex;
+}
+
+.gem-recent-campaigns-preview-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--token-box-default-border, #ccc);
+    flex-shrink: 0;
+    box-sizing: border-box;
+    min-height: 52px;
+}
+
+.gem-recent-campaigns-preview-title {
+    flex: 1;
+    min-width: 0;
+    font-weight: 700;
+    font-size: 15px;
+    line-height: 1.2;
+    color: var(--token-box-default-text, #333);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.gem-recent-campaigns-preview-toolbar button {
+    background: none;
+    border: none;
+    border-radius: 4px;
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 4px 8px;
+    color: var(--token-box-default-text, #666);
+    flex-shrink: 0;
+}
+
+.gem-recent-campaigns-preview-toolbar button:hover:not(:disabled) {
+    background: var(--token-background-strong, rgba(0, 0, 0, 0.05));
+}
+
+.gem-recent-campaigns-preview-toolbar button:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.gem-recent-campaigns-preview-close {
+    margin-left: auto;
+}
+
+.gem-recent-campaigns-preview-iframe-wrap {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.gem-recent-campaigns-preview-iframe {
+    flex: 1;
+    width: 100%;
+    border: 0;
+    min-height: 0;
+    display: block;
+    background: #fff;
+}
+
+.gem-recent-campaigns-preview-loading {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: color-mix(in srgb, var(--token-box-default-background, #fff) 72%, transparent);
+    z-index: 2;
+}
+
+.gem-recent-campaigns-preview-loading[hidden] {
+    display: none !important;
+}
+
+.gem-recent-campaigns-preview-loading-spinner {
+    display: block;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 3px solid color-mix(in srgb, currentColor 25%, transparent);
+    border-top-color: currentColor;
+    color: var(--token-primary-default, #5b738b);
+    animation: gem-duplicate-spinner-spin 0.7s linear infinite;
+    flex-shrink: 0;
 }
 
 .gem-recent-campaigns-panel--open {

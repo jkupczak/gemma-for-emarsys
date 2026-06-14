@@ -16,11 +16,22 @@
     window.gemModCombo = function gemModCombo(key) {
       return `${window.GEM_MOD_KEY}+${String(key || '').toUpperCase()}`;
     };
+    window.gemPanelShortcutLabel = function gemPanelShortcutLabel(key) {
+      const mod = window.GEM_MOD_KEY || 'CTRL';
+      const raw = String(key || '');
+      const displayKey = raw.length === 1 && /[a-z]/i.test(raw) ? raw.toUpperCase() : raw;
+      return `[ ${mod} + ${displayKey} ]`;
+    };
   } catch (_) {
     window.GEM_IS_MAC = false;
     window.GEM_MOD_KEY = 'CTRL';
     window.gemModCombo = function gemModCombo(key) {
       return `CTRL+${String(key || '').toUpperCase()}`;
+    };
+    window.gemPanelShortcutLabel = function gemPanelShortcutLabel(key) {
+      const raw = String(key || '');
+      const displayKey = raw.length === 1 && /[a-z]/i.test(raw) ? raw.toUpperCase() : raw;
+      return `[ CTRL + ${displayKey} ]`;
     };
   }
 })();

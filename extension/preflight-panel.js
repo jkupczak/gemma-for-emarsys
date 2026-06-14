@@ -11,8 +11,16 @@ function initializePreflightPanel() {
   const PREFLIGHT_URL_NEVER_CHECK_KEY = 'urlPreflightNeverCheck';
   const PREFLIGHT_ENABLE_LIVE_LINK_VERIFY_KEY = 'gemPreflightEnableLiveLinkVerify';
   const PREFLIGHT_HIDE_LINKS_SECTION_KEY = 'gemPreflightHideLinksSection';
+  const PREFLIGHT_ICON_PIP_TOGGLES_KEY = 'gemPreflightIconPipToggles';
   const PREFLIGHT_ALERT_COUNT_KEY = 'gemPreflightAlertCount';
   const PREFLIGHT_SECTION_COLLAPSE_STATE_KEY = 'gemPreflightSectionCollapseStateV1';
+  const PREFLIGHT_ICON_PIP_TOGGLES_DEFAULT = {
+    textAlerts: true,
+    missingAlt: true,
+    linkTitles: true,
+    linkLint: true,
+    imageWeight: true
+  };
   const GEM_TEXT_HIGHLIGHTS_RENDERED_EVENT = 'gem:text-highlights-rendered';
   const PREFLIGHT_DEFAULT_TOTAL_THRESHOLD_VALUE = 3;
   const PREFLIGHT_DEFAULT_SINGULAR_THRESHOLD_VALUE = 2;
@@ -35,6 +43,7 @@ function initializePreflightPanel() {
   let latestLinksAlertCount = 0;
   let latestNotifyAlertCount = 0;
   let latestTextAnalysisSnapshot = null;
+  let cachedPreflightIconPipToggles = { ...PREFLIGHT_ICON_PIP_TOGGLES_DEFAULT };
   const CONTACT_PREVIEW_IFRAME_SELECTOR = '.cp-contact_preview__preview vce-iframes-container iframe';
   const CONTACT_PREVIEW_LINK_VERIFY_DEBOUNCE_MS = 550;
 
@@ -533,13 +542,14 @@ function initializePreflightPanel() {
   }
 
   function persistAndUpdateOverallAlertPip() {
+    const toggles = cachedPreflightIconPipToggles;
     const alertCount = Math.max(
       0,
-      (Number.parseInt(String(latestImageAlertCount), 10) || 0) +
-      (Number.parseInt(String(latestAccessibilityMissingAltCount), 10) || 0) +
-      (Number.parseInt(String(latestLinkTitlesAlertCount), 10) || 0) +
-      (Number.parseInt(String(latestLinksAlertCount), 10) || 0) +
-      (Number.parseInt(String(latestNotifyAlertCount), 10) || 0)
+      (toggles.imageWeight ? (Number.parseInt(String(latestImageAlertCount), 10) || 0) : 0) +
+      (toggles.missingAlt ? (Number.parseInt(String(latestAccessibilityMissingAltCount), 10) || 0) : 0) +
+      (toggles.linkTitles ? (Number.parseInt(String(latestLinkTitlesAlertCount), 10) || 0) : 0) +
+      (toggles.linkLint ? (Number.parseInt(String(latestLinksAlertCount), 10) || 0) : 0) +
+      (toggles.textAlerts ? (Number.parseInt(String(latestNotifyAlertCount), 10) || 0) : 0)
     );
     chrome.storage.local.set({ [PREFLIGHT_ALERT_COUNT_KEY]: alertCount });
     updateAlertPip(alertCount);
@@ -1029,6 +1039,28 @@ function initializePreflightPanel() {
           singularValue: Number.parseFloat(String(res[PREFLIGHT_SINGULAR_THRESHOLD_VALUE_KEY])) || PREFLIGHT_DEFAULT_SINGULAR_THRESHOLD_VALUE,
           singularUnit: String(res[PREFLIGHT_SINGULAR_THRESHOLD_UNIT_KEY] || PREFLIGHT_DEFAULT_THRESHOLD_UNIT).toUpperCase() === 'KB' ? 'KB' : 'MB'
         });
+      });
+    });
+  }
+
+  function normalizePreflightIconPipToggles(raw) {
+    const src = raw && typeof raw === 'object' ? raw : {};
+    return {
+      textAlerts: src.textAlerts !== false,
+      missingAlt: src.missingAlt !== false,
+      linkTitles: src.linkTitles !== false,
+      linkLint: src.linkLint !== false,
+      imageWeight: src.imageWeight !== false
+    };
+  }
+
+  function loadPreflightIconPipTogglesSetting() {
+    return new Promise((resolve) => {
+      chrome.storage.sync.get({
+        [PREFLIGHT_ICON_PIP_TOGGLES_KEY]: PREFLIGHT_ICON_PIP_TOGGLES_DEFAULT
+      }, (res) => {
+        cachedPreflightIconPipToggles = normalizePreflightIconPipToggles(res[PREFLIGHT_ICON_PIP_TOGGLES_KEY]);
+        resolve(cachedPreflightIconPipToggles);
       });
     });
   }
@@ -3731,6 +3763,7 @@ function initializePreflightPanel() {
     chrome.storage.local.get({ [PREFLIGHT_ALERT_COUNT_KEY]: 0 }, (res) => {
       updateAlertPip(res[PREFLIGHT_ALERT_COUNT_KEY] || 0);
     });
+    void loadPreflightIconPipTogglesSetting();
     void loadLiveVerifyEnabledSetting();
     window.addEventListener(GEM_TEXT_HIGHLIGHTS_RENDERED_EVENT, scheduleTextAnalysisRefreshFromHighlightEvent);
     bindInitialCalculationToPreviewIframe();
@@ -3750,6 +3783,11 @@ function initializePreflightPanel() {
       if (changes[PREFLIGHT_HIDE_LINKS_SECTION_KEY]) {
         applyLinksSectionVisibilityState(changes[PREFLIGHT_HIDE_LINKS_SECTION_KEY].newValue === true);
         if (isPreflightActive()) void refreshLinksPermissionActionsUI();
+        return;
+      }
+      if (changes[PREFLIGHT_ICON_PIP_TOGGLES_KEY]) {
+        cachedPreflightIconPipToggles = normalizePreflightIconPipToggles(changes[PREFLIGHT_ICON_PIP_TOGGLES_KEY].newValue);
+        persistAndUpdateOverallAlertPip();
         return;
       }
       if (

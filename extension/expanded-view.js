@@ -1,6 +1,45 @@
 // expanded-view.js - Handles repositioning of elements in expanded view view
 console.log('[Gem-Expanded-View] expanded-view.js loaded');
 
+function getHeaderTitle() {
+  return document.querySelector('h1.e-layout__title');
+}
+
+function placeHeaderTitleAfterCompactTools(navSection, headerTitle) {
+  if (!navSection || !headerTitle) return;
+  const compactTools = navSection.querySelector('.gem-compact-email-tools');
+  if (compactTools) {
+    navSection.insertBefore(headerTitle, compactTools.nextSibling);
+  } else {
+    navSection.insertBefore(headerTitle, navSection.firstChild);
+  }
+}
+
+function ensureHeaderTitleAfterCompactTools(navSection, headerTitle) {
+  if (!navSection || !headerTitle || !navSection.contains(headerTitle)) return;
+  const compactTools = navSection.querySelector('.gem-compact-email-tools');
+  if (compactTools && headerTitle.previousElementSibling === compactTools) return;
+  placeHeaderTitleAfterCompactTools(navSection, headerTitle);
+}
+
+function getCompactVersionsInsertPoint(navSection) {
+  if (!navSection) return null;
+  const headerTitle = navSection.querySelector('h1.e-layout__title');
+  if (headerTitle) return headerTitle.nextSibling;
+  const compactTools = navSection.querySelector('.gem-compact-email-tools');
+  if (compactTools) return compactTools.nextSibling;
+  return navSection.firstChild;
+}
+
+function ensureCompactVersionsPosition(navSection, compactVersionsDiv) {
+  if (!navSection || !compactVersionsDiv || !navSection.contains(compactVersionsDiv)) return;
+  const anchor =
+    navSection.querySelector('h1.e-layout__title') ||
+    navSection.querySelector('.gem-compact-email-tools');
+  if (anchor && compactVersionsDiv.previousElementSibling === anchor) return;
+  navSection.insertBefore(compactVersionsDiv, getCompactVersionsInsertPoint(navSection));
+}
+
 function initializeExpandedView() {
   console.log('[Gem-Expanded-View] Initializing expanded view functionality');
 
@@ -14,39 +53,28 @@ function initializeExpandedView() {
     compactVersionsDiv.style.display = 'none';
 
     // Check for header title and move it to navigation section (only in expanded view)
-    const headerTitle = document.querySelector('h1'); // Find h1 anywhere in document
+    const headerTitle = getHeaderTitle();
     const isExpandedView = document.body.classList.contains('gem-expanded');
 
     // Handle header title movement (only when expanded)
     if (headerTitle && navSection && isExpandedView) {
-      // Move to navigation section as first child
       const existingTitlePlaceholder = document.querySelector('[data-gem-header-title-placeholder]');
 
       if (!existingTitlePlaceholder) {
-        // Create a placeholder to maintain layout
         const placeholder = document.createElement('div');
         placeholder.style.display = 'none';
         placeholder.setAttribute('data-gem-header-title-placeholder', 'true');
 
-        // Replace original with placeholder
         headerTitle.parentNode.insertBefore(placeholder, headerTitle);
         headerTitle.remove();
-        // Insert after the compact email tools element (second child)
-        const compactTools = navSection.querySelector('.gem-compact-email-tools');
-        if (compactTools && compactTools.nextSibling) {
-          navSection.insertBefore(headerTitle, compactTools.nextSibling);
-        } else {
-          navSection.insertBefore(headerTitle, navSection.firstChild);
-        }
+        placeHeaderTitleAfterCompactTools(navSection, headerTitle);
 
         console.log('[Gem-Expanded-View] Moved header title to navigation section (expanded view)');
+      } else if (!navSection.contains(headerTitle)) {
+        placeHeaderTitleAfterCompactTools(navSection, headerTitle);
+        console.log('[Gem-Expanded-View] Re-attached header title to navigation section');
       } else {
-        // Element is already moved, just make sure it's positioned after compact tools
-        if (!navSection.contains(headerTitle)) {
-          // Insert as the first child of navigation section
-          navSection.insertBefore(headerTitle, navSection.firstChild);
-          console.log('[Gem-Expanded-View] Re-attached header title to navigation section');
-        }
+        ensureHeaderTitleAfterCompactTools(navSection, headerTitle);
       }
     }
 
@@ -142,8 +170,11 @@ function initializeExpandedView() {
       compactVersionsDiv.style.display = 'none';
     }
 
-    // Add as the second child (after compact tools)
-    navSection.insertBefore(compactVersionsDiv, navSection.children[1]);
+    if (!navSection.contains(compactVersionsDiv)) {
+      navSection.insertBefore(compactVersionsDiv, getCompactVersionsInsertPoint(navSection));
+    } else {
+      ensureCompactVersionsPosition(navSection, compactVersionsDiv);
+    }
 
     // Set up observers for view changes and selector visibility
     setupExpandedViewObserver(compactVersionsDiv);
@@ -154,7 +185,7 @@ function initializeExpandedView() {
 }
 
 function moveSelectorsBasedOnView(compactVersionsDiv, isExpanded) {
-  const headerTitle = document.querySelector('h1'); // Find h1 anywhere in document
+  const headerTitle = getHeaderTitle();
   const navSection = document.querySelector('main .e-contentblocks-navigation_section');
   const versionSelector = document.querySelector('cb-version-selector');
   const localeSelector = document.querySelector('cb-multilanguage-locale-selector');
@@ -162,28 +193,21 @@ function moveSelectorsBasedOnView(compactVersionsDiv, isExpanded) {
   // Handle header title
   if (headerTitle && navSection) {
     if (isExpanded) {
-      // Move to navigation section after compact tools (second child)
       const existingPlaceholder = document.querySelector('[data-gem-header-title-placeholder]');
 
       if (!existingPlaceholder) {
-        // Create a placeholder to maintain layout
         const placeholder = document.createElement('div');
         placeholder.style.display = 'none';
         placeholder.setAttribute('data-gem-header-title-placeholder', 'true');
 
-        // Replace original with placeholder
         headerTitle.parentNode.insertBefore(placeholder, headerTitle);
         headerTitle.remove();
-        // Insert as the first child of navigation section
-        navSection.insertBefore(headerTitle, navSection.firstChild);
+        placeHeaderTitleAfterCompactTools(navSection, headerTitle);
 
         console.log('[Gem-Expanded-View] Moved header title to navigation section (view change)');
       }
 
-      // Ensure it's positioned as first child
-      if (navSection.contains(headerTitle) && navSection.firstChild !== headerTitle) {
-        navSection.insertBefore(headerTitle, navSection.firstChild);
-      }
+      ensureHeaderTitleAfterCompactTools(navSection, headerTitle);
     } else {
       // Move back to original location
       const placeholder = document.querySelector('[data-gem-header-title-placeholder]');
@@ -273,6 +297,10 @@ function moveSelectorsBasedOnView(compactVersionsDiv, isExpanded) {
   // Hide compact versions div if no content in normal view
   if (!isExpanded && !compactVersionsDiv.hasChildNodes()) {
     compactVersionsDiv.style.display = 'none';
+  }
+
+  if (isExpanded && navSection) {
+    ensureCompactVersionsPosition(navSection, compactVersionsDiv);
   }
 }
 

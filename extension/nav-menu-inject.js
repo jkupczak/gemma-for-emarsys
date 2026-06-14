@@ -11,14 +11,12 @@ function buildItem() {
   li.style.marginBottom = "20px";
 
   li.innerHTML = `
-  <e-tooltip placement="top" content="` + window.GEM_MOD_KEY + `+G" role="tooltip" aria-description="Gemma Settings" style="width: 100%;">
     <button type="button" class="e-navigation__action" aria-expanded="false">
       <e-icon class="e-navigation__action_icon" color="inherit" style="margin: 10px">
         <img src="${ICON_SRC}" style="width: 36px;height: auto; filter: drop-shadow(2px 4px 6px rgb(34 26 72 / 0.35))">
       </e-icon>
       <span class="e-navigation__action_text">Gemma Settings</span>
     </button>
-  </e-tooltip>
   `;
 
   const btn = li.querySelector("button");

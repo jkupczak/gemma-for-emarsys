@@ -70,6 +70,8 @@ o- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 |                                                                                |
 o- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - o
 
+- Campaign Drawer doesn't seem to work with emails that are NOT Block templates.
+
 Add a non-editable block above the subject line that shows the subject line, but with line breaks so that they can see the whole thing.
 
 Make the pull out menu on the left require a click to activate, and a longer hover to auto-activate

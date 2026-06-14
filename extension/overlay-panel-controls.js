@@ -4,6 +4,435 @@ console.log("[Gem] overlay-panel-controls.js loaded");
 // Compact Email Tools Dropdown
 // ------------------------------------------------------------
 
+/** @type {{ wrap: HTMLElement, trigger: HTMLButtonElement, menu: HTMLElement } | null} */
+let openCompactEmailToolsMenu = null;
+let compactEmailToolsMenuListenersInstalled = false;
+/** @type {{ item: HTMLElement, spinner: HTMLElement } | null} */
+let compactEmailToolsSendTestPending = null;
+/** @type {MutationObserver | null} */
+let compactEmailToolsSendTestObserver = null;
+/** @type {ReturnType<typeof setTimeout> | null} */
+let compactEmailToolsSendTestTimeout = null;
+
+function escapeCompactToolsHtml(text) {
+  return String(text || '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function getCompactToolsCampaignName() {
+  const nameEl =
+    document.querySelector('cb-campaign-name span') ||
+    document.querySelector('h1.e-layout__title');
+  return nameEl ? String(nameEl.textContent || '').trim() : '';
+}
+
+function getCompactToolsCampaignId() {
+  try {
+    const url = new URL(window.location.href);
+    return (url.searchParams.get('id') || url.searchParams.get('camp_id') || '').trim();
+  } catch (_) {
+    return '';
+  }
+}
+
+function getCompactToolsSessionId() {
+  try {
+    const url = new URL(window.location.href);
+    return (url.searchParams.get('session_id') || '').trim();
+  } catch (_) {
+    return '';
+  }
+}
+
+function clickEmarsysTooltipAction(content) {
+  const tooltip = document.querySelector(`e-tooltip[content="${content}"]`);
+  const btn = tooltip && tooltip.querySelector('button');
+  if (btn) {
+    btn.click();
+    return true;
+  }
+  console.warn(`[Gem] Compact tools: could not find e-tooltip[content="${content}"] button`);
+  if (window.gemShowToast) {
+    window.gemShowToast(`Could not find "${content}" action.`, { type: 'error' });
+  }
+  return false;
+}
+
+async function copyRichTextCampaignLink() {
+  const url = window.location.href;
+  const name = getCompactToolsCampaignName() || 'Campaign';
+  const plain = name ? `${name} - ${url}` : url;
+  const html = `<a href="${escapeCompactToolsHtml(url)}">${escapeCompactToolsHtml(name)}</a>`;
+
+  try {
+    if (navigator.clipboard && typeof ClipboardItem !== 'undefined' && navigator.clipboard.write) {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          'text/html': new Blob([html], { type: 'text/html' }),
+          'text/plain': new Blob([plain], { type: 'text/plain' })
+        })
+      ]);
+    } else if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(plain);
+    } else {
+      throw new Error('clipboard_unavailable');
+    }
+    if (window.gemShowToast) {
+      window.gemShowToast('Link copied to clipboard.', { type: 'success' });
+    }
+    return true;
+  } catch (err) {
+    console.warn('[Gem] Compact tools: failed to copy rich text link', err);
+    if (window.gemShowToast) {
+      window.gemShowToast('Failed to copy link to clipboard.', { type: 'error' });
+    }
+    return false;
+  }
+}
+
+function getTestEmailDialogShell() {
+  return document.querySelector('cb-test-email-dialog');
+}
+
+function isTestEmailDialogVisible() {
+  const shell = getTestEmailDialogShell();
+  return !!(shell && shell.querySelector(':scope > .e-modal__visible'));
+}
+
+function clearCompactEmailToolsSendTestWait() {
+  if (compactEmailToolsSendTestObserver) {
+    compactEmailToolsSendTestObserver.disconnect();
+    compactEmailToolsSendTestObserver = null;
+  }
+  if (compactEmailToolsSendTestTimeout) {
+    clearTimeout(compactEmailToolsSendTestTimeout);
+    compactEmailToolsSendTestTimeout = null;
+  }
+}
+
+function resetCompactEmailToolsSendTestPending() {
+  clearCompactEmailToolsSendTestWait();
+  if (!compactEmailToolsSendTestPending) return;
+  const { item, spinner } = compactEmailToolsSendTestPending;
+  item.classList.remove('gem-recent-campaign-row-menu-item--duplicating');
+  item.removeAttribute('aria-busy');
+  if (spinner) spinner.hidden = true;
+  compactEmailToolsSendTestPending = null;
+}
+
+function isCompactEmailToolsSendTestPending() {
+  return compactEmailToolsSendTestPending != null;
+}
+
+function beginCompactEmailToolsSendTestPending(item, spinner) {
+  compactEmailToolsSendTestPending = { item, spinner };
+}
+
+function waitForTestEmailDialogThenCloseMenu() {
+  if (!compactEmailToolsSendTestPending) return;
+
+  const finish = () => {
+    if (!compactEmailToolsSendTestPending) return;
+    resetCompactEmailToolsSendTestPending();
+    closeCompactEmailToolsMenu();
+  };
+
+  if (isTestEmailDialogVisible()) {
+    finish();
+    return;
+  }
+
+  const dialogShell = getTestEmailDialogShell();
+  const observeTarget = dialogShell || document.documentElement || document.body;
+
+  compactEmailToolsSendTestObserver = new MutationObserver(() => {
+    if (isTestEmailDialogVisible()) finish();
+  });
+  compactEmailToolsSendTestObserver.observe(observeTarget, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['class']
+  });
+
+  compactEmailToolsSendTestTimeout = setTimeout(() => {
+    if (!compactEmailToolsSendTestPending) return;
+    resetCompactEmailToolsSendTestPending();
+    if (window.gemShowToast) {
+      window.gemShowToast('Test email dialog did not open.', { type: 'error' });
+    }
+  }, 30000);
+}
+
+function closeCompactEmailToolsMenu() {
+  resetCompactEmailToolsSendTestPending();
+  if (!openCompactEmailToolsMenu) return;
+  const { trigger, menu } = openCompactEmailToolsMenu;
+  menu.classList.remove('gem-recent-campaign-row-menu--open', 'gem-recent-campaign-row-menu--floating');
+  menu.style.removeProperty('top');
+  menu.style.removeProperty('left');
+  menu.style.removeProperty('visibility');
+  trigger.setAttribute('aria-expanded', 'false');
+  openCompactEmailToolsMenu = null;
+}
+
+function positionCompactEmailToolsMenu(wrap, menu) {
+  const trigger = wrap.querySelector('.gem-recent-campaign-row-menu-trigger');
+  if (!trigger) return;
+  menu.classList.add('gem-recent-campaign-row-menu--floating');
+  menu.style.visibility = 'hidden';
+  const triggerRect = trigger.getBoundingClientRect();
+  const menuRect = menu.getBoundingClientRect();
+  const gap = 4;
+  let top = triggerRect.bottom + gap;
+  let left = triggerRect.right - menuRect.width;
+  if (top + menuRect.height > window.innerHeight - 8) {
+    top = triggerRect.top - menuRect.height - gap;
+  }
+  left = Math.max(8, Math.min(left, window.innerWidth - menuRect.width - 8));
+  top = Math.max(8, Math.min(top, window.innerHeight - menuRect.height - 8));
+  menu.style.top = `${Math.round(top)}px`;
+  menu.style.left = `${Math.round(left)}px`;
+  menu.style.visibility = '';
+}
+
+function openCompactEmailToolsMenuAt(wrap) {
+  closeCompactEmailToolsMenu();
+  const trigger = wrap.querySelector('.gem-recent-campaign-row-menu-trigger');
+  const menu = wrap.querySelector('.gem-recent-campaign-row-menu');
+  if (!trigger || !menu) return;
+  menu.classList.add('gem-recent-campaign-row-menu--open');
+  trigger.setAttribute('aria-expanded', 'true');
+  positionCompactEmailToolsMenu(wrap, menu);
+  openCompactEmailToolsMenu = { wrap, trigger, menu };
+}
+
+function duplicateCompactEmailToolsCampaign(duplicateBtn, clickEvent) {
+  if (duplicateBtn.disabled || duplicateBtn.dataset.gemDuplicateState === 'busy') return;
+  if (typeof window.gemDuplicateCampaign !== 'function') {
+    if (window.gemShowToast) {
+      window.gemShowToast('Duplicate is unavailable on this page.', { type: 'error' });
+    }
+    return;
+  }
+
+  const campaignId = getCompactToolsCampaignId();
+  if (!campaignId) {
+    if (window.gemShowToast) {
+      window.gemShowToast('Missing campaign ID — cannot duplicate.', { type: 'error' });
+    }
+    return;
+  }
+
+  const openInBackground = !!(clickEvent && (clickEvent.ctrlKey || clickEvent.metaKey));
+  const sessionId = getCompactToolsSessionId();
+
+  duplicateBtn.disabled = true;
+  duplicateBtn.dataset.gemDuplicateState = 'busy';
+  duplicateBtn.classList.add('gem-recent-campaign-row-menu-item--duplicating');
+  duplicateBtn.setAttribute('aria-busy', 'true');
+  const spinner = duplicateBtn.querySelector('.gem-recent-campaign-duplicate-spinner');
+  if (spinner) spinner.hidden = false;
+
+  function resetBtn() {
+    duplicateBtn.disabled = false;
+    delete duplicateBtn.dataset.gemDuplicateState;
+    duplicateBtn.classList.remove('gem-recent-campaign-row-menu-item--duplicating');
+    duplicateBtn.removeAttribute('aria-busy');
+    if (spinner) spinner.hidden = true;
+  }
+
+  window.gemDuplicateCampaign(campaignId, sessionId).then((res) => {
+    if (!res || !res.ok || res.newCampaignId == null) {
+      resetBtn();
+      const reason = res && res.reason ? res.reason : 'unknown';
+      if (window.gemShowToast) {
+        window.gemShowToast(
+          reason === 'no_auth_token'
+            ? 'Could not obtain auth token. Try refreshing the page.'
+            : `Duplicate failed (${reason}).`,
+          { type: 'error' }
+        );
+      }
+      return;
+    }
+
+    try {
+      const url = new URL('/campaignmanager.php', window.location.origin);
+      if (sessionId) url.searchParams.set('session_id', sessionId);
+      url.searchParams.set('action', 'details');
+      url.searchParams.set('camp_id', String(res.newCampaignId));
+      const urlString = url.toString();
+
+      if (openInBackground) {
+        resetBtn();
+        closeCompactEmailToolsMenu();
+        try {
+          chrome.runtime.sendMessage({ action: 'openInNewTab', url: urlString, active: false });
+        } catch (_) {
+          window.open(urlString, '_blank');
+        }
+        return;
+      }
+
+      window.location.assign(urlString);
+    } catch (_) {
+      resetBtn();
+      if (window.gemShowToast) {
+        window.gemShowToast('Duplicate succeeded but navigation failed.', { type: 'error' });
+      }
+    }
+  });
+}
+
+function setupCompactEmailToolsOverflowMenu(dropdownContainer) {
+  if (!dropdownContainer || dropdownContainer.querySelector('.gem-compact-email-tools-menu-wrap')) {
+    return;
+  }
+
+  const wrap = document.createElement('div');
+  wrap.className = 'gem-compact-email-tools-menu-wrap';
+
+  const trigger = document.createElement('button');
+  trigger.type = 'button';
+  trigger.className = 'gem-recent-campaign-row-menu-trigger';
+  trigger.setAttribute('aria-haspopup', 'menu');
+  trigger.setAttribute('aria-expanded', 'false');
+  trigger.setAttribute('aria-label', 'Email tools options');
+
+  const menu = document.createElement('div');
+  menu.className = 'gem-recent-campaign-row-menu';
+  menu.setAttribute('role', 'menu');
+
+  function makeMenuItem(label) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'gem-recent-campaign-row-menu-item';
+    btn.setAttribute('role', 'menuitem');
+    btn.textContent = label;
+    return btn;
+  }
+
+  const sendTestItem = document.createElement('button');
+  sendTestItem.type = 'button';
+  sendTestItem.className = 'gem-recent-campaign-row-menu-item';
+  sendTestItem.setAttribute('role', 'menuitem');
+
+  const sendTestLabel = document.createElement('span');
+  sendTestLabel.textContent = 'Send a Test';
+
+  const sendTestSpinner = document.createElement('span');
+  sendTestSpinner.className = 'gem-recent-campaign-duplicate-spinner';
+  sendTestSpinner.setAttribute('aria-hidden', 'true');
+  sendTestSpinner.hidden = true;
+
+  sendTestItem.appendChild(sendTestLabel);
+  sendTestItem.appendChild(sendTestSpinner);
+
+  sendTestItem.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (sendTestItem.classList.contains('gem-recent-campaign-row-menu-item--duplicating')) return;
+
+    sendTestItem.classList.add('gem-recent-campaign-row-menu-item--duplicating');
+    sendTestItem.setAttribute('aria-busy', 'true');
+    sendTestSpinner.hidden = false;
+
+    // Block outside-click close before triggering Emarsys — programmatic .click() bubbles to document.
+    beginCompactEmailToolsSendTestPending(sendTestItem, sendTestSpinner);
+
+    if (!clickEmarsysTooltipAction('Testmail')) {
+      resetCompactEmailToolsSendTestPending();
+      return;
+    }
+
+    waitForTestEmailDialogThenCloseMenu();
+  });
+
+  const contactPreviewItem = makeMenuItem('Contact Preview');
+  contactPreviewItem.addEventListener('click', (e) => {
+    e.stopPropagation();
+    closeCompactEmailToolsMenu();
+    clickEmarsysTooltipAction('Contact Preview');
+  });
+
+  const inboxPreviewItem = makeMenuItem('Inbox Preview');
+  inboxPreviewItem.addEventListener('click', (e) => {
+    e.stopPropagation();
+    closeCompactEmailToolsMenu();
+    clickEmarsysTooltipAction('Inbox Preview');
+  });
+
+  const shareItem = makeMenuItem('Share');
+  shareItem.addEventListener('click', (e) => {
+    e.stopPropagation();
+    closeCompactEmailToolsMenu();
+    void copyRichTextCampaignLink();
+  });
+
+  const divider = document.createElement('div');
+  divider.className = 'gem-recent-campaign-row-menu-divider';
+  divider.setAttribute('role', 'separator');
+
+  const duplicateItem = document.createElement('button');
+  duplicateItem.type = 'button';
+  duplicateItem.className = 'gem-recent-campaign-row-menu-item';
+  duplicateItem.setAttribute('role', 'menuitem');
+
+  const duplicateLabel = document.createElement('span');
+  duplicateLabel.textContent = 'Duplicate';
+
+  const duplicateSpinner = document.createElement('span');
+  duplicateSpinner.className = 'gem-recent-campaign-duplicate-spinner';
+  duplicateSpinner.setAttribute('aria-hidden', 'true');
+  duplicateSpinner.hidden = true;
+
+  duplicateItem.appendChild(duplicateLabel);
+  duplicateItem.appendChild(duplicateSpinner);
+
+  duplicateItem.addEventListener('click', (e) => {
+    e.stopPropagation();
+    duplicateCompactEmailToolsCampaign(duplicateItem, e);
+  });
+
+  menu.appendChild(sendTestItem);
+  menu.appendChild(contactPreviewItem);
+  menu.appendChild(inboxPreviewItem);
+  menu.appendChild(shareItem);
+  menu.appendChild(divider);
+  menu.appendChild(duplicateItem);
+
+  trigger.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (menu.classList.contains('gem-recent-campaign-row-menu--open')) {
+      closeCompactEmailToolsMenu();
+    } else {
+      openCompactEmailToolsMenuAt(wrap);
+    }
+  });
+
+  wrap.appendChild(trigger);
+  wrap.appendChild(menu);
+  dropdownContainer.appendChild(wrap);
+
+  if (!compactEmailToolsMenuListenersInstalled) {
+    compactEmailToolsMenuListenersInstalled = true;
+    const handleCompactEmailToolsOutsidePointer = (e) => {
+      if (!openCompactEmailToolsMenu) return;
+      if (isCompactEmailToolsSendTestPending()) return;
+      if (openCompactEmailToolsMenu.wrap.contains(e.target)) return;
+      closeCompactEmailToolsMenu();
+    };
+    document.addEventListener('click', handleCompactEmailToolsOutsidePointer);
+    document.addEventListener('mousedown', handleCompactEmailToolsOutsidePointer);
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeCompactEmailToolsMenu();
+    });
+  }
+}
+
 function initializeCompactEmailTools() {
   console.log("[Gem] Initializing compact email tools dropdown");
 
@@ -65,6 +494,7 @@ function initializeCompactEmailTools() {
     });
 
     dropdownContainer.appendChild(selectElement);
+    setupCompactEmailToolsOverflowMenu(dropdownContainer);
     compactToolsDiv.appendChild(dropdownContainer);
 
     // Add the save button element

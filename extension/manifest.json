@@ -1,6 +1,6 @@
 {
   "name": "Gemma for Emarsys",
-  "version": "12.0.0",
+  "version": "12.5.0",
   "manifest_version": 3,
   "description": "Enhances the Emarsys email editor with a settings panel and more!",
   "permissions": ["storage", "tabs", "activeTab", "webNavigation"],
@@ -25,7 +25,7 @@
     {
       "matches": ["https://*.emarsys.net/*"], 
       "css": ["css--theme.css", "css--global-styles.css", "css--settings-panel.css"],
-      "js": ["debug-logging-gate.js", "emarsys-auth.js", "page-localstorage-guard.js", "platform.js", "highlight-terms-settings.js", "keyboard-shortcuts-modal.js", "settings-panel.js", "nav-menu-inject.js", "notes.js", "recent-campaigns.js", "storage-measurement.js", "welcome-modal.js"],
+      "js": ["debug-logging-gate.js", "emarsys-auth.js", "page-localstorage-guard.js", "platform.js", "highlight-terms-settings.js", "keyboard-shortcuts-modal.js", "theme-applier.js", "settings-panel.js", "nav-menu-inject.js", "notes.js", "recent-campaigns.js", "storage-measurement.js", "welcome-modal.js"],
       "run_at": "document_start"
     },
     {
@@ -54,9 +54,13 @@
       "run_at": "document_start"
     },
     {
-      "matches": ["https://suite8.emarsys.net/preview_fs.php?*camp_id=*"],
-      "css": ["css--preview-fs.css"],
-      "js": ["preview-fs.js"],
+      "matches": [
+        "https://*.emarsys.net/preview_fs.php?*camp_id=*",
+        "https://*.emarsys.net/bootstrap.php?*camp_id=*&*r=preview*",
+        "https://*.emarsys.net/bootstrap.php?*r=preview*&*camp_id=*"
+      ],
+      "css": ["css--theme.css", "css--global-styles.css", "css--preview-fs.css"],
+      "js": ["theme-applier.js", "preview-fs.js"],
       "all_frames": true,
       "run_at": "document_start"
     },

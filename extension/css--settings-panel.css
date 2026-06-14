@@ -38,6 +38,20 @@
   gap: 16px;
 }
 
+.gem-settings-header-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.gem-panel-shortcut-hint--on-primary {
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.62);
+  white-space: nowrap;
+}
+
 #gem-settings-body {
   padding: 20px 10px 0 20px;
   overflow-y: auto;

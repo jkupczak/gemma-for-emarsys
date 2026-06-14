@@ -1,7 +1,7 @@
 console.log("[gem] settings-panel.js LOADED in frame:", window.location.href);
 
 // ------------------------------------------------------------
-// Theme mode (Gemma vs Original) - applied as early as possible
+// Theme mode — applyGemThemeMode lives in theme-applier.js (loaded first)
 // ------------------------------------------------------------
 const GEM_THEME_MODE_STORAGE_KEY = "gemThemeMode";
 const GEM_THEME_MODE_LOCAL_KEY = "gemThemeMode";
@@ -25,6 +25,14 @@ const GEM_PREFLIGHT_URL_NEVER_CHECK_KEY = 'urlPreflightNeverCheck';
 const GEM_PREFLIGHT_ENABLE_LIVE_LINK_VERIFY_KEY = 'gemPreflightEnableLiveLinkVerify';
 const GEM_SHARED_LINK_AUTO_SELECT_KEY = 'gemSharedLinkAutoSelect';
 const GEM_PREFLIGHT_HIDE_LINKS_SECTION_KEY = 'gemPreflightHideLinksSection';
+const GEM_PREFLIGHT_ICON_PIP_TOGGLES_KEY = 'gemPreflightIconPipToggles';
+const GEM_PREFLIGHT_ICON_PIP_TOGGLES_DEFAULT = {
+  textAlerts: true,
+  missingAlt: true,
+  linkTitles: true,
+  linkLint: true,
+  imageWeight: true
+};
 const GEM_PREFLIGHT_DEFAULT_TOTAL_IMAGE_WEIGHT_THRESHOLD_VALUE = 3;
 const GEM_PREFLIGHT_DEFAULT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_VALUE = 2;
 const GEM_PREFLIGHT_DEFAULT_IMAGE_WEIGHT_THRESHOLD_UNIT = 'MB';
@@ -34,13 +42,9 @@ const GEM_SNIPPET_MAX_CHUNKS = 16;
 const GEM_FAVORITE_IMAGE_MAX_CHUNKS = 16;
 
 function normalizeGemThemeMode(value) {
-  if (value === "original") return "original";
-  if (value === "gemma-amethyst") return "gemma-amethyst";
-  if (value === "gemma-ruby") return "gemma-ruby";
-  if (value === "gemma-turquoise") return "gemma-turquoise";
-  if (value === "gemma-topaz") return "gemma-topaz";
-  if (value === "gemma-carnelian") return "gemma-carnelian";
-  return "gemma-amethyst"; // default
+  return typeof window.gemNormalizeThemeMode === "function"
+    ? window.gemNormalizeThemeMode(value)
+    : "gemma-amethyst";
 }
 
 // Order matches theme.css :root --token-*-default (lines 7-12)
@@ -64,40 +68,9 @@ function syncThemeSwatchUI(mode) {
   });
 }
 
-function applyGemThemeMode(mode, { persistLocal = false } = {}) {
-  const normalized = normalizeGemThemeMode(mode);
-  const html = document.documentElement;
-  if (!html) return;
-
-  // Remove all theme classes first
-  html.classList.remove("gem-theme-sapphire", "gem-theme-active", "gem-theme-amethyst", "gem-theme-ruby", "gem-theme-turquoise", "gem-theme-topaz", "gem-theme-carnelian");
-
-  if (normalized === "original") {
-    html.classList.add("gem-theme-sapphire");
-  } else {
-    // Apply gem theme active class for all gemma themes
-    html.classList.add("gem-theme-active");
-
-    // Apply specific theme class
-    if (normalized === "gemma-amethyst") {
-      html.classList.add("gem-theme-amethyst");
-    } else if (normalized === "gemma-ruby") {
-      html.classList.add("gem-theme-ruby");
-    } else if (normalized === "gemma-topaz") {
-      html.classList.add("gem-theme-topaz");
-    } else if (normalized === "gemma-turquoise") {
-      html.classList.add("gem-theme-turquoise");
-    } else if (normalized === "gemma-carnelian") {
-      html.classList.add("gem-theme-carnelian");
-    }
-  }
-
-  if (persistLocal) {
-    try {
-      localStorage.setItem(GEM_THEME_MODE_LOCAL_KEY, normalized);
-    } catch (e) {
-      // ignore
-    }
+function applyGemThemeMode(mode, opts) {
+  if (typeof window.gemApplyThemeMode === "function") {
+    window.gemApplyThemeMode(mode, opts);
   }
 }
 
@@ -109,25 +82,6 @@ function applyExpandedMode(enabled) {
   } catch (_) {
     // ignore
   }
-}
-
-// Apply from synchronous local cache first (minimize flash)
-try {
-  const cachedMode = localStorage.getItem(GEM_THEME_MODE_LOCAL_KEY);
-  applyGemThemeMode(cachedMode, { persistLocal: false });
-} catch (e) {
-  // ignore
-}
-
-// Then reconcile with chrome.storage.sync (source of truth)
-try {
-  if (chrome?.storage?.sync) {
-    chrome.storage.sync.get({ [GEM_THEME_MODE_STORAGE_KEY]: "gemma" }, (settings) => {
-      applyGemThemeMode(settings[GEM_THEME_MODE_STORAGE_KEY], { persistLocal: true });
-    });
-  }
-} catch (e) {
-  // ignore (prevents rare "extension context invalidated" crashes)
 }
 
 
@@ -706,7 +660,10 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
     panelEl.id = "gem-settings-panel";
     panelEl.innerHTML = `
       <div id="gem-settings-header">
-        Gemma Settings
+        <span class="gem-settings-header-title">
+          Gemma Settings
+          <span class="gem-panel-shortcut-hint gem-panel-shortcut-hint--on-primary">${typeof window.gemPanelShortcutLabel === "function" ? window.gemPanelShortcutLabel("G") : "[ CTRL + G ]"}</span>
+        </span>
         <div style="display: flex; flex-direction: row; gap: 16px; margin-left:auto">
           <div class="gem-welcome-link gem-border-hover-primary-600" style="border-radius: 8px; align-content: center; flex: 1; color: #fff; text-align: center; cursor: pointer; border: 1px solid #fff; padding: 0 12px;">
             <div style="font-size: 12px; font-weight: 600">
@@ -1101,6 +1058,49 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
             </p>
           </div>
         </div>
+        <div class="gem-setting-section" id="gem-settings-preflight-icon-alerts">
+          <h3>Preflight Icon Alerts</h3>
+          <div class="gem-setting">
+            <p class="sub-label">Choose which Preflight issues contribute to the badge count on the Preflight nav icon. Issues still appear in the Preflight panel regardless.</p>
+            <div class="gem-setting-group">
+              <div class="gem-e-switch-wrapper">
+                <label for="opt-preflight-pip-text-alerts">Text alerts</label>
+                <div class="gem-e-switch--fat e-switch">
+                  <input type="checkbox" class="e-switch__input" id="opt-preflight-pip-text-alerts" checked>
+                  <label class="e-switch__toggle" for="opt-preflight-pip-text-alerts"></label>
+                </div>
+              </div>
+              <div class="gem-e-switch-wrapper">
+                <label for="opt-preflight-pip-missing-alt">Linked images missing ALT text</label>
+                <div class="gem-e-switch--fat e-switch">
+                  <input type="checkbox" class="e-switch__input" id="opt-preflight-pip-missing-alt" checked>
+                  <label class="e-switch__toggle" for="opt-preflight-pip-missing-alt"></label>
+                </div>
+              </div>
+              <div class="gem-e-switch-wrapper">
+                <label for="opt-preflight-pip-link-titles">Links with title attributes</label>
+                <div class="gem-e-switch--fat e-switch">
+                  <input type="checkbox" class="e-switch__input" id="opt-preflight-pip-link-titles" checked>
+                  <label class="e-switch__toggle" for="opt-preflight-pip-link-titles"></label>
+                </div>
+              </div>
+              <div class="gem-e-switch-wrapper">
+                <label for="opt-preflight-pip-link-lint">Link lint issues</label>
+                <div class="gem-e-switch--fat e-switch">
+                  <input type="checkbox" class="e-switch__input" id="opt-preflight-pip-link-lint" checked>
+                  <label class="e-switch__toggle" for="opt-preflight-pip-link-lint"></label>
+                </div>
+              </div>
+              <div class="gem-e-switch-wrapper">
+                <label for="opt-preflight-pip-image-weight">Image weight alerts</label>
+                <div class="gem-e-switch--fat e-switch">
+                  <input type="checkbox" class="e-switch__input" id="opt-preflight-pip-image-weight" checked>
+                  <label class="e-switch__toggle" for="opt-preflight-pip-image-weight"></label>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
         <div class="gem-setting-section" id="gem-settings-preflight-url-never-check">
           <h3>Preflight Link Alerts</h3>
           <div class="gem-setting">
@@ -1348,6 +1348,42 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
     });
   }
 
+  function normalizePreflightIconPipToggles(raw) {
+    const src = raw && typeof raw === "object" ? raw : {};
+    return {
+      textAlerts: src.textAlerts !== false,
+      missingAlt: src.missingAlt !== false,
+      linkTitles: src.linkTitles !== false,
+      linkLint: src.linkLint !== false,
+      imageWeight: src.imageWeight !== false
+    };
+  }
+
+  function loadPreflightIconPipTogglesIntoUI(toggles) {
+    const normalized = normalizePreflightIconPipToggles(toggles);
+    const pairs = [
+      ["opt-preflight-pip-text-alerts", "textAlerts"],
+      ["opt-preflight-pip-missing-alt", "missingAlt"],
+      ["opt-preflight-pip-link-titles", "linkTitles"],
+      ["opt-preflight-pip-link-lint", "linkLint"],
+      ["opt-preflight-pip-image-weight", "imageWeight"]
+    ];
+    pairs.forEach(([id, key]) => {
+      const el = document.getElementById(id);
+      if (el) el.checked = normalized[key];
+    });
+  }
+
+  function readPreflightIconPipTogglesFromUI() {
+    return normalizePreflightIconPipToggles({
+      textAlerts: document.getElementById("opt-preflight-pip-text-alerts")?.checked,
+      missingAlt: document.getElementById("opt-preflight-pip-missing-alt")?.checked,
+      linkTitles: document.getElementById("opt-preflight-pip-link-titles")?.checked,
+      linkLint: document.getElementById("opt-preflight-pip-link-lint")?.checked,
+      imageWeight: document.getElementById("opt-preflight-pip-image-weight")?.checked
+    });
+  }
+
   function updatePreflightNeverCheckSummary(urls) {
     const summary = document.getElementById("gem-preflight-never-check-summary");
     if (!summary) return;
@@ -1467,7 +1503,8 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
         [GEM_PREFLIGHT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_VALUE_KEY]: GEM_PREFLIGHT_DEFAULT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_VALUE,
         [GEM_PREFLIGHT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_UNIT_KEY]: GEM_PREFLIGHT_DEFAULT_IMAGE_WEIGHT_THRESHOLD_UNIT,
         [GEM_PREFLIGHT_ENABLE_LIVE_LINK_VERIFY_KEY]: false,
-        [GEM_SHARED_LINK_AUTO_SELECT_KEY]: true
+        [GEM_SHARED_LINK_AUTO_SELECT_KEY]: true,
+        [GEM_PREFLIGHT_ICON_PIP_TOGGLES_KEY]: GEM_PREFLIGHT_ICON_PIP_TOGGLES_DEFAULT
       }, (settings) => {
         syncThemeSwatchUI(settings[GEM_THEME_MODE_STORAGE_KEY]);
 
@@ -1547,6 +1584,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
         if (preflightSingularUnitEl) preflightSingularUnitEl.value = (settings[GEM_PREFLIGHT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_UNIT_KEY] || GEM_PREFLIGHT_DEFAULT_IMAGE_WEIGHT_THRESHOLD_UNIT) === 'KB' ? 'KB' : 'MB';
         const preflightLiveVerifyEnabledEl = document.getElementById("opt-preflight-enable-live-link-verify");
         if (preflightLiveVerifyEnabledEl) preflightLiveVerifyEnabledEl.checked = settings[GEM_PREFLIGHT_ENABLE_LIVE_LINK_VERIFY_KEY] === true;
+        loadPreflightIconPipTogglesIntoUI(settings[GEM_PREFLIGHT_ICON_PIP_TOGGLES_KEY]);
 
         const sharedLinkAutoSelectEl = document.getElementById("opt-shared-link-auto-select");
         if (sharedLinkAutoSelectEl) sharedLinkAutoSelectEl.checked = settings[GEM_SHARED_LINK_AUTO_SELECT_KEY] !== false;
@@ -1686,6 +1724,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
               (document.getElementById("opt-preflight-singular-image-weight-threshold-unit")?.value === 'KB') ? 'KB' : 'MB',
             [GEM_PREFLIGHT_ENABLE_LIVE_LINK_VERIFY_KEY]:
               document.getElementById("opt-preflight-enable-live-link-verify")?.checked ?? false,
+            [GEM_PREFLIGHT_ICON_PIP_TOGGLES_KEY]: readPreflightIconPipTogglesFromUI(),
             [GEM_SHARED_LINK_AUTO_SELECT_KEY]:
               document.getElementById("opt-shared-link-auto-select")?.checked ?? true
           };
@@ -1856,6 +1895,11 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
       "opt-preflight-singular-image-weight-threshold-value",
       "opt-preflight-singular-image-weight-threshold-unit",
       "opt-preflight-enable-live-link-verify",
+      "opt-preflight-pip-text-alerts",
+      "opt-preflight-pip-missing-alt",
+      "opt-preflight-pip-link-titles",
+      "opt-preflight-pip-link-lint",
+      "opt-preflight-pip-image-weight",
       "opt-shared-link-auto-select"
     ];
 
@@ -2579,6 +2623,9 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
     if (changes[GEM_PREFLIGHT_ENABLE_LIVE_LINK_VERIFY_KEY]) {
       const el = document.getElementById("opt-preflight-enable-live-link-verify");
       if (el) el.checked = changes[GEM_PREFLIGHT_ENABLE_LIVE_LINK_VERIFY_KEY].newValue === true;
+    }
+    if (changes[GEM_PREFLIGHT_ICON_PIP_TOGGLES_KEY]) {
+      loadPreflightIconPipTogglesIntoUI(changes[GEM_PREFLIGHT_ICON_PIP_TOGGLES_KEY].newValue);
     }
   });
 
