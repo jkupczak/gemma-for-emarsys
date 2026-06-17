@@ -7,55 +7,20 @@
   const LOAD_ALL_TOAST_DURATION_MS = 8400;
 
   function showLoadAllToast() {
-    if (typeof window.gemShowToast === 'function') {
-      window.gemShowToast(LOAD_ALL_TOAST_MESSAGE, { type: 'info', durationMs: LOAD_ALL_TOAST_DURATION_MS / 2 });
-      return;
+    if (typeof window.gemShowToast === "function") {
+      window.gemShowToast(LOAD_ALL_TOAST_MESSAGE, { type: "info", durationMs: LOAD_ALL_TOAST_DURATION_MS / 2 });
     }
+  }
 
-    try {
-      let container = document.getElementById('gem-toast-container');
-      if (!container) {
-        container = document.createElement('div');
-        container.id = 'gem-toast-container';
-        container.style.position = 'fixed';
-        container.style.right = '16px';
-        container.style.bottom = '16px';
-        container.style.zIndex = '100000';
-        container.style.display = 'flex';
-        container.style.flexDirection = 'column';
-        container.style.gap = '10px';
-        container.style.pointerEvents = 'none';
-        document.body.appendChild(container);
-      }
-
-      const toast = document.createElement('div');
-      toast.style.pointerEvents = 'none';
-      toast.style.padding = '10px 12px';
-      toast.style.borderRadius = '10px';
-      toast.style.boxShadow = '0 10px 30px rgba(0,0,0,0.20)';
-      toast.style.border = '1px solid var(--token-box-default-border, rgba(0,0,0,0.12))';
-      toast.style.borderLeft = '4px solid var(--token-blue-600, #2563eb)';
-      toast.style.background = 'var(--token-box-default-background, #fff)';
-      toast.style.color = 'var(--token-font-default, #111)';
-      toast.style.fontSize = '13px';
-      toast.style.maxWidth = '420px';
-      toast.style.opacity = '0';
-      toast.style.transform = 'translateY(6px)';
-      toast.style.transition = 'opacity 140ms ease, transform 140ms ease';
-      toast.textContent = LOAD_ALL_TOAST_MESSAGE;
-      container.appendChild(toast);
-
-      requestAnimationFrame(() => {
-        toast.style.opacity = '1';
-        toast.style.transform = 'translateY(0)';
-      });
-
-      setTimeout(() => {
-        toast.style.opacity = '0';
-        toast.style.transform = 'translateY(6px)';
-        setTimeout(() => toast.remove(), 180);
-      }, LOAD_ALL_TOAST_DURATION_MS);
-    } catch (_) {}
+  function showDuplicateCampaignError(res) {
+    if (typeof window.gemShowToast !== "function") return;
+    const reason = res && res.reason ? res.reason : "unknown";
+    window.gemShowToast(
+      reason === "no_auth_token"
+        ? "Could not obtain auth token. Try refreshing the page."
+        : `Duplicate failed (${reason}).`,
+      { type: "error" }
+    );
   }
 
   function querySelectorIncludingShadow(selector, root = document) {
@@ -332,6 +297,7 @@
       otherRecentMutationRafId = 0;
       scheduleOtherRecentCampaignScrape("grid-dom-mutation");
       scheduleCampaignListOverflowMenuInject(0);
+      if (listPreviewOpen) syncListPreviewActiveRowIfNeeded();
     });
   }
 
@@ -897,12 +863,67 @@
 
   // ── Campaign list row: overflow menu ─────────────────────────────────────────
   const GEM_LIST_ROW_MENU_CLASS = "gem-campaign-list-row-menu-wrap";
+  const OVERFLOW_TOGGLES_KEY = "gemEmailCampaignListOverflowToggles";
+  const OVERFLOW_TOGGLES_DEFAULT = {
+    editTranslations: true,
+    distribute: true
+  };
+  let overflowMenuToggles = { ...OVERFLOW_TOGGLES_DEFAULT };
   const ROW_ACTIONS_SELECTOR = ".e-datagrid__item_actions.e-inputgroup.e-inputgroup-inline";
   const ROW_ACTIONS_SELECTOR_ALT = ".e-table__col.e-table__col.e-table__col-actions > div[class]";
 
   /** @type {{ wrap: HTMLElement, trigger: HTMLButtonElement, menu: HTMLElement } | null} */
   let openCampaignListRowMenu = null;
   let campaignListRowMenuListenersInstalled = false;
+
+  function normalizeOverflowMenuToggles(toggles) {
+    const src = toggles && typeof toggles === "object" ? toggles : {};
+    return {
+      editTranslations: src.editTranslations !== false,
+      distribute: src.distribute !== false
+    };
+  }
+
+  function removeCampaignListOverflowMenus() {
+    document.querySelectorAll(`.${GEM_LIST_ROW_MENU_CLASS}`).forEach((el) => el.remove());
+  }
+
+  function reloadCampaignListOverflowMenus() {
+    closeCampaignListRowMenu();
+    removeCampaignListOverflowMenus();
+    runCampaignListOverflowMenuInjectOnce();
+  }
+
+  function loadOverflowMenuToggles(done) {
+    if (typeof chrome === "undefined" || !chrome.storage || !chrome.storage.sync) {
+      overflowMenuToggles = normalizeOverflowMenuToggles(OVERFLOW_TOGGLES_DEFAULT);
+      if (typeof done === "function") done();
+      return;
+    }
+    chrome.storage.sync.get({ [OVERFLOW_TOGGLES_KEY]: OVERFLOW_TOGGLES_DEFAULT }, (res) => {
+      overflowMenuToggles = normalizeOverflowMenuToggles(res && res[OVERFLOW_TOGGLES_KEY]);
+      if (typeof done === "function") done();
+    });
+  }
+
+  function initCampaignListOverflowMenuToggles(onReady) {
+    loadOverflowMenuToggles(() => {
+      if (typeof onReady === "function") onReady();
+    });
+    if (typeof chrome === "undefined" || !chrome.storage || !chrome.storage.onChanged) return;
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area !== "sync" || !changes[OVERFLOW_TOGGLES_KEY]) return;
+      overflowMenuToggles = normalizeOverflowMenuToggles(changes[OVERFLOW_TOGGLES_KEY].newValue);
+      reloadCampaignListOverflowMenus();
+    });
+  }
+
+  function appendCampaignListRowMenuDivider(menu) {
+    const divider = document.createElement("div");
+    divider.className = "gem-recent-campaign-row-menu-divider";
+    divider.setAttribute("role", "separator");
+    menu.appendChild(divider);
+  }
 
   function getListPageSessionId() {
     try {
@@ -986,9 +1007,46 @@
     return href.includes("action=content");
   }
 
+  function getGoToReportingLinkFromRow(row) {
+    if (!row || !row.querySelector) return null;
+    return (
+      row.querySelector('e-tooltip[content="Go to Reporting"] a.e-datagrid__item_action[href]') ||
+      row.querySelector('e-tooltip[content="Go to Reporting"] a[href]')
+    );
+  }
+
+  function getRowTooltipButtonFromRow(row, tooltipContent) {
+    if (!row || !row.querySelector) return null;
+    const content = String(tooltipContent || "").trim();
+    if (!content) return null;
+    return row.querySelector(`e-tooltip[content="${content}"] button`);
+  }
+
+  function getDeleteButtonFromRow(row) {
+    return (
+      getRowTooltipButtonFromRow(row, "Delete") ||
+      (row && row.querySelector('button.e-datagrid__item_action[aria-label="Delete"]'))
+    );
+  }
+
+  function triggerRowTooltipAction(row, tooltipContent, actionLabel) {
+    closeCampaignListRowMenu();
+    const btn = getRowTooltipButtonFromRow(row, tooltipContent);
+    if (btn) {
+      btn.click();
+      return true;
+    }
+    console.warn(
+      `[Gemma email-campaign-list] ${actionLabel} menu item: native button not found for row`,
+      tooltipContent
+    );
+    return false;
+  }
+
   function buildCampaignListRowOverflowMenu(campaignId, menuOpts) {
     const opts = menuOpts && typeof menuOpts === "object" ? menuOpts : {};
     const showEditContent = opts.showEditContent === true;
+    const row = opts.row || null;
     const wrap = document.createElement("div");
     wrap.className = GEM_LIST_ROW_MENU_CLASS;
 
@@ -1045,6 +1103,21 @@
       window.location.assign(url);
     }
 
+    if (getGoToReportingLinkFromRow(row)) {
+      const reportingItem = makeMenuItem("Reporting");
+      reportingItem.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const link = getGoToReportingLinkFromRow(row);
+        const href = link ? String(link.getAttribute("href") || "").trim() : "";
+        if (!href) {
+          console.warn("[Gemma email-campaign-list] Reporting menu item: native link not found for row");
+          return;
+        }
+        navigateCampaignUrl(new URL(href, window.location.origin).toString(), e);
+      });
+      menu.appendChild(reportingItem);
+    }
+
     const switchItem = makeMenuItem("Switch to tab");
     switchItem.classList.add("gem-recent-campaign-row-menu-item--hidden");
     switchItem.addEventListener("click", (e) => {
@@ -1073,10 +1146,18 @@
       menu.appendChild(editContentItem);
     }
 
-    const divider = document.createElement("div");
-    divider.className = "gem-recent-campaign-row-menu-divider";
-    divider.setAttribute("role", "separator");
-    menu.appendChild(divider);
+    if (overflowMenuToggles.editTranslations) {
+      const translationsItem = makeMenuItem("Edit Translations");
+      translationsItem.addEventListener("click", (e) => {
+        e.stopPropagation();
+        triggerRowTooltipAction(row, "Edit Translations", "Edit Translations");
+      });
+      menu.appendChild(translationsItem);
+    }
+
+    const showDistribute = overflowMenuToggles.distribute;
+
+    appendCampaignListRowMenuDivider(menu);
 
     const duplicateItem = document.createElement("button");
     duplicateItem.type = "button";
@@ -1109,6 +1190,7 @@
           duplicateItem.disabled = false;
           delete duplicateItem.dataset.gemState;
           dupSpinner.hidden = true;
+          showDuplicateCampaignError(res);
           return;
         }
         const newUrl = new URL("/campaignmanager.php", window.location.origin);
@@ -1121,6 +1203,25 @@
       });
     });
     menu.appendChild(duplicateItem);
+
+    appendCampaignListRowMenuDivider(menu);
+
+    if (showDistribute) {
+      const distributeItem = makeMenuItem("Distribute");
+      distributeItem.addEventListener("click", (e) => {
+        e.stopPropagation();
+        triggerRowTooltipAction(row, "Distribute a copy to another account", "Distribute");
+      });
+      menu.appendChild(distributeItem);
+    }
+
+    const deleteItem = makeMenuItem("Delete");
+    deleteItem.classList.add("gem-campaign-list-row-menu-item--danger");
+    deleteItem.addEventListener("click", (e) => {
+      e.stopPropagation();
+      triggerRowTooltipAction(row, "Delete", "Delete");
+    });
+    menu.appendChild(deleteItem);
 
     trigger.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -1165,7 +1266,8 @@
       if (!campaignId) return;
 
       actionsEl.appendChild(buildCampaignListRowOverflowMenu(campaignId, {
-        showEditContent: rowHasEditContentAction(actionsEl)
+        showEditContent: rowHasEditContentAction(actionsEl),
+        row
       }));
     });
   }
@@ -1203,7 +1305,355 @@
     });
   }
 
+  function getCampaignListTableHeaderRow(table) {
+    if (!table || !table.querySelector) return null;
+    return (
+      table.querySelector("thead tr.e-table__titles") ||
+      table.querySelector("thead tr.e-datagrid__row") ||
+      table.querySelector("thead tr.e-table__row") ||
+      table.querySelector("thead tr")
+    );
+  }
+
+  function getCampaignListTableEmailColumnIndex(table) {
+    const theadRow = getCampaignListTableHeaderRow(table);
+    if (!theadRow) return -1;
+    const allTh = Array.from(theadRow.querySelectorAll("th"));
+    const headerCellsFiltered = Array.from(theadRow.querySelectorAll("th.e-datagrid__column_header"));
+    const headerThs = allTh.length ? allTh : headerCellsFiltered;
+    return headerThs.findIndex((th) => {
+      const titleEl = th.querySelector(".e-datagrid__column_header_title");
+      const txt = ((titleEl && titleEl.textContent) || th.textContent || "").trim();
+      const norm = txt.toLowerCase().replace(/\s+/g, " ").trim();
+      return headerLabelMatchesEmailColumn(norm);
+    });
+  }
+
+  function getCampaignListBodyRows(table) {
+    if (!table || !table.querySelectorAll) return [];
+    let bodyRows = table.querySelectorAll("tbody tr.e-datagrid__row");
+    if (!bodyRows.length) bodyRows = table.querySelectorAll("tbody tr.e-table__row");
+    if (!bodyRows.length) bodyRows = table.querySelectorAll("tbody tr");
+    return Array.from(bodyRows);
+  }
+
+  function getCampaignIdFromRow(row) {
+    if (!row) return "";
+    let id = parseCampaignIdFromEditHref(getEditContentHrefFromRow(row));
+    if (!id) id = parseCampaignIdFromHiddenIdCell(row);
+    return String(id || "").trim();
+  }
+
+  function getEmailNameFromRow(row, emailIdx) {
+    if (!row || emailIdx < 0) return "";
+    const cols = row.querySelectorAll("td.e-table__col");
+    const titleCell = cols[emailIdx];
+    if (!titleCell || cellHasLoadingSkeleton(titleCell)) return "";
+    return String(titleCell.textContent || "").trim();
+  }
+
+  function getCampaignFromPreviewButton(btn) {
+    const row = btn && btn.closest ? btn.closest("tr") : null;
+    if (!row) return { id: "", title: "" };
+    const table = row.closest("table");
+    const emailIdx = table ? getCampaignListTableEmailColumnIndex(table) : -1;
+    const id = getCampaignIdFromRow(row);
+    const title = getEmailNameFromRow(row, emailIdx);
+    return { id, title };
+  }
+
+  const CAMPAIGN_LIST_ROOT_SELECTOR = '#email-campaign-list';
+  const CAMPAIGN_LIST_PREVIEW_PANEL_ID = 'gem-campaign-list-preview-panel';
+  const LIST_PREVIEW_FS_CONTEXT = 'emailCampaignList';
+  const LIST_PREVIEW_ACTIVE_ROW_CLASS = 'gem-campaign-list-row--preview-active';
+  const PREVIEW_BUTTON_SELECTOR = 'button[aria-label="Preview"]';
+  const PREVIEW_PANEL_LOG = '[Gemma email-campaign-list][preview-panel]';
+  const LIST_PREVIEW_LOADING_TIMEOUT_MS = 45000;
+  let previewPanelClickHookInstalled = false;
+  let listPreviewOpen = false;
+  let listPreviewCampaignId = "";
+  /** @type {ReturnType<typeof setTimeout> | null} */
+  let listPreviewLoadingTimer = null;
+
+  function previewPanelDbg(...args) {
+    console.log(PREVIEW_PANEL_LOG, ...args);
+  }
+
+  function findCampaignListRoot() {
+    return (
+      document.querySelector(CAMPAIGN_LIST_ROOT_SELECTOR) ||
+      querySelectorIncludingShadow(CAMPAIGN_LIST_ROOT_SELECTOR)
+    );
+  }
+
+  function getPreviewButtonFromEventTarget(target) {
+    if (!target || target.nodeType !== Node.ELEMENT_NODE) return null;
+    return target.closest(PREVIEW_BUTTON_SELECTOR);
+  }
+
+  function getListPreviewPanel() {
+    return document.getElementById(CAMPAIGN_LIST_PREVIEW_PANEL_ID);
+  }
+
+  function buildListPreviewIframeUrl(campaignId) {
+    const id = String(campaignId || "").trim();
+    if (!id) return "";
+    const url = new URL("/preview_fs.php", window.location.origin);
+    const sid = getListPageSessionId();
+    if (sid) url.searchParams.set("session_id", sid);
+    url.searchParams.set("camp_id", id);
+    url.searchParams.set("gem_preview_context", LIST_PREVIEW_FS_CONTEXT);
+    return url.toString();
+  }
+
+  function findCampaignListRowByCampaignId(campaignId) {
+    const id = String(campaignId || "").trim();
+    if (!id) return null;
+    const table = findCampaignListEditLinksTable() || findCampaignListTableQuiet();
+    if (!table) return null;
+    for (const row of getCampaignListBodyRows(table)) {
+      if (getCampaignIdFromRow(row) === id) return row;
+    }
+    return null;
+  }
+
+  function listPreviewActiveRowIsSynced(scope) {
+    const root = scope || findCampaignListRoot() || document;
+    const marked = root.querySelectorAll(`tr.${LIST_PREVIEW_ACTIVE_ROW_CLASS}`);
+
+    if (!listPreviewOpen || !listPreviewCampaignId) {
+      return marked.length === 0;
+    }
+
+    const row = findCampaignListRowByCampaignId(listPreviewCampaignId);
+    if (!row) return marked.length === 0;
+    return marked.length === 1 && marked[0] === row;
+  }
+
+  function syncListPreviewActiveRowIfNeeded() {
+    const scope = findCampaignListRoot() || document;
+    if (listPreviewActiveRowIsSynced(scope)) return;
+    syncListPreviewActiveRow();
+  }
+
+  function syncListPreviewActiveRow() {
+    const scope = findCampaignListRoot() || document;
+
+    if (!listPreviewOpen || !listPreviewCampaignId) {
+      scope.querySelectorAll(`tr.${LIST_PREVIEW_ACTIVE_ROW_CLASS}`).forEach((row) => {
+        row.classList.remove(LIST_PREVIEW_ACTIVE_ROW_CLASS);
+      });
+      return;
+    }
+
+    const row = findCampaignListRowByCampaignId(listPreviewCampaignId);
+    const marked = scope.querySelectorAll(`tr.${LIST_PREVIEW_ACTIVE_ROW_CLASS}`);
+
+    if (row && marked.length === 1 && marked[0] === row) {
+      return;
+    }
+
+    marked.forEach((activeRow) => {
+      if (activeRow !== row) activeRow.classList.remove(LIST_PREVIEW_ACTIVE_ROW_CLASS);
+    });
+
+    if (row && !row.classList.contains(LIST_PREVIEW_ACTIVE_ROW_CLASS)) {
+      row.classList.add(LIST_PREVIEW_ACTIVE_ROW_CLASS);
+    }
+  }
+
+  function showListPreviewLoadingOverlay() {
+    const panel = getListPreviewPanel();
+    if (!panel) return;
+    const overlay = panel.querySelector(".gem-campaign-list-preview-loading");
+    if (overlay) overlay.hidden = false;
+    if (listPreviewLoadingTimer) clearTimeout(listPreviewLoadingTimer);
+    listPreviewLoadingTimer = setTimeout(hideListPreviewLoadingOverlay, LIST_PREVIEW_LOADING_TIMEOUT_MS);
+  }
+
+  function hideListPreviewLoadingOverlay() {
+    if (listPreviewLoadingTimer) {
+      clearTimeout(listPreviewLoadingTimer);
+      listPreviewLoadingTimer = null;
+    }
+    const panel = getListPreviewPanel();
+    if (!panel) return;
+    const overlay = panel.querySelector(".gem-campaign-list-preview-loading");
+    if (overlay) overlay.hidden = true;
+  }
+
+  function syncListPreviewUi() {
+    const panel = getListPreviewPanel();
+    if (!panel) return;
+    const iframe = panel.querySelector(".gem-campaign-list-preview-iframe");
+    const listRoot = findCampaignListRoot();
+
+    panel.classList.toggle("gem-campaign-list-preview-panel--open", listPreviewOpen);
+    if (listRoot) {
+      listRoot.classList.toggle("gem-email-campaign-list-preview-open", listPreviewOpen);
+    }
+
+    if (listPreviewOpen) {
+      if (iframe && listPreviewCampaignId) {
+        const nextSrc = buildListPreviewIframeUrl(listPreviewCampaignId);
+        if (iframe.getAttribute("src") !== nextSrc) {
+          showListPreviewLoadingOverlay();
+          iframe.setAttribute("src", nextSrc);
+        }
+      }
+    }
+
+    syncListPreviewActiveRow();
+  }
+
+  function openListPreview(campaignId) {
+    const id = String(campaignId || "").trim();
+    if (!id) return false;
+    listPreviewOpen = true;
+    listPreviewCampaignId = id;
+    syncListPreviewUi();
+    return true;
+  }
+
+  function closeListPreview() {
+    if (!listPreviewOpen) return false;
+    listPreviewOpen = false;
+    listPreviewCampaignId = "";
+    hideListPreviewLoadingOverlay();
+    syncListPreviewUi();
+    const panel = getListPreviewPanel();
+    const iframe = panel?.querySelector(".gem-campaign-list-preview-iframe");
+    if (iframe) iframe.removeAttribute("src");
+    return true;
+  }
+
+  function getLaunchMonitoringFromEventTarget(target) {
+    if (!target || target.nodeType !== Node.ELEMENT_NODE) return null;
+    return target.closest('e-tooltip[content="Launch Monitoring"]');
+  }
+
+  function handleLaunchMonitoringClick(ev) {
+    if (!listPreviewOpen) return;
+    if (!getLaunchMonitoringFromEventTarget(ev.target)) return;
+    closeListPreview();
+  }
+
+  function ensureListPreviewPanelChrome(panel) {
+    if (!panel) return;
+
+    panel.querySelector(".gem-campaign-list-preview-toolbar")?.remove();
+
+    if (!panel.querySelector(".gem-campaign-list-preview-iframe-wrap")) {
+      panel.innerHTML = `
+        <div class="gem-campaign-list-preview-iframe-wrap">
+          <iframe class="gem-campaign-list-preview-iframe" title="Campaign preview"></iframe>
+          <div class="gem-campaign-list-preview-loading" hidden aria-hidden="true">
+            <div class="gem-campaign-list-preview-loading-spinner" aria-hidden="true"></div>
+          </div>
+        </div>
+      `.trim();
+    }
+
+    const iframe = panel.querySelector(".gem-campaign-list-preview-iframe");
+    if (iframe && !iframe.dataset.gemLoadListener) {
+      iframe.dataset.gemLoadListener = "1";
+      iframe.addEventListener("load", hideListPreviewLoadingOverlay);
+    }
+  }
+
+  function ensureCampaignListPreviewPanel(listRoot) {
+    if (!listRoot) return null;
+
+    let panel = getListPreviewPanel();
+    if (panel) {
+      if (!listRoot.contains(panel)) listRoot.appendChild(panel);
+      ensureListPreviewPanelChrome(panel);
+      return panel;
+    }
+
+    panel = document.createElement("div");
+    panel.id = CAMPAIGN_LIST_PREVIEW_PANEL_ID;
+    listRoot.appendChild(panel);
+    ensureListPreviewPanelChrome(panel);
+    return panel;
+  }
+
+  function handlePreviewButtonClick(ev, btn) {
+    ev.preventDefault();
+    ev.stopPropagation();
+
+    const { id } = getCampaignFromPreviewButton(btn);
+    if (!id) {
+      previewPanelDbg("Preview clicked but campaign ID could not be resolved from row");
+      return;
+    }
+
+    const listRoot = findCampaignListRoot();
+    if (!listRoot) {
+      previewPanelDbg("Preview clicked but #email-campaign-list was not found");
+      return;
+    }
+
+    ensureCampaignListPreviewPanel(listRoot);
+    openListPreview(id);
+  }
+
+  function shouldIgnorePreviewRowClick(target) {
+    if (!target || target.nodeType !== Node.ELEMENT_NODE) return true;
+    if (target.closest(`.${GEM_LIST_ROW_MENU_CLASS}, .gem-recent-campaign-row-menu`)) return true;
+    if (target.closest("button, a")) return true;
+    return false;
+  }
+
+  function handleCampaignListRowPreviewClick(ev) {
+    if (!listPreviewOpen) return;
+    if (shouldIgnorePreviewRowClick(ev.target)) return;
+
+    const row = ev.target.closest("tr");
+    if (!row || !row.closest("tbody") || !row.closest(CAMPAIGN_LIST_ROOT_SELECTOR)) return;
+
+    const id = getCampaignIdFromRow(row);
+    if (!id || id === listPreviewCampaignId) return;
+
+    openListPreview(id);
+  }
+
+  function initCampaignListPreviewPanel() {
+    if (previewPanelClickHookInstalled) return;
+    previewPanelClickHookInstalled = true;
+    document.addEventListener(
+      "click",
+      (ev) => {
+        const btn = getPreviewButtonFromEventTarget(ev.target);
+        if (!btn) return;
+        handlePreviewButtonClick(ev, btn);
+      },
+      true
+    );
+    document.addEventListener("click", handleCampaignListRowPreviewClick);
+    document.addEventListener("click", handleLaunchMonitoringClick);
+  }
+
+  window.gemDebugCampaignListPreviewPanel = function gemDebugCampaignListPreviewPanel() {
+    const listRoot = findCampaignListRoot();
+    if (!listRoot) {
+      return { ok: false, reason: "list-root-not-found" };
+    }
+    const panel = ensureCampaignListPreviewPanel(listRoot);
+    if (listPreviewCampaignId) openListPreview(listPreviewCampaignId);
+    return {
+      ok: !!panel,
+      listRootId: listRoot.id,
+      panelPresent: !!getListPreviewPanel(),
+      listPreviewOpen,
+      listPreviewCampaignId
+    };
+  };
+
   init();
   initOtherRecentCampaignsScraper();
-  initCampaignListOverflowMenus();
+  initCampaignListOverflowMenuToggles(() => {
+    initCampaignListOverflowMenus();
+  });
+  initCampaignListPreviewPanel();
 })();

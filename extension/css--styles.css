@@ -1158,6 +1158,91 @@ gem-preflight .gem-preflight-settings-btn.e-btn {
     z-index: 2;
 }
 
+.gem-lang-preflight-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 16px;
+    height: 16px;
+    margin-left: 8px;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: var(--token-red-600, #dc2626);
+    color: #fff;
+    font-size: 10px;
+    line-height: 1;
+    font-weight: 700;
+    vertical-align: middle;
+    flex: 0 0 auto;
+}
+
+.gem-lang-preflight-badge--trigger {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    margin-left: 0;
+    box-shadow: 0 0 0 2px var(--token-box-default-background, #fff);
+}
+
+vce-languages-selector .e-selectnew[role="button"] {
+    position: relative;
+}
+
+.gem-seen-details-width-note {
+    margin-top: 4px;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--token-font-muted, #666);
+}
+
+.gem-preflight-language-overview-table {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+.gem-preflight-language-overview-head,
+.gem-preflight-language-overview-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) 72px 108px;
+    gap: 8px;
+    align-items: center;
+    padding: 8px 10px;
+}
+
+.gem-preflight-language-overview-head {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--token-font-muted, #666);
+    border-bottom: 1px solid var(--token-box-default-border);
+}
+
+.gem-preflight-language-overview-row {
+    font-size: 13px;
+    border-bottom: 1px solid var(--token-box-default-border);
+}
+
+.gem-preflight-language-overview-row--current {
+    background: var(--token-action-selected-background, rgba(0, 0, 0, 0.04));
+}
+
+.gem-preflight-language-overview-row--alert .gem-preflight-language-overview-cell--count {
+    color: var(--token-red-600, #dc2626);
+    font-weight: 700;
+}
+
+.gem-preflight-language-overview-current {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 600;
+    background: var(--token-button-highlight-background, #6d28d9);
+    color: var(--token-button-highlight-text, #fff);
+    vertical-align: middle;
+}
+
 gem-preflight .gem-preflight-metrics {
     border: 1px solid var(--token-box-default-border);
     border-radius: 8px;

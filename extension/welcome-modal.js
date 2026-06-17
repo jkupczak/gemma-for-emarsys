@@ -20,7 +20,7 @@ function createWelcomeModalHTML() {
           <h3>Feature List</h3>
           <ul class="gem-welcome-modal-features">
             <li><b>Drag-and-Drop Snippets</b> Drag and drop custom ESL snippets into your email editor. Create, edit, pin, categorize, and delete snippets from the Snippets tab in the vertical navigation. You can also import and export snippets as shareable JSON.</li>
-            <li><b>Fullscreen Email Editing</b> Go fullscreen for a bigger view of your email. Use the purple expand icon in the bottom left of the email editor to modify your layout. This increases the total viewable area of your email by over 40%!</li>
+            <li><b>Fullscreen Email Editing</b> Go fullscreen for a bigger view of your email. Use the purple expand icon in the bottom left of the email editor to modify your layout, or press ${typeof window.GEM_MOD_KEY !== 'undefined' ? window.GEM_MOD_KEY : 'CTRL'}+Shift+F. This increases the total viewable area of your email by over 40%!</li>
             <li>
               <b>Convert ESL to Tokens</b> Instantly <b>convert plain text ESL into ESL tokens</b> by clicking the convert icon <span class="gem-e-icon"></span> wherever you see it.
             </li>
@@ -28,19 +28,21 @@ function createWelcomeModalHTML() {
               <b>Keyword Swapping</b> You can now quickly swap keywords you define with your own custom snippets. Click the swap icon <span class="gem-e-icon">&#xF0DE;</span> in the content block toolbar, the preheader box, or the subject line to swap matching keywords with their corresponding snippets.
             </li>
             <li>
-              <b>Block Targeting Previews</b> Quickly see at a glance whether a block is targeting a specific audience or not with handly overlays that wrap around your blocks. You can also toggle this from the email preview toolbar.
+              <b>Block Targeting Previews</b> Quickly see at a glance whether a block is targeting a specific audience or not with handy overlays that wrap around your blocks. You can also toggle this from the email preview toolbar.
             </li>
-            <li><b>Rich Paste</b> Bold? Italics? You got it! Normally styled text that you copy and paste into your emails are reformatted to plain text. But not anymore! Gemma preserves bold, italics, underlines, links and more when copying and pasting from outside sources, or even from one content block to another.</li>
-            <li><b>Image Picker</b> When adding an image to your email you'll now get a preview of it right next to the image editor. Makes adding ALT text much easier! You can also browse Recent Images and Favorite Images; last-used times appear in Image Details.</li>
+            <li><b>Rich Paste</b> Bold? Italics? You got it! Normally styled text that you copy and paste into your emails are reformatted to plain text. But not anymore! Gemma preserves bold, italics, underlines, links and more when copying and pasting from outside sources, or even from one content block to another. Press ${typeof window.GEM_MOD_KEY !== 'undefined' ? window.GEM_MOD_KEY : 'CTRL'}+Shift+V to paste plain text instead.</li>
+            <li><b>Image Picker</b> When adding an image to your email you'll now get a preview of it right next to the image editor. Browse Recent Images, Favorite Images, or the embedded Media Database without opening a separate popup. Image Details shows aspect ratio, suggested width, last seen, and last used times.</li>
             <li>
-              <b>Preflight QA</b> Highlight important text, accessibility issues, image alt text, and more in the email editor preview. See a breakdown of your email's preflight QA results in the new Preflight QA panel.
+              <b>Preflight QA</b> Highlight important text, accessibility issues, image alt text, link problems, and more in the email editor preview. The Preflight panel includes a Languages overview (per-language issue counts), Text Analysis, Accessibility, Links, and Images sections. Issue counts persist per campaign and show up on Recent Campaign rows.
             </li>
             <li><b>Mobile Previews</b> See a mobile preview of your email right next to your desktop view while you make edits. This is turned on by default and can be toggled from the settings menu or the <span class="gem-e-icon">&#xF133;</span> icon in the bottom left of the editor. You can also adjust width of it by dragging it or editing it in the settings panel.</li>
             <li><b>Custom Color Swatches</b> Custom color swatches are now permanent! Emarsys doesn't remember what colors you used when editing an email. But Gemma does. You can also add default presets that will always display at the top of the color picker (up to 8) from the settings panel.</li>
-            </li>
             <li><b>Notes</b> Keep notes right in Emarsys! Find the Notes nav item in the vertical navigation and start taking notes right from any page.</li>
             <li><b>ALT Text Preview</b> Make it easier to QA ALT text by showing it when you hover over images in the email editor preview.</li>
-            <li><b>Recent Campaigns</b> See a list of your most recent campaigns in the left navigation. Click on a campaign to open it in a new tab. Click the pin icon to pin a campaign to the top of the list.</li>
+            <li><b>Recent Campaigns</b> See a list of your most recent campaigns in the left navigation. Click on a campaign to open it in a new tab. Pin campaigns, duplicate them, copy share links, and see unsaved-change and Preflight issue badges on each row.</li>
+            <li><b>Email Campaign List Tools</b> On the campaign list page, use row overflow menus for quick actions (duplicate, delete, and more). Preview campaigns in a side panel without leaving the list.</li>
+            <li><b>Settings &amp; Backup</b> Monitor Chrome storage usage, export/import a full Gemma backup, and toggle debug logging from the Advanced section.</li>
+            <li><b>Relogin Helper</b> When Emarsys shows the account re-login screen, Gemma can auto-select your account so you get back to work faster.</li>
           </ul>
 
           <div style="margin-top: 40px;">
@@ -138,6 +140,42 @@ function createWelcomeModalHTML() {
             <ul>
               <li>Email table is now zebra striped for easier readability.</li>
               <li>The "Created" filter can now be cleared on page load to load all emails by default. Must be turned on in the settings panel.</li>
+              <li>Row overflow menus provide quick actions such as duplicate and delete (configurable in Settings).</li>
+              <li>Inline campaign preview panel lets you preview an email in a sidebar without leaving the list.</li>
+              <li>Duplicate and other actions show toast notifications instead of browser alerts.</li>
+            </ul>
+
+            <h4>Preflight QA Panel</h4>
+            <ul>
+              <li>Languages overview table shows issue counts and last-updated times for every language version in the campaign.</li>
+              <li>Per-language Preflight badges persist across sessions and appear on Recent Campaign rows.</li>
+              <li>Sections (Languages, Text Analysis, Accessibility, Links, Images) can be collapsed; collapse state is remembered.</li>
+              <li>Live link verification, URL never-check lists, image weight thresholds, and icon badge toggles are configurable in Settings.</li>
+            </ul>
+
+            <h4>Recent Campaigns Panel</h4>
+            <ul>
+              <li>Keyboard shortcut: ${typeof window.GEM_MOD_KEY !== 'undefined' ? window.GEM_MOD_KEY : 'CTRL'}+/ opens or closes the panel.</li>
+              <li>Rows show unsaved-change and Preflight issue notices when applicable.</li>
+              <li>Overflow menu supports share link, duplicate, and other campaign actions.</li>
+            </ul>
+
+            <h4>Settings Panel</h4>
+            <ul>
+              <li>Keyboard shortcut: ${typeof window.GEM_MOD_KEY !== 'undefined' ? window.GEM_MOD_KEY : 'CTRL'}+G opens or closes the panel.</li>
+              <li>Storage meter shows Chrome sync/local usage for Gemma data.</li>
+              <li>Full backup export/import covers settings, snippets, favorites, Preflight data, and more.</li>
+              <li>Advanced: enable debug logging for troubleshooting (requires page reload).</li>
+            </ul>
+
+            <h4>Notes Panel</h4>
+            <ul>
+              <li>Keyboard shortcut: ${typeof window.GEM_MOD_KEY !== 'undefined' ? window.GEM_MOD_KEY : 'CTRL'}+; opens or closes the panel.</li>
+            </ul>
+
+            <h4>Relogin Page (r=customer/Login/Relogin)</h4>
+            <ul>
+              <li>Gemma can auto-select your account on the Emarsys re-login screen so you return to your workflow faster.</li>
             </ul>
 
           </div>

@@ -1,6 +1,6 @@
 {
   "name": "Gemma for Emarsys",
-  "version": "12.5.0",
+  "version": "12.6.0",
   "manifest_version": 3,
   "description": "Enhances the Emarsys email editor with a settings panel and more!",
   "permissions": ["storage", "tabs", "activeTab", "webNavigation"],
@@ -25,7 +25,7 @@
     {
       "matches": ["https://*.emarsys.net/*"], 
       "css": ["css--theme.css", "css--global-styles.css", "css--settings-panel.css"],
-      "js": ["debug-logging-gate.js", "emarsys-auth.js", "page-localstorage-guard.js", "platform.js", "highlight-terms-settings.js", "keyboard-shortcuts-modal.js", "theme-applier.js", "settings-panel.js", "nav-menu-inject.js", "notes.js", "recent-campaigns.js", "storage-measurement.js", "welcome-modal.js"],
+      "js": ["debug-logging-gate.js", "emarsys-auth.js", "page-localstorage-guard.js", "platform.js", "highlight-terms-settings.js", "keyboard-shortcuts-modal.js", "theme-applier.js", "gem-toast.js", "settings-panel.js", "nav-menu-inject.js", "notes.js", "recent-campaigns.js", "storage-measurement.js", "welcome-modal.js"],
       "run_at": "document_start"
     },
     {
@@ -43,7 +43,7 @@
     {
       "matches": ["https://*.emarsys.net/bootstrap.php?*r=emailCampaignList/index*"], 
       "css": ["css--email-campaign-list.css"],
-      "js": ["email-campaign-list.js"],
+      "js": ["gem-toast.js", "email-campaign-list.js"],
       "run_at": "document_start"
     },
     {
@@ -65,6 +65,14 @@
       "run_at": "document_start"
     },
     {
+      "matches": [
+        "https://*.emarsys.net/preview_fs.php?*gem_preview_context=emailCampaignList*"
+      ],
+      "css": ["css--email-campaign-list-preview-fs.css"],
+      "all_frames": true,
+      "run_at": "document_start"
+    },
+    {
       "matches": ["https://*.emarsys.net/bootstrap.php?*r=eventCenter/index*"],
       "css": ["css--event-center.css"],
       "js": ["event-center.js"],
@@ -77,7 +85,7 @@
         "https://*.emarsys.net//bootstrap.php?*r=contentBlocks/campaign*",
         "https://*.emarsys.net//bootstrap.php?*r=contentBlocks%2Fcampaign*"
       ],
-      "js": ["alt-text-preview.js", "verticalnav-enhancer.js", "mobile-view.js", "textarea-expand.js", "text-highlighting.js", "color-swatch-manager.js", "keyboard-shortcuts.js", "language-load-overlay.js", "toggle-page-elements.js", "page-title-updater.js", "draft-save-indicator.js", "condensed-blocks-panel.js", "mobile-contact-preview.js", "lz-string.min.js", "snippet-storage.js", "favorite-image-storage.js", "content-block-toolbar.js", "header-copy-icon.js", "block-pinning.js", "sortable.min.js", "overlay-panel-controls.js", "expanded-view.js", "snippets-tab.js", "preflight-panel.js", "keyword-swap.js", "custom-paste-loader.js", "campaign-draft-data-loader.js", "campaign-block-targeting.js"],
+      "js": ["alt-text-preview.js", "verticalnav-enhancer.js", "mobile-view.js", "textarea-expand.js", "text-highlighting.js", "color-swatch-manager.js", "keyboard-shortcuts.js", "language-load-overlay.js", "toggle-page-elements.js", "page-title-updater.js", "draft-save-indicator.js", "condensed-blocks-panel.js", "mobile-contact-preview.js", "lz-string.min.js", "snippet-storage.js", "favorite-image-storage.js", "gem-toast.js", "content-block-toolbar.js", "header-copy-icon.js", "block-pinning.js", "sortable.min.js", "overlay-panel-controls.js", "expanded-view.js", "snippets-tab.js", "preflight-panel.js", "keyword-swap.js", "custom-paste-loader.js", "campaign-draft-data-loader.js", "campaign-block-targeting.js"],
       "css": ["css--styles.css", "css--e-panels.css", "css--expanded-view.css"]
     }
   ]

@@ -53,6 +53,30 @@ function initializeContentBlockToolbar() {
 
   // Handle CMD+D / CTRL+D shortcut for toggling desktop/mobile tabs
   setupImagePropertiesTabToggleShortcut();
+
+  setupResetBlockConfirm();
+}
+
+function setupResetBlockConfirm() {
+  if (document.documentElement.dataset.gemResetBlockConfirmInstalled) return;
+  document.documentElement.dataset.gemResetBlockConfirmInstalled = "1";
+
+  document.addEventListener(
+    "click",
+    (e) => {
+      const btn = e.target.closest?.('e-tooltip[e-button-id="clear-block"] .e-btn, e-tooltip[e-button-id="clear-block"] button');
+      if (!btn) return;
+      if (
+        !confirm(
+          "Reset this block to its default content? This cannot be undone."
+        )
+      ) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+      }
+    },
+    true
+  );
 }
 
 function applyToolbarSettingsAsClasses() {

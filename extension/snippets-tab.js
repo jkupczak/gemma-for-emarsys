@@ -14,6 +14,10 @@ const snippetExportSelectionState = {
 // Toast notifications
 // ------------------------------------------------------------
 
+function gemToast(message, opts = {}) {
+  if (window.gemShowToast) window.gemShowToast(message, opts);
+}
+
 if (!window.gemShowToast) {
   window.gemShowToast = function gemShowToast(message, opts = {}) {
     try {
@@ -630,7 +634,7 @@ function initializeSnippetsTab() {
 
         // Disallow renaming the synthetic Uncategorized bucket (it represents empty categories)
         if (categoryName === UNCATEGORIZED_LABEL) {
-          alert(`"${UNCATEGORIZED_LABEL}" cannot be renamed.`);
+          gemToast(`"${UNCATEGORIZED_LABEL}" cannot be renamed.`, { type: 'warn', durationMs: 2400 });
           return;
         }
 
@@ -638,7 +642,7 @@ function initializeSnippetsTab() {
         if (nextName === null) return; // cancelled
         const trimmed = nextName.trim();
         if (!trimmed) {
-          alert('Category name cannot be empty.');
+          gemToast('Category name cannot be empty.', { type: 'warn', durationMs: 2200 });
           return;
         }
 
@@ -676,7 +680,7 @@ function initializeSnippetsTab() {
 
     // Normalize: prevent renaming into the synthetic label (would be confusing)
     if (newName === UNCATEGORIZED_LABEL) {
-      alert(`"${UNCATEGORIZED_LABEL}" is reserved. Choose a different category name.`);
+      gemToast(`"${UNCATEGORIZED_LABEL}" is reserved. Choose a different category name.`, { type: 'warn', durationMs: 2600 });
       return;
     }
 
@@ -1242,7 +1246,7 @@ function initializeSnippetsTab() {
             btn.style.background = '#10b981';
           }, 1500);
         } catch (e) {
-          alert('Failed to copy to clipboard. Please select and copy manually.');
+          gemToast('Failed to copy to clipboard. Please select and copy manually.', { type: 'error', durationMs: 3200 });
         }
       }
     });
@@ -1299,7 +1303,7 @@ function initializeSnippetsTab() {
       try {
         imported = parseImportedSnippetsJSON(textarea.value);
       } catch (e) {
-        alert(e.message);
+        gemToast(e.message, { type: 'error', durationMs: 4000 });
         textarea.focus();
         return;
       }
@@ -1395,7 +1399,10 @@ function initializeSnippetsTab() {
         saveSnippets(updated, () => {
           close();
           refreshSnippetsDisplay();
-          alert(`Import complete.\n\nAdded: ${added}\nSkipped (identical): ${skipped}\nInvalid: ${invalid}\nKeywords removed (conflict): ${swapKeywordsRemoved}`);
+          gemToast(`Import complete. Added: ${added}. Skipped (identical): ${skipped}. Invalid: ${invalid}. Keywords removed (conflict): ${swapKeywordsRemoved}.`, {
+            type: invalid > 0 || swapKeywordsRemoved > 0 ? 'warn' : 'success',
+            durationMs: 4000
+          });
         });
       });
     });
@@ -1690,7 +1697,7 @@ function initializeSnippetsTab() {
           if (ok) {
             window.gemShowToast && window.gemShowToast('Snippet code copied to clipboard.', { type: 'success', durationMs: 1400 });
           } else {
-            alert('Failed to copy snippet code to clipboard.');
+            gemToast('Failed to copy snippet code to clipboard.', { type: 'error', durationMs: 2800 });
           }
         });
       });
@@ -2299,7 +2306,7 @@ function initializeSnippetsTab() {
       if (rowsContainer) {
         const read = readSwapKeywordRowsUI(rowsContainer);
         if (!read.ok) {
-          alert(read.error);
+          gemToast(read.error, { type: 'error', durationMs: 3200 });
           read.focusEl && read.focusEl.focus && read.focusEl.focus();
           return;
         }
@@ -2590,11 +2597,11 @@ function initializeSnippetsTab() {
       : [];
 
     if (!name) {
-      alert('Please enter a snippet name.');
+      gemToast('Please enter a snippet name.', { type: 'warn', durationMs: 2200 });
       return;
     }
     if (!code) {
-      alert('Please enter snippet code.');
+      gemToast('Please enter snippet code.', { type: 'warn', durationMs: 2200 });
       return;
     }
 
@@ -2610,7 +2617,7 @@ function initializeSnippetsTab() {
         });
         const conflictKeyword = swapKeywords.find((k) => used.has(k.keyword))?.keyword;
         if (conflictKeyword) {
-          alert(`The swap keyword "${conflictKeyword}" is already used by another snippet. Please choose a unique keyword.`);
+          gemToast(`The swap keyword "${conflictKeyword}" is already used by another snippet. Please choose a unique keyword.`, { type: 'warn', durationMs: 3600 });
           return;
         }
       }
@@ -2987,20 +2994,20 @@ function initializeSnippetsTab() {
     const favorite = getGemModalFavoriteState();
     const read = readSwapKeywordRowsUI(rowsContainer);
     if (!read.ok) {
-      alert(read.error);
+      gemToast(read.error, { type: 'error', durationMs: 3200 });
       read.focusEl && read.focusEl.focus && read.focusEl.focus();
       return;
     }
     const swapKeywords = read.swapKeywords;
 
     if (!name) {
-      alert('Please enter a snippet name.');
+      gemToast('Please enter a snippet name.', { type: 'warn', durationMs: 2200 });
       nameInput.focus();
       return;
     }
 
     if (!code) {
-      alert('Please enter snippet code.');
+      gemToast('Please enter snippet code.', { type: 'warn', durationMs: 2200 });
       codeInput.focus();
       return;
     }
@@ -3017,7 +3024,7 @@ function initializeSnippetsTab() {
         });
         const conflictKeyword = swapKeywords.find((k) => used.has(k.keyword))?.keyword;
         if (conflictKeyword) {
-          alert(`The swap keyword "${conflictKeyword}" is already used by another snippet. Please choose a unique keyword.`);
+          gemToast(`The swap keyword "${conflictKeyword}" is already used by another snippet. Please choose a unique keyword.`, { type: 'warn', durationMs: 3600 });
           // Focus the row that contains this keyword if possible
           const input = rowsContainer && Array.from(rowsContainer.querySelectorAll('.gem-swap-keyword-input')).find((el) => (el.value || '').trim() === conflictKeyword);
           input && input.focus && input.focus();

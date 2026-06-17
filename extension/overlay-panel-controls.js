@@ -1006,6 +1006,7 @@ function initializeOverlayPanelControls() {
     const PILL_CTX_SEEN = 1;
     const PILL_CTX_FAV = 2;
     const PILL_CTX_BOTH = 3;
+    const SEEN_PATH_FAVORITES = '__gem_favorites__';
 
     // In-memory collapse overrides for groups manually collapsed while a search
     // is active. Cleared whenever search terms change so that a new search
@@ -1699,13 +1700,17 @@ function initializeOverlayPanelControls() {
     // IMPORTANT: keep this scoped to explicit user actions that set an image URL
     // (insert/use/edit flows). Passive captures during picker open can trigger a
     // "seen" list rerender and swallow the first interaction in the picker UI.
-    function recordImageLastUsed(url) {
+    function recordImageLastUsed(url, pathOverride) {
       const u = normalizeRecentImageUrlCandidate(url);
       if (!u) {
         if (url) console.log('[Gem][RecentImages] Ignoring non-image/invalid URL candidate:', url);
         return;
       }
       if (!looksLikeImageUrl(u)) return;
+      const path =
+        typeof pathOverride === 'string'
+          ? pathOverride.trim()
+          : '';
       const now = Date.now();
       getRecentlySeenImages((list) => {
         const next = Array.isArray(list) ? [...list] : [];
@@ -1715,12 +1720,12 @@ function initializeOverlayPanelControls() {
           next[idx] = {
             url: u,
             ts: prev.ts || now,
-            path: prev.path || '',
+            path: path || prev.path || '',
             friendlyFilename: prev.friendlyFilename || '',
             lastUsed: now
           };
         } else {
-          next.push({ url: u, ts: now, lastUsed: now, path: '', friendlyFilename: '' });
+          next.push({ url: u, ts: now, lastUsed: now, path: path || '', friendlyFilename: '' });
         }
         next.sort((a, b) => (a.ts || 0) - (b.ts || 0));
         const pruned = pruneRecentlySeenImagesToLimit(next, recentlySeenMax, now);
@@ -1728,7 +1733,7 @@ function initializeOverlayPanelControls() {
       });
     }
 
-    function recordImagesLastUsed(urls) {
+    function recordImagesLastUsed(urls, pathByUrl) {
       const listIn = Array.isArray(urls) ? urls : [];
       const normalizedUnique = [];
       const seen = new Set();
@@ -1745,17 +1750,25 @@ function initializeOverlayPanelControls() {
         const next = Array.isArray(list) ? [...list] : [];
         normalizedUnique.forEach((u) => {
           const idx = next.findIndex((x) => x && x.url === u);
+          const pathFromMap =
+            pathByUrl && typeof pathByUrl[u] === 'string' ? pathByUrl[u].trim() : '';
           if (idx >= 0) {
             const prev = next[idx];
             next[idx] = {
               url: u,
               ts: prev.ts || now,
-              path: prev.path || '',
+              path: pathFromMap || prev.path || '',
               friendlyFilename: prev.friendlyFilename || '',
               lastUsed: now
             };
           } else {
-            next.push({ url: u, ts: now, lastUsed: now, path: '', friendlyFilename: '' });
+            next.push({
+              url: u,
+              ts: now,
+              lastUsed: now,
+              path: pathFromMap || '',
+              friendlyFilename: ''
+            });
           }
         });
         next.sort((a, b) => (a.ts || 0) - (b.ts || 0));
@@ -1807,6 +1820,14 @@ function initializeOverlayPanelControls() {
           stateHost._gemPendingLastUsedImageUrlMobile = normalizedUrl;
         } else {
           stateHost._gemPendingLastUsedImageUrlDesktop = normalizedUrl;
+        }
+        const picker = modal.querySelector('#gem-recent-images-picker');
+        const pickerSource = picker
+          ? normalizeRecentImagesPickerSource(picker.dataset.gemRecentImagesSource || 'seen')
+          : 'seen';
+        if (pickerSource === 'favorites') {
+          stateHost._gemLastUsedPathByUrl = stateHost._gemLastUsedPathByUrl || {};
+          stateHost._gemLastUsedPathByUrl[normalizedUrl] = SEEN_PATH_FAVORITES;
         }
         logLastUsedDebug('rememberInsertedImageUrl', {
           activeTab,
@@ -1924,11 +1945,17 @@ function initializeOverlayPanelControls() {
     function unbindGemMediaDbPickerIframeDocClick() {
       const iframe = gemMediaDbPickerIframeEl;
       disconnectGemMediaDbIframeLayoutSync(iframe);
-      if (!iframe || !iframe._gemMediaDbDocClickFn || !iframe._gemMediaDbClickDocRef) return;
+      if (!iframe || !iframe._gemMediaDbClickDocRef) return;
       try {
-        iframe._gemMediaDbClickDocRef.removeEventListener('click', iframe._gemMediaDbDocClickFn, true);
+        if (iframe._gemMediaDbDocClickFn) {
+          iframe._gemMediaDbClickDocRef.removeEventListener('click', iframe._gemMediaDbDocClickFn, true);
+        }
+        if (iframe._gemMediaDbUploadGuardFn) {
+          iframe._gemMediaDbClickDocRef.removeEventListener('click', iframe._gemMediaDbUploadGuardFn, true);
+        }
       } catch (_) {}
       iframe._gemMediaDbDocClickFn = null;
+      iframe._gemMediaDbUploadGuardFn = null;
       iframe._gemMediaDbClickDocRef = null;
     }
 
@@ -1956,6 +1983,41 @@ function initializeOverlayPanelControls() {
         doc.querySelector('.mediadb-upload')
         || doc.querySelector('div.mediadb-upload')
         || doc.querySelector('.e-layout__action.mediadb-upload')
+      );
+    }
+
+    const GEM_MEDIA_DB_UPLOAD_DISRUPT_MSG = 'An upload is in progress. Leaving now may interrupt it. Continue anyway?';
+
+    function isMediaDbUploadInProgress(iframe) {
+      try {
+        const iframeRef = iframe && iframe.isConnected ? iframe : gemMediaDbPickerIframeEl;
+        const doc = iframeRef && iframeRef.contentDocument;
+        const root = findMediaDbUploadRoot(doc);
+        return !!(root && root.classList.contains('mediadb-upload--uploading'));
+      } catch (_) {
+        return false;
+      }
+    }
+
+    function confirmIfMediaDbUploadInProgress(iframe) {
+      if (!isMediaDbUploadInProgress(iframe)) return true;
+      return confirm(GEM_MEDIA_DB_UPLOAD_DISRUPT_MSG);
+    }
+
+    function ensureMediaDbUploadBeforeUnloadGuard() {
+      if (ensureMediaDbUploadBeforeUnloadGuard._bound) return;
+      ensureMediaDbUploadBeforeUnloadGuard._bound = true;
+      window.addEventListener('beforeunload', (e) => {
+        if (!isMediaDbUploadInProgress(gemMediaDbPickerIframeEl)) return;
+        e.preventDefault();
+        e.returnValue = '';
+      });
+    }
+
+    function isMediaDbFolderNavigationTarget(el) {
+      if (!el || !el.closest) return null;
+      return el.closest(
+        'tr.folder-table-row, tr.parent-folder-table-row, .e-mediadb-breadcrumb__root, .e-mediadb-breadcrumb a, .e-mediadb-breadcrumb__item, [ng-click*="selectRoot"], [ng-click*="openFolder"], [ng-click*="selectFolder"]'
       );
     }
 
@@ -2389,6 +2451,15 @@ function initializeOverlayPanelControls() {
       syncGemThemeClassesToMediaDbIframeDoc(doc);
       setupMediaDbPreviewDialogNavigation(doc);
       unbindGemMediaDbPickerIframeDocClick();
+      const uploadGuardFn = (ev) => {
+        if (!isMediaDbUploadInProgress(iframe)) return;
+        if (!isMediaDbFolderNavigationTarget(ev.target)) return;
+        if (!confirm(GEM_MEDIA_DB_UPLOAD_DISRUPT_MSG)) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          ev.stopImmediatePropagation();
+        }
+      };
       const clickFn = (ev) => {
         const modal = gemMediaDbIframeClickModalRef;
         if (!modal || !modal.isConnected) return;
@@ -2405,8 +2476,10 @@ function initializeOverlayPanelControls() {
         ev.stopPropagation();
         insertImageUrlIntoImagePropertiesModal(modal, rawUrl);
       };
+      doc.addEventListener('click', uploadGuardFn, true);
       doc.addEventListener('click', clickFn, true);
       iframe._gemMediaDbDocClickFn = clickFn;
+      iframe._gemMediaDbUploadGuardFn = uploadGuardFn;
       iframe._gemMediaDbClickDocRef = doc;
       setupGemMediaDbIframeLayoutSync(iframe);
       scheduleApplyMediaDbViewFromPicker(iframe);
@@ -3176,6 +3249,7 @@ function initializeOverlayPanelControls() {
       if (!leftPanelContainer) return;
 
       gemMediaDbIframeClickModalRef = modal;
+      ensureMediaDbUploadBeforeUnloadGuard();
       gemMediaDbDbg('show picker', { contentOnly: !!opts.contentOnly });
 
       let pickerPre = leftPanelContainer.querySelector('#gem-recent-images-picker');
@@ -3721,6 +3795,10 @@ function initializeOverlayPanelControls() {
             e.stopPropagation();
             const tabValue = sourceTab.getAttribute('data-tab') || '';
             const v = normalizeRecentImagesPickerSource(tabValue === 'favorites' ? 'favorites' : (tabValue === 'mediaDb' ? 'mediaDb' : 'seen'));
+            const curSource = normalizeRecentImagesPickerSource(picker.dataset.gemRecentImagesSource || 'seen');
+            if (curSource === 'mediaDb' && v !== 'mediaDb' && !confirmIfMediaDbUploadInProgress(gemMediaDbPickerIframeEl)) {
+              return;
+            }
             picker.dataset.gemRecentImagesSource = v;
             saveRecentImagesPickerPrefs(buildRecentImagesPickerPrefsPayload(picker, { source: v }));
             showRecentImagesPicker(modal);
@@ -5098,9 +5176,11 @@ function initializeOverlayPanelControls() {
               const renderGroupHeader = (gKey, count) => {
                 const label = gKey === SEEN_LAST_USED_NONE
                   ? 'Not Used Recently'
-                  : (gKey
-                    ? ((seenGroupBy === 'date' || seenGroupBy === 'lastUsed') ? gKey : gKey)
-                    : ((seenGroupBy === 'date' || seenGroupBy === 'lastUsed') ? 'Unknown Date' : 'No Path'));
+                  : (gKey === SEEN_PATH_FAVORITES
+                    ? 'Favorites'
+                    : (gKey
+                      ? ((seenGroupBy === 'date' || seenGroupBy === 'lastUsed') ? gKey : gKey)
+                      : ((seenGroupBy === 'date' || seenGroupBy === 'lastUsed') ? 'Unknown Date' : 'No Path')));
                 const storageKey = `seen:${seenGroupBy}:${gKey === SEEN_LAST_USED_NONE ? SEEN_LAST_USED_NONE : (gKey || '')}`;
                 const isCollapsedRaw = !!collapse[storageKey];
                 const isCollapsed = seenTerms.length > 0
@@ -5409,7 +5489,9 @@ function initializeOverlayPanelControls() {
           try {
             navigator.clipboard.writeText(json);
           } catch (_) {}
-          alert('Copied JSON to clipboard.');
+          if (window.gemShowToast) {
+            window.gemShowToast('Copied JSON to clipboard.', { type: 'success', durationMs: 1800 });
+          }
         });
       });
 
@@ -5440,7 +5522,9 @@ function initializeOverlayPanelControls() {
         const newNameRaw = overlay.querySelector('.gem-fav-cat-name-input')?.value || '';
         const newName = newNameRaw.trim();
         if (!newName) {
-          alert('Please enter a category name.');
+          if (window.gemShowToast) {
+            window.gemShowToast('Please enter a category name.', { type: 'warn', durationMs: 2200 });
+          }
           return;
         }
         const newKey = newName;
@@ -5528,6 +5612,108 @@ function initializeOverlayPanelControls() {
       }
     }
 
+    function formatGemAspectRatio(width, height) {
+      const wi = Math.round(Number(width));
+      const hi = Math.round(Number(height));
+      if (!wi || !hi) return '—';
+      const gcd = (a, b) => {
+        let x = Math.abs(a);
+        let y = Math.abs(b);
+        while (y) {
+          const t = y;
+          y = x % y;
+          x = t;
+        }
+        return x || 1;
+      };
+      const d = gcd(wi, hi);
+      return `${Math.round(wi / d)}:${Math.round(hi / d)}`;
+    }
+
+    function getGemSuggestedImageWidth(intrinsicWidth) {
+      const w = Math.round(Number(intrinsicWidth));
+      if (!w || w <= 0) return null;
+      return Math.max(1, Math.round(w / 2));
+    }
+
+    function readEmarsysImageIntrinsicDimensionsFromModal(modal) {
+      if (!modal) return null;
+      try {
+        const grids = Array.from(modal.querySelectorAll('.e-accordion .e-grid'));
+        for (const grid of grids) {
+          if (!grid.querySelector("option[value='px']")) continue;
+          const inputs = Array.from(grid.querySelectorAll('input')).filter((inp) => inp.type !== 'hidden');
+          if (inputs.length >= 2) {
+            const w = parseInt(String(inputs[0].value || '').trim(), 10);
+            const h = parseInt(String(inputs[1].value || '').trim(), 10);
+            if (Number.isFinite(w) && w > 0 && Number.isFinite(h) && h > 0) {
+              return { width: w, height: h };
+            }
+          }
+        }
+      } catch (_) {}
+      return null;
+    }
+
+    function updateGemImageDimensionDetails(container, url, modal) {
+      const dimsEl = container.querySelector('.gem-seen-details-dimensions');
+      const aspectEl = container.querySelector('.gem-seen-details-aspect');
+      const recEl = container.querySelector('.gem-seen-details-recommended');
+      const noteEl = container.querySelector('.gem-seen-details-width-note');
+      const apply = (dims) => {
+        if (!dims || !dims.width || !dims.height) {
+          if (dimsEl) dimsEl.textContent = '—';
+          if (aspectEl) aspectEl.textContent = '—';
+          if (recEl) recEl.textContent = '—';
+          if (noteEl) noteEl.textContent = '';
+          return;
+        }
+        if (dimsEl) dimsEl.textContent = `${dims.width} × ${dims.height}px`;
+        if (aspectEl) aspectEl.textContent = formatGemAspectRatio(dims.width, dims.height);
+        const suggested = getGemSuggestedImageWidth(dims.width);
+        if (recEl) recEl.textContent = suggested ? `${suggested}px` : '—';
+        if (noteEl) {
+          noteEl.textContent = suggested
+            ? `Set display width to about ${suggested}px (half of the ${dims.width}px intrinsic width).`
+            : '';
+        }
+      };
+      if (dimsEl) dimsEl.textContent = '…';
+      if (aspectEl) aspectEl.textContent = '…';
+      if (recEl) recEl.textContent = '…';
+      if (noteEl) noteEl.textContent = '';
+
+      const fromModal = readEmarsysImageIntrinsicDimensionsFromModal(modal);
+      if (fromModal) {
+        apply(fromModal);
+        return;
+      }
+
+      const previewImg = container.querySelector('.gem-image-modal__preview img');
+      const usePreview = () => {
+        if (previewImg && previewImg.naturalWidth > 0 && previewImg.naturalHeight > 0) {
+          apply({ width: previewImg.naturalWidth, height: previewImg.naturalHeight });
+          return true;
+        }
+        return false;
+      };
+      if (usePreview()) return;
+      if (previewImg) {
+        previewImg.onload = () => { usePreview(); };
+        if (previewImg.complete) usePreview();
+      }
+      const probe = new Image();
+      probe.onload = () => {
+        if (probe.naturalWidth > 0 && probe.naturalHeight > 0) {
+          apply({ width: probe.naturalWidth, height: probe.naturalHeight });
+        } else {
+          apply(null);
+        }
+      };
+      probe.onerror = () => apply(null);
+      probe.src = url;
+    }
+
     function openRecentlySeenImageDetailsModal(modal, url) {
       const u = normalizeRecentImageUrlCandidate(url);
       if (!u) return;
@@ -5572,6 +5758,9 @@ function initializeOverlayPanelControls() {
               <div class="e-field gem-seen-details-path-row"><label class="e-field__label">Path</label><div class="gem-seen-details-path"></div></div>
               <div class="e-field"><label class="e-field__label">Last Seen</label><div class="gem-seen-details-last-seen"></div></div>
               <div class="e-field"><label class="e-field__label">Last Used</label><div class="gem-seen-details-last-used"></div></div>
+              <div class="e-field"><label class="e-field__label">Dimensions</label><div class="gem-seen-details-dimensions">—</div></div>
+              <div class="e-field"><label class="e-field__label">Aspect ratio</label><div class="gem-seen-details-aspect">—</div></div>
+              <div class="e-field"><label class="e-field__label">Suggested width</label><div class="gem-seen-details-recommended">—</div><div class="gem-seen-details-width-note"></div></div>
             </div>
           `.trim(),
           footerLeftHtml,
@@ -5635,6 +5824,7 @@ function initializeOverlayPanelControls() {
           if (lastSeenEl) lastSeenEl.textContent = formatRecentImageDate(seenItem.ts || 0);
           const lastUsedEl = overlay.querySelector('.gem-seen-details-last-used');
           if (lastUsedEl) lastUsedEl.textContent = lastUsedTs != null ? formatRecentImageDate(lastUsedTs) : '—';
+          updateGemImageDimensionDetails(overlay, currentUrl, modal);
 
           getFavoriteImages((favList) => {
             const favSet = new Set((Array.isArray(favList) ? favList : []).map((x) => x && x.url).filter(Boolean));
@@ -5966,7 +6156,9 @@ function initializeOverlayPanelControls() {
             // JSON import mode
             const jsonText = overlay.querySelector('.gem-favorite-image-meta-json')?.value || '';
             if (!jsonText.trim()) {
-              alert('Please enter JSON data to import.');
+              if (window.gemShowToast) {
+                window.gemShowToast('Please enter JSON data to import.', { type: 'warn', durationMs: 2200 });
+              }
               return;
             }
 
@@ -6011,7 +6203,9 @@ function initializeOverlayPanelControls() {
               });
 
               if (validItems.length === 0) {
-                alert(`Import failed: No valid items found. ${errorCount} errors.`);
+                if (window.gemShowToast) {
+                  window.gemShowToast(`Import failed: No valid items found. ${errorCount} errors.`, { type: 'error', durationMs: 3200 });
+                }
                 return;
               }
 
@@ -6022,7 +6216,12 @@ function initializeOverlayPanelControls() {
                 if (currentIndex >= validItems.length) {
                   // All done
                   const message = `Import complete: ${successCount} successful, ${errorCount} errors.`;
-                  alert(message);
+                  if (window.gemShowToast) {
+                    window.gemShowToast(message, {
+                      type: errorCount > 0 ? 'warn' : 'success',
+                      durationMs: 3200
+                    });
+                  }
                   close();
                   showRecentImagesPicker(modal);
                   return;
@@ -6049,7 +6248,9 @@ function initializeOverlayPanelControls() {
               processNext();
 
             } catch (e) {
-              alert('Invalid JSON format. Please check your JSON syntax.\n\nError: ' + e.message);
+              if (window.gemShowToast) {
+                window.gemShowToast(`Invalid JSON format: ${e.message}`, { type: 'error', durationMs: 4000 });
+              }
               return;
             }
           } else {
@@ -6059,7 +6260,9 @@ function initializeOverlayPanelControls() {
               : currentUrl;
             const targetUrl = normalizeRecentImageUrlCandidate(rawUrl);
             if (!targetUrl) {
-              alert('Please enter a valid image URL.');
+              if (window.gemShowToast) {
+                window.gemShowToast('Please enter a valid image URL.', { type: 'warn', durationMs: 2200 });
+              }
               return;
             }
             const cat = overlay.querySelector('.gem-favorite-image-meta-category')?.value || '';
@@ -6310,8 +6513,14 @@ function initializeOverlayPanelControls() {
       if (!container._gemCloseClickBound) {
         container._gemCloseClickBound = true;
         modal.addEventListener('click', (e) => {
-          const btn = e.target && e.target.closest && e.target.closest('button[aria-label="Close Dialog"], .e-dialog__close');
+          const btn = e.target && e.target.closest && e.target.closest('button[aria-label="Close Dialog"], .e-dialog__close, .e-dialog__container button.cancel-btn');
           if (!btn) return;
+          if (!confirmIfMediaDbUploadInProgress(gemMediaDbPickerIframeEl)) {
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+            return;
+          }
           cleanupImagePropertiesModal();
         }, true);
       }
@@ -7038,9 +7247,15 @@ function initializeOverlayPanelControls() {
           if (!(target instanceof Element)) return;
           const okButton = target.closest('.e-dialog__container button.ok-btn');
           if (!okButton) return;
+          if (!confirmIfMediaDbUploadInProgress(gemMediaDbPickerIframeEl)) {
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+            return;
+          }
           const urls = getTrackedImageUrlsForCommit();
           logLastUsedDebug('OK clicked; committing lastUsed URLs', { urls, buttonText: (okButton.textContent || '').trim() });
-          recordImagesLastUsed(urls);
+          recordImagesLastUsed(urls, modal._gemLastUsedPathByUrl || null);
         }, true);
       }
 

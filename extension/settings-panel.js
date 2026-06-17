@@ -1,9 +1,13 @@
 console.log("[gem] settings-panel.js LOADED in frame:", window.location.href);
 
+function gemToast(message, opts = {}) {
+  if (window.gemShowToast) window.gemShowToast(message, opts);
+}
+
 // ------------------------------------------------------------
 // Theme mode — applyGemThemeMode lives in theme-applier.js (loaded first)
 // ------------------------------------------------------------
-const GEM_THEME_MODE_STORAGE_KEY = "gemThemeMode";
+const GEM_DEBUG_LOGGING_KEY = "gemDebugLogging";
 const GEM_THEME_MODE_LOCAL_KEY = "gemThemeMode";
 const GEM_RECENT_IMAGES_STORAGE_KEY = 'gemRecentImages';
 const GEM_RECENTLY_SEEN_IMAGES_STORAGE_KEY = 'gemRecentlySeenImages';
@@ -16,6 +20,11 @@ const GEM_CUSTOM_PASTE_ALLOW_UNDERLINE_KEY = "gemCustomPasteAllowUnderline";
 const GEM_CUSTOM_PASTE_ALLOW_SUP_KEY = "gemCustomPasteAllowSuperscript";
 const GEM_CUSTOM_PASTE_ALLOW_ANCHOR_KEY = "gemCustomPasteAllowAnchor";
 const GEM_EMAIL_CAMPAIGN_LIST_LOAD_ALL_KEY = "gemEmailCampaignListLoadAll";
+const GEM_EMAIL_CAMPAIGN_LIST_OVERFLOW_TOGGLES_KEY = "gemEmailCampaignListOverflowToggles";
+const GEM_EMAIL_CAMPAIGN_LIST_OVERFLOW_TOGGLES_DEFAULT = {
+  editTranslations: true,
+  distribute: true
+};
 const GEM_EXPANDED_MODE_STORAGE_KEY = "fullscreenActive";
 const GEM_PREFLIGHT_TOTAL_IMAGE_WEIGHT_THRESHOLD_VALUE_KEY = 'gemPreflightTotalImageWeightThresholdValue';
 const GEM_PREFLIGHT_TOTAL_IMAGE_WEIGHT_THRESHOLD_UNIT_KEY = 'gemPreflightTotalImageWeightThresholdUnit';
@@ -507,7 +516,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
     generateBtn?.addEventListener("click", async () => {
       const selected = checkboxes.filter((cb) => cb.checked).map((cb) => cb.value);
       if (selected.length === 0) {
-        alert("Select at least one category to export.");
+        gemToast("Select at least one category to export.", { type: "warn", durationMs: 2200 });
         return;
       }
       try {
@@ -517,14 +526,14 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
         if (copyBtn) copyBtn.style.opacity = "1";
       } catch (err) {
         console.error("[gem] Failed to build selective full backup payload:", err);
-        alert("Failed to build full backup. Please try again.");
+        gemToast("Failed to build full backup. Please try again.", { type: "error", durationMs: 3200 });
       }
     });
 
     modal.querySelector("#gem-full-backup-copy-btn")?.addEventListener("click", async () => {
       if (!textarea) return;
       if (!textarea.value.trim()) {
-        alert("Generate JSON first, then copy it.");
+        gemToast("Generate JSON first, then copy it.", { type: "warn", durationMs: 2200 });
         return;
       }
       try {
@@ -539,7 +548,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
         }, 2000);
       } catch (err) {
         console.error("[gem] Failed to copy full backup:", err);
-        alert("Failed to copy to clipboard. Please copy manually.");
+        gemToast("Failed to copy to clipboard. Please copy manually.", { type: "error", durationMs: 3200 });
       }
     });
 
@@ -595,7 +604,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
       const modeSelect = modal.querySelector("#gem-full-backup-import-mode");
       const raw = textarea && textarea.value ? textarea.value.trim() : "";
       if (!raw) {
-        alert("Please paste backup JSON to import.");
+        gemToast("Please paste backup JSON to import.", { type: "warn", durationMs: 2200 });
         return;
       }
 
@@ -603,13 +612,13 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
       try {
         payload = JSON.parse(raw);
       } catch (_) {
-        alert("Invalid JSON format. Please check your backup and try again.");
+        gemToast("Invalid JSON format. Please check your backup and try again.", { type: "error", durationMs: 3600 });
         return;
       }
 
       const validation = validateFullBackupPayload(payload);
       if (!validation.ok) {
-        alert(validation.message);
+        gemToast(validation.message, { type: "error", durationMs: 3600 });
         return;
       }
 
@@ -637,11 +646,11 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
 
         loadSettings();
         syncThemeSwatchUI(document.getElementById("opt-theme-mode")?.value || "gemma-amethyst");
-        alert("Full backup imported successfully.");
+        gemToast("Full backup imported successfully.", { type: "success", durationMs: 2800 });
         closeModal();
       } catch (err) {
         console.error("[gem] Failed importing full backup:", err);
-        alert("Import failed. Please try again.");
+        gemToast("Import failed. Please try again.", { type: "error", durationMs: 3200 });
       }
     });
 
@@ -721,7 +730,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
               </div>
             </div>
             <p class="sub-label">
-              When navigating to certain Emarsys links (such as links shared by teammates), Emarsys may show a security confirmation page asking you to select your active account. When enabled, Gemma will automatically confirm this for you so you land directly on the intended page.
+              When navigating to certain Emarsys links (such as links shared by teammates), Emarsys may show a security confirmation page asking you to select your active account. When enabled, Gemma automatically confirms and redirects you to the intended page, including when the link opens in a background tab.
             </p>
           </div>
         </div>
@@ -835,15 +844,6 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
             </div>
           </div>
 
-          <div class="gem-setting">
-            <div class="gem-e-switch-wrapper">
-              <label for="opt-show-finish-editing-btn">Show "Recent Media" Button in Vertical Nav</label>
-              <div class="gem-e-switch--fat e-switch">
-                <input type="checkbox" class="e-switch__input" id="opt-show-finish-editing-btn">
-                <label class="e-switch__toggle" for="opt-show-finish-editing-btn"></label>
-              </div>
-            </div>
-          </div>
         </div>
 
         <div class="gem-setting-section gem-setting-section-content-block-toolbar">
@@ -1004,7 +1004,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
                 <label for="opt-custom-paste-strike">Allow strikethrough formatting to be pasted</label>
                 <div class="gem-e-switch--fat e-switch">
                   <input type="checkbox" class="e-switch__input" id="opt-custom-paste-strike" checked>
-                  <label class="e-switch__toggle" for="opt-opt-custom-paste-strike"></label>
+                  <label class="e-switch__toggle" for="opt-custom-paste-strike"></label>
                 </div>
               </div>
               <div class="gem-e-switch-wrapper">
@@ -1225,7 +1225,47 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
           </div>
         </div>
 
+        <div class="gem-setting-section">
+          <h3>Overflow Menu</h3>
+          <p class="gem-setting-info">Show or hide Edit Translations and Distribute in the Gemma overflow menu on each campaign row.</p>
+          <div class="gem-setting-group">
+            <div class="gem-e-switch-wrapper">
+              <label for="opt-email-campaign-list-overflow-edit-translations">Edit Translations</label>
+              <div class="gem-e-switch--fat e-switch">
+                <input type="checkbox" class="e-switch__input" id="opt-email-campaign-list-overflow-edit-translations" checked>
+                <label class="e-switch__toggle" for="opt-email-campaign-list-overflow-edit-translations"></label>
+              </div>
+            </div>
+            <div class="gem-e-switch-wrapper">
+              <label for="opt-email-campaign-list-overflow-distribute">Distribute</label>
+              <div class="gem-e-switch--fat e-switch">
+                <input type="checkbox" class="e-switch__input" id="opt-email-campaign-list-overflow-distribute" checked>
+                <label class="e-switch__toggle" for="opt-email-campaign-list-overflow-distribute"></label>
+              </div>
+            </div>
+          </div>
+          <p class="sub-label">
+            When Edit Translations or Distribute are disabled here, they are removed from the Gemma menu and the native row buttons stay hidden.
+          </p>
+        </div>
+
         <div id="gem-storage-meter-mount"></div>
+
+        <div class="gem-setting-section" id="gem-settings-advanced">
+          <h3>Advanced</h3>
+          <div class="gem-setting gem-setting-condensed">
+            <div class="gem-e-switch-wrapper">
+              <label for="opt-debug-logging">Enable debug logging</label>
+              <div class="gem-e-switch--fat e-switch">
+                <input type="checkbox" class="e-switch__input" id="opt-debug-logging">
+                <label class="e-switch__toggle" for="opt-debug-logging"></label>
+              </div>
+            </div>
+            <p class="sub-label">
+              Shows Gemma <code>console.log</code>, <code>info</code>, <code>debug</code>, and <code>warn</code> messages in the browser console. Errors are always shown. Off by default.
+            </p>
+          </div>
+        </div>
 
         <div class="gem-setting-section" id="gem-settings-full-backup">
           <h3>Full Backup &amp; Restore</h3>
@@ -1384,6 +1424,33 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
     });
   }
 
+  function normalizeEmailCampaignListOverflowToggles(toggles) {
+    const src = toggles && typeof toggles === "object" ? toggles : {};
+    return {
+      editTranslations: src.editTranslations !== false,
+      distribute: src.distribute !== false
+    };
+  }
+
+  function loadEmailCampaignListOverflowTogglesIntoUI(toggles) {
+    const normalized = normalizeEmailCampaignListOverflowToggles(toggles);
+    const pairs = [
+      ["opt-email-campaign-list-overflow-edit-translations", "editTranslations"],
+      ["opt-email-campaign-list-overflow-distribute", "distribute"]
+    ];
+    pairs.forEach(([id, key]) => {
+      const el = document.getElementById(id);
+      if (el) el.checked = normalized[key];
+    });
+  }
+
+  function readEmailCampaignListOverflowTogglesFromUI() {
+    return normalizeEmailCampaignListOverflowToggles({
+      editTranslations: document.getElementById("opt-email-campaign-list-overflow-edit-translations")?.checked,
+      distribute: document.getElementById("opt-email-campaign-list-overflow-distribute")?.checked
+    });
+  }
+
   function updatePreflightNeverCheckSummary(urls) {
     const summary = document.getElementById("gem-preflight-never-check-summary");
     if (!summary) return;
@@ -1493,6 +1560,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
         [GEM_CUSTOM_PASTE_ALLOW_ANCHOR_KEY]: true,
         [GEM_RECENTLY_SEEN_IMAGES_MAX_KEY]: 300,
         [GEM_EMAIL_CAMPAIGN_LIST_LOAD_ALL_KEY]: false,
+        [GEM_EMAIL_CAMPAIGN_LIST_OVERFLOW_TOGGLES_KEY]: GEM_EMAIL_CAMPAIGN_LIST_OVERFLOW_TOGGLES_DEFAULT,
         [GEM_EXPANDED_MODE_STORAGE_KEY]: false,
         gemAltTextPreviewEnabled: true,
         gemAltTextVisibility: "always-show",
@@ -1602,6 +1670,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
         if (emailCampaignListLoadAll) {
           emailCampaignListLoadAll.checked = settings[GEM_EMAIL_CAMPAIGN_LIST_LOAD_ALL_KEY] === true;
         }
+        loadEmailCampaignListOverflowTogglesIntoUI(settings[GEM_EMAIL_CAMPAIGN_LIST_OVERFLOW_TOGGLES_KEY]);
 
         const recentlySeenMaxInput = document.getElementById("opt-recently-seen-max");
         if (recentlySeenMaxInput) {
@@ -1632,6 +1701,11 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
         // Load saved searches
         loadSavedSearches();
         loadPreflightNeverCheckList();
+
+        chrome.storage.local.get({ [GEM_DEBUG_LOGGING_KEY]: false }, (debugRes) => {
+          const debugEl = document.getElementById("opt-debug-logging");
+          if (debugEl) debugEl.checked = !!(debugRes && debugRes[GEM_DEBUG_LOGGING_KEY]);
+        });
       });
     });
   }
@@ -1703,6 +1777,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
               document.getElementById("opt-show-finish-editing-btn")?.checked ?? true,
             [GEM_EMAIL_CAMPAIGN_LIST_LOAD_ALL_KEY]:
               document.getElementById("opt-email-campaign-list-load-all")?.checked ?? false,
+            [GEM_EMAIL_CAMPAIGN_LIST_OVERFLOW_TOGGLES_KEY]: readEmailCampaignListOverflowTogglesFromUI(),
             [GEM_EXPANDED_MODE_STORAGE_KEY]: expandedModeEnabled,
             mobilePreviewWidth: safeWidth,
             mobilePreviewScale: safeScale,
@@ -1811,10 +1886,10 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
           persistUnhiddenBlocks(() => {
             if (chrome.runtime.lastError) {
               console.error("[Gem] Error clearing hidden blocks:", chrome.runtime.lastError);
-              alert("Failed to unhide blocks. Please try again.");
+              gemToast("Failed to unhide blocks. Please try again.", { type: "error", durationMs: 3200 });
             } else {
               console.log("[Gem] All blocks have been unhidden");
-              alert("All blocks have been unhidden successfully!");
+              gemToast("All blocks have been unhidden successfully!", { type: "success", durationMs: 2800 });
             }
           });
         }
@@ -1873,6 +1948,8 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
       "opt-enable-mobile-preview",
       "opt-show-finish-editing-btn",
       "opt-email-campaign-list-load-all",
+      "opt-email-campaign-list-overflow-edit-translations",
+      "opt-email-campaign-list-overflow-distribute",
       "opt-mobile-preview-width",
       "opt-mobile-preview-scale",
       "opt-show-created-column",
@@ -1919,6 +1996,16 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
         syncThemeSwatchUI(mode);
         const hidden = document.getElementById("opt-theme-mode");
         if (hidden) hidden.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+    }
+
+    const debugLoggingEl = document.getElementById("opt-debug-logging");
+    if (debugLoggingEl && debugLoggingEl.dataset.gemBound !== "true") {
+      debugLoggingEl.dataset.gemBound = "true";
+      debugLoggingEl.addEventListener("change", () => {
+        if (typeof window.gemSetDebugLogging === "function") {
+          window.gemSetDebugLogging(debugLoggingEl.checked, true);
+        }
       });
     }
 
@@ -2626,6 +2713,9 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
     }
     if (changes[GEM_PREFLIGHT_ICON_PIP_TOGGLES_KEY]) {
       loadPreflightIconPipTogglesIntoUI(changes[GEM_PREFLIGHT_ICON_PIP_TOGGLES_KEY].newValue);
+    }
+    if (changes[GEM_EMAIL_CAMPAIGN_LIST_OVERFLOW_TOGGLES_KEY]) {
+      loadEmailCampaignListOverflowTogglesIntoUI(changes[GEM_EMAIL_CAMPAIGN_LIST_OVERFLOW_TOGGLES_KEY].newValue);
     }
   });
 

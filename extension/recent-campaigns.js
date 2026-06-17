@@ -24,6 +24,7 @@ console.log("[gem] recent-campaigns.js loaded");
   /** Same heuristic as page-title-updater.js: enabled save button means unsaved draft. */
   const DRAFT_SAVE_BUTTON_SELECTOR = "cb-draft-save-button button";
   const OPEN_GROUP_LIST_ID = "gem-recent-open-group-list";
+  const PREFLIGHT_LANGUAGE_ALERTS_KEY = "gemPreflightLanguageAlertsByCampaignV1";
 
   let lastRecentPreviewCaptureLogKey = "";
 
@@ -298,6 +299,55 @@ console.log("[gem] recent-campaigns.js loaded");
     const tid = getOpenTabIdForItem(item);
     if (tid == null) return false;
     return !!openCampaignTabUnsaved[String(tid)];
+  }
+
+  function getLanguageAlertCountFromStorage(raw) {
+    if (raw == null) return 0;
+    if (typeof raw === "number") return Math.max(0, raw);
+    if (typeof raw === "object") return Math.max(0, Number.parseInt(String(raw.count), 10) || 0);
+    return 0;
+  }
+
+  function getCampaignPreflightIssueSummary(campaignMap) {
+    if (!campaignMap || typeof campaignMap !== "object") return null;
+    let total = 0;
+    let languagesWithIssues = 0;
+    Object.values(campaignMap).forEach((entry) => {
+      const count = getLanguageAlertCountFromStorage(entry);
+      if (count > 0) {
+        total += count;
+        languagesWithIssues += 1;
+      }
+    });
+    if (total <= 0) return null;
+    return { total, languagesWithIssues };
+  }
+
+  function appendCampaignStatusNotices(main, options) {
+    const opts = options && typeof options === "object" ? options : {};
+    const notices = [];
+    if (opts.showUnsavedNotice) {
+      notices.push({ className: "gem-recent-campaign-unsaved-notice", text: "Unsaved changes" });
+    }
+    const preflight = opts.preflightSummary;
+    if (preflight && preflight.total > 0) {
+      const langSuffix =
+        preflight.languagesWithIssues > 1
+          ? ` across ${preflight.languagesWithIssues} languages`
+          : "";
+      notices.push({
+        className: "gem-recent-campaign-preflight-notice",
+        text: `Preflight: ${preflight.total} issue${preflight.total === 1 ? "" : "s"}${langSuffix}`
+      });
+    }
+    if (!notices.length) return;
+    notices.forEach(({ className, text }) => {
+      const notice = document.createElement("div");
+      notice.className = className;
+      notice.setAttribute("role", "status");
+      notice.textContent = text;
+      main.appendChild(notice);
+    });
   }
 
   function stopActiveTabUnsavedPoll() {
@@ -864,6 +914,46 @@ console.log("[gem] recent-campaigns.js loaded");
     openRecentCampaignRowMenu = { wrap, trigger, menu };
   }
 
+  function escapeRecentCampaignShareHtml(text) {
+    return String(text || "")
+      .replace(/&/g, "&amp;")
+      .replace(/"/g, "&quot;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
+  async function copyRichTextCampaignLinkForItem(item) {
+    const url = withCurrentSessionId(String(item && item.urlBase ? item.urlBase : "").trim());
+    if (!url) {
+      if (window.gemShowToast) window.gemShowToast("Missing campaign URL — cannot share.", { type: "error" });
+      return false;
+    }
+    const name = String(item && item.title ? item.title : "").trim() || "Campaign";
+    const plain = name ? `${name} - ${url}` : url;
+    const html = `<a href="${escapeRecentCampaignShareHtml(url)}">${escapeRecentCampaignShareHtml(name)}</a>`;
+
+    try {
+      if (navigator.clipboard && typeof ClipboardItem !== "undefined" && navigator.clipboard.write) {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            "text/html": new Blob([html], { type: "text/html" }),
+            "text/plain": new Blob([plain], { type: "text/plain" })
+          })
+        ]);
+      } else if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(plain);
+      } else {
+        throw new Error("clipboard_unavailable");
+      }
+      if (window.gemShowToast) window.gemShowToast("Link copied to clipboard.", { type: "success" });
+      return true;
+    } catch (err) {
+      console.warn("[Gem] Recent campaigns: failed to copy rich text link", err);
+      if (window.gemShowToast) window.gemShowToast("Failed to copy link to clipboard.", { type: "error" });
+      return false;
+    }
+  }
+
   function duplicateRecentCampaign(item, duplicateBtn, clickEvent) {
     if (duplicateBtn.disabled || duplicateBtn.dataset.gemDuplicateState === "busy") return;
 
@@ -1025,6 +1115,14 @@ console.log("[gem] recent-campaigns.js loaded");
       });
       menu.appendChild(editContentItem);
     }
+
+    const shareItem = makeNavMenuItem("Share");
+    shareItem.addEventListener("click", (e) => {
+      e.stopPropagation();
+      closeRecentCampaignRowMenu();
+      void copyRichTextCampaignLinkForItem(item);
+    });
+    menu.appendChild(shareItem);
 
     appendDivider();
 
@@ -1611,13 +1709,8 @@ console.log("[gem] recent-campaigns.js loaded");
       notice.textContent = options.showUnsavedNotice ? "Unsaved changes" : "";
       notice.setAttribute("aria-hidden", options.showUnsavedNotice ? "false" : "true");
       main.appendChild(notice);
-    } else if (options.showUnsavedNotice) {
-      const notice = document.createElement("div");
-      notice.className = "gem-recent-campaign-unsaved-notice";
-      notice.setAttribute("role", "status");
-      notice.textContent = "Unsaved changes";
-      notice.setAttribute("aria-hidden", "false");
-      main.appendChild(notice);
+    } else {
+      appendCampaignStatusNotices(main, options);
     }
 
     main.appendChild(titleRow);
@@ -1629,7 +1722,7 @@ console.log("[gem] recent-campaigns.js loaded");
     return row;
   }
 
-  function buildListSourceCampaignRow(item) {
+  function buildListSourceCampaignRow(item, opts) {
     const row = document.createElement("div");
     row.className = "gem-recent-campaign-row gem-recent-campaign-row--list-source";
     const openCampaign = () => {
@@ -1659,13 +1752,14 @@ console.log("[gem] recent-campaigns.js loaded");
     titleRow.appendChild(title);
     titleRow.appendChild(createCampaignRowOverflowMenu(item));
 
+    appendCampaignStatusNotices(main, opts || {});
     main.appendChild(titleRow);
     inner.appendChild(main);
     row.appendChild(inner);
     return row;
   }
 
-  function appendActiveTabSection(container, item) {
+  function appendActiveTabSection(container, item, statusOpts) {
     const group = document.createElement("div");
     group.className = "gem-recent-campaign-group gem-recent-campaign-group--active-tab";
     const header = document.createElement("div");
@@ -1681,6 +1775,7 @@ console.log("[gem] recent-campaigns.js loaded");
       buildCampaignRow(item, {
         activeUnsavedSlot: true,
         showUnsavedNotice: readDraftSaveButtonUnsavedFromDom(),
+        preflightSummary: statusOpts && statusOpts.preflightSummary,
         hidePreview: true,
         hideEditContent: isCampaignPage(),
         hideEditSettings: isCampaignManagerDetailsPage(),
@@ -1734,6 +1829,12 @@ console.log("[gem] recent-campaigns.js loaded");
         }
       }
       readOtherRecentItems((otherRaw) => {
+        chrome.storage.local.get({ [PREFLIGHT_LANGUAGE_ALERTS_KEY]: {} }, (prefRes) => {
+        const preflightByCampaign = prefRes[PREFLIGHT_LANGUAGE_ALERTS_KEY] || {};
+        const rowOpts = (item) => ({
+          showUnsavedNotice: isOpenTabUnsavedForItem(item),
+          preflightSummary: getCampaignPreflightIssueSummary(preflightByCampaign[String(item.id || "").trim()])
+        });
         pinnedCampaignKeys = new Set((Array.isArray(pinnedKeys) ? pinnedKeys : []).map((v) => String(v || "").trim()).filter(Boolean));
         const filterKey = `${activeLanguageFilter}\n${activeSearchQuery}`;
         if (filterKey !== lastListFilterKey) {
@@ -1924,7 +2025,7 @@ console.log("[gem] recent-campaigns.js loaded");
         mountLanguageFilterChips();
 
         if (activeItem && activeTabSlot) {
-          appendActiveTabSection(activeTabSlot, activeItem);
+          appendActiveTabSection(activeTabSlot, activeItem, rowOpts(activeItem));
         }
 
         function groupCountLabel(visible, total) {
@@ -1958,7 +2059,7 @@ console.log("[gem] recent-campaigns.js loaded");
             openGroupList.className = "gem-recent-campaign-group-list";
             openCampaigns.forEach((item) =>
               openGroupList.appendChild(
-                buildCampaignRow(item, { showUnsavedNotice: isOpenTabUnsavedForItem(item), showSwitchToTab: true })
+                buildCampaignRow(item, { ...rowOpts(item), showSwitchToTab: true })
               )
             );
             openGroup.appendChild(openGroupList);
@@ -1974,7 +2075,7 @@ console.log("[gem] recent-campaigns.js loaded");
           pinnedHeader.className = "gem-recent-campaign-group-header";
           pinnedHeader.textContent = `Pinned favorites (${groupCountLabel(pinnedCampaigns.length, baseGroupTotals.pinned)})`;
           pinnedGroup.appendChild(pinnedHeader);
-          pinnedCampaigns.forEach((item) => pinnedGroup.appendChild(buildCampaignRow(item)));
+          pinnedCampaigns.forEach((item) => pinnedGroup.appendChild(buildCampaignRow(item, rowOpts(item))));
           container.appendChild(pinnedGroup);
         }
 
@@ -1988,7 +2089,7 @@ console.log("[gem] recent-campaigns.js loaded");
             baseGroupTotals.recentlyEdited
           )})`;
           editedGroup.appendChild(editedHeader);
-          recentlyEditedCampaigns.forEach((item) => editedGroup.appendChild(buildCampaignRow(item)));
+          recentlyEditedCampaigns.forEach((item) => editedGroup.appendChild(buildCampaignRow(item, rowOpts(item))));
           container.appendChild(editedGroup);
         }
 
@@ -2009,7 +2110,7 @@ console.log("[gem] recent-campaigns.js loaded");
           const listOtherRowsWrap = document.createElement("div");
           listOtherRowsWrap.className =
             "gem-recent-campaign-group-list gem-recent-campaign-group-list--list-source";
-          listOtherForSection.forEach((item) => listOtherRowsWrap.appendChild(buildListSourceCampaignRow(item)));
+          listOtherForSection.forEach((item) => listOtherRowsWrap.appendChild(buildListSourceCampaignRow(item, rowOpts(item))));
           listOtherGroup.appendChild(listOtherRowsWrap);
           container.appendChild(listOtherGroup);
         }
@@ -2021,6 +2122,7 @@ console.log("[gem] recent-campaigns.js loaded");
           recentlyEditedCampaigns,
           listOtherForSection
         );
+        });
       });
     });
   }
@@ -2062,6 +2164,8 @@ console.log("[gem] recent-campaigns.js loaded");
         renderRecentList();
       } else if (area === "local" && changes[RECENT_UI_STATE_KEY]) {
         loadUiState(() => renderRecentList());
+      } else if (area === "local" && changes[PREFLIGHT_LANGUAGE_ALERTS_KEY]) {
+        renderRecentList();
       }
     });
   }

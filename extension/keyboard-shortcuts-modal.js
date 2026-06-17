@@ -1,8 +1,31 @@
 (function () {
 
+  function kbd(text) {
+    return `<kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">${text}</kbd>`;
+  }
+
+  function shortcutGrid(rows) {
+    return `
+      <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 8px; align-items: center;">
+        ${rows.map(([key, desc]) => `${kbd(key)}<span>${desc}</span>`).join('\n')}
+      </div>
+    `;
+  }
+
+  function section(title, rows) {
+    return `
+      <div style="margin-bottom: 24px;">
+        <h3 style="margin: 0 0 16px 0; color: var(--token-accent-foreground);">${title}</h3>
+        ${shortcutGrid(rows)}
+      </div>
+    `;
+  }
+
   function showKeyboardShortcutsModal() {
     const existing = document.getElementById('gem-keyboard-shortcuts-modal');
     if (existing) existing.remove();
+
+    const mod = window.GEM_MOD_KEY || 'CTRL';
 
     const modal = document.createElement('div');
     modal.id = 'gem-keyboard-shortcuts-modal';
@@ -16,60 +39,35 @@
         </button>
       </div>
       <div class="gem-welcome-modal__body gem-scrollable" style="max-height: 60vh; overflow-y: auto;">
-        <div style="margin-bottom: 24px;">
-          <h3 style="margin: 0 0 16px 0; color: var(--token-accent-foreground);">General Shortcuts</h3>
-          <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 8px; align-items: center;">
-            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">${window.GEM_MOD_KEY}+G</kbd>
-            <span>Open/Close Gemma Settings Panel</span>
+        <p style="margin: 0 0 20px 0; color: var(--token-font-muted, #666); font-size: 13px; line-height: 1.45;">
+          Shortcuts work in the email editor and most Gemma panels. Opening Recent Campaigns, Notes, or Settings with a shortcut will close the other panel if it is already open.
+        </p>
 
-            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">${window.GEM_MOD_KEY}+/</kbd>
-            <span>Open/Close Recent Campaigns panel</span>
+        ${section('Panels &amp; Navigation', [
+          [`${mod}+G`, 'Open or close Gemma Settings'],
+          [`${mod}+/`, 'Open or close Recent Campaigns'],
+          [`${mod}+;`, 'Open or close Notes'],
+          [`${mod}+Shift+F`, 'Toggle Expanded View mode (fullscreen email layout)'],
+          [`${mod}+Shift+,`, 'Previous language version (when language selector is available)'],
+          [`${mod}+Shift+.`, 'Next language version (when language selector is available)'],
+          ['Esc', 'Close Gemma modals and panels that support it']
+        ])}
 
-            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">${window.GEM_MOD_KEY}+;</kbd>
-            <span>Open/Close Notes panel</span>
+        ${section('Email Editor', [
+          [`${mod}+S`, 'Save the current email'],
+          [`${mod}+Shift+V`, 'Paste plain text (bypass Rich Paste formatting)']
+        ])}
 
-            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">${window.GEM_MOD_KEY}+SHIFT+F</kbd>
-            <span>Toggle Expanded View Mode</span>
+        ${section('Image Properties Dialog', [
+          ['Enter', 'Accept changes (clicks OK) — when focus is not in a text field'],
+          [`${mod}+D`, 'Toggle Desktop and Mobile tabs'],
+          [`${mod}+Click`, 'On an inactive Image Picker search pill — activate it exclusively and clear the search input'],
+          ['Double-click', 'An editable image in the email preview to open Image Properties']
+        ])}
 
-            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">${window.GEM_MOD_KEY}+S</kbd>
-            <span>Save the current email</span>
-
-            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">${window.GEM_MOD_KEY}+SHIFT+,</kbd>
-            <span>Cycle to the previous language version (when language selector is available)</span>
-
-            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">${window.GEM_MOD_KEY}+SHIFT+.</kbd>
-            <span>Cycle to the next language version (when language selector is available)</span>
-          </div>
-        </div>
-
-        <div style="margin-bottom: 24px;">
-          <h3 style="margin: 0 0 16px 0; color: var(--token-accent-foreground);">Image Properties Dialog</h3>
-          <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 8px; align-items: center;">
-            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">Enter</kbd>
-            <span>Accept changes (clicks the OK button)</span>
-
-            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">${window.GEM_MOD_KEY}+D</kbd>
-            <span>Toggle between Desktop and Mobile tabs</span>
-
-            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">${window.GEM_MOD_KEY}+Click</kbd>
-            <span>On an inactive search pill in the Image Picker — activates it exclusively, deactivates all other pills, and clears the search input</span>
-          </div>
-        </div>
-
-        <div style="margin-bottom: 24px;">
-          <h3 style="margin: 0 0 16px 0; color: var(--token-accent-foreground);">Block Editing</h3>
-          <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 8px; align-items: center;">
-            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">${window.GEM_MOD_KEY}+SHIFT+V</kbd>
-            <span>Paste plain text from the clipboard (without Rich Paste formatting)</span>
-
-            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">Double-click</kbd>
-            <span>on an editable image to open the Image Properties dialog</span>
-
-            <kbd style="background: var(--token-input-background); border: 1px solid var(--token-input-border); padding: 4px 8px; border-radius: 4px; font-family: monospace;">Double-click</kbd>
-            <span>on an ESL token to open the ESL snippet dialog</span>
-          </div>
-        </div>
-
+        ${section('Block &amp; ESL Editing', [
+          ['Double-click', 'An ESL token in the email preview to open the ESL snippet editor']
+        ])}
       </div>
       <div class="gem-welcome-modal__footer">
         <button class="e-btn e-btn-primary gem-keyboard-shortcuts-close" type="button">Close</button>

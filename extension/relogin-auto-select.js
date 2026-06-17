@@ -1,22 +1,108 @@
-// Watches for the re-login interstitial button and, if found, covers the page
-// with an overlay and auto-clicks it. If the button never appears (e.g. the
-// standard logged-out page), neither the overlay nor any click ever fires.
+// Watches for the re-login interstitial and auto-continues to the intended page.
+// Prefers navigating to e-actionlist-item[value] (final URL with session_id).
+// Falls back to clicking the account button if the value attribute is missing.
 
-const SELECTOR = 'e-actionlist-wrapper .e-actionlist__itemscontainer button:first-child';
+const BUTTON_SELECTOR = 'e-actionlist-wrapper .e-actionlist__itemscontainer button:first-child';
+const ACTION_LIST_ITEM_SELECTOR = 'e-actionlist-item[value]';
+const RELOGIN_DESTINATION_PATHS = ['bootstrap.php', 'campaignmanager.php'];
+const OVERLAY_DISMISS_MS = 7000;
+const BUTTON_WATCH_MS = 10000;
 
 const log  = (...args) => console.log('[Gem] relogin-auto-select:', ...args);
 const warn = (...args) => console.warn('[Gem] relogin-auto-select:', ...args);
 
 log('Script loaded. URL:', window.location.href);
 
-// --- Overlay (created only when the target button is confirmed present) ---
+// --- Visibility-aware timers (only count time while tab is visible) ---
 
-let overlayEl      = null;
+function createVisibilityAwareTimeout(callback, delayMs) {
+  let remainingMs = delayMs;
+  let timerId = null;
+  let startedAt = null;
+  let done = false;
+
+  function clearTimer() {
+    if (timerId != null) {
+      clearTimeout(timerId);
+      timerId = null;
+    }
+  }
+
+  function pause() {
+    if (startedAt == null) return;
+    remainingMs = Math.max(0, remainingMs - (Date.now() - startedAt));
+    startedAt = null;
+    clearTimer();
+  }
+
+  function finish() {
+    if (done) return;
+    done = true;
+    clearTimer();
+    document.removeEventListener('visibilitychange', onVisibilityChange);
+    callback();
+  }
+
+  function resume() {
+    if (done || document.hidden) return;
+    if (remainingMs <= 0) {
+      finish();
+      return;
+    }
+    startedAt = Date.now();
+    timerId = setTimeout(onTimerFire, remainingMs);
+  }
+
+  function onTimerFire() {
+    timerId = null;
+    if (done) return;
+    if (document.hidden) {
+      if (startedAt != null) {
+        remainingMs = Math.max(0, remainingMs - (Date.now() - startedAt));
+        startedAt = null;
+      }
+      return;
+    }
+    if (startedAt != null) {
+      remainingMs = Math.max(0, remainingMs - (Date.now() - startedAt));
+      startedAt = null;
+    }
+    if (remainingMs <= 0) finish();
+    else resume();
+  }
+
+  function onVisibilityChange() {
+    if (done) return;
+    if (document.hidden) pause();
+    else resume();
+  }
+
+  document.addEventListener('visibilitychange', onVisibilityChange);
+  if (!document.hidden) resume();
+
+  return {
+    cancel() {
+      done = true;
+      clearTimer();
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    }
+  };
+}
+
+// --- Overlay (visible tabs only) ---
+
+let overlayEl = null;
 let spinnerStyleEl = null;
-let dismissTimer   = null;
+/** @type {{ cancel: () => void } | null} */
+let dismissTimerControl = null;
+
+function maybeShowReloginOverlay() {
+  if (document.hidden) return;
+  buildAndShowOverlay();
+}
 
 function buildAndShowOverlay() {
-  if (overlayEl) return; // already shown
+  if (overlayEl) return;
 
   spinnerStyleEl = document.createElement('style');
   spinnerStyleEl.textContent = `
@@ -80,39 +166,166 @@ function buildAndShowOverlay() {
   overlayEl.appendChild(subtext);
   document.documentElement.appendChild(overlayEl);
 
-  // Safety net: if the redirect hasn't happened within 7 seconds, fade out so
-  // the user can still interact with the page.
-  dismissTimer = setTimeout(() => {
-    warn('7-second safety timer fired — dismissing overlay so user can access the page.');
+  if (dismissTimerControl) dismissTimerControl.cancel();
+  dismissTimerControl = createVisibilityAwareTimeout(() => {
+    warn('7-second visible-time safety timer fired — dismissing overlay so user can access the page.');
     dismissOverlay();
-  }, 7000);
+  }, OVERLAY_DISMISS_MS);
 
   log('Overlay injected.');
 }
 
 function dismissOverlay() {
+  if (dismissTimerControl) {
+    dismissTimerControl.cancel();
+    dismissTimerControl = null;
+  }
   if (!overlayEl) return;
   overlayEl.style.opacity = '0';
   setTimeout(() => {
     if (overlayEl) overlayEl.remove();
     if (spinnerStyleEl) spinnerStyleEl.remove();
+    overlayEl = null;
+    spinnerStyleEl = null;
   }, 650);
 }
 
-// --- Button detection and click ---
+// --- Relogin detection: navigate via value URL or click fallback ---
 
 let mutationCount = 0;
-let observer      = null;
+let observer = null;
+/** @type {{ cancel: () => void } | null} */
+let buttonWatchTimer = null;
+let visibilityRetryInstalled = false;
+let redirectStarted = false;
 
-function tryClick() {
-  const btn = document.querySelector(SELECTOR);
+function isAllowedReloginDestinationUrl(url) {
+  if (!/\.emarsys\.net$/i.test(url.hostname)) return false;
+  const path = String(url.pathname || '').toLowerCase();
+  return RELOGIN_DESTINATION_PATHS.some((segment) => path.includes(segment));
+}
+
+function normalizeReloginDestinationUrl(raw) {
+  const value = String(raw || '').trim();
+  if (!value) return '';
+  try {
+    const url = new URL(value, window.location.origin);
+    if (!isAllowedReloginDestinationUrl(url)) return '';
+    return url.toString();
+  } catch (_) {
+    return '';
+  }
+}
+
+function getReloginDestinationUrl() {
+  const btn =
+    document.querySelector(`${BUTTON_SELECTOR}.e-actionlist__item-active`) ||
+    document.querySelector(BUTTON_SELECTOR);
+  if (btn) {
+    const list = btn.closest('e-actionlist');
+    if (list) {
+      const item = list.querySelector(ACTION_LIST_ITEM_SELECTOR);
+      const url = normalizeReloginDestinationUrl(item?.getAttribute('value'));
+      if (url) return url;
+    }
+  }
+
+  const firstItem = document.querySelector(ACTION_LIST_ITEM_SELECTOR);
+  return normalizeReloginDestinationUrl(firstItem?.getAttribute('value'));
+}
+
+function reloginInterstitialPresent() {
+  return !!(getReloginDestinationUrl() || document.querySelector(BUTTON_SELECTOR));
+}
+
+function tryReloginContinue() {
+  if (redirectStarted) return true;
+
+  const destUrl = getReloginDestinationUrl();
+  if (destUrl) {
+    redirectStarted = true;
+    maybeShowReloginOverlay();
+    log('Navigating to e-actionlist-item value:', destUrl);
+    window.location.replace(destUrl);
+    return true;
+  }
+
+  const btn = document.querySelector(BUTTON_SELECTOR);
   if (!btn) return false;
 
-  log('Button found. Text:', btn.textContent.trim(), '| disabled:', btn.disabled, '| visible:', btn.offsetParent !== null);
-  buildAndShowOverlay();
+  redirectStarted = true;
+  log(
+    'Button found (no value URL). Text:',
+    btn.textContent.trim(),
+    '| disabled:',
+    btn.disabled,
+    '| visible:',
+    btn.offsetParent !== null
+  );
+  maybeShowReloginOverlay();
   btn.click();
   log('Click dispatched.');
   return true;
+}
+
+function stopButtonWatch() {
+  if (observer) {
+    observer.disconnect();
+    observer = null;
+  }
+  if (buttonWatchTimer) {
+    buttonWatchTimer.cancel();
+    buttonWatchTimer = null;
+  }
+  if (visibilityRetryInstalled) {
+    document.removeEventListener('visibilitychange', onReloginTabVisible);
+    visibilityRetryInstalled = false;
+  }
+}
+
+function onReloginTabVisible() {
+  if (document.hidden) return;
+  if (!tryReloginContinue()) return;
+  log('Relogin interstitial handled on tab focus.');
+  stopButtonWatch();
+}
+
+function installVisibilityRetry() {
+  if (visibilityRetryInstalled) return;
+  visibilityRetryInstalled = true;
+  document.addEventListener('visibilitychange', onReloginTabVisible);
+}
+
+function startButtonWatch() {
+  installVisibilityRetry();
+
+  if (tryReloginContinue()) {
+    log('Relogin interstitial was already in DOM at watch start.');
+    stopButtonWatch();
+    return;
+  }
+
+  if (!observer) {
+    observer = new MutationObserver(() => {
+      mutationCount++;
+      if (tryReloginContinue()) {
+        log('Relogin interstitial found after', mutationCount, 'mutation batch(es). Observer disconnected.');
+        stopButtonWatch();
+      }
+    });
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+  }
+
+  if (!buttonWatchTimer) {
+    buttonWatchTimer = createVisibilityAwareTimeout(() => {
+      if (reloginInterstitialPresent()) return;
+      warn(
+        'Relogin interstitial not found after 10 visible seconds — this may be the logged-out page. Mutation batches:',
+        mutationCount
+      );
+      stopButtonWatch();
+    }, BUTTON_WATCH_MS);
+  }
 }
 
 chrome.storage.sync.get({ gemSharedLinkAutoSelect: true }, (settings) => {
@@ -124,27 +337,11 @@ chrome.storage.sync.get({ gemSharedLinkAutoSelect: true }, (settings) => {
     return;
   }
 
-  log('Feature is on. Watching for button:', SELECTOR);
-
-  if (tryClick()) {
-    log('Button was already in DOM at storage-read time.');
-    return;
-  }
-
-  observer = new MutationObserver(() => {
-    mutationCount++;
-    if (tryClick()) {
-      log('Button found after', mutationCount, 'mutation batch(es). Observer disconnected.');
-      observer.disconnect();
-    }
-  });
-
-  observer.observe(document.documentElement, { childList: true, subtree: true });
-
-  // Warn if the button never appears — but do NOT show an overlay in this case.
-  setTimeout(() => {
-    if (document.querySelector(SELECTOR)) return;
-    warn('Button not found after 10 seconds — this may be the logged-out page, not the relogin interstitial. Mutation batches:', mutationCount);
-    if (observer) observer.disconnect();
-  }, 10000);
+  log(
+    'Feature is on. Watching for',
+    ACTION_LIST_ITEM_SELECTOR,
+    'or button:',
+    BUTTON_SELECTOR
+  );
+  startButtonWatch();
 });

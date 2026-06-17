@@ -13,6 +13,7 @@ function initializePreflightPanel() {
   const PREFLIGHT_HIDE_LINKS_SECTION_KEY = 'gemPreflightHideLinksSection';
   const PREFLIGHT_ICON_PIP_TOGGLES_KEY = 'gemPreflightIconPipToggles';
   const PREFLIGHT_ALERT_COUNT_KEY = 'gemPreflightAlertCount';
+  const PREFLIGHT_LANGUAGE_ALERTS_KEY = 'gemPreflightLanguageAlertsByCampaignV1';
   const PREFLIGHT_SECTION_COLLAPSE_STATE_KEY = 'gemPreflightSectionCollapseStateV1';
   const PREFLIGHT_ICON_PIP_TOGGLES_DEFAULT = {
     textAlerts: true,
@@ -44,6 +45,8 @@ function initializePreflightPanel() {
   let latestNotifyAlertCount = 0;
   let latestTextAnalysisSnapshot = null;
   let cachedPreflightIconPipToggles = { ...PREFLIGHT_ICON_PIP_TOGGLES_DEFAULT };
+  let cachedLanguageAlertMap = {};
+  let languagePreflightBadgeRefreshTimer = null;
   const CONTACT_PREVIEW_IFRAME_SELECTOR = '.cp-contact_preview__preview vce-iframes-container iframe';
   const CONTACT_PREVIEW_LINK_VERIFY_DEBOUNCE_MS = 550;
 
@@ -275,6 +278,27 @@ function initializePreflightPanel() {
       <div class="e-section__title">Preflight</div>
     </div>
     <div class="e-section__content">
+      <div class="gem-preflight-collapsible-section" data-role="languageOverviewSection">
+        <div class="gem-preflight-subsection-title">
+          <div class="gem-preflight-subsection-title-main">
+            <span>Languages</span>
+          </div>
+          <div class="gem-preflight-header-actions">
+            <button type="button" class="gem-preflight-section-toggle" data-role="toggleSectionBtn" data-section-key="languageOverview" aria-expanded="true" title="Collapse Languages overview" aria-label="Collapse Languages overview">
+              <span class="gem-preflight-section-toggle-arrow" aria-hidden="true">▾</span>
+            </button>
+          </div>
+        </div>
+        <div class="gem-preflight-collapsible-body" data-role="languageOverviewSectionBody">
+          <div class="gem-preflight-subsection-description">
+            Preflight issue counts remembered per language for this campaign. Switch languages to scan each version.
+          </div>
+          <div class="gem-preflight-accessibility-table gem-preflight-language-overview-table" data-role="languageOverviewTable">
+            <div class="gem-preflight-image-breakdown-empty">No languages found.</div>
+          </div>
+        </div>
+      </div>
+      <div class="gem-preflight-section-divider" aria-hidden="true"></div>
       <div class="gem-preflight-collapsible-section" data-role="textAnalysisSection">
         <div class="gem-preflight-subsection-title">
           <div class="gem-preflight-subsection-title-main">
@@ -520,8 +544,252 @@ function initializePreflightPanel() {
       textAnalysisSectionPip: panel.querySelector('[data-role="textAnalysisSectionAlertPip"]'),
       permissionStatus: panel.querySelector('[data-metric="permissionStatus"]'),
       metrics: panel.querySelector('#gem-preflight-images-metrics'),
-      imageBreakdownWrap: panel.querySelector('[data-role="imageBreakdownWrap"]')
+      imageBreakdownWrap: panel.querySelector('[data-role="imageBreakdownWrap"]'),
+      languageOverviewTable: panel.querySelector('[data-role="languageOverviewTable"]')
     };
+  }
+
+  function getLanguageAlertEntry(map, langValue) {
+    const raw = map && langValue != null ? map[langValue] : null;
+    if (raw == null) return { count: 0, updatedAt: 0 };
+    if (typeof raw === 'number') return { count: Math.max(0, raw), updatedAt: 0 };
+    if (typeof raw === 'object') {
+      return {
+        count: Math.max(0, Number.parseInt(String(raw.count), 10) || 0),
+        updatedAt: Number.parseInt(String(raw.updatedAt), 10) || 0
+      };
+    }
+    return { count: 0, updatedAt: 0 };
+  }
+
+  function formatPreflightRelativeTime(ts) {
+    const n = Number.parseInt(String(ts), 10) || 0;
+    if (!n) return '—';
+    const diffMs = Date.now() - n;
+    if (diffMs < 45000) return 'Just now';
+    const mins = Math.floor(diffMs / 60000);
+    if (mins < 60) return `${mins}m ago`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 48) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    return `${days}d ago`;
+  }
+
+  function renderLanguageOverviewPanel() {
+    const els = getPreflightPanelEls();
+    if (!els || !els.languageOverviewTable) return;
+    const campaignId = getCampaignIdFromUrl();
+    const meta = getLanguageOptionMeta();
+    const currentLang = getSelectedLanguageValue();
+
+    if (!campaignId || !meta.length) {
+      els.languageOverviewTable.innerHTML = '<div class="gem-preflight-image-breakdown-empty">No languages found for this campaign.</div>';
+      return;
+    }
+
+    chrome.storage.local.get({ [PREFLIGHT_LANGUAGE_ALERTS_KEY]: {} }, (res) => {
+      const map = ((res[PREFLIGHT_LANGUAGE_ALERTS_KEY] || {})[campaignId]) || {};
+      const rows = meta.map(({ value, text }) => {
+        const entry = getLanguageAlertEntry(map, value);
+        const isCurrent = value === currentLang;
+        const countLabel = entry.count > 0 ? String(Math.min(99, entry.count)) : '0';
+        const scannedLabel = entry.updatedAt ? formatPreflightRelativeTime(entry.updatedAt) : (entry.count > 0 ? '—' : 'Not scanned');
+        return `
+          <div class="gem-preflight-language-overview-row${isCurrent ? ' gem-preflight-language-overview-row--current' : ''}${entry.count > 0 ? ' gem-preflight-language-overview-row--alert' : ''}" data-lang-value="${String(value).replace(/"/g, '&quot;')}">
+            <div class="gem-preflight-language-overview-cell gem-preflight-language-overview-cell--name">${text.replace(/&/g, '&amp;').replace(/</g, '&lt;')}${isCurrent ? ' <span class="gem-preflight-language-overview-current">Current</span>' : ''}</div>
+            <div class="gem-preflight-language-overview-cell gem-preflight-language-overview-cell--count">${countLabel}</div>
+            <div class="gem-preflight-language-overview-cell gem-preflight-language-overview-cell--time">${scannedLabel}</div>
+          </div>
+        `.trim();
+      }).join('');
+
+      els.languageOverviewTable.innerHTML = `
+        <div class="gem-preflight-language-overview-head">
+          <div class="gem-preflight-language-overview-cell gem-preflight-language-overview-cell--name">Language</div>
+          <div class="gem-preflight-language-overview-cell gem-preflight-language-overview-cell--count">Issues</div>
+          <div class="gem-preflight-language-overview-cell gem-preflight-language-overview-cell--time">Last scanned</div>
+        </div>
+        ${rows}
+      `.trim();
+    });
+  }
+
+  function getCampaignIdFromUrl() {
+    try {
+      const match = window.location.search.match(/[?&]id=(\d+)/);
+      return match ? match[1] : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function getSelectedLanguageValue() {
+    try {
+      const selector = document.querySelector('vce-languages-selector');
+      if (!selector) return null;
+      const selected = selector.querySelector('e-select-option[selected="true"], e-select-option[selected="selected"]');
+      if (selected) return selected.getAttribute('value') || selected.id || null;
+      const hidden = selector.querySelector('input[type="hidden"]');
+      if (hidden && hidden.value) return hidden.value;
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function normalizeLanguageOptionText(text) {
+    return String(text || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function getLanguageOptionMeta() {
+    const selector = document.querySelector('vce-languages-selector');
+    if (!selector) return [];
+    return Array.from(selector.querySelectorAll('e-select-option'))
+      .map((opt) => ({
+        value: opt.getAttribute('value') || opt.id || '',
+        text: normalizeLanguageOptionText(opt.textContent || '')
+      }))
+      .filter((entry) => entry.value && entry.text);
+  }
+
+  function applyLanguagePickerPreflightBadges(campaignMap) {
+    const map = campaignMap && typeof campaignMap === 'object' ? campaignMap : {};
+    const meta = getLanguageOptionMeta();
+    const textToCount = {};
+    meta.forEach(({ value, text }) => {
+      const entry = getLanguageAlertEntry(map, value);
+      const count = entry.count;
+      if (count > 0) textToCount[text] = count;
+    });
+
+    const selector = document.querySelector('vce-languages-selector');
+    if (selector) {
+      selector.querySelectorAll('e-select-option').forEach((opt) => {
+        const val = opt.getAttribute('value') || opt.id || '';
+        const count = getLanguageAlertEntry(map, val).count;
+        if (count > 0) {
+          opt.setAttribute('data-gem-preflight-alerts', String(Math.min(99, count)));
+        } else {
+          opt.removeAttribute('data-gem-preflight-alerts');
+        }
+      });
+
+      const trigger = selector.querySelector('.e-selectnew[role="button"]');
+      if (trigger) {
+        let triggerPip = trigger.querySelector('.gem-lang-preflight-badge--trigger');
+        const currentLang = getSelectedLanguageValue();
+        const otherIssueCount = meta.reduce((sum, { value }) => {
+          if (value === currentLang) return sum;
+          return sum + (getLanguageAlertEntry(map, value).count > 0 ? 1 : 0);
+        }, 0);
+        if (otherIssueCount > 0) {
+          if (!triggerPip) {
+            triggerPip = document.createElement('span');
+            triggerPip.className = 'gem-lang-preflight-badge gem-lang-preflight-badge--trigger';
+            triggerPip.setAttribute('aria-hidden', 'true');
+            trigger.appendChild(triggerPip);
+          }
+          triggerPip.textContent = String(Math.min(99, otherIssueCount));
+          triggerPip.style.display = '';
+        } else if (triggerPip) {
+          triggerPip.remove();
+        }
+      }
+    }
+
+    document.querySelectorAll('.e-actionlist__item[role="option"]').forEach((item) => {
+      item.querySelector('.gem-lang-preflight-badge')?.remove();
+    });
+    meta.forEach(({ value, text }) => {
+      const count = getLanguageAlertEntry(map, value).count;
+      if (count <= 0) return;
+      const items = document.querySelectorAll('.e-actionlist__item[role="option"]');
+      for (const item of items) {
+        const itemText = normalizeLanguageOptionText(item.textContent || '');
+        if (itemText !== text) continue;
+        const badge = document.createElement('span');
+        badge.className = 'gem-lang-preflight-badge';
+        badge.textContent = String(Math.min(99, count));
+        badge.setAttribute('aria-label', `${count} preflight issue${count === 1 ? '' : 's'}`);
+        item.appendChild(badge);
+        break;
+      }
+    });
+  }
+
+  function refreshLanguagePickerPreflightBadges() {
+    const campaignId = getCampaignIdFromUrl();
+    if (!campaignId) {
+      applyLanguagePickerPreflightBadges({});
+      renderLanguageOverviewPanel();
+      return;
+    }
+    chrome.storage.local.get({ [PREFLIGHT_LANGUAGE_ALERTS_KEY]: {} }, (res) => {
+      const all = res[PREFLIGHT_LANGUAGE_ALERTS_KEY] && typeof res[PREFLIGHT_LANGUAGE_ALERTS_KEY] === 'object'
+        ? res[PREFLIGHT_LANGUAGE_ALERTS_KEY]
+        : {};
+      cachedLanguageAlertMap = all[campaignId] || {};
+      applyLanguagePickerPreflightBadges(cachedLanguageAlertMap);
+      renderLanguageOverviewPanel();
+    });
+  }
+
+  function scheduleLanguagePickerPreflightBadges() {
+    if (languagePreflightBadgeRefreshTimer) clearTimeout(languagePreflightBadgeRefreshTimer);
+    languagePreflightBadgeRefreshTimer = setTimeout(() => {
+      languagePreflightBadgeRefreshTimer = null;
+      refreshLanguagePickerPreflightBadges();
+    }, 60);
+  }
+
+  function persistLanguagePreflightAlertCount(alertCount) {
+    const campaignId = getCampaignIdFromUrl();
+    const lang = getSelectedLanguageValue();
+    if (!campaignId || !lang) return;
+    const safe = Math.max(0, Number.parseInt(String(alertCount), 10) || 0);
+    chrome.storage.local.get({ [PREFLIGHT_LANGUAGE_ALERTS_KEY]: {} }, (res) => {
+      const all = res[PREFLIGHT_LANGUAGE_ALERTS_KEY] && typeof res[PREFLIGHT_LANGUAGE_ALERTS_KEY] === 'object'
+        ? { ...res[PREFLIGHT_LANGUAGE_ALERTS_KEY] }
+        : {};
+      const campaignMap = { ...(all[campaignId] || {}) };
+      if (safe > 0) {
+        campaignMap[lang] = { count: safe, updatedAt: Date.now() };
+      } else {
+        delete campaignMap[lang];
+      }
+      if (Object.keys(campaignMap).length === 0) {
+        delete all[campaignId];
+        cachedLanguageAlertMap = {};
+      } else {
+        all[campaignId] = campaignMap;
+        cachedLanguageAlertMap = campaignMap;
+      }
+      chrome.storage.local.set({ [PREFLIGHT_LANGUAGE_ALERTS_KEY]: all }, () => {
+        applyLanguagePickerPreflightBadges(cachedLanguageAlertMap);
+        renderLanguageOverviewPanel();
+      });
+    });
+  }
+
+  function setupLanguagePreflightBadgeSync() {
+    if (setupLanguagePreflightBadgeSync._bound) return;
+    setupLanguagePreflightBadgeSync._bound = true;
+
+    refreshLanguagePickerPreflightBadges();
+    renderLanguageOverviewPanel();
+
+    const observer = new MutationObserver(() => scheduleLanguagePickerPreflightBadges());
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area !== 'local' || !changes[PREFLIGHT_LANGUAGE_ALERTS_KEY]) return;
+      const campaignId = getCampaignIdFromUrl();
+      if (!campaignId) return;
+      const all = changes[PREFLIGHT_LANGUAGE_ALERTS_KEY].newValue || {};
+      cachedLanguageAlertMap = all[campaignId] || {};
+      applyLanguagePickerPreflightBadges(cachedLanguageAlertMap);
+      renderLanguageOverviewPanel();
+    });
   }
 
   function getAlertPipEl() {
@@ -553,6 +821,7 @@ function initializePreflightPanel() {
     );
     chrome.storage.local.set({ [PREFLIGHT_ALERT_COUNT_KEY]: alertCount });
     updateAlertPip(alertCount);
+    persistLanguagePreflightAlertCount(alertCount);
   }
 
   function updateSectionPip(pipEl, count) {
@@ -949,6 +1218,7 @@ function initializePreflightPanel() {
   function normalizeSectionCollapseStateObject(raw) {
     const src = raw && typeof raw === 'object' ? raw : {};
     return {
+      languageOverview: !!src.languageOverview,
       textAnalysis: !!src.textAnalysis,
       accessibility: !!src.accessibility,
       links: !!src.links,
@@ -994,8 +1264,19 @@ function initializePreflightPanel() {
     btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
     const arrow = btn.querySelector('.gem-preflight-section-toggle-arrow');
     if (arrow) arrow.textContent = collapsed ? '▸' : '▾';
-    btn.setAttribute('title', `${collapsed ? 'Expand' : 'Collapse'} ${sectionKey === 'textAnalysis' ? 'Text Analysis' : sectionKey.charAt(0).toUpperCase() + sectionKey.slice(1)}`);
-    btn.setAttribute('aria-label', `${collapsed ? 'Expand' : 'Collapse'} ${sectionKey === 'textAnalysis' ? 'Text Analysis' : sectionKey.charAt(0).toUpperCase() + sectionKey.slice(1)}`);
+    btn.setAttribute('title', `${collapsed ? 'Expand' : 'Collapse'} ${getPreflightSectionLabel(sectionKey)}`);
+    btn.setAttribute('aria-label', `${collapsed ? 'Expand' : 'Collapse'} ${getPreflightSectionLabel(sectionKey)}`);
+  }
+
+  function getPreflightSectionLabel(sectionKey) {
+    const labels = {
+      languageOverview: 'Languages overview',
+      textAnalysis: 'Text Analysis',
+      accessibility: 'Accessibility',
+      links: 'Links',
+      images: 'Images'
+    };
+    return labels[sectionKey] || String(sectionKey || '');
   }
 
   function setupSectionCollapseToggles() {
@@ -3551,7 +3832,7 @@ function initializePreflightPanel() {
       updateLinksSectionPip(0);
       updateImagesSectionPip(0);
       void readSectionCollapseState().then((state) => {
-        ['textAnalysis', 'accessibility', 'links', 'images'].forEach((key) => {
+        ['languageOverview', 'textAnalysis', 'accessibility', 'links', 'images'].forEach((key) => {
           syncPreflightSectionCollapseUI(els.panel, key, !!state[key]);
         });
       });
@@ -3815,6 +4096,7 @@ function initializePreflightPanel() {
   }
 
   waitForVerticalNav();
+  setupLanguagePreflightBadgeSync();
 }
 
 if (document.readyState === 'loading') {

@@ -811,6 +811,24 @@ color-mix(in srgb, var(--token-gray-100, #dbeafe) 25%, transparent);
     display: none !important;
 }
 
+.gem-recent-campaigns-panel .gem-recent-campaign-preflight-notice {
+    display: inline-flex;
+    align-items: center;
+    align-self: flex-start;
+    width: fit-content;
+    max-width: 100%;
+    margin: 0 0 6px 0;
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.35;
+    letter-spacing: 0.02em;
+    color: #fff;
+    background: var(--token-orange-600, #ea580c);
+    box-shadow: 0 0 0 1px color-mix(in srgb, #ea580c 55%, #000);
+}
+
 #gem-nav-recent-campaigns-item .gem-recent-campaign-languages,
 .gem-recent-campaigns-panel .gem-recent-campaign-languages {
     display: flex;
@@ -1124,7 +1142,7 @@ color-mix(in srgb, var(--token-gray-100, #dbeafe) 25%, transparent);
     position: relative;
     display: inline-flex;
     flex-shrink: 0;
-    z-index: 615;
+    z-index: 609;
     align-self: anchor-center;
     padding-right: 4px;
 }

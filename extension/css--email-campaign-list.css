@@ -9,8 +9,159 @@
 }
 
 .e-table__col.e-table__col.e-table__col-actions > div[class] {
-    display: flex;
+    display: inline-flex;
     gap: 2px;
     align-items: end;
     justify-content: end;
+}
+
+#email-campaign-list e-tooltip[content="Delete"],
+#email-campaign-list e-tooltip[content="Edit Translations"],
+#email-campaign-list e-tooltip[content="Distribute a copy to another account"],
+#email-campaign-list e-tooltip[content="Duplicate"],
+#email-campaign-list e-tooltip[content="Go to Reporting"] {
+    display: none !important;
+}
+
+#email-campaign-list .gem-recent-campaign-row-menu-item--danger {
+    color: var(--token-red-600, #dc2626);
+}
+
+#email-campaign-list .gem-recent-campaign-row-menu-item--danger:hover {
+    color: var(--token-red-600, #dc2626);
+}
+
+#email-campaign-list #campaign-list-container .e-table.e-table-datagrid_overview.e-datagrid__table tr.gem-campaign-list-row--preview-active {
+    background-color: color-mix(in srgb, var(--token-primary-default, #523ae6) 10%, transparent) !important;
+}
+
+html, body {
+    background-color: var(--token-tab-default-background) !important;
+    
+}
+
+#email-campaign-list .e-layout__header {
+    display: none !important;
+}
+
+#email-campaign-list main > .e-layout__section {
+    margin: 0 !important;
+    border: none !important;
+}
+
+#email-campaign-list main {
+    margin: 0 !important;
+}
+
+#email-campaign-list > .e-layout-without_navigation {
+    padding: 0 !important;
+}
+
+#email-campaign-list e-datagrid-wrapper .e-datagrid__table_wrapper {
+    padding-bottom: 76px !important;
+}
+
+#email-campaign-list e-datagrid-wrapper .e-datagrid__footer {
+    position: fixed !important;
+    z-index: 609 !important;
+    bottom: 0 !important;
+    width: 100% !important;
+    border-radius: 0;
+}
+
+#email-campaign-list.gem-email-campaign-list-preview-open e-datagrid-wrapper .e-datagrid__footer {
+    width: calc(100% - 439px) !important;
+}
+
+#gem-campaign-list-preview-panel {
+    position: fixed;
+    bottom: 0;
+    padding-top: 60px;
+    background: none;
+    right: 0;
+    width: 330px;
+    height: 100vh;
+    display: none;
+    flex-direction: column;
+    z-index: 9999;
+    padding: 18px;
+    width: 367px !important;
+    min-width: 367px !important;
+    border: 0;
+    border-right: 1px solid var(--token-box-default-border, #ccc);
+    background: var(--token-box-default-background, #fff);
+    box-sizing: border-box;
+}
+
+#gem-campaign-list-preview-panel.gem-campaign-list-preview-panel--open {
+    display: flex;
+}
+
+#email-campaign-list.gem-email-campaign-list-preview-open main {
+    margin-right: 367px !important;
+}
+
+.gem-campaign-list-preview-iframe-wrap {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    width: 330px;
+    border-radius: 9px;
+}
+
+.gem-campaign-list-preview-iframe {
+    width: 660px;
+    min-width: 660px;
+    max-width: 660px;
+    height: 200%;
+    max-height: 200%;
+    min-height: 200%;
+    transform: scale(0.5);
+    transform-origin: top left;
+    border: 0 !important;
+    display: block !important;
+    background: #fff !important;
+}
+
+.gem-campaign-list-preview-loading {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: color-mix(in srgb, var(--token-box-default-background, #fff) 72%, transparent);
+    z-index: 2;
+}
+
+.gem-campaign-list-preview-loading[hidden] {
+    display: none !important;
+}
+
+.gem-campaign-list-preview-loading-spinner {
+    display: block;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 3px solid color-mix(in srgb, currentColor 25%, transparent);
+    border-top-color: currentColor;
+    color: var(--token-primary-default, #5b738b);
+    animation: gem-campaign-list-preview-spinner-spin 0.7s linear infinite;
+    flex-shrink: 0;
+}
+
+@keyframes gem-campaign-list-preview-spinner-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.gem-campaign-list-row--preview-active {
+    box-shadow: inset 0 -1px 0 1px var(--token-button-highlight-background),inset 0 0 0 1px var(--token-button-highlight-background) !important;
+}
+
+[data-e-version="2"].e-table-datagrid_overview tbody tr:not(.e-table__row-group):hover td {
+    background-color: unset;
 }

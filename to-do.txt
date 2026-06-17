@@ -8,6 +8,8 @@
 |                                                                                |
  --------------------------------------------------------------------------------
 
+- Is it possible to get snippet tokens into the subject line? Personalization tokes work there.
+
 _________________
 ### Text Highlighting Upgrade
 I want to extend the Text Highlighting function so that it will check more locations on the page. Right now it is just checking the email desktop iframe.

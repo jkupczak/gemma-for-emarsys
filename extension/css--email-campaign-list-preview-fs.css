@@ -1,0 +1,5 @@
+/* Styles for preview_fs.php when loaded inside the Email Campaign List preview panel only. */
+#senderBlock,
+.e-tabs > div:first-child {
+    display: none !important;
+}

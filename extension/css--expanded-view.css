@@ -147,7 +147,7 @@
 }
 
 .gem-expanded .gem-email-tools-select {
-    padding: 0 10px 0 0;
+    padding: 0 10px 0 2px;
     border: 0;
     background: none;
     margin: 0;
@@ -227,7 +227,7 @@
     line-height: 20px !important;
     word-break: break-all;
     line-height: 20px;
-    font-size: 13px !important;
+    font-size: 14px !important;
     font-weight: normal !important;
     word-break: break-all;
     position: relative;
