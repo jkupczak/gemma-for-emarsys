@@ -124,6 +124,32 @@ const GEM_TEXT_SWAP_BTN_CLASS = 'gemSwapKeywords';
 // Swap configuration is stored on snippets themselves
 const GEM_SNIPPETS_STORAGE_KEY = 'gemSnippets';
 
+function gemNormalizeSwapMode(mode) { return mode === 'plain' ? 'plain' : 'token'; }
+function gemNormalizeSwapInitiateFrom(v) { return (v === 'panel' || v === 'toolbar') ? v : 'anywhere'; }
+function gemNormalizeSwapKeywordsFromSnippet(snippet) {
+  if (!snippet) return [];
+  if (Array.isArray(snippet.swapKeywords)) {
+    const cleaned = snippet.swapKeywords
+      .map((k) => ({
+        keyword: (k && typeof k.keyword === 'string') ? k.keyword.trim() : '',
+        mode: gemNormalizeSwapMode(k && k.mode),
+        initiateFrom: gemNormalizeSwapInitiateFrom(k && k.initiateFrom)
+      }))
+      .filter((k) => !!k.keyword);
+    const seen = new Set();
+    const out = [];
+    cleaned.forEach((k) => {
+      if (seen.has(k.keyword)) return;
+      seen.add(k.keyword);
+      out.push(k);
+    });
+    return out;
+  }
+  const legacyKeyword = (snippet.swapKeyword && typeof snippet.swapKeyword === 'string') ? snippet.swapKeyword.trim() : '';
+  if (!legacyKeyword) return [];
+  return [{ keyword: legacyKeyword, mode: gemNormalizeSwapMode(snippet.swapMode), initiateFrom: 'anywhere' }];
+}
+
 const GEM_ESL_TOKEN_NAME = 'ESL snippet';
 // Match ESL variable-ish strings like {{ something }} but avoid curly-quote noise.
 const GEM_ESL_REGEX = /\{\{[^”“‘’}]+\}\}/g;
@@ -132,7 +158,7 @@ const GEM_ESL_RDS_NAME_REGEX = /\]\.[^\s\|]+/;
 const GEM_ESL_CONTACT_NAME_REGEX = /contact\.\d+/;
 // Note: GEM_SNIPPETS_STORAGE_KEY is shared between features
 
-let gemToolbarObserver = null;
+let gemToolbarUnsub = null;
 
 // ------------------------------------------------------------
 // Debug logging for toolbar icon injection
@@ -176,7 +202,7 @@ function gemLogToolbarInjection(toolbarEl, which, result) {
 }
 
 function setupToolbarInjectionObserver() {
-  if (gemToolbarObserver) return;
+  if (gemToolbarUnsub) return;
 
   const injectIfPresent = () => {
     const toolbar = document.querySelector(GEM_TOOLBAR_SELECTOR);
@@ -187,8 +213,9 @@ function setupToolbarInjectionObserver() {
     gemLogToolbarInjection(toolbar, 'swap', swapResult);
   };
 
-  gemToolbarObserver = new MutationObserver(() => injectIfPresent());
-  gemToolbarObserver.observe(document.body, { childList: true, subtree: true });
+  gemToolbarUnsub = window.gemDomWatchSubscribe(function () {
+    injectIfPresent();
+  });
 
   // Also try once immediately
   injectIfPresent();
@@ -287,18 +314,31 @@ function injectConvertButtonIntoToolbar(toolbarEl) {
 }
 
 function injectTextSwapButtonIntoToolbar(toolbarEl) {
+  // Assign a short stable ID to this toolbar element so we can track it across calls.
+  if (!toolbarEl._gemDbgId) toolbarEl._gemDbgId = Math.random().toString(36).slice(2, 7);
+  const tid = toolbarEl._gemDbgId;
+
   const actions = toolbarEl.querySelector(GEM_TOOLBAR_ACTIONS_SELECTOR);
-  if (!actions) return { status: 'skipped', reason: 'no-actions-container' };
+  if (!actions) {
+    console.debug(`[gem:swap-debug] toolbar#${tid}: ✗ no actions container (selector: ${GEM_TOOLBAR_ACTIONS_SELECTOR})`);
+    return { status: 'skipped', reason: 'no-actions-container' };
+  }
 
   const reorderBtn = toolbarEl.querySelector(GEM_REORDER_BTN_SELECTOR);
-  if (!reorderBtn) return { status: 'skipped', reason: 'no-reorder-button' };
+  if (!reorderBtn) {
+    console.debug(`[gem:swap-debug] toolbar#${tid}: ✗ no reorder button (selector: ${GEM_REORDER_BTN_SELECTOR})`);
+    return { status: 'skipped', reason: 'no-reorder-button' };
+  }
 
   const eBlockId = reorderBtn.getAttribute('e-block-id') || '';
   const blockTemplateName = reorderBtn.getAttribute('blocktemplatename') || '';
   const blockPosition = reorderBtn.getAttribute('blockposition') || '';
 
+  console.debug(`[gem:swap-debug] toolbar#${tid}: inject called — blockId="${eBlockId}", inDoc=${toolbarEl.isConnected}, checked=${!!actions._gemSwapKeywordChecked}, hasAny=${actions._gemSwapKeywordHasAny}`);
+
   // Respect settings: allow user to always hide this icon
   if (document.body.classList.contains('gem-toolbar-swapKeywords-always-hide')) {
+    console.debug(`[gem:swap-debug] toolbar#${tid}: ✗ skipped — always-hide-setting`);
     return { status: 'skipped', reason: 'always-hide-setting' };
   }
 
@@ -311,6 +351,7 @@ function injectTextSwapButtonIntoToolbar(toolbarEl) {
     else existingBtn.removeAttribute('blocktemplatename');
     if (blockPosition) existingBtn.setAttribute('blockposition', blockPosition);
     else existingBtn.removeAttribute('blockposition');
+    console.debug(`[gem:swap-debug] toolbar#${tid}: already-present, attrs updated`);
     return {
       status: 'skipped',
       reason: 'already-present',
@@ -322,6 +363,7 @@ function injectTextSwapButtonIntoToolbar(toolbarEl) {
 
   // Only show this action if the target block contains contenteditable areas.
   if (eBlockId && !blockHasEditableInPreviewIframe(eBlockId)) {
+    console.debug(`[gem:swap-debug] toolbar#${tid}: ✗ skipped — blockHasEditableInPreviewIframe returned false for "${eBlockId}"`);
     return {
       status: 'skipped',
       reason: 'no-editable-in-preview-iframe',
@@ -335,10 +377,13 @@ function injectTextSwapButtonIntoToolbar(toolbarEl) {
   // This requires an async storage read; gate injection with a one-time async check per toolbar instance.
   if (!actions._gemSwapKeywordChecked) {
     actions._gemSwapKeywordChecked = true;
+    console.debug(`[gem:swap-debug] toolbar#${tid}: starting async hasAnySwapKeywordConfigured (blockId="${eBlockId}")`);
     hasAnySwapKeywordConfigured((hasAny) => {
       actions._gemSwapKeywordHasAny = !!hasAny;
+      const stillInDoc = toolbarEl.isConnected;
+      console.debug(`[gem:swap-debug] toolbar#${tid}: async resolved → hasAny=${hasAny}, stillInDoc=${stillInDoc} (blockId="${eBlockId}")`);
       if (!hasAny) {
-        // Log once when async check concludes there are no swap keywords configured.
+        console.debug(`[gem:swap-debug] toolbar#${tid}: ✗ no swap keywords configured — button will not be shown`);
         gemLogToolbarInjection(toolbarEl, 'swap', {
           status: 'skipped',
           reason: 'no-swap-keywords-configured',
@@ -349,7 +394,8 @@ function injectTextSwapButtonIntoToolbar(toolbarEl) {
         return;
       }
       // Toolbar might already be gone by the time storage returns.
-      if (!document.contains(toolbarEl)) {
+      if (!stillInDoc) {
+        console.debug(`[gem:swap-debug] toolbar#${tid}: ✗ toolbar detached before async completed — skipping inject`);
         gemLogToolbarInjection(toolbarEl, 'swap', {
           status: 'skipped',
           reason: 'toolbar-detached-before-async',
@@ -359,6 +405,7 @@ function injectTextSwapButtonIntoToolbar(toolbarEl) {
         });
         return;
       }
+      console.debug(`[gem:swap-debug] toolbar#${tid}: ✓ async passed — calling inject again to place button`);
       injectTextSwapButtonIntoToolbar(toolbarEl);
     });
     return {
@@ -370,6 +417,7 @@ function injectTextSwapButtonIntoToolbar(toolbarEl) {
     };
   }
   if (actions._gemSwapKeywordHasAny === false) {
+    console.debug(`[gem:swap-debug] toolbar#${tid}: ✗ skipped — no-swap-keywords-configured (cached)`);
     return {
       status: 'skipped',
       reason: 'no-swap-keywords-configured',
@@ -413,12 +461,15 @@ function injectTextSwapButtonIntoToolbar(toolbarEl) {
 
   tooltip.appendChild(btn);
 
+  console.debug(`[gem:swap-debug] toolbar#${tid}: ✓ all checks passed — inserting button for blockId="${eBlockId}"`);
+
   // Insert right after the token converter icon (if present). Otherwise, fall back to being after the first icon.
   const convertBtn = actions.querySelector(`[block-toolbar-button="${GEM_CONVERT_BTN_ID}"]`);
   const convertTooltip = convertBtn && convertBtn.closest && convertBtn.closest('e-tooltip');
   if (convertTooltip && convertTooltip.parentElement === actions) {
     convertTooltip.insertAdjacentElement('afterend', tooltip);
     const inserted = !!actions.querySelector(`[block-toolbar-button="${GEM_TEXT_SWAP_BTN_ID}"]`);
+    console.debug(`[gem:swap-debug] toolbar#${tid}: inserted=${inserted} (after convertBtn)`);
     return {
       status: inserted ? 'added' : 'skipped',
       reason: inserted ? '' : 'insert-failed',
@@ -437,6 +488,7 @@ function injectTextSwapButtonIntoToolbar(toolbarEl) {
   }
 
   const inserted = !!actions.querySelector(`[block-toolbar-button="${GEM_TEXT_SWAP_BTN_ID}"]`);
+  console.debug(`[gem:swap-debug] toolbar#${tid}: inserted=${inserted} (fallback position)`);
   return {
     status: inserted ? 'added' : 'skipped',
     reason: inserted ? '' : 'insert-failed',
@@ -448,25 +500,47 @@ function injectTextSwapButtonIntoToolbar(toolbarEl) {
 
 function blockHasEditableInPreviewIframe(eBlockId) {
   const iframe = document.querySelector(GEM_TARGET_IFRAME_SELECTOR);
-  if (!iframe) return false;
+  if (!iframe) {
+    console.debug(`[gem:swap-debug] blockHasEditable("${eBlockId}"): ✗ no iframe matched selector "${GEM_TARGET_IFRAME_SELECTOR}"`);
+    return false;
+  }
 
   let doc;
   try {
     doc = iframe.contentDocument || iframe.contentWindow?.document;
   } catch (e) {
+    console.debug(`[gem:swap-debug] blockHasEditable("${eBlockId}"): ✗ cross-origin error accessing iframe.contentDocument`, e);
     return false;
   }
-  if (!doc) return false;
+  if (!doc) {
+    console.debug(`[gem:swap-debug] blockHasEditable("${eBlockId}"): ✗ iframe.contentDocument is null/undefined`);
+    return false;
+  }
 
   try {
     const blockEls = Array.from(doc.querySelectorAll(`[e-block-id="${CSS.escape(eBlockId)}"]`));
-    if (!blockEls.length) return false;
-    return blockEls.some((block) => {
-      if (!block || block.nodeType !== Node.ELEMENT_NODE) return false;
-      if (block.matches && block.matches('[contenteditable="true"]')) return true;
-      return !!(block.querySelector && block.querySelector('[contenteditable="true"]'));
+    if (!blockEls.length) {
+      console.debug(`[gem:swap-debug] blockHasEditable("${eBlockId}"): block not in iframe → returning TRUE (allow)`);
+      return true;
+    }
+
+    const diagnostics = blockEls.map((block, idx) => {
+      if (!block || block.nodeType !== Node.ELEMENT_NODE) return { idx, editable: false, reason: 'not-element-node' };
+      const selfCE    = !!(block.matches && block.matches('[contenteditable="true"]'));
+      const selfEE    = !!(block.matches && block.matches('[e-editable]'));
+      const childCE   = !!(block.querySelector && block.querySelector('[contenteditable="true"]'));
+      const childEE   = !!(block.querySelector && block.querySelector('[e-editable]'));
+      return { idx, editable: selfCE || selfEE || childCE || childEE, selfCE, selfEE, childCE, childEE };
     });
+
+    const result = diagnostics.some((d) => d.editable);
+    console.debug(
+      `[gem:swap-debug] blockHasEditable("${eBlockId}"): found ${blockEls.length} block(s), editable=${result}`,
+      diagnostics
+    );
+    return result;
   } catch (e) {
+    console.debug(`[gem:swap-debug] blockHasEditable("${eBlockId}"): ✗ querySelectorAll threw`, e);
     return false;
   }
 }
@@ -484,41 +558,11 @@ function getEditableElementsForBlockEl(blockEl) {
 }
 
 function hasAnySwapKeywordConfigured(callback) {
-  try {
-    chrome.storage.sync.get({ [GEM_SNIPPETS_STORAGE_KEY]: [] }, (result) => {
-      const snippets = result && result[GEM_SNIPPETS_STORAGE_KEY];
-      const list = Array.isArray(snippets) ? snippets : [];
-      const normalizeSwapMode = (mode) => (mode === 'plain' ? 'plain' : 'token');
-      const normalizeSwapInitiateFrom = (v) => (v === 'panel' || v === 'toolbar' ? v : 'anywhere');
-      const normalizeSwapKeywordsFromSnippet = (snippet) => {
-        if (!snippet) return [];
-        if (Array.isArray(snippet.swapKeywords)) {
-          const cleaned = snippet.swapKeywords
-            .map((k) => ({
-              keyword: (k && typeof k.keyword === 'string') ? k.keyword.trim() : '',
-              mode: normalizeSwapMode(k && k.mode),
-              initiateFrom: normalizeSwapInitiateFrom(k && k.initiateFrom)
-            }))
-            .filter((k) => !!k.keyword);
-          const seen = new Set();
-          const out = [];
-          cleaned.forEach((k) => {
-            if (seen.has(k.keyword)) return;
-            seen.add(k.keyword);
-            out.push(k);
-          });
-          return out;
-        }
-        const legacyKeyword = (snippet.swapKeyword && typeof snippet.swapKeyword === 'string') ? snippet.swapKeyword.trim() : '';
-        if (!legacyKeyword) return [];
-        return [{ keyword: legacyKeyword, mode: normalizeSwapMode(snippet.swapMode), initiateFrom: 'anywhere' }];
-      };
-      const hasAny = list.some((s) => normalizeSwapKeywordsFromSnippet(s).length > 0);
-      callback(hasAny);
-    });
-  } catch (e) {
-    callback(false);
-  }
+  getSavedSnippets((snippets) => {
+    const list = Array.isArray(snippets) ? snippets : [];
+    const hasAny = list.some((s) => gemNormalizeSwapKeywordsFromSnippet(s).length > 0);
+    callback(hasAny);
+  });
 }
 
 function applyTextSwapForBlock(eBlockId) {
@@ -526,38 +570,12 @@ function applyTextSwapForBlock(eBlockId) {
   getSavedSnippets((snippets) => {
     const list = Array.isArray(snippets) ? snippets : [];
 
-    const normalizeSwapMode = (mode) => (mode === 'plain' ? 'plain' : 'token');
-    const normalizeSwapInitiateFrom = (v) => (v === 'panel' || v === 'toolbar' ? v : 'anywhere');
-    const normalizeSwapKeywordsFromSnippet = (snippet) => {
-      if (!snippet) return [];
-      if (Array.isArray(snippet.swapKeywords)) {
-        const cleaned = snippet.swapKeywords
-          .map((k) => ({
-            keyword: (k && typeof k.keyword === 'string') ? k.keyword.trim() : '',
-            mode: normalizeSwapMode(k && k.mode),
-            initiateFrom: normalizeSwapInitiateFrom(k && k.initiateFrom)
-          }))
-          .filter((k) => !!k.keyword);
-        const seen = new Set();
-        const out = [];
-        cleaned.forEach((k) => {
-          if (seen.has(k.keyword)) return;
-          seen.add(k.keyword);
-          out.push(k);
-        });
-        return out;
-      }
-      const legacyKeyword = (snippet.swapKeyword && typeof snippet.swapKeyword === 'string') ? snippet.swapKeyword.trim() : '';
-      if (!legacyKeyword) return [];
-      return [{ keyword: legacyKeyword, mode: normalizeSwapMode(snippet.swapMode), initiateFrom: 'anywhere' }];
-    };
-
     // Build rules from all snippets/keywords. Keywords are unique across snippets (case-sensitive),
     // but keep first defensively.
     const rules = [];
     const seenKeyword = new Set();
     list.forEach((s) => {
-      normalizeSwapKeywordsFromSnippet(s).forEach((k) => {
+      gemNormalizeSwapKeywordsFromSnippet(s).forEach((k) => {
         if (!k.keyword) return;
         // Block Toolbar initiated: skip "Snippets Panel Only" rules
         if (k.initiateFrom === 'panel') return;
@@ -1059,25 +1077,19 @@ function setupEditableImageDoubleClickHandler() {
   }
 
   // Set up a mutation observer to watch for the preview iframe
-  const observer = new MutationObserver((mutations) => {
-    mutations.forEach((mutation) => {
-      mutation.addedNodes.forEach((node) => {
+  window.gemDomWatchSubscribe(function (mutations) {
+    mutations.forEach(function (mutation) {
+      mutation.addedNodes.forEach(function (node) {
         if (node.nodeType === Node.ELEMENT_NODE) {
-          // Check if the added node is or contains the preview iframe
           const iframe = node.classList && node.classList.contains('e-contentblocks-preview__iframe') ?
             node : node.querySelector && node.querySelector('.e-contentblocks-preview__iframe');
 
           if (iframe) {
             console.log("[gem] Preview iframe found, attaching double-click handler");
 
-            // The iframe content is in a different document context
-            // We need to inject our handler into the iframe's document
             try {
               const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
-
-              // Add the double-click event listener to the iframe's document
               iframeDoc.addEventListener('dblclick', handleImageDoubleClick, true);
-
               console.log("[gem] Double-click handler attached to iframe");
             } catch (error) {
               console.warn("[gem] Could not attach handler to iframe:", error);
@@ -1088,13 +1100,6 @@ function setupEditableImageDoubleClickHandler() {
     });
   });
 
-  // Start observing the document for iframe additions
-  observer.observe(document.body, {
-    childList: true,
-    subtree: true
-  });
-
-  // Also check for existing iframes in case they were already loaded
   const existingIframe = document.querySelector('.e-contentblocks-preview__iframe');
   if (existingIframe) {
     console.log("[gem] Existing preview iframe found, attaching double-click handler");
@@ -1151,9 +1156,9 @@ function setupEslTokenDoubleClickHandler() {
   }
 
   // Watch for the desktop preview iframe to appear
-  const observer = new MutationObserver((mutations) => {
-    mutations.forEach((mutation) => {
-      mutation.addedNodes.forEach((node) => {
+  window.gemDomWatchSubscribe(function (mutations) {
+    mutations.forEach(function (mutation) {
+      mutation.addedNodes.forEach(function (node) {
         if (node.nodeType !== Node.ELEMENT_NODE) return;
         const iframe =
           (node.matches && node.matches(DESKTOP_IFRAME_SELECTOR) && node) ||
@@ -1163,9 +1168,6 @@ function setupEslTokenDoubleClickHandler() {
     });
   });
 
-  observer.observe(document.body, { childList: true, subtree: true });
-
-  // Also attach if it's already present
   attachToIframe(document.querySelector(DESKTOP_IFRAME_SELECTOR));
 }
 

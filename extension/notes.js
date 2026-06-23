@@ -48,7 +48,7 @@ function scanForNav(root = document) {
 }
 
 function observeNav() {
-  const observer = new MutationObserver((mutations) => {
+  window.gemDomWatchSubscribe(function (mutations) {
     for (const mutation of mutations) {
       for (const node of mutation.addedNodes) {
         if (node.nodeType !== 1) continue;
@@ -66,11 +66,6 @@ function observeNav() {
         }
       }
     }
-  });
-
-  observer.observe(document.documentElement || document, {
-    childList: true,
-    subtree: true,
   });
 }
 
@@ -122,7 +117,7 @@ function createNotesPanel() {
   const titleRow = document.createElement("div");
   Object.assign(titleRow.style, {
     display: "flex",
-    alignItems: "baseline",
+    alignItems: "center",
     gap: "8px",
     flex: "1",
     minWidth: "0",
@@ -137,10 +132,13 @@ function createNotesPanel() {
   });
 
   const shortcutHint = document.createElement("span");
-  shortcutHint.className = "gem-panel-shortcut-hint";
+  shortcutHint.className = "gem-shortcut-hint gem-shortcut-hint--on-surface";
   shortcutHint.textContent = typeof window.gemPanelShortcutLabel === "function"
     ? window.gemPanelShortcutLabel(";")
-    : "[ CTRL + ; ]";
+    : "CTRL+;";
+  if (typeof window.gemWireShortcutHint === "function") {
+    window.gemWireShortcutHint(shortcutHint);
+  }
 
   titleRow.appendChild(title);
   titleRow.appendChild(shortcutHint);
@@ -360,16 +358,15 @@ function setupNotesPanelShortcuts() {
   }
 
   document.querySelectorAll("iframe").forEach(waitForIframeReady);
-  const iframeObserver = new MutationObserver((mutations) => {
-    mutations.forEach((m) => {
-      m.addedNodes.forEach((node) => {
+  window.gemDomWatchSubscribe(function (mutations) {
+    mutations.forEach(function (m) {
+      m.addedNodes.forEach(function (node) {
         if (!node || node.nodeType !== Node.ELEMENT_NODE) return;
         if (node.tagName === "IFRAME") waitForIframeReady(node);
         else if (node.querySelectorAll) node.querySelectorAll("iframe").forEach(waitForIframeReady);
       });
     });
   });
-  iframeObserver.observe(document.documentElement, { childList: true, subtree: true });
 
   document.addEventListener(GEM_CLOSE_NOTES_EVENT, () => {
     hideNotesPanel();

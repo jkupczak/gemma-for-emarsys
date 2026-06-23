@@ -164,7 +164,43 @@
 }
 
 .gem-expanded gem-cb-draft-save-button {
+    margin-left: 0;
+}
+
+.gem-expanded .gem-compact-email-header-actions {
     margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+.gem-expanded gem-cb-save-button {
+    flex-shrink: 0;
+}
+
+.gem-expanded gem-cb-save-button[hidden] {
+    display: none !important;
+}
+
+.gem-expanded gem-cb-save-button button {
+    font-size: 16px;
+    padding: 6px 18px;
+    min-height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 5px !important;
+}
+
+.gem-expanded gem-cb-save-button button .e-btn__loading {
+    margin-right: 8px;
+    display: none !important;
+}
+
+.gem-expanded gem-cb-save-button button .e-btn__loading.e-btn__loading-active {
+    margin-right: 8px;
+    display: block !important;
 }
 
 .gem-expanded .e-verticalnav__content .e-section__header {
@@ -231,7 +267,7 @@
     font-weight: normal !important;
     word-break: break-all;
     position: relative;
-    padding: 8px 18px 16px 30px;
+    padding: 8px 18px 16px 28px;
 }
 
 .gem-expanded main .gem-header-copy-icon {

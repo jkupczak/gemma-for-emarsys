@@ -4,7 +4,7 @@ console.log("[gem] recent-campaigns.js loaded");
   const RECENT_STORAGE_KEY = "gemRecentCampaigns";
   const OTHER_RECENT_STORAGE_KEY = "gemOtherRecentCampaigns";
   const RECENT_UI_STATE_KEY = "gemRecentCampaignsUiState";
-  /** Search and language filter chips reset after this idle period since last change. */
+  /** Language filter chip selection resets after this idle period since last change. Search is session-only (not persisted). */
   const RECENT_UI_STATE_STALE_MS = 8 * 60 * 60 * 1000;
   const RECENT_SCHEMA_VERSION = 1;
   const RECENT_NAV_ID = "gem-nav-recent-campaigns-item";
@@ -24,6 +24,7 @@ console.log("[gem] recent-campaigns.js loaded");
   /** Same heuristic as page-title-updater.js: enabled save button means unsaved draft. */
   const DRAFT_SAVE_BUTTON_SELECTOR = "cb-draft-save-button button";
   const OPEN_GROUP_LIST_ID = "gem-recent-open-group-list";
+  const DRAWER_PREVIEW_ACTIVE_ROW_CLASS = "gem-recent-campaign-row--preview-active";
   const PREFLIGHT_LANGUAGE_ALERTS_KEY = "gemPreflightLanguageAlertsByCampaignV1";
 
   let lastRecentPreviewCaptureLogKey = "";
@@ -79,7 +80,32 @@ console.log("[gem] recent-campaigns.js loaded");
   let previewCampaignId = "";
   let previewNavCampaignIds = [];
   let previewCampaignTitleById = {};
-  let previewLoadingHideTimer = null;
+  const DRAWER_PREVIEW_LOADING_TIMEOUT_MS = 45000;
+  const DRAWER_PREVIEW_SWAP_FLASH_MS = 180;
+  const DRAWER_PREVIEW_POOL_SIZE = 4;
+  const DRAWER_PREVIEW_PRIORITY_ACTIVE = 0;
+  const DRAWER_PREVIEW_PRIORITY_ADJACENT = 1;
+  const DRAWER_PREVIEW_PRIORITY_MENU_HOVER = 2;
+  const DRAWER_PREVIEW_DEBUG = false;
+  const PREVIEW_FS_IFRAME_MESSAGE_SOURCE = "gem-preview-fs-iframe";
+  const DRAWER_PREVIEW_TEMPLATING_ERROR_MSG =
+    "This preview could not be loaded. The campaign may have a templating issue.";
+  let drawerPreviewFsMessageInstalled = false;
+  /** @type {ReturnType<typeof setTimeout> | null} */
+  let drawerPreviewLoadingTimer = null;
+  /** @type {HTMLIFrameElement[]} */
+  let drawerPreviewPoolIframes = [];
+  /** @type {Map<string, { iframe: HTMLIFrameElement, campId: string, ready: boolean, lastUsed: number, slotRole: string, loadToken: number, startedAt?: number, loadError?: string }>} */
+  const drawerPreviewCacheByCampId = new Map();
+  /** @type {Map<string, string>} */
+  const drawerPreviewLoadErrorByCampId = new Map();
+  /** @type {Map<HTMLIFrameElement, string>} */
+  const drawerPreviewIframeToCampId = new Map();
+  /** @type {{ iframe: HTMLIFrameElement, campId: string, priority: number, loadToken: number } | null} */
+  let drawerPreviewBackgroundLoad = null;
+  /** @type {{ campId: string, priority: number, slotRole: string }[]} */
+  let drawerPreviewLoadQueue = [];
+  let drawerPreviewLoadTokenSeq = 0;
 
   function jsonStableStringKeyMap(obj) {
     const o = obj && typeof obj === "object" ? obj : {};
@@ -131,8 +157,9 @@ console.log("[gem] recent-campaigns.js loaded");
   function isCampaignManagerDetailsPage() {
     const url = getCurrentUrl();
     if (!url) return false;
+    const action = (url.searchParams.get("action") || "").trim();
     return (url.pathname || "").includes("campaignmanager.php") &&
-      url.searchParams.get("action") === "details" &&
+      (action === "details" || action === "save") &&
       !!(url.searchParams.get("camp_id") || "").trim();
   }
 
@@ -227,7 +254,7 @@ console.log("[gem] recent-campaigns.js loaded");
     if (!idForQuery) return "";
     try {
       const u = new URL(window.location.href);
-      return `${u.origin}${u.pathname}?r=contentBlocks/campaign&id=${idForQuery}`;
+      return `${u.origin}/bootstrap.php?r=contentBlocks/campaign&id=${idForQuery}`;
     } catch (_) {
       return "";
     }
@@ -323,31 +350,48 @@ console.log("[gem] recent-campaigns.js loaded");
     return { total, languagesWithIssues };
   }
 
-  function appendCampaignStatusNotices(main, options) {
+  function buildCampaignStatusNoticesRow(options) {
     const opts = options && typeof options === "object" ? options : {};
-    const notices = [];
-    if (opts.showUnsavedNotice) {
-      notices.push({ className: "gem-recent-campaign-unsaved-notice", text: "Unsaved changes" });
+    const row = document.createElement("div");
+    row.className = "gem-recent-campaign-status-notices";
+
+    if (opts.activeUnsavedSlot) {
+      const notice = document.createElement("div");
+      notice.id = "gem-recent-active-unsaved-slot";
+      notice.className = "gem-recent-campaign-unsaved-notice";
+      if (!opts.showUnsavedNotice) notice.classList.add("gem-recent-campaign-unsaved-notice--hidden");
+      notice.setAttribute("role", "status");
+      notice.textContent = opts.showUnsavedNotice ? "Unsaved changes" : "";
+      notice.setAttribute("aria-hidden", opts.showUnsavedNotice ? "false" : "true");
+      row.appendChild(notice);
+    } else if (opts.showUnsavedNotice) {
+      const notice = document.createElement("div");
+      notice.className = "gem-recent-campaign-unsaved-notice";
+      notice.setAttribute("role", "status");
+      notice.textContent = "Unsaved changes";
+      row.appendChild(notice);
     }
+
     const preflight = opts.preflightSummary;
     if (preflight && preflight.total > 0) {
       const langSuffix =
         preflight.languagesWithIssues > 1
           ? ` across ${preflight.languagesWithIssues} languages`
           : "";
-      notices.push({
-        className: "gem-recent-campaign-preflight-notice",
-        text: `Preflight: ${preflight.total} issue${preflight.total === 1 ? "" : "s"}${langSuffix}`
-      });
-    }
-    if (!notices.length) return;
-    notices.forEach(({ className, text }) => {
       const notice = document.createElement("div");
-      notice.className = className;
+      notice.className = "gem-recent-campaign-preflight-notice";
       notice.setAttribute("role", "status");
-      notice.textContent = text;
-      main.appendChild(notice);
-    });
+      notice.textContent = `Preflight: ${preflight.total} issue${preflight.total === 1 ? "" : "s"}${langSuffix}`;
+      row.appendChild(notice);
+    }
+
+    if (opts.activeUnsavedSlot) return row;
+    return row.children.length ? row : null;
+  }
+
+  function appendCampaignStatusNotices(main, options) {
+    const row = buildCampaignStatusNoticesRow(options);
+    if (row) main.appendChild(row);
   }
 
   function stopActiveTabUnsavedPoll() {
@@ -401,6 +445,25 @@ console.log("[gem] recent-campaigns.js loaded");
       if (txt) return txt;
     }
     return "";
+  }
+
+  function parseTitleFromDocumentTitle() {
+    try {
+      const raw = (document.title || "").trim();
+      if (!raw) return "";
+      const generic = /^(sap\s+engagement\s+cloud|emarsys)$/i;
+      const parts = raw.split(/\s*[|\u2013\u2014-]\s*/).map((p) => p.trim()).filter(Boolean);
+      for (const part of parts) {
+        if (!generic.test(part)) return part;
+      }
+      return parts[0] || "";
+    } catch (_) {
+      return "";
+    }
+  }
+
+  function isCampIdCampaignPage() {
+    return isCampaignManagerDetailsPage() || isBootstrapCampaignSiblingPage();
   }
 
   /**
@@ -568,6 +631,46 @@ console.log("[gem] recent-campaigns.js loaded");
       lastViewedAt: Date.now(),
       previewImageUrl: pickDesktopPreviewGraphicUrl(id)
     };
+  }
+
+  /** Editor uses ?id=; campaignmanager / sibling bootstrap pages use ?camp_id=. */
+  function extractCampIdCampaignPayload() {
+    if (!isCampIdCampaignPage()) return null;
+    const id = getCampIdParam();
+    if (!id) return null;
+    const urlBase = urlBaseFromCampaignId(id);
+    if (!urlBase) return null;
+    const title =
+      firstTextOf([
+        "cb-campaign-name span",
+        "cb-campaign-name",
+        'input[name="camp_name"]',
+        "#camp_name",
+        '[name="campaign_name"]',
+        ".e-page-header__title",
+        ".e-page-header h1",
+        "h1"
+      ]) ||
+      parseTitleFromDocumentTitle() ||
+      `Campaign ${id}`;
+    return {
+      id,
+      title,
+      subject: firstTextOf([
+        'label[for="testmail-subject"] span',
+        'label[attr\\.for="testmail-subject"] span',
+        '[attr.for="testmail-subject"] span'
+      ]),
+      languages: getLanguages(),
+      urlBase,
+      lastViewedDate: getTodayDateLabel(),
+      lastViewedAt: Date.now(),
+      previewImageUrl: pickDesktopPreviewGraphicUrl(id)
+    };
+  }
+
+  function extractActiveCampaignPayload() {
+    return extractCampaignPayload() || extractCampIdCampaignPayload();
   }
 
   function getCurrentCampaignExclusion() {
@@ -746,28 +849,25 @@ console.log("[gem] recent-campaigns.js loaded");
   }
 
   function loadUiState(callback) {
-    chrome.storage.local.get({ [RECENT_UI_STATE_KEY]: { language: "", search: "", savedAt: 0 } }, (res) => {
+    chrome.storage.local.get({ [RECENT_UI_STATE_KEY]: { language: "", savedAt: 0 } }, (res) => {
       const raw = res[RECENT_UI_STATE_KEY] || {};
       const language = String(raw.language || "").trim();
-      const search = String(raw.search || "").trim().toLowerCase();
       let savedAt = Number.isFinite(raw.savedAt) ? raw.savedAt : 0;
       const hadSavedAtKey = raw && typeof raw === "object" && Object.prototype.hasOwnProperty.call(raw, "savedAt");
 
       function applyAndCallback() {
         if (savedAt > 0 && Date.now() - savedAt > RECENT_UI_STATE_STALE_MS) {
           activeLanguageFilter = "";
-          activeSearchQuery = "";
           chrome.storage.local.set(
-            { [RECENT_UI_STATE_KEY]: { language: "", search: "", savedAt: Date.now() } },
+            { [RECENT_UI_STATE_KEY]: { language: "", savedAt: Date.now() } },
             () => {
-              if (callback) callback({ language: "", search: "" });
+              if (callback) callback({ language: "" });
             }
           );
           return;
         }
         activeLanguageFilter = language;
-        activeSearchQuery = search;
-        if (callback) callback({ language, search });
+        if (callback) callback({ language });
       }
 
       if (!hadSavedAtKey) {
@@ -776,7 +876,6 @@ console.log("[gem] recent-campaigns.js loaded");
           {
             [RECENT_UI_STATE_KEY]: {
               language,
-              search,
               savedAt
             }
           },
@@ -793,7 +892,6 @@ console.log("[gem] recent-campaigns.js loaded");
     chrome.storage.local.set({
       [RECENT_UI_STATE_KEY]: {
         language: activeLanguageFilter,
-        search: activeSearchQuery,
         savedAt: Date.now()
       }
     });
@@ -965,6 +1063,7 @@ console.log("[gem] recent-campaigns.js loaded");
     }
 
     const openInBackground = !!(clickEvent && (clickEvent.ctrlKey || clickEvent.metaKey));
+    const openInNewForegroundTab = !openInBackground && isCampaignPage();
     const sessionId = getCurrentSessionId();
     console.log("[Gem] duplicateRecentCampaign: campaignId =", campaignId, "| sessionId =", sessionId, "| pageUrl =", location.href);
 
@@ -1011,6 +1110,17 @@ console.log("[gem] recent-campaigns.js loaded");
           closeRecentCampaignRowMenu();
           try {
             chrome.runtime.sendMessage({ action: "openInNewTab", url: urlString, active: false });
+          } catch (_) {
+            window.open(urlString, "_blank");
+          }
+          return;
+        }
+
+        if (openInNewForegroundTab) {
+          resetBtn();
+          closeRecentCampaignRowMenu();
+          try {
+            chrome.runtime.sendMessage({ action: "openInNewTab", url: urlString, active: true });
           } catch (_) {
             window.open(urlString, "_blank");
           }
@@ -1074,10 +1184,25 @@ console.log("[gem] recent-campaigns.js loaded");
 
     if (!menuOpts.hidePreview) {
       const previewItem = makeNavMenuItem("Preview");
+      const previewCampId = String(item.id || "").trim();
+      previewItem.addEventListener("mouseenter", () => {
+        prefetchDrawerPreviewCampaign(
+          previewCampId,
+          DRAWER_PREVIEW_PRIORITY_MENU_HOVER,
+          "menu-preview-hover"
+        );
+      });
+      previewItem.addEventListener("pointerdown", () => {
+        prefetchDrawerPreviewCampaign(
+          previewCampId,
+          DRAWER_PREVIEW_PRIORITY_MENU_HOVER,
+          "menu-preview-pointerdown"
+        );
+      });
       previewItem.addEventListener("click", (e) => {
         e.stopPropagation();
         closeRecentCampaignRowMenu();
-        openCampaignPreview(String(item.id || "").trim(), String(item.title || "").trim());
+        openCampaignPreview(previewCampId, String(item.title || "").trim());
       });
       menu.appendChild(previewItem);
     }
@@ -1190,10 +1315,27 @@ console.log("[gem] recent-campaigns.js loaded");
     window.addEventListener("resize", closeRecentCampaignRowMenu);
   }
 
+  function drawerPreviewDbg(...args) {
+    if (DRAWER_PREVIEW_DEBUG) console.log("[Gemma recent-campaigns][preview]", ...args);
+  }
+
+  function drawerPreviewPriorityLabel(priority) {
+    switch (priority) {
+      case DRAWER_PREVIEW_PRIORITY_ACTIVE:
+        return "active";
+      case DRAWER_PREVIEW_PRIORITY_ADJACENT:
+        return "adjacent";
+      case DRAWER_PREVIEW_PRIORITY_MENU_HOVER:
+        return "menu-hover";
+      default:
+        return String(priority);
+    }
+  }
+
   function buildPreviewIframeUrl(campaignId) {
     const id = String(campaignId || "").trim();
     if (!id) return "";
-    const url = new URL("/preview_fs.php", window.location.origin);
+    const url = new URL("/preview_fs_iframe.php", window.location.origin);
     const sid = getCurrentSessionId();
     if (sid) url.searchParams.set("session_id", sid);
     url.searchParams.set("camp_id", id);
@@ -1231,32 +1373,559 @@ console.log("[gem] recent-campaigns.js loaded");
     return previewCampaignTitleById[id] || id;
   }
 
-  function showPreviewLoadingOverlay() {
-    if (!recentPanel) return;
-    const overlay = recentPanel.querySelector(".gem-recent-campaigns-preview-loading");
-    if (overlay) overlay.hidden = false;
-    if (previewLoadingHideTimer) clearTimeout(previewLoadingHideTimer);
-    previewLoadingHideTimer = setTimeout(hidePreviewLoadingOverlay, 45000);
+  function getDrawerPreviewNeighborIds(activeId) {
+    const id = String(activeId || "").trim();
+    if (!id) return [];
+    const idx = previewNavCampaignIds.indexOf(id);
+    if (idx < 0) return [id];
+    const result = [id];
+    if (idx > 0) result.push(previewNavCampaignIds[idx - 1]);
+    if (idx + 1 < previewNavCampaignIds.length) result.push(previewNavCampaignIds[idx + 1]);
+    return result;
   }
 
-  function hidePreviewLoadingOverlay() {
-    if (previewLoadingHideTimer) {
-      clearTimeout(previewLoadingHideTimer);
-      previewLoadingHideTimer = null;
+  function getDrawerPreviewCacheEntry(campaignId) {
+    return drawerPreviewCacheByCampId.get(String(campaignId || "").trim()) || null;
+  }
+
+  function isDrawerPreviewCachedReady(campaignId) {
+    const entry = getDrawerPreviewCacheEntry(campaignId);
+    return !!(entry && entry.ready && entry.campId === String(campaignId || "").trim());
+  }
+
+  function isDrawerPreviewLoadError(campaignId) {
+    const id = String(campaignId || "").trim();
+    if (!id) return false;
+    if (drawerPreviewLoadErrorByCampId.has(id)) return true;
+    const entry = getDrawerPreviewCacheEntry(id);
+    return !!(entry && entry.loadError);
+  }
+
+  function clearDrawerPreviewLoadError(campaignId) {
+    const id = String(campaignId || "").trim();
+    if (!id) return;
+    drawerPreviewLoadErrorByCampId.delete(id);
+    const entry = getDrawerPreviewCacheEntry(id);
+    if (entry) delete entry.loadError;
+  }
+
+  function markDrawerPreviewLoadError(campaignId, reason) {
+    const id = String(campaignId || "").trim();
+    if (!id) return;
+    const errorReason = reason || "templating";
+    drawerPreviewLoadErrorByCampId.set(id, errorReason);
+    const entry = getDrawerPreviewCacheEntry(id);
+    if (entry) entry.loadError = errorReason;
+    if (previewOpen && previewCampaignId === id) {
+      setDrawerPreviewOverlay("error", { message: DRAWER_PREVIEW_TEMPLATING_ERROR_MSG });
     }
+  }
+
+  function applyDrawerPreviewPendingLoadError(campaignId, entry) {
+    const id = String(campaignId || "").trim();
+    if (!id || !entry) return;
+    if (drawerPreviewLoadErrorByCampId.has(id)) {
+      entry.loadError = drawerPreviewLoadErrorByCampId.get(id);
+    }
+  }
+
+  function removeDrawerPreviewCacheEntry(campId, reason) {
+    const id = String(campId || "").trim();
+    const entry = drawerPreviewCacheByCampId.get(id);
+    if (!entry) return;
+
+    if (reason && DRAWER_PREVIEW_DEBUG) {
+      drawerPreviewDbg(`[preload:${reason}]`, {
+        campId: id,
+        slotRole: entry.slotRole,
+        wasReady: entry.ready,
+      });
+    }
+
+    drawerPreviewCacheByCampId.delete(id);
+    drawerPreviewLoadErrorByCampId.delete(id);
+    drawerPreviewIframeToCampId.delete(entry.iframe);
+    entry.iframe.classList.remove(
+      "gem-recent-campaigns-preview-iframe--active",
+      "gem-recent-campaigns-preview-iframe--cached"
+    );
+    delete entry.iframe.dataset.gemPreviewCampId;
+  }
+
+  function evictLruDrawerPreviewSlot(excludeCampId) {
+    const exclude = String(excludeCampId || "").trim();
+    let oldest = null;
+    let oldestTime = Infinity;
+
+    drawerPreviewCacheByCampId.forEach((entry, campId) => {
+      if (campId === exclude) return;
+      if (campId === previewCampaignId) return;
+      if (drawerPreviewBackgroundLoad && drawerPreviewBackgroundLoad.campId === campId) return;
+      if (entry.lastUsed < oldestTime) {
+        oldestTime = entry.lastUsed;
+        oldest = entry;
+      }
+    });
+
+    if (!oldest) return null;
+    oldest.iframe.setAttribute("src", "about:blank");
+    removeDrawerPreviewCacheEntry(oldest.campId, "evicted");
+    return oldest.iframe;
+  }
+
+  function getFreeDrawerPreviewIframe(preferredCampId) {
+    for (const iframe of drawerPreviewPoolIframes) {
+      if (!drawerPreviewIframeToCampId.has(iframe)) return iframe;
+    }
+    return evictLruDrawerPreviewSlot(preferredCampId);
+  }
+
+  function bindDrawerPreviewIframeLoad(iframe, campId, loadToken, startedAt) {
+    const onLoad = () => {
+      iframe.removeEventListener("load", onLoad);
+      const entry = drawerPreviewCacheByCampId.get(campId);
+      if (!entry || entry.loadToken !== loadToken) return;
+
+      entry.ready = true;
+      entry.lastUsed = Date.now();
+      applyDrawerPreviewPendingLoadError(campId, entry);
+
+      if (DRAWER_PREVIEW_DEBUG) {
+        drawerPreviewDbg("[preload:finished]", {
+          campId,
+          slotRole: entry.slotRole,
+          loadToken,
+          elapsedMs: startedAt ? Date.now() - startedAt : null,
+        });
+      }
+
+      if (
+        drawerPreviewBackgroundLoad &&
+        drawerPreviewBackgroundLoad.campId === campId &&
+        drawerPreviewBackgroundLoad.loadToken === loadToken
+      ) {
+        drawerPreviewBackgroundLoad = null;
+      }
+
+      if (previewOpen && campId === previewCampaignId) {
+        swapActiveDrawerPreviewIframe(campId);
+        if (entry.loadError) {
+          setDrawerPreviewOverlay("error", { message: DRAWER_PREVIEW_TEMPLATING_ERROR_MSG });
+        } else {
+          setDrawerPreviewOverlay("none");
+        }
+        enqueueDrawerPreviewAdjacentLoads(campId);
+        scrollDrawerPreviewActiveRowIntoView();
+      }
+
+      drainDrawerPreviewLoadQueue();
+    };
+    iframe.addEventListener("load", onLoad);
+  }
+
+  function startDrawerPreviewIframeLoad(campaignId, slotRole, priority) {
+    const campId = String(campaignId || "").trim();
+    if (!campId) return false;
+
+    clearDrawerPreviewLoadError(campId);
+
+    const existing = getDrawerPreviewCacheEntry(campId);
+    if (existing && existing.ready) {
+      existing.lastUsed = Date.now();
+      existing.slotRole = slotRole;
+      return true;
+    }
+    if (existing && !existing.ready) {
+      existing.slotRole = slotRole;
+      return true;
+    }
+
+    const nextSrc = buildPreviewIframeUrl(campId);
+    if (!nextSrc) return false;
+
+    let iframe = getFreeDrawerPreviewIframe(campId);
+    if (!iframe) return false;
+
+    const prevCampId = drawerPreviewIframeToCampId.get(iframe);
+    if (prevCampId && prevCampId !== campId) {
+      removeDrawerPreviewCacheEntry(prevCampId, "replaced");
+    }
+
+    const loadToken = ++drawerPreviewLoadTokenSeq;
+    const startedAt = Date.now();
+    const entry = {
+      iframe,
+      campId,
+      ready: false,
+      lastUsed: startedAt,
+      slotRole,
+      loadToken,
+      startedAt,
+    };
+
+    drawerPreviewCacheByCampId.set(campId, entry);
+    drawerPreviewIframeToCampId.set(iframe, campId);
+    iframe.dataset.gemPreviewCampId = campId;
+    iframe.classList.add("gem-recent-campaigns-preview-iframe--cached");
+    iframe.classList.remove("gem-recent-campaigns-preview-iframe--active");
+
+    drawerPreviewBackgroundLoad = { iframe, campId, priority, loadToken };
+    bindDrawerPreviewIframeLoad(iframe, campId, loadToken, startedAt);
+    iframe.setAttribute("src", nextSrc);
+
+    if (DRAWER_PREVIEW_DEBUG) {
+      drawerPreviewDbg("[preload:started]", {
+        campId,
+        slotRole,
+        priority: drawerPreviewPriorityLabel(priority),
+        loadToken,
+      });
+    }
+    return true;
+  }
+
+  function cancelDrawerPreviewBackgroundLoad(reason) {
+    if (!drawerPreviewBackgroundLoad) return;
+    const { iframe, campId, loadToken } = drawerPreviewBackgroundLoad;
+    drawerPreviewBackgroundLoad = null;
+    const entry = getDrawerPreviewCacheEntry(campId);
+    if (entry && !entry.ready && entry.iframe === iframe) {
+      if (DRAWER_PREVIEW_DEBUG) {
+        drawerPreviewDbg("[preload:cancelled]", { campId, reason: reason || "unknown", loadToken });
+      }
+      iframe.setAttribute("src", "about:blank");
+      removeDrawerPreviewCacheEntry(campId);
+    }
+  }
+
+  function scheduleDrawerPreviewBackgroundLoad(campaignId, priority, slotRole) {
+    const campId = String(campaignId || "").trim();
+    if (!campId) return;
+    if (campId === previewCampaignId && isDrawerPreviewCachedReady(campId)) return;
+    if (isDrawerPreviewCachedReady(campId)) return;
+
+    const existingEntry = getDrawerPreviewCacheEntry(campId);
+    if (existingEntry && !existingEntry.ready) {
+      if (drawerPreviewBackgroundLoad && drawerPreviewBackgroundLoad.campId === campId) return;
+    }
+
+    if (drawerPreviewBackgroundLoad) {
+      if (priority < drawerPreviewBackgroundLoad.priority) {
+        cancelDrawerPreviewBackgroundLoad("preempted-by-higher-priority");
+      } else if (drawerPreviewBackgroundLoad.campId === campId) {
+        return;
+      } else {
+        const queued = drawerPreviewLoadQueue.some((item) => item.campId === campId);
+        if (!queued) {
+          drawerPreviewLoadQueue.push({ campId, priority, slotRole });
+          drawerPreviewLoadQueue.sort((a, b) => a.priority - b.priority);
+        }
+        return;
+      }
+    }
+
+    if (!startDrawerPreviewIframeLoad(campId, slotRole, priority)) {
+      const queued = drawerPreviewLoadQueue.some((item) => item.campId === campId);
+      if (!queued) {
+        drawerPreviewLoadQueue.push({ campId, priority, slotRole });
+        drawerPreviewLoadQueue.sort((a, b) => a.priority - b.priority);
+      }
+    }
+  }
+
+  function drainDrawerPreviewLoadQueue() {
+    if (drawerPreviewBackgroundLoad) return;
+
+    while (drawerPreviewLoadQueue.length) {
+      const next = drawerPreviewLoadQueue.shift();
+      if (!next) break;
+      if (isDrawerPreviewCachedReady(next.campId)) continue;
+      if (startDrawerPreviewIframeLoad(next.campId, next.slotRole, next.priority)) {
+        break;
+      }
+    }
+  }
+
+  function enqueueDrawerPreviewAdjacentLoads(activeCampId) {
+    const neighbors = getDrawerPreviewNeighborIds(activeCampId);
+    const roles = ["adjacentPrev", "adjacentNext"];
+    for (let i = 1; i < neighbors.length; i++) {
+      scheduleDrawerPreviewBackgroundLoad(
+        neighbors[i],
+        DRAWER_PREVIEW_PRIORITY_ADJACENT,
+        roles[i - 1] || "adjacentNext"
+      );
+    }
+  }
+
+  function prefetchDrawerPreviewCampaign(campaignId, priority, trigger) {
+    const campId = String(campaignId || "").trim();
+    if (!campId) return;
+    if (DRAWER_PREVIEW_DEBUG) {
+      drawerPreviewDbg("[preload:trigger]", {
+        campId,
+        priority: drawerPreviewPriorityLabel(priority),
+        trigger: trigger || "unknown",
+      });
+    }
+    ensureDrawerPreviewPoolInitialized();
+    scheduleDrawerPreviewBackgroundLoad(campId, priority, "menu-hover");
+  }
+
+  function swapActiveDrawerPreviewIframe(campaignId) {
+    const campId = String(campaignId || "").trim();
+    if (!campId) return false;
+
+    const entry = getDrawerPreviewCacheEntry(campId);
+    if (!entry || !entry.ready) return false;
+
+    drawerPreviewPoolIframes.forEach((iframe) => {
+      iframe.classList.remove("gem-recent-campaigns-preview-iframe--active");
+      iframe.classList.add("gem-recent-campaigns-preview-iframe--cached");
+      const cachedEntry = getDrawerPreviewCacheEntry(drawerPreviewIframeToCampId.get(iframe) || "");
+      if (cachedEntry && cachedEntry.slotRole === "active") cachedEntry.slotRole = "predictive";
+    });
+
+    entry.iframe.classList.remove("gem-recent-campaigns-preview-iframe--cached");
+    entry.iframe.classList.add("gem-recent-campaigns-preview-iframe--active");
+    entry.slotRole = "active";
+    entry.lastUsed = Date.now();
+    return true;
+  }
+
+  function ensureDrawerPreviewOverlayMessage(overlay) {
+    if (!overlay) return null;
+    let messageEl = overlay.querySelector(".gem-recent-campaigns-preview-loading-message");
+    if (!messageEl) {
+      messageEl = document.createElement("div");
+      messageEl.className = "gem-recent-campaigns-preview-loading-message";
+      messageEl.setAttribute("role", "alert");
+      overlay.appendChild(messageEl);
+    }
+    return messageEl;
+  }
+
+  function setDrawerPreviewOverlay(mode, options) {
     if (!recentPanel) return;
+    const opts = options && typeof options === "object" ? options : {};
     const overlay = recentPanel.querySelector(".gem-recent-campaigns-preview-loading");
-    if (overlay) overlay.hidden = true;
+    if (!overlay) return;
+    const spinner = overlay.querySelector(".gem-recent-campaigns-preview-loading-spinner");
+    const messageEl = ensureDrawerPreviewOverlayMessage(overlay);
+
+    overlay.classList.remove(
+      "gem-recent-campaigns-preview-loading--dimmed",
+      "gem-recent-campaigns-preview-loading--spinner",
+      "gem-recent-campaigns-preview-loading--flash",
+      "gem-recent-campaigns-preview-loading--error"
+    );
+
+    if (drawerPreviewLoadingTimer) {
+      clearTimeout(drawerPreviewLoadingTimer);
+      drawerPreviewLoadingTimer = null;
+    }
+
+    if (mode === "none") {
+      overlay.hidden = true;
+      overlay.setAttribute("aria-hidden", "true");
+      if (spinner) spinner.hidden = false;
+      if (messageEl) messageEl.hidden = true;
+      return;
+    }
+
+    overlay.hidden = false;
+    overlay.setAttribute("aria-hidden", "false");
+
+    if (mode === "error") {
+      overlay.classList.add("gem-recent-campaigns-preview-loading--error");
+      if (spinner) spinner.hidden = true;
+      if (messageEl) {
+        messageEl.textContent = opts.message || DRAWER_PREVIEW_TEMPLATING_ERROR_MSG;
+        messageEl.hidden = false;
+      }
+      return;
+    }
+
+    if (spinner) spinner.hidden = false;
+    if (messageEl) messageEl.hidden = true;
+
+    if (mode === "dimmed") {
+      overlay.classList.add("gem-recent-campaigns-preview-loading--dimmed");
+    } else if (mode === "spinner") {
+      overlay.classList.add("gem-recent-campaigns-preview-loading--spinner");
+    } else if (mode === "flash") {
+      overlay.classList.add("gem-recent-campaigns-preview-loading--flash");
+      overlay.classList.add("gem-recent-campaigns-preview-loading--spinner");
+    }
+
+    const autoHideMs =
+      opts.autoHideMs !== undefined ? opts.autoHideMs : DRAWER_PREVIEW_LOADING_TIMEOUT_MS;
+
+    if (autoHideMs > 0) {
+      drawerPreviewLoadingTimer = setTimeout(() => setDrawerPreviewOverlay("none"), autoHideMs);
+    }
+  }
+
+  function playDrawerPreviewSwapTransition() {
+    setDrawerPreviewOverlay("flash", { autoHideMs: DRAWER_PREVIEW_SWAP_FLASH_MS });
+  }
+
+  function ensureDrawerPreviewPoolInitialized() {
+    if (!recentPanel) return;
+    const wrap = recentPanel.querySelector(".gem-recent-campaigns-preview-iframe-wrap");
+    if (!wrap) return;
+
+    let stack = wrap.querySelector(".gem-recent-campaigns-preview-iframe-stack");
+    if (!stack) {
+      wrap.innerHTML = `
+        <div class="gem-recent-campaigns-preview-iframe-stack"></div>
+        <div class="gem-recent-campaigns-preview-loading" hidden aria-hidden="true">
+          <div class="gem-recent-campaigns-preview-loading-spinner" aria-hidden="true"></div>
+          <div class="gem-recent-campaigns-preview-loading-message" role="alert" hidden></div>
+        </div>
+      `.trim();
+      stack = wrap.querySelector(".gem-recent-campaigns-preview-iframe-stack");
+      drawerPreviewPoolIframes = [];
+      drawerPreviewCacheByCampId.clear();
+      drawerPreviewLoadErrorByCampId.clear();
+      drawerPreviewIframeToCampId.clear();
+    }
+
+    if (!stack || drawerPreviewPoolIframes.length >= DRAWER_PREVIEW_POOL_SIZE) return;
+
+    stack.innerHTML = "";
+    drawerPreviewPoolIframes = [];
+
+    for (let i = 0; i < DRAWER_PREVIEW_POOL_SIZE; i++) {
+      const iframe = document.createElement("iframe");
+      iframe.className = "gem-recent-campaigns-preview-iframe gem-recent-campaigns-preview-iframe--cached";
+      iframe.title = "Campaign preview";
+      iframe.dataset.gemPoolIndex = String(i);
+      stack.appendChild(iframe);
+      drawerPreviewPoolIframes.push(iframe);
+    }
+  }
+
+  function tearDownDrawerPreviewPool() {
+    cancelDrawerPreviewBackgroundLoad("drawer-closed");
+    drawerPreviewLoadQueue = [];
+    drawerPreviewPoolIframes.forEach((iframe) => {
+      iframe.setAttribute("src", "about:blank");
+      iframe.classList.remove(
+        "gem-recent-campaigns-preview-iframe--active",
+        "gem-recent-campaigns-preview-iframe--cached"
+      );
+      delete iframe.dataset.gemPreviewCampId;
+    });
+    drawerPreviewCacheByCampId.clear();
+    drawerPreviewLoadErrorByCampId.clear();
+    drawerPreviewIframeToCampId.clear();
+    drawerPreviewPoolIframes = [];
+    setDrawerPreviewOverlay("none");
+  }
+
+  function showDrawerPreview(campaignId) {
+    const campId = String(campaignId || "").trim();
+    if (!campId) return false;
+
+    ensureDrawerPreviewPoolInitialized();
+
+    if (isDrawerPreviewCachedReady(campId)) {
+      swapActiveDrawerPreviewIframe(campId);
+      if (isDrawerPreviewLoadError(campId)) {
+        setDrawerPreviewOverlay("error", { message: DRAWER_PREVIEW_TEMPLATING_ERROR_MSG });
+      } else {
+        playDrawerPreviewSwapTransition();
+      }
+      enqueueDrawerPreviewAdjacentLoads(campId);
+      scrollDrawerPreviewActiveRowIntoView();
+      return true;
+    }
+
+    const hasVisibleActive =
+      previewCampaignId &&
+      isDrawerPreviewCachedReady(previewCampaignId) &&
+      previewCampaignId !== campId;
+
+    const pendingEntry = getDrawerPreviewCacheEntry(campId);
+    if (pendingEntry && !pendingEntry.ready) {
+      setDrawerPreviewOverlay(hasVisibleActive ? "dimmed" : "spinner");
+      return true;
+    }
+
+    setDrawerPreviewOverlay(hasVisibleActive ? "dimmed" : "spinner");
+    cancelDrawerPreviewBackgroundLoad("active-selection");
+    drawerPreviewLoadQueue = drawerPreviewLoadQueue.filter((item) => item.campId !== campId);
+    startDrawerPreviewIframeLoad(campId, "active", DRAWER_PREVIEW_PRIORITY_ACTIVE);
+    return true;
+  }
+
+  function findDrawerCampaignRowByCampaignId(campaignId) {
+    const id = String(campaignId || "").trim();
+    if (!id || !recentPanel) return null;
+    const scopes = [
+      recentPanel.querySelector(".gem-recent-campaigns-list"),
+      recentPanel.querySelector(".gem-recent-campaigns-active-tab-slot"),
+    ].filter(Boolean);
+    for (const scope of scopes) {
+      const rows = scope.querySelectorAll(".gem-recent-campaign-row[data-gem-campaign-id]");
+      for (const row of rows) {
+        if (String(row.dataset.gemCampaignId || "").trim() === id) return row;
+      }
+    }
+    return null;
+  }
+
+  function scrollDrawerPreviewActiveRowIntoView() {
+    if (!previewOpen || !previewCampaignId || !recentPanel) return;
+    if (typeof window.gemScrollIntoViewIfNeeded !== "function") return;
+
+    requestAnimationFrame(() => {
+      const row = findDrawerCampaignRowByCampaignId(previewCampaignId);
+      const scrollRoot = recentPanel.querySelector(".gem-recent-campaigns-panel-content");
+      if (!row || !scrollRoot) return;
+      window.gemScrollIntoViewIfNeeded(row, { scrollRoot, padding: 8 });
+    });
+  }
+
+  function syncDrawerPreviewActiveRow() {
+    if (!recentPanel) return;
+    const scopes = [
+      recentPanel.querySelector(".gem-recent-campaigns-list"),
+      recentPanel.querySelector(".gem-recent-campaigns-active-tab-slot"),
+    ].filter(Boolean);
+
+    if (!previewOpen || !previewCampaignId) {
+      scopes.forEach((scope) => {
+        scope.querySelectorAll(`.gem-recent-campaign-row.${DRAWER_PREVIEW_ACTIVE_ROW_CLASS}`).forEach((row) => {
+          row.classList.remove(DRAWER_PREVIEW_ACTIVE_ROW_CLASS);
+        });
+      });
+      return;
+    }
+
+    const row = findDrawerCampaignRowByCampaignId(previewCampaignId);
+    scopes.forEach((scope) => {
+      scope.querySelectorAll(`.gem-recent-campaign-row.${DRAWER_PREVIEW_ACTIVE_ROW_CLASS}`).forEach((activeRow) => {
+        if (activeRow !== row) activeRow.classList.remove(DRAWER_PREVIEW_ACTIVE_ROW_CLASS);
+      });
+    });
+
+    if (row && !row.classList.contains(DRAWER_PREVIEW_ACTIVE_ROW_CLASS)) {
+      row.classList.add(DRAWER_PREVIEW_ACTIVE_ROW_CLASS);
+    }
+
+    scrollDrawerPreviewActiveRowIntoView();
   }
 
   function syncPreviewUi() {
     if (!recentPanel) return;
-    const iframe = recentPanel.querySelector(".gem-recent-campaigns-preview-iframe");
     const prevBtn = recentPanel.querySelector(".gem-recent-campaigns-preview-prev");
     const nextBtn = recentPanel.querySelector(".gem-recent-campaigns-preview-next");
     const titleEl = recentPanel.querySelector(".gem-recent-campaigns-preview-title");
 
     recentPanel.classList.toggle("gem-recent-campaigns-panel--preview-open", previewOpen);
+    syncDrawerPreviewActiveRow();
     if (!previewOpen) return;
 
     const idx = previewNavCampaignIds.indexOf(previewCampaignId);
@@ -1268,14 +1937,6 @@ console.log("[gem] recent-campaigns.js loaded");
       if (nextBtn) nextBtn.disabled = idx >= previewNavCampaignIds.length - 1;
     }
     if (titleEl) titleEl.textContent = getPreviewCampaignTitle(previewCampaignId);
-
-    if (iframe && previewCampaignId) {
-      const nextSrc = buildPreviewIframeUrl(previewCampaignId);
-      if (iframe.getAttribute("src") !== nextSrc) {
-        showPreviewLoadingOverlay();
-        iframe.setAttribute("src", nextSrc);
-      }
-    }
   }
 
   function openCampaignPreview(campaignId, campaignTitle) {
@@ -1290,12 +1951,13 @@ console.log("[gem] recent-campaigns.js loaded");
       previewNavCampaignIds = [id, ...previewNavCampaignIds];
     }
     syncPreviewUi();
+    showDrawerPreview(id);
   }
 
   function closeCampaignPreview() {
     previewOpen = false;
     previewCampaignId = "";
-    hidePreviewLoadingOverlay();
+    setDrawerPreviewOverlay("none");
     syncPreviewUi();
   }
 
@@ -1306,6 +1968,7 @@ console.log("[gem] recent-campaigns.js loaded");
       if (Number(delta) > 0) {
         previewCampaignId = previewNavCampaignIds[0];
         syncPreviewUi();
+        showDrawerPreview(previewCampaignId);
       }
       return;
     }
@@ -1313,6 +1976,7 @@ console.log("[gem] recent-campaigns.js loaded");
     if (nextIdx < 0 || nextIdx >= previewNavCampaignIds.length) return;
     previewCampaignId = previewNavCampaignIds[nextIdx];
     syncPreviewUi();
+    showDrawerPreview(previewCampaignId);
   }
 
   function syncPreviewAfterRender(activeItem, openCampaigns, pinnedCampaigns, recentlyEditedCampaigns, listOtherForSection) {
@@ -1325,12 +1989,13 @@ console.log("[gem] recent-campaigns.js loaded");
     );
     if (!previewOpen) return;
     syncPreviewUi();
+    enqueueDrawerPreviewAdjacentLoads(previewCampaignId);
   }
 
   function getRecentCampaignsShortcutLabel() {
     return typeof window.gemPanelShortcutLabel === "function"
       ? window.gemPanelShortcutLabel("/")
-      : "[ CTRL + / ]";
+      : "CTRL+/";
   }
 
   function buildRecentNavItem() {
@@ -1372,7 +2037,7 @@ console.log("[gem] recent-campaigns.js loaded");
         <div class="gem-recent-campaigns-panel-header">
           <span class="gem-recent-campaigns-panel-title">
             Recent Campaigns
-            <span class="gem-panel-shortcut-hint">${getRecentCampaignsShortcutLabel()}</span>
+            <span class="gem-shortcut-hint gem-shortcut-hint--on-surface">${getRecentCampaignsShortcutLabel()}</span>
           </span>
           <button type="button" class="gem-recent-campaigns-panel-close" aria-label="Close Recent Campaigns panel">✕</button>
         </div>
@@ -1393,9 +2058,10 @@ console.log("[gem] recent-campaigns.js loaded");
           <button type="button" class="gem-recent-campaigns-preview-close" aria-label="Close campaign preview">✕</button>
         </div>
         <div class="gem-recent-campaigns-preview-iframe-wrap">
-          <iframe class="gem-recent-campaigns-preview-iframe" title="Campaign preview"></iframe>
+          <div class="gem-recent-campaigns-preview-iframe-stack"></div>
           <div class="gem-recent-campaigns-preview-loading" hidden aria-hidden="true">
             <div class="gem-recent-campaigns-preview-loading-spinner" aria-hidden="true"></div>
+            <div class="gem-recent-campaigns-preview-loading-message" role="alert" hidden></div>
           </div>
         </div>
       </aside>
@@ -1403,21 +2069,21 @@ console.log("[gem] recent-campaigns.js loaded");
 
     const closeBtn = panel.querySelector(".gem-recent-campaigns-panel-close");
     if (closeBtn) closeBtn.addEventListener("click", hideRecentPanel);
+    const shortcutHint = panel.querySelector(".gem-shortcut-hint");
+    if (shortcutHint && typeof window.gemWireShortcutHint === "function") {
+      window.gemWireShortcutHint(shortcutHint);
+    }
     const previewPrevBtn = panel.querySelector(".gem-recent-campaigns-preview-prev");
     const previewNextBtn = panel.querySelector(".gem-recent-campaigns-preview-next");
     const previewCloseBtn = panel.querySelector(".gem-recent-campaigns-preview-close");
     if (previewPrevBtn) previewPrevBtn.addEventListener("click", () => navigatePreview(-1));
     if (previewNextBtn) previewNextBtn.addEventListener("click", () => navigatePreview(1));
     if (previewCloseBtn) previewCloseBtn.addEventListener("click", closeCampaignPreview);
-    const previewIframe = panel.querySelector(".gem-recent-campaigns-preview-iframe");
-    if (previewIframe) {
-      previewIframe.addEventListener("load", hidePreviewLoadingOverlay);
-    }
+    ensureDrawerPreviewPoolInitialized();
     const searchInput = panel.querySelector(".gem-recent-campaigns-search");
     if (searchInput) {
       searchInput.addEventListener("input", () => {
         activeSearchQuery = String(searchInput.value || "").trim().toLowerCase();
-        saveUiState();
         renderRecentList();
       });
     }
@@ -1446,6 +2112,7 @@ console.log("[gem] recent-campaigns.js loaded");
     stableOrderIds = null;
     document.addEventListener("keydown", onRecentPanelKeydown);
     if (recentOpenTabsPollTimer) clearInterval(recentOpenTabsPollTimer);
+    refreshOpenCampaignTabs();
     recentOpenTabsPollTimer = setInterval(() => refreshOpenCampaignTabs(), 2500);
   }
 
@@ -1453,6 +2120,7 @@ console.log("[gem] recent-campaigns.js loaded");
     if (!recentPanel || !recentBackdrop) return;
     closeRecentCampaignRowMenu();
     closeCampaignPreview();
+    tearDownDrawerPreviewPool();
     stopActiveTabUnsavedPoll();
     if (recentOpenTabsPollTimer) {
       clearInterval(recentOpenTabsPollTimer);
@@ -1597,16 +2265,15 @@ console.log("[gem] recent-campaigns.js loaded");
     }
 
     document.querySelectorAll("iframe").forEach(waitForIframeReady);
-    const iframeObserver = new MutationObserver((mutations) => {
-      mutations.forEach((m) => {
-        m.addedNodes.forEach((node) => {
+    window.gemDomWatchSubscribe(function (mutations) {
+      mutations.forEach(function (m) {
+        m.addedNodes.forEach(function (node) {
           if (!node || node.nodeType !== Node.ELEMENT_NODE) return;
           if (node.tagName === "IFRAME") waitForIframeReady(node);
           else if (node.querySelectorAll) node.querySelectorAll("iframe").forEach(waitForIframeReady);
         });
       });
     });
-    iframeObserver.observe(document.documentElement, { childList: true, subtree: true });
 
     document.addEventListener(GEM_CLOSE_RECENT_CAMPAIGNS_EVENT, () => {
       hideRecentPanel();
@@ -1632,6 +2299,11 @@ console.log("[gem] recent-campaigns.js loaded");
     const options = opts && typeof opts === "object" ? opts : {};
     const row = document.createElement("div");
     row.className = "gem-recent-campaign-row";
+    const campaignId = String(item && item.id ? item.id : "").trim();
+    if (campaignId) row.dataset.gemCampaignId = campaignId;
+    if (previewOpen && previewCampaignId && campaignId === previewCampaignId) {
+      row.classList.add(DRAWER_PREVIEW_ACTIVE_ROW_CLASS);
+    }
     const openCampaign = () => {
       const targetUrl = withCurrentSessionId(item.urlBase);
       chrome.runtime.sendMessage({
@@ -1700,18 +2372,8 @@ console.log("[gem] recent-campaigns.js loaded");
       langs.appendChild(chip);
     });
 
-    if (options.activeUnsavedSlot) {
-      const notice = document.createElement("div");
-      notice.id = "gem-recent-active-unsaved-slot";
-      notice.className = "gem-recent-campaign-unsaved-notice";
-      if (!options.showUnsavedNotice) notice.classList.add("gem-recent-campaign-unsaved-notice--hidden");
-      notice.setAttribute("role", "status");
-      notice.textContent = options.showUnsavedNotice ? "Unsaved changes" : "";
-      notice.setAttribute("aria-hidden", options.showUnsavedNotice ? "false" : "true");
-      main.appendChild(notice);
-    } else {
-      appendCampaignStatusNotices(main, options);
-    }
+    const noticesRow = buildCampaignStatusNoticesRow(options);
+    if (noticesRow) main.appendChild(noticesRow);
 
     main.appendChild(titleRow);
     main.appendChild(subject);
@@ -1725,6 +2387,11 @@ console.log("[gem] recent-campaigns.js loaded");
   function buildListSourceCampaignRow(item, opts) {
     const row = document.createElement("div");
     row.className = "gem-recent-campaign-row gem-recent-campaign-row--list-source";
+    const campaignId = String(item && item.id ? item.id : "").trim();
+    if (campaignId) row.dataset.gemCampaignId = campaignId;
+    if (previewOpen && previewCampaignId && campaignId === previewCampaignId) {
+      row.classList.add(DRAWER_PREVIEW_ACTIVE_ROW_CLASS);
+    }
     const openCampaign = () => {
       const targetUrl = withCurrentSessionId(item.urlBase);
       chrome.runtime.sendMessage({
@@ -1813,19 +2480,24 @@ console.log("[gem] recent-campaigns.js loaded");
       searchInput.value = activeSearchQuery;
     }
     const excludeCurrent = getCurrentCampaignExclusion();
-    const activePayload = extractCampaignPayload();
+    const editorPayload = extractCampaignPayload();
     let activeItem =
-      activePayload && activePayload.id && activePayload.title && activePayload.urlBase
-        ? normalizeEntry(activePayload)
+      editorPayload && editorPayload.id && editorPayload.title && editorPayload.urlBase
+        ? normalizeEntry(editorPayload)
         : null;
     readRecentItems(({ items, pinnedKeys }) => {
-      if (!activeItem && (isCampaignManagerDetailsPage() || isBootstrapCampaignSiblingPage())) {
+      if (!activeItem && isCampIdCampaignPage()) {
         const campId = getCampIdParam();
         if (campId) {
           const storedMatch = (Array.isArray(items) ? items : []).find(
             (item) => String(item.id || "").trim() === campId
           );
-          if (storedMatch) activeItem = storedMatch;
+          if (storedMatch) {
+            activeItem = storedMatch;
+          } else {
+            const pagePayload = extractCampIdCampaignPayload();
+            if (pagePayload) activeItem = normalizeEntry(pagePayload);
+          }
         }
       }
       readOtherRecentItems((otherRaw) => {
@@ -2135,7 +2807,7 @@ console.log("[gem] recent-campaigns.js loaded");
   }
 
   function observeNav() {
-    const observer = new MutationObserver((mutations) => {
+    window.gemDomWatchSubscribe(function (mutations) {
       for (const mutation of mutations) {
         for (const node of mutation.addedNodes) {
           if (node.nodeType !== 1) continue;
@@ -2150,7 +2822,6 @@ console.log("[gem] recent-campaigns.js loaded");
         }
       }
     });
-    observer.observe(document.documentElement || document, { childList: true, subtree: true });
   }
 
   function observeRecentStorage() {
@@ -2193,46 +2864,57 @@ console.log("[gem] recent-campaigns.js loaded");
   }
 
   function startOpenTabsTracking() {
-    refreshOpenCampaignTabs();
     if (chrome && chrome.runtime && chrome.runtime.onMessage) {
       chrome.runtime.onMessage.addListener((msg) => {
         if (msg && msg.action === "recentCampaignOpenTabsUpdated") {
-          refreshOpenCampaignTabs();
+          if (recentPanel && recentPanel.classList.contains("gem-recent-campaigns-panel--open")) {
+            refreshOpenCampaignTabs();
+          }
         }
       });
     }
     document.addEventListener("visibilitychange", () => {
       if (document.hidden) return;
+      if (!recentPanel || !recentPanel.classList.contains("gem-recent-campaigns-panel--open")) return;
       refreshOpenCampaignTabs();
       loadUiState(() => {
-        if (recentPanel && recentPanel.classList.contains("gem-recent-campaigns-panel--open")) {
-          renderRecentList();
-        }
+        renderRecentList();
       });
     });
   }
 
   function initCampaignTracking() {
-    if (!isCampaignPage()) return;
+    if (!isCampaignPage() && !isCampIdCampaignPage()) return;
     let timer = null;
     const scheduleCapture = () => {
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
-        const payload = extractCampaignPayload();
+        const payload = extractActiveCampaignPayload();
         if (payload) upsertRecent(payload);
       }, 250);
     };
     scheduleCapture();
-    const observer = new MutationObserver(scheduleCapture);
-    observer.observe(document.documentElement || document, {
-      childList: true,
-      subtree: true,
-      characterData: true
-    });
+    window.gemDomWatchSubscribe(scheduleCapture);
+  }
+
+  function handleDrawerPreviewFsIframeMessage(ev) {
+    if (!ev || ev.origin !== window.location.origin) return;
+    const data = ev.data;
+    if (!data || data.source !== PREVIEW_FS_IFRAME_MESSAGE_SOURCE) return;
+    const campId = String(data.campId || "").trim();
+    if (!campId) return;
+    markDrawerPreviewLoadError(campId, data.reason || "templating");
+  }
+
+  function initDrawerPreviewFsIframeMessageListener() {
+    if (drawerPreviewFsMessageInstalled) return;
+    drawerPreviewFsMessageInstalled = true;
+    window.addEventListener("message", handleDrawerPreviewFsIframeMessage);
   }
 
   function initRecentCampaignsFeature() {
     loadUiState();
+    initDrawerPreviewFsIframeMessageListener();
     ensureRecentCampaignRowMenuListeners();
     scanForNav();
     observeNav();

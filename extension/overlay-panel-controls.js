@@ -7,6 +7,10 @@ console.log("[Gem] overlay-panel-controls.js loaded");
 /** @type {{ wrap: HTMLElement, trigger: HTMLButtonElement, menu: HTMLElement } | null} */
 let openCompactEmailToolsMenu = null;
 let compactEmailToolsMenuListenersInstalled = false;
+/** @type {HTMLElement | null} */
+let compactEmailToolsOverflowMenuWrap = null;
+/** @type {HTMLElement | null} */
+let compactEmailToolsDropdownContainer = null;
 /** @type {{ item: HTMLElement, spinner: HTMLElement } | null} */
 let compactEmailToolsSendTestPending = null;
 /** @type {MutationObserver | null} */
@@ -59,6 +63,32 @@ function clickEmarsysTooltipAction(content) {
     window.gemShowToast(`Could not find "${content}" action.`, { type: 'error' });
   }
   return false;
+}
+
+function isCompactToolsInboxPreviewActive() {
+  if (typeof window.gemIsInboxPreviewActive === 'function') {
+    return window.gemIsInboxPreviewActive();
+  }
+  const el = document.querySelector('cb-campaign-inbox-preview');
+  return !!(el && !el.hasAttribute('hidden'));
+}
+
+function clickLivePreviewButton() {
+  const btn = document.querySelector('button[aria-label="Live Preview"]');
+  if (btn) {
+    btn.click();
+    return true;
+  }
+  console.warn('[Gem] Compact tools: could not find button[aria-label="Live Preview"]');
+  if (window.gemShowToast) {
+    window.gemShowToast('Could not find "Live Preview" action.', { type: 'error' });
+  }
+  return false;
+}
+
+function updateCompactEmailToolsInboxPreviewMenuItem(item) {
+  if (!item) return;
+  item.textContent = isCompactToolsInboxPreviewActive() ? 'Live Preview' : 'Inbox Preview';
 }
 
 async function copyRichTextCampaignLink() {
@@ -192,7 +222,11 @@ function positionCompactEmailToolsMenu(wrap, menu) {
   if (top + menuRect.height > window.innerHeight - 8) {
     top = triggerRect.top - menuRect.height - gap;
   }
-  left = Math.max(8, Math.min(left, window.innerWidth - menuRect.width - 8));
+  if (wrap.classList.contains('gem-compact-email-tools-menu-wrap--header')) {
+    left = 96;
+  } else {
+    left = Math.max(8, Math.min(left, window.innerWidth - menuRect.width - 8));
+  }
   top = Math.max(8, Math.min(top, window.innerHeight - menuRect.height - 8));
   menu.style.top = `${Math.round(top)}px`;
   menu.style.left = `${Math.round(left)}px`;
@@ -206,6 +240,12 @@ function openCompactEmailToolsMenuAt(wrap) {
   if (!trigger || !menu) return;
   menu.classList.add('gem-recent-campaign-row-menu--open');
   trigger.setAttribute('aria-expanded', 'true');
+  updateCompactEmailToolsInboxPreviewMenuItem(
+    menu.querySelector('[data-gem-inbox-preview-toggle]')
+  );
+  if (typeof window.gemSyncCompareLanguagesOverflowMenuItem === 'function') {
+    window.gemSyncCompareLanguagesOverflowMenuItem();
+  }
   positionCompactEmailToolsMenu(wrap, menu);
   openCompactEmailToolsMenu = { wrap, trigger, menu };
 }
@@ -278,7 +318,13 @@ function duplicateCompactEmailToolsCampaign(duplicateBtn, clickEvent) {
         return;
       }
 
-      window.location.assign(urlString);
+      resetBtn();
+      closeCompactEmailToolsMenu();
+      try {
+        chrome.runtime.sendMessage({ action: 'openInNewTab', url: urlString, active: true });
+      } catch (_) {
+        window.open(urlString, '_blank');
+      }
     } catch (_) {
       resetBtn();
       if (window.gemShowToast) {
@@ -288,10 +334,73 @@ function duplicateCompactEmailToolsCampaign(duplicateBtn, clickEvent) {
   });
 }
 
-function setupCompactEmailToolsOverflowMenu(dropdownContainer) {
-  if (!dropdownContainer || dropdownContainer.querySelector('.gem-compact-email-tools-menu-wrap')) {
+function syncCompactEmailToolsOverflowMenuPlacement() {
+  const wrap = compactEmailToolsOverflowMenuWrap;
+  if (!wrap) return;
+
+  closeCompactEmailToolsMenu();
+
+  const isExpanded = document.body.classList.contains('gem-expanded');
+
+  if (isExpanded) {
+    wrap.classList.remove('gem-compact-email-tools-menu-wrap--header');
+    if (compactEmailToolsDropdownContainer) {
+      const select = compactEmailToolsDropdownContainer.querySelector('.gem-email-tools-select');
+      if (select) {
+        if (select.nextElementSibling !== wrap) {
+          select.insertAdjacentElement('afterend', wrap);
+        }
+      } else if (wrap.parentElement !== compactEmailToolsDropdownContainer) {
+        compactEmailToolsDropdownContainer.appendChild(wrap);
+      }
+    }
     return;
   }
+
+  wrap.classList.add('gem-compact-email-tools-menu-wrap--header');
+  const back = document.querySelector('.e-layout__back');
+  if (back && back.nextElementSibling !== wrap) {
+    back.insertAdjacentElement('afterend', wrap);
+  }
+}
+
+function setupCompactEmailToolsOverflowMenuPlacementWatcher() {
+  if (setupCompactEmailToolsOverflowMenuPlacementWatcher._started) return;
+  setupCompactEmailToolsOverflowMenuPlacementWatcher._started = true;
+
+  const sync = () => syncCompactEmailToolsOverflowMenuPlacement();
+
+  if (typeof gemDomWatchObserveAttributes === 'function') {
+    gemDomWatchObserveAttributes(document.body, (mutations) => {
+      for (const mutation of mutations) {
+        if (mutation.attributeName === 'class') {
+          sync();
+          break;
+        }
+      }
+    }, ['class']);
+  } else {
+    new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+          sync();
+          break;
+        }
+      }
+    }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+  }
+
+  waitForElement('.e-layout__back', sync);
+}
+
+function setupCompactEmailToolsOverflowMenu(dropdownContainer) {
+  if (compactEmailToolsOverflowMenuWrap) {
+    compactEmailToolsDropdownContainer = dropdownContainer;
+    syncCompactEmailToolsOverflowMenuPlacement();
+    return;
+  }
+
+  compactEmailToolsDropdownContainer = dropdownContainer;
 
   const wrap = document.createElement('div');
   wrap.className = 'gem-compact-email-tools-menu-wrap';
@@ -359,10 +468,27 @@ function setupCompactEmailToolsOverflowMenu(dropdownContainer) {
   });
 
   const inboxPreviewItem = makeMenuItem('Inbox Preview');
+  inboxPreviewItem.setAttribute('data-gem-inbox-preview-toggle', 'true');
   inboxPreviewItem.addEventListener('click', (e) => {
     e.stopPropagation();
     closeCompactEmailToolsMenu();
-    clickEmarsysTooltipAction('Inbox Preview');
+    if (isCompactToolsInboxPreviewActive()) {
+      clickLivePreviewButton();
+    } else {
+      clickEmarsysTooltipAction('Inbox Preview');
+    }
+  });
+
+  const compareLanguagesItem = makeMenuItem('Compare Languages');
+  compareLanguagesItem.setAttribute('data-gem-compare-languages-menu', 'true');
+  compareLanguagesItem.hidden = true;
+  compareLanguagesItem.style.display = 'none';
+  compareLanguagesItem.addEventListener('click', (e) => {
+    e.stopPropagation();
+    closeCompactEmailToolsMenu();
+    if (typeof window.gemOpenCompareLanguagesModal === 'function') {
+      window.gemOpenCompareLanguagesModal();
+    }
   });
 
   const shareItem = makeMenuItem('Share');
@@ -400,6 +526,7 @@ function setupCompactEmailToolsOverflowMenu(dropdownContainer) {
   menu.appendChild(sendTestItem);
   menu.appendChild(contactPreviewItem);
   menu.appendChild(inboxPreviewItem);
+  menu.appendChild(compareLanguagesItem);
   menu.appendChild(shareItem);
   menu.appendChild(divider);
   menu.appendChild(duplicateItem);
@@ -415,7 +542,9 @@ function setupCompactEmailToolsOverflowMenu(dropdownContainer) {
 
   wrap.appendChild(trigger);
   wrap.appendChild(menu);
-  dropdownContainer.appendChild(wrap);
+  compactEmailToolsOverflowMenuWrap = wrap;
+  syncCompactEmailToolsOverflowMenuPlacement();
+  setupCompactEmailToolsOverflowMenuPlacementWatcher();
 
   if (!compactEmailToolsMenuListenersInstalled) {
     compactEmailToolsMenuListenersInstalled = true;
@@ -522,7 +651,37 @@ function initializeCompactEmailTools() {
     const saveButtonContainer = document.createElement('div');
     saveButtonContainer.innerHTML = saveButtonHtml;
     const saveButtonElement = saveButtonContainer.firstElementChild;
-    compactToolsDiv.appendChild(saveButtonElement);
+
+    const finishButtonHtml = `
+      <gem-cb-save-button class="cb-header-button e-layout__action" hidden>
+        <button class="e-btn e-btn-primary" aria-label="" disabled="">
+          <div class="e-btn__loading">
+            <e-spinner data-size="small">
+              <div aria-atomic="true" aria-live="assertive" class="e-spinner">
+                <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" class="e-spinner-svg e-spinner-svg-small">
+                  <title>Loading</title>
+                  <circle cx="50" cy="50" class="e-spinner-circle e-spinner-circle-small e-spinner-svg__circle_base" r="40"></circle>
+                  <circle cx="50" cy="50" class="e-spinner-circle e-spinner-circle-small e-spinner-svg__circle_01 e-spinner-svg__circle_01-small" r="40"></circle>
+                  <circle cx="50" cy="50" class="e-spinner-circle e-spinner-circle-small e-spinner-svg__circle_02 e-spinner-svg__circle_02-small" r="40"></circle>
+                  <circle cx="50" cy="50" class="e-spinner-circle e-spinner-circle-small e-spinner-svg__circle_03 e-spinner-svg__circle_03-small" r="40"></circle>
+                </svg>
+              </div>
+            </e-spinner>
+          </div>
+          Finish Editing
+        </button>
+      </gem-cb-save-button>
+    `;
+
+    const finishButtonContainer = document.createElement('div');
+    finishButtonContainer.innerHTML = finishButtonHtml;
+    const finishButtonElement = finishButtonContainer.firstElementChild;
+
+    const headerActionsDiv = document.createElement('div');
+    headerActionsDiv.className = 'gem-compact-email-header-actions';
+    headerActionsDiv.appendChild(saveButtonElement);
+    headerActionsDiv.appendChild(finishButtonElement);
+    compactToolsDiv.appendChild(headerActionsDiv);
 
     // Add click handler to our save button
     const ourSaveButton = saveButtonElement.querySelector('button');
@@ -536,8 +695,20 @@ function initializeCompactEmailTools() {
       }
     });
 
+    const ourFinishButton = finishButtonElement.querySelector('button');
+    ourFinishButton.addEventListener('click', () => {
+      const originalFinishButton = document.querySelector('cb-save-button button');
+      if (originalFinishButton) {
+        console.log('[Gem] Clicking original finish editing button');
+        originalFinishButton.click();
+      } else {
+        console.log('[Gem] Original finish editing button not found');
+      }
+    });
+
     // Set up observers to sync disabled state and loading classes
     setupSaveButtonSync();
+    setupFinishEditingButtonSync();
 
     // Add as the first child of the navigation section
     navSection.insertBefore(compactToolsDiv, navSection.firstChild);
@@ -718,23 +889,199 @@ function setupSaveButtonSync() {
   }
 
   const root = document.body || document.documentElement;
-  if (root) {
-    const rootObserver = new MutationObserver((mutations) => {
-      const hasStructuralChange = mutations.some((mutation) =>
-        mutation.type === 'childList' &&
-        (mutation.addedNodes.length > 0 || mutation.removedNodes.length > 0)
-      );
-      if (hasStructuralChange) {
+  if (root && typeof window.gemDomWatchSubscribe === 'function') {
+    window.gemDomWatchSubscribe(function (mutations) {
+      if (window.gemDomWatchHasStructuralChange(mutations)) {
         scheduleSync();
       }
-    });
-    rootObserver.observe(root, {
-      childList: true,
-      subtree: true
     });
   }
 
   // Initial sync plus one delayed pass for late-rendered elements.
+  scheduleSync();
+  setTimeout(scheduleSync, 100);
+}
+
+function setupFinishEditingButtonSync() {
+  if (setupFinishEditingButtonSync._initialized) return;
+  setupFinishEditingButtonSync._initialized = true;
+
+  console.log('[Gem] Setting up finish editing button synchronization');
+  let observedOriginalWrapper = null;
+  let observedOriginalButton = null;
+  let observedOriginalLoading = null;
+  let wrapperObserver = null;
+  let buttonObserver = null;
+  let loadingObserver = null;
+  let syncScheduled = false;
+
+  function syncVisibility() {
+    const originalWrapper = document.querySelector('cb-save-button');
+    const ourWrapper = document.querySelector('gem-cb-save-button');
+    if (!ourWrapper) return;
+
+    if (!originalWrapper) {
+      ourWrapper.hidden = true;
+      return;
+    }
+
+    const display = window.getComputedStyle(originalWrapper).display;
+    ourWrapper.hidden = display === 'none';
+  }
+
+  function syncButtonState() {
+    const originalButton = document.querySelector('cb-save-button button');
+    const ourButton = document.querySelector('gem-cb-save-button button');
+
+    if (!originalButton || !ourButton) return;
+
+    if (ourButton.disabled !== originalButton.disabled) {
+      ourButton.disabled = originalButton.disabled;
+    }
+
+    if (ourButton.className !== originalButton.className) {
+      ourButton.className = originalButton.className;
+    }
+
+    const ariaLabel = originalButton.getAttribute('aria-label') || '';
+    if ((ourButton.getAttribute('aria-label') || '') !== ariaLabel) {
+      ourButton.setAttribute('aria-label', ariaLabel);
+    }
+
+    if (ourButton.innerHTML !== originalButton.innerHTML) {
+      ourButton.innerHTML = originalButton.innerHTML;
+    }
+  }
+
+  function syncLoadingClasses() {
+    const originalLoading = document.querySelector('cb-save-button button .e-btn__loading');
+    const ourLoading = document.querySelector('gem-cb-save-button button .e-btn__loading');
+
+    if (!originalLoading || !ourLoading) return;
+
+    const originalClasses = Array.from(originalLoading.classList);
+    const ourClasses = Array.from(ourLoading.classList);
+
+    ourClasses.forEach((className) => {
+      if (!originalClasses.includes(className)) {
+        ourLoading.classList.remove(className);
+      }
+    });
+
+    originalClasses.forEach((className) => {
+      if (!ourClasses.includes(className)) {
+        ourLoading.classList.add(className);
+      }
+    });
+  }
+
+  function attachWrapperObserver() {
+    const originalWrapper = document.querySelector('cb-save-button');
+    if (observedOriginalWrapper === originalWrapper) return;
+
+    if (wrapperObserver) {
+      wrapperObserver.disconnect();
+      wrapperObserver = null;
+    }
+
+    observedOriginalWrapper = originalWrapper || null;
+    if (!originalWrapper) return;
+
+    wrapperObserver = new MutationObserver(() => {
+      scheduleSync();
+    });
+
+    wrapperObserver.observe(originalWrapper, {
+      attributes: true,
+      attributeFilter: ['style', 'class', 'hidden'],
+    });
+
+    console.log('[Gem] Set up observer for original finish editing button visibility');
+  }
+
+  function attachButtonObserver() {
+    const originalButton = document.querySelector('cb-save-button button');
+    if (observedOriginalButton === originalButton) return;
+
+    if (buttonObserver) {
+      buttonObserver.disconnect();
+      buttonObserver = null;
+    }
+
+    observedOriginalButton = originalButton || null;
+    if (!originalButton) return;
+
+    buttonObserver = new MutationObserver((mutations) => {
+      const relevant = mutations.some((mutation) =>
+        mutation.type === 'attributes'
+        || mutation.type === 'childList'
+      );
+      if (relevant) {
+        scheduleSync();
+      }
+    });
+
+    buttonObserver.observe(originalButton, {
+      attributes: true,
+      attributeFilter: ['disabled', 'class', 'aria-label'],
+      childList: true,
+      subtree: true,
+    });
+
+    console.log('[Gem] Set up observer for original finish editing button state');
+  }
+
+  function attachLoadingObserver() {
+    const originalLoading = document.querySelector('cb-save-button button .e-btn__loading');
+    if (observedOriginalLoading === originalLoading) return;
+
+    if (loadingObserver) {
+      loadingObserver.disconnect();
+      loadingObserver = null;
+    }
+
+    observedOriginalLoading = originalLoading || null;
+    if (!originalLoading) return;
+
+    loadingObserver = new MutationObserver(() => {
+      scheduleSync();
+    });
+
+    loadingObserver.observe(originalLoading, {
+      attributes: true,
+      attributeFilter: ['class'],
+    });
+
+    console.log('[Gem] Set up observer for original finish editing button loading classes');
+  }
+
+  function runSync() {
+    attachWrapperObserver();
+    attachButtonObserver();
+    attachLoadingObserver();
+    syncVisibility();
+    syncButtonState();
+    syncLoadingClasses();
+  }
+
+  function scheduleSync() {
+    if (syncScheduled) return;
+    syncScheduled = true;
+    requestAnimationFrame(() => {
+      syncScheduled = false;
+      runSync();
+    });
+  }
+
+  const root = document.body || document.documentElement;
+  if (root && typeof window.gemDomWatchSubscribe === 'function') {
+    window.gemDomWatchSubscribe(function (mutations) {
+      if (window.gemDomWatchHasStructuralChange(mutations)) {
+        scheduleSync();
+      }
+    });
+  }
+
   scheduleSync();
   setTimeout(scheduleSync, 100);
 }
@@ -2488,16 +2835,29 @@ function initializeOverlayPanelControls() {
     function ensureGemMediaDbParentThemeObserver() {
       if (gemMediaDbParentThemeObserver) return;
       try {
-        gemMediaDbParentThemeObserver = new MutationObserver(() => {
-          const iframe = gemMediaDbPickerIframeEl;
-          const doc = iframe && iframe.contentDocument;
-          if (!doc) return;
-          syncGemThemeClassesToMediaDbIframeDoc(doc);
-        });
-        gemMediaDbParentThemeObserver.observe(document.documentElement, {
-          attributes: true,
-          attributeFilter: ['class']
-        });
+        if (typeof gemDomWatchObserveAttributes === 'function') {
+          gemMediaDbParentThemeObserver = gemDomWatchObserveAttributes(
+            document.documentElement,
+            () => {
+              const iframe = gemMediaDbPickerIframeEl;
+              const doc = iframe && iframe.contentDocument;
+              if (!doc) return;
+              syncGemThemeClassesToMediaDbIframeDoc(doc);
+            },
+            ['class']
+          );
+        } else {
+          gemMediaDbParentThemeObserver = new MutationObserver(() => {
+            const iframe = gemMediaDbPickerIframeEl;
+            const doc = iframe && iframe.contentDocument;
+            if (!doc) return;
+            syncGemThemeClassesToMediaDbIframeDoc(doc);
+          });
+          gemMediaDbParentThemeObserver.observe(document.documentElement, {
+            attributes: true,
+            attributeFilter: ['class']
+          });
+        }
       } catch (_) {}
     }
 
@@ -7375,19 +7735,29 @@ function initializeOverlayPanelControls() {
     }
 
     // Single deterministic watcher for Image Properties modal lifecycle.
-    const observer = new MutationObserver((mutations) => {
-      mutations.forEach((mutation) => {
-        mutation.addedNodes.forEach((node) => {
-          const candidates = collectImagePropertiesModalCandidates(node);
-          candidates.forEach((candidate) => scheduleImagePropertiesModalInit(candidate, 'mutation'));
+    if (typeof gemDomWatchSubscribe === 'function') {
+      gemDomWatchSubscribe((mutations) => {
+        mutations.forEach((mutation) => {
+          mutation.addedNodes.forEach((node) => {
+            const candidates = collectImagePropertiesModalCandidates(node);
+            candidates.forEach((candidate) => scheduleImagePropertiesModalInit(candidate, 'mutation'));
+          });
         });
       });
-    });
-
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true
-    });
+    } else {
+      const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+          mutation.addedNodes.forEach((node) => {
+            const candidates = collectImagePropertiesModalCandidates(node);
+            candidates.forEach((candidate) => scheduleImagePropertiesModalInit(candidate, 'mutation'));
+          });
+        });
+      });
+      observer.observe(document.body, {
+        childList: true,
+        subtree: true
+      });
+    }
 
     // Initial check for already-rendered modals (single pass; no interval polling).
     try {
@@ -7443,22 +7813,19 @@ function initializeOverlayPanelControls() {
     }
 
     // Monitor for link editor modal appearance
-    const linkEditorObserver = new MutationObserver((mutations) => {
+    const handleLinkEditorMutations = (mutations) => {
       mutations.forEach((mutation) => {
         mutation.addedNodes.forEach((node) => {
           if (node.nodeType === Node.ELEMENT_NODE) {
-            // Check if this is a link editor modal
             if (isLinkEditorModal(node)) {
               console.log("[Gem] Link editor modal detected");
               focusLinkEditorUrl(node);
             }
 
-            // Also check within added subtrees
             const linkEditors = node.querySelectorAll ?
               node.querySelectorAll('cb-personalizable-input-with-context.link-editor-url.mce-component') : [];
             if (linkEditors.length > 0) {
               console.log("[Gem] Link editor modal detected in subtree");
-              // Find the modal container
               let modalContainer = node;
               while (modalContainer && !isLinkEditorModal(modalContainer)) {
                 modalContainer = modalContainer.parentElement;
@@ -7470,12 +7837,17 @@ function initializeOverlayPanelControls() {
           }
         });
       });
-    });
+    };
 
-    linkEditorObserver.observe(document.body, {
-      childList: true,
-      subtree: true
-    });
+    if (typeof gemDomWatchSubscribe === 'function') {
+      gemDomWatchSubscribe(handleLinkEditorMutations);
+    } else {
+      const linkEditorObserver = new MutationObserver(handleLinkEditorMutations);
+      linkEditorObserver.observe(document.body, {
+        childList: true,
+        subtree: true
+      });
+    }
 
     console.log("[Gem] Link editor focus handler initialized");
   }

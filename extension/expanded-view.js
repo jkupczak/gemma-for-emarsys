@@ -308,26 +308,41 @@ function setupExpandedViewObserver(compactVersionsDiv) {
   console.log('[Gem-Expanded-View] Setting up expanded view observer for locale selector');
 
   // Watch for changes to the body class
-  const bodyObserver = new MutationObserver((mutations) => {
-    mutations.forEach((mutation) => {
-      if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
-        const wasExpanded = mutation.oldValue && mutation.oldValue.includes('gem-expanded');
-        const isExpanded = document.body.classList.contains('gem-expanded');
+  if (typeof gemDomWatchObserveAttributes === 'function') {
+    gemDomWatchObserveAttributes(document.body, (mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+          const wasExpanded = mutation.oldValue && mutation.oldValue.includes('gem-expanded');
+          const isExpanded = document.body.classList.contains('gem-expanded');
 
-        // Only act if the expanded state actually changed
-        if (wasExpanded !== isExpanded) {
-          console.log(`[Gem-Expanded-View] Expanded view changed: ${wasExpanded} -> ${isExpanded}`);
-          moveSelectorsBasedOnView(compactVersionsDiv, isExpanded);
+          if (wasExpanded !== isExpanded) {
+            console.log(`[Gem-Expanded-View] Expanded view changed: ${wasExpanded} -> ${isExpanded}`);
+            moveSelectorsBasedOnView(compactVersionsDiv, isExpanded);
+          }
         }
-      }
-    });
-  });
+      });
+    }, ['class']);
+  } else {
+    const bodyObserver = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+          const wasExpanded = mutation.oldValue && mutation.oldValue.includes('gem-expanded');
+          const isExpanded = document.body.classList.contains('gem-expanded');
 
-  bodyObserver.observe(document.body, {
-    attributes: true,
-    attributeFilter: ['class'],
-    attributeOldValue: true
-  });
+          if (wasExpanded !== isExpanded) {
+            console.log(`[Gem-Expanded-View] Expanded view changed: ${wasExpanded} -> ${isExpanded}`);
+            moveSelectorsBasedOnView(compactVersionsDiv, isExpanded);
+          }
+        }
+      });
+    });
+
+    bodyObserver.observe(document.body, {
+      attributes: true,
+      attributeFilter: ['class'],
+      attributeOldValue: true
+    });
+  }
 
   console.log('[Gem-Expanded-View] Expanded view observer set up');
 }
@@ -346,7 +361,7 @@ function setupLanguagesSelectorObserver(compactVersionsDiv) {
   });
 
   // Also watch for vce-languages-selector being added/removed from DOM
-  const containerObserver = new MutationObserver((mutations) => {
+  const handleLanguagesSelectorDomChange = (mutations) => {
     let needsUpdate = false;
     mutations.forEach((mutation) => {
       if (mutation.type === 'childList') {
@@ -371,9 +386,18 @@ function setupLanguagesSelectorObserver(compactVersionsDiv) {
       const isExpanded = document.body.classList.contains('gem-expanded');
       updateCompactVersionsActiveState(compactVersionsDiv, isExpanded);
     }
-  });
+  };
 
-  // Observe existing languages selector
+  if (typeof gemDomWatchSubscribe === 'function') {
+    gemDomWatchSubscribe(handleLanguagesSelectorDomChange);
+  } else {
+    const containerObserver = new MutationObserver(handleLanguagesSelectorDomChange);
+    containerObserver.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
+  }
+
   const languagesSelector = document.querySelector('vce-languages-selector');
   if (languagesSelector) {
     languagesObserver.observe(languagesSelector, {
@@ -381,12 +405,6 @@ function setupLanguagesSelectorObserver(compactVersionsDiv) {
       attributeFilter: ['class']
     });
   }
-
-  // Observe document body for languages selector being added/removed
-  containerObserver.observe(document.body, {
-    childList: true,
-    subtree: true
-  });
 
   console.log('[Gem-Expanded-View] Languages selector observer set up');
 }

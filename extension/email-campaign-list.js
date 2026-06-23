@@ -1364,19 +1364,74 @@
 
   const CAMPAIGN_LIST_ROOT_SELECTOR = '#email-campaign-list';
   const CAMPAIGN_LIST_PREVIEW_PANEL_ID = 'gem-campaign-list-preview-panel';
-  const LIST_PREVIEW_FS_CONTEXT = 'emailCampaignList';
   const LIST_PREVIEW_ACTIVE_ROW_CLASS = 'gem-campaign-list-row--preview-active';
+  const LIST_PREVIEW_HTML_OPEN_CLASS = 'gem-email-campaign-list-preview-open';
   const PREVIEW_BUTTON_SELECTOR = 'button[aria-label="Preview"]';
+  const PREVIEW_TOOLTIP_SELECTOR = 'e-tooltip[content="Preview"]';
   const PREVIEW_PANEL_LOG = '[Gemma email-campaign-list][preview-panel]';
   const LIST_PREVIEW_LOADING_TIMEOUT_MS = 45000;
+  const LIST_PREVIEW_SWAP_FLASH_MS = 180;
+  const LIST_PREVIEW_POOL_SIZE = 5;
+  const LIST_PREVIEW_ROW_HOVER_MS = 1000;
+  const LIST_PREVIEW_PRIORITY_ACTIVE = 0;
+  const LIST_PREVIEW_PRIORITY_ADJACENT = 1;
+  const LIST_PREVIEW_PRIORITY_PREDICTIVE_HIGH = 2;
+  const LIST_PREVIEW_PRIORITY_PREDICTIVE = 3;
+  const PREVIEW_FS_IFRAME_MESSAGE_SOURCE = "gem-preview-fs-iframe";
+  const LIST_PREVIEW_TEMPLATING_ERROR_MSG =
+    "This preview could not be loaded. The campaign may have a templating issue.";
+
   let previewPanelClickHookInstalled = false;
+  let previewPanelPrefetchInstalled = false;
+  let previewPanelKeyboardInstalled = false;
+  let previewPanelMessageInstalled = false;
   let listPreviewOpen = false;
   let listPreviewCampaignId = "";
   /** @type {ReturnType<typeof setTimeout> | null} */
   let listPreviewLoadingTimer = null;
+  /** @type {HTMLIFrameElement[]} */
+  let listPreviewPoolIframes = [];
+  /** @type {Map<string, { iframe: HTMLIFrameElement, campId: string, ready: boolean, lastUsed: number, slotRole: string, loadToken: number, loadError?: string }>} */
+  const listPreviewCacheByCampId = new Map();
+  /** @type {Map<string, string>} */
+  const listPreviewLoadErrorByCampId = new Map();
+  /** @type {Map<HTMLIFrameElement, string>} */
+  const listPreviewIframeToCampId = new Map();
+  /** @type {{ iframe: HTMLIFrameElement, campId: string, priority: number, loadToken: number } | null} */
+  let listPreviewBackgroundLoad = null;
+  /** @type {{ campId: string, priority: number, slotRole: string }[]} */
+  let listPreviewLoadQueue = [];
+  let listPreviewLoadTokenSeq = 0;
+  /** @type {ReturnType<typeof setTimeout> | null} */
+  let listPreviewRowHoverTimer = null;
+  /** @type {HTMLElement | null} */
+  let listPreviewRowHoverRow = null;
 
   function previewPanelDbg(...args) {
     console.log(PREVIEW_PANEL_LOG, ...args);
+  }
+
+  function listPreviewPriorityLabel(priority) {
+    switch (priority) {
+      case LIST_PREVIEW_PRIORITY_ACTIVE:
+        return "active";
+      case LIST_PREVIEW_PRIORITY_ADJACENT:
+        return "adjacent";
+      case LIST_PREVIEW_PRIORITY_PREDICTIVE_HIGH:
+        return "predictive-high";
+      case LIST_PREVIEW_PRIORITY_PREDICTIVE:
+        return "predictive";
+      default:
+        return String(priority);
+    }
+  }
+
+  function listPreviewPreloadDbg(action, data) {
+    previewPanelDbg(`[preload:${action}]`, data);
+  }
+
+  function listPreviewPreloadSkip(reason, campId, extra) {
+    listPreviewPreloadDbg("skip", { reason, campId: campId || "", ...(extra || {}) });
   }
 
   function findCampaignListRoot() {
@@ -1386,9 +1441,81 @@
     );
   }
 
-  function getPreviewButtonFromEventTarget(target) {
+  function getEventComposedPath(ev) {
+    if (ev && typeof ev.composedPath === "function") {
+      return ev.composedPath();
+    }
+    const out = [];
+    let node = ev && ev.target;
+    while (node) {
+      out.push(node);
+      node = node.parentElement || (node.parentNode && node.parentNode.host) || null;
+    }
+    return out;
+  }
+
+  function isCampaignListGridEvent(ev) {
+    return getEventComposedPath(ev).some(
+      (node) =>
+        node &&
+        node.nodeType === Node.ELEMENT_NODE &&
+        (node.id === "email-campaign-list" ||
+          node.id === "campaign-list-container" ||
+          node.id === "main-datagrid" ||
+          (node.matches && node.matches(CAMPAIGN_LIST_ROOT_SELECTOR)))
+    );
+  }
+
+  function findPreviewButtonInEventPath(ev) {
+    for (const node of getEventComposedPath(ev)) {
+      if (!node || node.nodeType !== Node.ELEMENT_NODE || !node.matches) continue;
+      if (node.matches(PREVIEW_BUTTON_SELECTOR)) return node;
+      const btn = node.closest && node.closest(PREVIEW_BUTTON_SELECTOR);
+      if (btn) return btn;
+    }
+    return null;
+  }
+
+  function findPreviewTooltipInEventPath(ev) {
+    for (const node of getEventComposedPath(ev)) {
+      if (!node || node.nodeType !== Node.ELEMENT_NODE || !node.matches) continue;
+      if (node.matches(PREVIEW_TOOLTIP_SELECTOR)) return node;
+      const tip = node.closest && node.closest(PREVIEW_TOOLTIP_SELECTOR);
+      if (tip) return tip;
+    }
+    return null;
+  }
+
+  function getCampaignListBodyRowFromEvent(ev) {
+    if (!isCampaignListGridEvent(ev)) return null;
+    for (const node of getEventComposedPath(ev)) {
+      if (!node || node.nodeType !== Node.ELEMENT_NODE) continue;
+      const tag = (node.tagName || "").toLowerCase();
+      if (tag !== "tr") continue;
+      if (!node.closest || !node.closest("tbody")) continue;
+      if (
+        node.classList.contains("e-datagrid__row") ||
+        node.classList.contains("e-table__row") ||
+        node.querySelector("td.e-table__col")
+      ) {
+        return node;
+      }
+    }
+    return null;
+  }
+
+  function getPreviewButtonFromEventTarget(target, ev) {
+    const fromPath = ev ? findPreviewButtonInEventPath(ev) : null;
+    if (fromPath) return fromPath;
     if (!target || target.nodeType !== Node.ELEMENT_NODE) return null;
     return target.closest(PREVIEW_BUTTON_SELECTOR);
+  }
+
+  function getPreviewTooltipFromEventTarget(target, ev) {
+    const fromPath = ev ? findPreviewTooltipInEventPath(ev) : null;
+    if (fromPath) return fromPath;
+    if (!target || target.nodeType !== Node.ELEMENT_NODE) return null;
+    return target.closest(PREVIEW_TOOLTIP_SELECTOR);
   }
 
   function getListPreviewPanel() {
@@ -1398,12 +1525,74 @@
   function buildListPreviewIframeUrl(campaignId) {
     const id = String(campaignId || "").trim();
     if (!id) return "";
-    const url = new URL("/preview_fs.php", window.location.origin);
+    const url = new URL("/preview_fs_iframe.php", window.location.origin);
     const sid = getListPageSessionId();
     if (sid) url.searchParams.set("session_id", sid);
     url.searchParams.set("camp_id", id);
-    url.searchParams.set("gem_preview_context", LIST_PREVIEW_FS_CONTEXT);
     return url.toString();
+  }
+
+  function getOrderedListCampaignIds() {
+    const table = findCampaignListEditLinksTable() || findCampaignListTableQuiet();
+    if (!table) return [];
+    return getCampaignListBodyRows(table)
+      .map(getCampaignIdFromRow)
+      .filter(Boolean);
+  }
+
+  function getListPreviewPriorityCampIds(activeId) {
+    const id = String(activeId || "").trim();
+    if (!id) return [];
+    const ids = getOrderedListCampaignIds();
+    const idx = ids.indexOf(id);
+    if (idx < 0) return [id];
+
+    const priority = [id];
+    const used = new Set([id]);
+
+    if (idx + 1 < ids.length) {
+      priority.push(ids[idx + 1]);
+      used.add(ids[idx + 1]);
+    }
+    if (idx - 1 >= 0) {
+      priority.push(ids[idx - 1]);
+      used.add(ids[idx - 1]);
+    }
+
+    if (priority.length < 3) {
+      const missingNext = idx + 1 >= ids.length;
+      const missingPrev = idx - 1 < 0;
+
+      if (missingNext && !missingPrev) {
+        for (let i = idx - 2; i >= 0 && priority.length < 3; i--) {
+          if (!used.has(ids[i])) {
+            priority.push(ids[i]);
+            used.add(ids[i]);
+          }
+        }
+      } else if (missingPrev && !missingNext) {
+        for (let i = idx + 2; i < ids.length && priority.length < 3; i++) {
+          if (!used.has(ids[i])) {
+            priority.push(ids[i]);
+            used.add(ids[i]);
+          }
+        }
+      } else {
+        for (let o = 2; priority.length < 3 && (idx + o < ids.length || idx - o >= 0); o++) {
+          if (idx + o < ids.length && !used.has(ids[idx + o])) {
+            priority.push(ids[idx + o]);
+            used.add(ids[idx + o]);
+          }
+          if (priority.length >= 3) break;
+          if (idx - o >= 0 && !used.has(ids[idx - o])) {
+            priority.push(ids[idx - o]);
+            used.add(ids[idx - o]);
+          }
+        }
+      }
+    }
+
+    return priority;
   }
 
   function findCampaignListRowByCampaignId(campaignId) {
@@ -1415,6 +1604,497 @@
       if (getCampaignIdFromRow(row) === id) return row;
     }
     return null;
+  }
+
+  function getCampaignListScrollContainer(row) {
+    if (!row) return null;
+    const wrapper = row.closest(".e-datagrid__table_wrapper");
+    if (wrapper) return wrapper;
+
+    let el = row.parentElement;
+    while (el) {
+      if (el.matches && el.matches(CAMPAIGN_LIST_ROOT_SELECTOR)) break;
+      try {
+        const style = window.getComputedStyle(el);
+        const overflowY = style.overflowY;
+        if (
+          (overflowY === "auto" || overflowY === "scroll") &&
+          el.scrollHeight > el.clientHeight
+        ) {
+          return el;
+        }
+      } catch (_) {}
+      el = el.parentElement;
+    }
+    return null;
+  }
+
+  function scrollListPreviewActiveRowIntoView() {
+    if (!listPreviewOpen || !listPreviewCampaignId) return;
+    if (typeof window.gemScrollIntoViewIfNeeded !== "function") return;
+
+    requestAnimationFrame(() => {
+      const row = findCampaignListRowByCampaignId(listPreviewCampaignId);
+      if (!row) return;
+      const scrollRoot = getCampaignListScrollContainer(row);
+      if (!scrollRoot) return;
+      window.gemScrollIntoViewIfNeeded(row, { scrollRoot, padding: 8 });
+    });
+  }
+
+  function getListPreviewCacheEntry(campaignId) {
+    return listPreviewCacheByCampId.get(String(campaignId || "").trim()) || null;
+  }
+
+  function isListPreviewCachedReady(campaignId) {
+    const entry = getListPreviewCacheEntry(campaignId);
+    return !!(entry && entry.ready && entry.campId === String(campaignId || "").trim());
+  }
+
+  function isListPreviewLoadError(campaignId) {
+    const id = String(campaignId || "").trim();
+    if (!id) return false;
+    if (listPreviewLoadErrorByCampId.has(id)) return true;
+    const entry = getListPreviewCacheEntry(id);
+    return !!(entry && entry.loadError);
+  }
+
+  function clearListPreviewLoadError(campaignId) {
+    const id = String(campaignId || "").trim();
+    if (!id) return;
+    listPreviewLoadErrorByCampId.delete(id);
+    const entry = getListPreviewCacheEntry(id);
+    if (entry) delete entry.loadError;
+  }
+
+  function markListPreviewLoadError(campaignId, reason) {
+    const id = String(campaignId || "").trim();
+    if (!id) return;
+    const errorReason = reason || "templating";
+    listPreviewLoadErrorByCampId.set(id, errorReason);
+    const entry = getListPreviewCacheEntry(id);
+    if (entry) entry.loadError = errorReason;
+    if (listPreviewOpen && listPreviewCampaignId === id) {
+      setListPreviewOverlay("error", { message: LIST_PREVIEW_TEMPLATING_ERROR_MSG });
+    }
+  }
+
+  function applyListPreviewPendingLoadError(campaignId, entry) {
+    const id = String(campaignId || "").trim();
+    if (!id || !entry) return;
+    if (listPreviewLoadErrorByCampId.has(id)) {
+      entry.loadError = listPreviewLoadErrorByCampId.get(id);
+    }
+  }
+
+  function syncListPreviewOverlayForActiveCampId(campaignId) {
+    const id = String(campaignId || "").trim();
+    if (!listPreviewOpen || listPreviewCampaignId !== id) return;
+    if (isListPreviewLoadError(id)) {
+      setListPreviewOverlay("error", { message: LIST_PREVIEW_TEMPLATING_ERROR_MSG });
+    } else if (isListPreviewCachedReady(id)) {
+      setListPreviewOverlay("none");
+    }
+  }
+
+  function removeListPreviewCacheEntry(campId, reason) {
+    const id = String(campId || "").trim();
+    const entry = listPreviewCacheByCampId.get(id);
+    if (!entry) return;
+
+    if (reason) {
+      listPreviewPreloadDbg(reason, {
+        campId: id,
+        slotRole: entry.slotRole,
+        wasReady: entry.ready,
+        cacheSizeAfter: listPreviewCacheByCampId.size - 1,
+      });
+    }
+
+    listPreviewCacheByCampId.delete(id);
+    listPreviewLoadErrorByCampId.delete(id);
+    listPreviewIframeToCampId.delete(entry.iframe);
+    entry.iframe.classList.remove(
+      "gem-campaign-list-preview-iframe--active",
+      "gem-campaign-list-preview-iframe--cached"
+    );
+    delete entry.iframe.dataset.gemPreviewCampId;
+  }
+
+  function clearListPreviewIframeEntry(iframe, reason) {
+    const campId = listPreviewIframeToCampId.get(iframe);
+    if (campId) removeListPreviewCacheEntry(campId, reason);
+    iframe.removeAttribute("src");
+    iframe.classList.remove(
+      "gem-campaign-list-preview-iframe--active",
+      "gem-campaign-list-preview-iframe--cached"
+    );
+    delete iframe.dataset.gemPreviewCampId;
+  }
+
+  function evictLruListPreviewSlot(excludeCampId) {
+    const exclude = String(excludeCampId || "").trim();
+    let oldest = null;
+    let oldestTime = Infinity;
+
+    listPreviewCacheByCampId.forEach((entry, campId) => {
+      if (campId === exclude) return;
+      if (campId === listPreviewCampaignId) return;
+      if (
+        listPreviewBackgroundLoad &&
+        listPreviewBackgroundLoad.campId === campId
+      ) {
+        return;
+      }
+      if (entry.lastUsed < oldestTime) {
+        oldestTime = entry.lastUsed;
+        oldest = entry;
+      }
+    });
+
+    if (!oldest) return null;
+    const evictedId = oldest.campId;
+    oldest.iframe.setAttribute("src", "about:blank");
+    removeListPreviewCacheEntry(evictedId, "evicted");
+    return oldest.iframe;
+  }
+
+  function getFreeListPreviewIframe(preferredCampId) {
+    for (const iframe of listPreviewPoolIframes) {
+      if (!listPreviewIframeToCampId.has(iframe)) return iframe;
+    }
+    return evictLruListPreviewSlot(preferredCampId);
+  }
+
+  function bindListPreviewIframeLoad(iframe, campId, loadToken, startedAt) {
+    const onLoad = () => {
+      iframe.removeEventListener("load", onLoad);
+      const entry = listPreviewCacheByCampId.get(campId);
+      if (!entry || entry.loadToken !== loadToken) {
+        listPreviewPreloadDbg("finished-stale", {
+          campId,
+          loadToken,
+          hasEntry: !!entry,
+          entryToken: entry ? entry.loadToken : null,
+        });
+        return;
+      }
+
+      entry.ready = true;
+      entry.lastUsed = Date.now();
+      applyListPreviewPendingLoadError(campId, entry);
+
+      listPreviewPreloadDbg("finished", {
+        campId,
+        slotRole: entry.slotRole,
+        loadToken,
+        elapsedMs: startedAt ? Date.now() - startedAt : null,
+        cacheSize: listPreviewCacheByCampId.size,
+        isActiveTarget: listPreviewOpen && campId === listPreviewCampaignId,
+      });
+
+      if (
+        listPreviewBackgroundLoad &&
+        listPreviewBackgroundLoad.campId === campId &&
+        listPreviewBackgroundLoad.loadToken === loadToken
+      ) {
+        listPreviewBackgroundLoad = null;
+      }
+
+      if (listPreviewOpen && campId === listPreviewCampaignId) {
+        swapActivePreviewIframe(campId);
+        if (entry.loadError) {
+          setListPreviewOverlay("error", { message: LIST_PREVIEW_TEMPLATING_ERROR_MSG });
+        } else {
+          setListPreviewOverlay("none");
+        }
+        enqueueListPreviewAdjacentLoads(campId);
+        scrollListPreviewActiveRowIntoView();
+      }
+
+      drainListPreviewLoadQueue();
+    };
+    iframe.addEventListener("load", onLoad);
+  }
+
+  function startListPreviewIframeLoad(campaignId, slotRole, priority) {
+    const campId = String(campaignId || "").trim();
+    if (!campId) return false;
+
+    clearListPreviewLoadError(campId);
+
+    const existing = getListPreviewCacheEntry(campId);
+    if (existing && existing.ready) {
+      existing.lastUsed = Date.now();
+      existing.slotRole = slotRole;
+      return true;
+    }
+    if (existing && !existing.ready) {
+      existing.slotRole = slotRole;
+      return true;
+    }
+
+    const nextSrc = buildListPreviewIframeUrl(campId);
+    if (!nextSrc) return false;
+
+    let iframe = getFreeListPreviewIframe(campId);
+    if (!iframe) return false;
+
+    const prevCampId = listPreviewIframeToCampId.get(iframe);
+    if (prevCampId && prevCampId !== campId) {
+      removeListPreviewCacheEntry(prevCampId, "replaced");
+    }
+
+    const loadToken = ++listPreviewLoadTokenSeq;
+    const startedAt = Date.now();
+    const entry = {
+      iframe,
+      campId,
+      ready: false,
+      lastUsed: startedAt,
+      slotRole,
+      loadToken,
+      startedAt,
+    };
+
+    listPreviewCacheByCampId.set(campId, entry);
+    listPreviewIframeToCampId.set(iframe, campId);
+    iframe.dataset.gemPreviewCampId = campId;
+    iframe.classList.add("gem-campaign-list-preview-iframe--cached");
+    iframe.classList.remove("gem-campaign-list-preview-iframe--active");
+
+    listPreviewBackgroundLoad = { iframe, campId, priority, loadToken };
+    bindListPreviewIframeLoad(iframe, campId, loadToken, startedAt);
+    iframe.setAttribute("src", nextSrc);
+
+    listPreviewPreloadDbg("started", {
+      campId,
+      slotRole,
+      priority: listPreviewPriorityLabel(priority),
+      loadToken,
+      cacheSize: listPreviewCacheByCampId.size,
+      url: nextSrc,
+    });
+    return true;
+  }
+
+  function cancelListPreviewBackgroundLoad(reason) {
+    if (!listPreviewBackgroundLoad) return;
+    const { iframe, campId, priority, loadToken } = listPreviewBackgroundLoad;
+    listPreviewBackgroundLoad = null;
+    const entry = getListPreviewCacheEntry(campId);
+    if (entry && !entry.ready && entry.iframe === iframe) {
+      listPreviewPreloadDbg("cancelled", {
+        campId,
+        reason: reason || "unknown",
+        priority: listPreviewPriorityLabel(priority),
+        loadToken,
+        elapsedMs: entry.startedAt ? Date.now() - entry.startedAt : null,
+      });
+      iframe.setAttribute("src", "about:blank");
+      removeListPreviewCacheEntry(campId);
+    }
+  }
+
+  function scheduleListPreviewBackgroundLoad(campaignId, priority, slotRole) {
+    const campId = String(campaignId || "").trim();
+    if (!campId) return;
+    if (campId === listPreviewCampaignId && isListPreviewCachedReady(campId)) {
+      listPreviewPreloadSkip("already-active-ready", campId);
+      return;
+    }
+    if (isListPreviewCachedReady(campId)) {
+      listPreviewPreloadSkip("already-cached-ready", campId);
+      return;
+    }
+
+    const existingEntry = getListPreviewCacheEntry(campId);
+    if (existingEntry && !existingEntry.ready) {
+      if (
+        listPreviewBackgroundLoad &&
+        listPreviewBackgroundLoad.campId === campId
+      ) {
+        listPreviewPreloadSkip("already-loading", campId, {
+          loadToken: existingEntry.loadToken,
+        });
+        return;
+      }
+    }
+
+    if (listPreviewBackgroundLoad) {
+      if (priority < listPreviewBackgroundLoad.priority) {
+        cancelListPreviewBackgroundLoad("preempted-by-higher-priority");
+      } else if (listPreviewBackgroundLoad.campId === campId) {
+        return;
+      } else {
+        const queued = listPreviewLoadQueue.some((item) => item.campId === campId);
+        if (!queued) {
+          listPreviewLoadQueue.push({ campId, priority, slotRole });
+          listPreviewLoadQueue.sort((a, b) => a.priority - b.priority);
+          listPreviewPreloadDbg("queued", {
+            campId,
+            slotRole,
+            priority: listPreviewPriorityLabel(priority),
+            queueLength: listPreviewLoadQueue.length,
+            blockedBy: listPreviewBackgroundLoad.campId,
+          });
+        }
+        return;
+      }
+    }
+
+    if (!startListPreviewIframeLoad(campId, slotRole, priority)) {
+      const queued = listPreviewLoadQueue.some((item) => item.campId === campId);
+      if (!queued) {
+        listPreviewLoadQueue.push({ campId, priority, slotRole });
+        listPreviewLoadQueue.sort((a, b) => a.priority - b.priority);
+        listPreviewPreloadDbg("queued", {
+          campId,
+          slotRole,
+          priority: listPreviewPriorityLabel(priority),
+          queueLength: listPreviewLoadQueue.length,
+          reason: "no-free-iframe",
+        });
+      }
+    }
+  }
+
+  function drainListPreviewLoadQueue() {
+    if (listPreviewBackgroundLoad) return;
+
+    while (listPreviewLoadQueue.length) {
+      const next = listPreviewLoadQueue.shift();
+      if (!next) break;
+      if (isListPreviewCachedReady(next.campId)) continue;
+      if (startListPreviewIframeLoad(next.campId, next.slotRole, next.priority)) {
+        break;
+      }
+    }
+  }
+
+  function enqueueListPreviewAdjacentLoads(activeCampId) {
+    const priorityIds = getListPreviewPriorityCampIds(activeCampId);
+    const roles = ["adjacentNext", "adjacentPrev"];
+    for (let i = 1; i < priorityIds.length && i <= 2; i++) {
+      scheduleListPreviewBackgroundLoad(
+        priorityIds[i],
+        LIST_PREVIEW_PRIORITY_ADJACENT,
+        roles[i - 1] || "adjacentNext"
+      );
+    }
+  }
+
+  function prefetchListPreviewCampaign(campaignId, priority, slotRole, trigger) {
+    if (!campaignId) return;
+    listPreviewPreloadDbg("trigger", {
+      campId: String(campaignId),
+      priority: listPreviewPriorityLabel(priority),
+      slotRole: slotRole || "predictive",
+      trigger: trigger || "unknown",
+    });
+    ensureListPreviewPoolInitialized();
+    scheduleListPreviewBackgroundLoad(campaignId, priority, slotRole || "predictive");
+  }
+
+  function swapActivePreviewIframe(campaignId) {
+    const campId = String(campaignId || "").trim();
+    if (!campId) return false;
+
+    const entry = getListPreviewCacheEntry(campId);
+    if (!entry || !entry.ready) return false;
+
+    listPreviewPoolIframes.forEach((iframe) => {
+      iframe.classList.remove("gem-campaign-list-preview-iframe--active");
+      iframe.classList.add("gem-campaign-list-preview-iframe--cached");
+      const cachedEntry = getListPreviewCacheEntry(listPreviewIframeToCampId.get(iframe) || "");
+      if (cachedEntry) cachedEntry.slotRole = cachedEntry.slotRole === "active" ? "predictive" : cachedEntry.slotRole;
+    });
+
+    entry.iframe.classList.remove("gem-campaign-list-preview-iframe--cached");
+    entry.iframe.classList.add("gem-campaign-list-preview-iframe--active");
+    entry.slotRole = "active";
+    entry.lastUsed = Date.now();
+    return true;
+  }
+
+  function ensureListPreviewOverlayMessage(overlay) {
+    if (!overlay) return null;
+    let messageEl = overlay.querySelector(".gem-campaign-list-preview-loading-message");
+    if (!messageEl) {
+      messageEl = document.createElement("div");
+      messageEl.className = "gem-campaign-list-preview-loading-message";
+      messageEl.setAttribute("role", "alert");
+      overlay.appendChild(messageEl);
+    }
+    return messageEl;
+  }
+
+  function setListPreviewOverlay(mode, options) {
+    const opts = options && typeof options === "object" ? options : {};
+    const panel = getListPreviewPanel();
+    if (!panel) return;
+    const overlay = panel.querySelector(".gem-campaign-list-preview-loading");
+    if (!overlay) return;
+    const spinner = overlay.querySelector(".gem-campaign-list-preview-loading-spinner");
+    const messageEl = ensureListPreviewOverlayMessage(overlay);
+
+    overlay.classList.remove(
+      "gem-campaign-list-preview-loading--dimmed",
+      "gem-campaign-list-preview-loading--spinner",
+      "gem-campaign-list-preview-loading--flash",
+      "gem-campaign-list-preview-loading--error"
+    );
+
+    if (listPreviewLoadingTimer) {
+      clearTimeout(listPreviewLoadingTimer);
+      listPreviewLoadingTimer = null;
+    }
+
+    if (mode === "none") {
+      overlay.hidden = true;
+      overlay.setAttribute("aria-hidden", "true");
+      if (spinner) spinner.hidden = false;
+      if (messageEl) messageEl.hidden = true;
+      return;
+    }
+
+    overlay.hidden = false;
+    overlay.setAttribute("aria-hidden", "false");
+
+    if (mode === "error") {
+      overlay.classList.add("gem-campaign-list-preview-loading--error");
+      if (spinner) spinner.hidden = true;
+      if (messageEl) {
+        messageEl.textContent = opts.message || LIST_PREVIEW_TEMPLATING_ERROR_MSG;
+        messageEl.hidden = false;
+      }
+      return;
+    }
+
+    if (spinner) spinner.hidden = false;
+    if (messageEl) messageEl.hidden = true;
+
+    if (mode === "dimmed") {
+      overlay.classList.add("gem-campaign-list-preview-loading--dimmed");
+    } else if (mode === "spinner") {
+      overlay.classList.add("gem-campaign-list-preview-loading--spinner");
+    } else if (mode === "flash") {
+      overlay.classList.add("gem-campaign-list-preview-loading--flash");
+      overlay.classList.add("gem-campaign-list-preview-loading--spinner");
+    }
+
+    const autoHideMs =
+      opts.autoHideMs !== undefined
+        ? opts.autoHideMs
+        : LIST_PREVIEW_LOADING_TIMEOUT_MS;
+
+    if (autoHideMs > 0) {
+      listPreviewLoadingTimer = setTimeout(() => setListPreviewOverlay("none"), autoHideMs);
+    }
+  }
+
+  function playListPreviewSwapTransition() {
+    setListPreviewOverlay("flash", { autoHideMs: LIST_PREVIEW_SWAP_FLASH_MS });
   }
 
   function listPreviewActiveRowIsSynced(scope) {
@@ -1450,6 +2130,7 @@
     const marked = scope.querySelectorAll(`tr.${LIST_PREVIEW_ACTIVE_ROW_CLASS}`);
 
     if (row && marked.length === 1 && marked[0] === row) {
+      scrollListPreviewActiveRowIntoView();
       return;
     }
 
@@ -1460,50 +2141,66 @@
     if (row && !row.classList.contains(LIST_PREVIEW_ACTIVE_ROW_CLASS)) {
       row.classList.add(LIST_PREVIEW_ACTIVE_ROW_CLASS);
     }
+
+    scrollListPreviewActiveRowIntoView();
   }
 
-  function showListPreviewLoadingOverlay() {
+  function syncListPreviewPanelChrome() {
     const panel = getListPreviewPanel();
-    if (!panel) return;
-    const overlay = panel.querySelector(".gem-campaign-list-preview-loading");
-    if (overlay) overlay.hidden = false;
-    if (listPreviewLoadingTimer) clearTimeout(listPreviewLoadingTimer);
-    listPreviewLoadingTimer = setTimeout(hideListPreviewLoadingOverlay, LIST_PREVIEW_LOADING_TIMEOUT_MS);
-  }
-
-  function hideListPreviewLoadingOverlay() {
-    if (listPreviewLoadingTimer) {
-      clearTimeout(listPreviewLoadingTimer);
-      listPreviewLoadingTimer = null;
-    }
-    const panel = getListPreviewPanel();
-    if (!panel) return;
-    const overlay = panel.querySelector(".gem-campaign-list-preview-loading");
-    if (overlay) overlay.hidden = true;
-  }
-
-  function syncListPreviewUi() {
-    const panel = getListPreviewPanel();
-    if (!panel) return;
-    const iframe = panel.querySelector(".gem-campaign-list-preview-iframe");
     const listRoot = findCampaignListRoot();
+    if (!panel) return;
 
     panel.classList.toggle("gem-campaign-list-preview-panel--open", listPreviewOpen);
+    document.documentElement.classList.toggle(LIST_PREVIEW_HTML_OPEN_CLASS, listPreviewOpen);
     if (listRoot) {
-      listRoot.classList.toggle("gem-email-campaign-list-preview-open", listPreviewOpen);
+      listRoot.classList.toggle(LIST_PREVIEW_HTML_OPEN_CLASS, listPreviewOpen);
     }
-
-    if (listPreviewOpen) {
-      if (iframe && listPreviewCampaignId) {
-        const nextSrc = buildListPreviewIframeUrl(listPreviewCampaignId);
-        if (iframe.getAttribute("src") !== nextSrc) {
-          showListPreviewLoadingOverlay();
-          iframe.setAttribute("src", nextSrc);
-        }
-      }
-    }
-
     syncListPreviewActiveRow();
+  }
+
+  function showListPreview(campaignId) {
+    const campId = String(campaignId || "").trim();
+    if (!campId) return false;
+
+    ensureListPreviewPoolInitialized();
+
+    if (isListPreviewCachedReady(campId)) {
+      swapActivePreviewIframe(campId);
+      if (isListPreviewLoadError(campId)) {
+        setListPreviewOverlay("error", { message: LIST_PREVIEW_TEMPLATING_ERROR_MSG });
+      } else {
+        playListPreviewSwapTransition();
+      }
+      enqueueListPreviewAdjacentLoads(campId);
+      scrollListPreviewActiveRowIntoView();
+      return true;
+    }
+
+    const hasVisibleActive =
+      listPreviewCampaignId &&
+      isListPreviewCachedReady(listPreviewCampaignId) &&
+      listPreviewCampaignId !== campId;
+
+    const pendingEntry = getListPreviewCacheEntry(campId);
+    if (pendingEntry && !pendingEntry.ready) {
+      if (hasVisibleActive) {
+        setListPreviewOverlay("dimmed");
+      } else {
+        setListPreviewOverlay("spinner");
+      }
+      return true;
+    }
+
+    if (hasVisibleActive) {
+      setListPreviewOverlay("dimmed");
+    } else {
+      setListPreviewOverlay("spinner");
+    }
+
+    cancelListPreviewBackgroundLoad("active-selection");
+    listPreviewLoadQueue = listPreviewLoadQueue.filter((item) => item.campId !== campId);
+    startListPreviewIframeLoad(campId, "active", LIST_PREVIEW_PRIORITY_ACTIVE);
+    return true;
   }
 
   function openListPreview(campaignId) {
@@ -1511,7 +2208,8 @@
     if (!id) return false;
     listPreviewOpen = true;
     listPreviewCampaignId = id;
-    syncListPreviewUi();
+    syncListPreviewPanelChrome();
+    showListPreview(id);
     return true;
   }
 
@@ -1519,11 +2217,8 @@
     if (!listPreviewOpen) return false;
     listPreviewOpen = false;
     listPreviewCampaignId = "";
-    hideListPreviewLoadingOverlay();
-    syncListPreviewUi();
-    const panel = getListPreviewPanel();
-    const iframe = panel?.querySelector(".gem-campaign-list-preview-iframe");
-    if (iframe) iframe.removeAttribute("src");
+    setListPreviewOverlay("none");
+    syncListPreviewPanelChrome();
     return true;
   }
 
@@ -1538,26 +2233,60 @@
     closeListPreview();
   }
 
+  function ensureListPreviewPoolInitialized() {
+    const listRoot = findCampaignListRoot();
+    if (listRoot) ensureCampaignListPreviewPanel(listRoot);
+  }
+
   function ensureListPreviewPanelChrome(panel) {
     if (!panel) return;
 
     panel.querySelector(".gem-campaign-list-preview-toolbar")?.remove();
 
-    if (!panel.querySelector(".gem-campaign-list-preview-iframe-wrap")) {
+    let wrap = panel.querySelector(".gem-campaign-list-preview-iframe-wrap");
+    if (!wrap) {
       panel.innerHTML = `
         <div class="gem-campaign-list-preview-iframe-wrap">
-          <iframe class="gem-campaign-list-preview-iframe" title="Campaign preview"></iframe>
+          <div class="gem-campaign-list-preview-iframe-stack"></div>
           <div class="gem-campaign-list-preview-loading" hidden aria-hidden="true">
             <div class="gem-campaign-list-preview-loading-spinner" aria-hidden="true"></div>
+            <div class="gem-campaign-list-preview-loading-message" role="alert" hidden></div>
           </div>
         </div>
       `.trim();
+      wrap = panel.querySelector(".gem-campaign-list-preview-iframe-wrap");
     }
 
-    const iframe = panel.querySelector(".gem-campaign-list-preview-iframe");
-    if (iframe && !iframe.dataset.gemLoadListener) {
-      iframe.dataset.gemLoadListener = "1";
-      iframe.addEventListener("load", hideListPreviewLoadingOverlay);
+    let stack = wrap && wrap.querySelector(".gem-campaign-list-preview-iframe-stack");
+    if (!stack) {
+      wrap.innerHTML = `
+        <div class="gem-campaign-list-preview-iframe-stack"></div>
+        <div class="gem-campaign-list-preview-loading" hidden aria-hidden="true">
+          <div class="gem-campaign-list-preview-loading-spinner" aria-hidden="true"></div>
+          <div class="gem-campaign-list-preview-loading-message" role="alert" hidden></div>
+        </div>
+      `.trim();
+      stack = wrap.querySelector(".gem-campaign-list-preview-iframe-stack");
+      listPreviewPoolIframes = [];
+      listPreviewCacheByCampId.clear();
+      listPreviewLoadErrorByCampId.clear();
+      listPreviewIframeToCampId.clear();
+    }
+
+    if (!stack) return;
+
+    if (listPreviewPoolIframes.length >= LIST_PREVIEW_POOL_SIZE) return;
+
+    stack.innerHTML = "";
+    listPreviewPoolIframes = [];
+
+    for (let i = 0; i < LIST_PREVIEW_POOL_SIZE; i++) {
+      const iframe = document.createElement("iframe");
+      iframe.className = "gem-campaign-list-preview-iframe gem-campaign-list-preview-iframe--cached";
+      iframe.title = "Campaign preview";
+      iframe.dataset.gemPoolIndex = String(i);
+      stack.appendChild(iframe);
+      listPreviewPoolIframes.push(iframe);
     }
   }
 
@@ -1605,12 +2334,136 @@
     return false;
   }
 
+  function getCampaignListRowFromTarget(target, ev) {
+    const fromEvent = ev ? getCampaignListBodyRowFromEvent(ev) : null;
+    if (fromEvent) return fromEvent;
+    if (!target || target.nodeType !== Node.ELEMENT_NODE) return null;
+    const row = target.closest("tr");
+    if (!row || !row.closest("tbody")) return null;
+    if (row.closest(CAMPAIGN_LIST_ROOT_SELECTOR)) return row;
+    return null;
+  }
+
+  function clearListPreviewRowHoverTimer() {
+    if (listPreviewRowHoverTimer) {
+      clearTimeout(listPreviewRowHoverTimer);
+      listPreviewRowHoverTimer = null;
+    }
+    listPreviewRowHoverRow = null;
+  }
+
+  function handleListPreviewRowMouseOver(ev) {
+    if (!isCampaignListGridEvent(ev)) return;
+    const row = getCampaignListBodyRowFromEvent(ev);
+    if (!row) return;
+    const related = ev.relatedTarget;
+    if (related && row.contains(related)) return;
+    if (findPreviewButtonInEventPath(ev) || findPreviewTooltipInEventPath(ev)) return;
+
+    clearListPreviewRowHoverTimer();
+    listPreviewRowHoverRow = row;
+    listPreviewRowHoverTimer = setTimeout(() => {
+      listPreviewRowHoverTimer = null;
+      if (listPreviewRowHoverRow !== row) return;
+      const id = getCampaignIdFromRow(row);
+      if (!id || id === listPreviewCampaignId) return;
+      prefetchListPreviewCampaign(id, LIST_PREVIEW_PRIORITY_PREDICTIVE, "predictive", "row-hover");
+    }, LIST_PREVIEW_ROW_HOVER_MS);
+  }
+
+  function handleListPreviewRowMouseOut(ev) {
+    if (!isCampaignListGridEvent(ev)) return;
+    const row = getCampaignListBodyRowFromEvent(ev);
+    if (!row) return;
+    const related = ev.relatedTarget;
+    if (related && row.contains(related)) return;
+    if (listPreviewRowHoverRow !== row) return;
+    clearListPreviewRowHoverTimer();
+  }
+
+  function handleListPreviewPreviewTargetMouseOver(ev) {
+    if (!isCampaignListGridEvent(ev)) return;
+    const btn = findPreviewButtonInEventPath(ev);
+    const tooltip = findPreviewTooltipInEventPath(ev);
+    if (!btn && !tooltip) return;
+
+    const row = (btn || tooltip).closest("tr");
+    if (!row) return;
+    const id = getCampaignIdFromRow(row);
+    if (!id) {
+      listPreviewPreloadSkip("preview-hover-no-campaign-id", "", {
+        hasBtn: !!btn,
+        hasTooltip: !!tooltip,
+      });
+      return;
+    }
+    if (id === listPreviewCampaignId) {
+      listPreviewPreloadSkip("preview-hover-is-active", id);
+      return;
+    }
+    prefetchListPreviewCampaign(id, LIST_PREVIEW_PRIORITY_PREDICTIVE_HIGH, "predictive", "preview-hover");
+  }
+
+  function handleListPreviewRowPointerDown(ev) {
+    if (!isCampaignListGridEvent(ev)) return;
+    if (shouldIgnorePreviewRowClick(ev.target)) return;
+    const row = getCampaignListBodyRowFromEvent(ev);
+    if (!row) return;
+    const id = getCampaignIdFromRow(row);
+    if (!id || id === listPreviewCampaignId) return;
+    prefetchListPreviewCampaign(id, LIST_PREVIEW_PRIORITY_PREDICTIVE_HIGH, "predictive", "row-pointerdown");
+  }
+
+  function getListPreviewSiblingCampaignId(offset) {
+    const ids = getOrderedListCampaignIds();
+    const idx = ids.indexOf(listPreviewCampaignId);
+    if (idx < 0) return "";
+    const nextIdx = idx + offset;
+    if (nextIdx < 0 || nextIdx >= ids.length) return "";
+    return ids[nextIdx];
+  }
+
+  function isListPreviewKeyboardTypingTarget(target) {
+    if (!target) return false;
+    const el = target.nodeType === Node.ELEMENT_NODE ? target : target.parentElement;
+    if (!el) return false;
+    const tag = (el.tagName || "").toLowerCase();
+    if (tag === "input" || tag === "textarea" || tag === "select") return true;
+    if (el.isContentEditable) return true;
+    if (el.closest && el.closest('[contenteditable="true"]')) return true;
+    return false;
+  }
+
+  function handleListPreviewKeyDown(ev) {
+    if (!listPreviewOpen || !listPreviewCampaignId) return;
+    if (ev.key !== "ArrowLeft" && ev.key !== "ArrowRight") return;
+    if (ev.metaKey || ev.ctrlKey || ev.altKey || ev.shiftKey) return;
+    if (ev.isComposing) return;
+
+    const activeEl = document.activeElement;
+    if (isListPreviewKeyboardTypingTarget(activeEl || ev.target)) return;
+
+    const offset = ev.key === "ArrowLeft" ? -1 : 1;
+    const nextId = getListPreviewSiblingCampaignId(offset);
+    if (!nextId || nextId === listPreviewCampaignId) return;
+
+    ev.preventDefault();
+    ev.stopPropagation();
+    openListPreview(nextId);
+  }
+
+  function initCampaignListPreviewKeyboard() {
+    if (previewPanelKeyboardInstalled) return;
+    previewPanelKeyboardInstalled = true;
+    document.addEventListener("keydown", handleListPreviewKeyDown, true);
+  }
+
   function handleCampaignListRowPreviewClick(ev) {
     if (!listPreviewOpen) return;
     if (shouldIgnorePreviewRowClick(ev.target)) return;
 
-    const row = ev.target.closest("tr");
-    if (!row || !row.closest("tbody") || !row.closest(CAMPAIGN_LIST_ROOT_SELECTOR)) return;
+    const row = getCampaignListRowFromTarget(ev.target, ev);
+    if (!row) return;
 
     const id = getCampaignIdFromRow(row);
     if (!id || id === listPreviewCampaignId) return;
@@ -1618,13 +2471,30 @@
     openListPreview(id);
   }
 
+  function handlePreviewFsIframeMessage(ev) {
+    if (!ev || ev.origin !== window.location.origin) return;
+    const data = ev.data;
+    if (!data || data.source !== PREVIEW_FS_IFRAME_MESSAGE_SOURCE) return;
+    const campId = String(data.campId || "").trim();
+    if (!campId) return;
+    markListPreviewLoadError(campId, data.reason || "templating");
+    listPreviewPreloadDbg("templating-error", { campId, reason: data.reason || "templating" });
+  }
+
+  function initCampaignListPreviewMessageListener() {
+    if (previewPanelMessageInstalled) return;
+    previewPanelMessageInstalled = true;
+    window.addEventListener("message", handlePreviewFsIframeMessage);
+  }
+
   function initCampaignListPreviewPanel() {
     if (previewPanelClickHookInstalled) return;
     previewPanelClickHookInstalled = true;
+    initCampaignListPreviewMessageListener();
     document.addEventListener(
       "click",
       (ev) => {
-        const btn = getPreviewButtonFromEventTarget(ev.target);
+        const btn = getPreviewButtonFromEventTarget(ev.target, ev);
         if (!btn) return;
         handlePreviewButtonClick(ev, btn);
       },
@@ -1632,6 +2502,17 @@
     );
     document.addEventListener("click", handleCampaignListRowPreviewClick);
     document.addEventListener("click", handleLaunchMonitoringClick);
+  }
+
+  function initCampaignListPreviewPrefetch() {
+    if (previewPanelPrefetchInstalled) return;
+    previewPanelPrefetchInstalled = true;
+
+    document.addEventListener("mouseover", handleListPreviewPreviewTargetMouseOver, true);
+    document.addEventListener("mouseover", handleListPreviewRowMouseOver, true);
+    document.addEventListener("mouseout", handleListPreviewRowMouseOut, true);
+    document.addEventListener("pointerdown", handleListPreviewRowPointerDown, true);
+    listPreviewPreloadDbg("listeners-attached", { target: "document", usesComposedPath: true });
   }
 
   window.gemDebugCampaignListPreviewPanel = function gemDebugCampaignListPreviewPanel() {
@@ -1646,7 +2527,24 @@
       listRootId: listRoot.id,
       panelPresent: !!getListPreviewPanel(),
       listPreviewOpen,
-      listPreviewCampaignId
+      listPreviewCampaignId,
+      poolSize: listPreviewPoolIframes.length,
+      cache: Array.from(listPreviewCacheByCampId.entries()).map(([campId, entry]) => ({
+        campId,
+        ready: entry.ready,
+        slotRole: entry.slotRole,
+        lastUsed: entry.lastUsed,
+      })),
+      backgroundLoad: listPreviewBackgroundLoad
+        ? {
+            campId: listPreviewBackgroundLoad.campId,
+            priority: listPreviewBackgroundLoad.priority,
+          }
+        : null,
+      queue: listPreviewLoadQueue.slice(),
+      priorityTargets: listPreviewCampaignId
+        ? getListPreviewPriorityCampIds(listPreviewCampaignId)
+        : [],
     };
   };
 
@@ -1656,4 +2554,6 @@
     initCampaignListOverflowMenus();
   });
   initCampaignListPreviewPanel();
+  initCampaignListPreviewPrefetch();
+  initCampaignListPreviewKeyboard();
 })();

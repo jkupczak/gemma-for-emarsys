@@ -89,26 +89,29 @@
     tryInjectPreviewIframe(floatContainer);
   }
 
-  const domObserver = new MutationObserver((mutations) => {
-    for (const mutation of mutations) {
-      for (const node of mutation.addedNodes) {
-        if (node.nodeType !== Node.ELEMENT_NODE) continue;
+  if (typeof gemDomWatchSubscribe === 'function') {
+    gemDomWatchSubscribe(() => {
+      document.querySelectorAll('e-float-container').forEach(processFloatContainer);
+    });
+  } else {
+    const domObserver = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        for (const node of mutation.addedNodes) {
+          if (node.nodeType !== Node.ELEMENT_NODE) continue;
 
-        if (node.matches('e-float-container')) {
-          processFloatContainer(node);
-        } else {
-          node.querySelectorAll('e-float-container').forEach(processFloatContainer);
+          if (node.matches('e-float-container')) {
+            processFloatContainer(node);
+          } else {
+            node.querySelectorAll('e-float-container').forEach(processFloatContainer);
+          }
+
+          const parentFloat = node.closest && node.closest('e-float-container');
+          if (parentFloat) processFloatContainer(parentFloat);
         }
-
-        // Handle children (title text, dialog content) being added inside an
-        // already-present float container
-        const parentFloat = node.closest && node.closest('e-float-container');
-        if (parentFloat) processFloatContainer(parentFloat);
       }
-    }
-  });
-
-  domObserver.observe(document.documentElement, { childList: true, subtree: true });
+    });
+    domObserver.observe(document.documentElement, { childList: true, subtree: true });
+  }
 
   // Handle any float containers already in the DOM when the script loads
   document.querySelectorAll('e-float-container').forEach(processFloatContainer);

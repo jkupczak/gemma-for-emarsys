@@ -452,10 +452,8 @@ console.log("[gem] storage-measurement.js loaded");
     window.addEventListener("gem:page-localstorage-guard", () => refreshStorageMetersIfMounted());
   } catch (_) {}
 
-  const observer = new MutationObserver(() => tryMount());
-  observer.observe(document.documentElement || document, {
-    childList: true,
-    subtree: true,
+  window.gemDomWatchSubscribe(function () {
+    tryMount();
   });
 
   tryMount();

@@ -41,6 +41,68 @@
     };
 
     /**
+     * Calls the Emarsys gservice duplicate endpoint from the page context so the
+     * request Origin matches the JWT allowedOrigins (emarsys.net). Background fetches
+     * get 403 because they do not carry an Emarsys origin.
+     *
+     * @param {string} campaignId
+     * @param {string} token - Raw JWT from gemFetchGserviceToken.
+     * @returns {Promise<{ok: boolean, newCampaignId?: number|string, reason?: string}>}
+     */
+    window.gemCallGserviceDuplicate = function gemCallGserviceDuplicate(campaignId, token) {
+      const id = String(campaignId || "").trim();
+      const bareToken = String(token || "").trim().replace(/^Bearer\s+/i, "");
+      if (!id || !bareToken) {
+        return Promise.resolve({ ok: false, reason: "missing_id_or_token" });
+      }
+
+      const url =
+        "https://email-campaign-list.gservice.emarsys.net/api/client/campaigns/" +
+        encodeURIComponent(id) +
+        "/duplicate";
+      console.log("[Gem][Auth] gemCallGserviceDuplicate: POST", url);
+
+      return fetch(url, {
+        method: "POST",
+        headers: {
+          authorization: "Bearer " + bareToken,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ campaignId: id }),
+      })
+        .then(function (res) {
+          return res
+            .json()
+            .catch(function () {
+              return null;
+            })
+            .then(function (data) {
+              console.log(
+                "[Gem][Auth] gemCallGserviceDuplicate: HTTP",
+                res.status,
+                res.ok ? "ok" : "not ok"
+              );
+              if (!res.ok) return { ok: false, reason: "api_error", status: res.status, data: data };
+              if (!data || !data.success || data.data == null || data.data.campaignId == null) {
+                return { ok: false, reason: "unexpected_response", status: res.status, data: data };
+              }
+              return { ok: true, newCampaignId: data.data.campaignId };
+            });
+        })
+        .catch(function (err) {
+          console.warn(
+            "[Gem][Auth] gemCallGserviceDuplicate: fetch threw:",
+            err && err.message ? err.message : String(err)
+          );
+          return {
+            ok: false,
+            reason: "fetch_error",
+            error: err && err.message ? err.message : String(err),
+          };
+        });
+    };
+
+    /**
      * Duplicates a campaign via the Emarsys gservice API.
      * Handles token acquisition internally.
      *
@@ -55,25 +117,9 @@
         if (!token) {
           return { ok: false, reason: "no_auth_token" };
         }
-        return new Promise(function (resolve) {
-          try {
-            console.log("[Gem][Auth] gemDuplicateCampaign: sending duplicateEmarsysCampaign to background");
-            chrome.runtime.sendMessage(
-              { action: "duplicateEmarsysCampaign", campaignId: String(campaignId), token },
-              function (res) {
-                if (chrome.runtime.lastError) {
-                  console.warn("[Gem][Auth] gemDuplicateCampaign: runtime error:", chrome.runtime.lastError.message);
-                  resolve({ ok: false, reason: "runtime_error" });
-                  return;
-                }
-                console.log("[Gem][Auth] gemDuplicateCampaign: background response:", res);
-                resolve(res && typeof res === "object" ? res : { ok: false, reason: "empty_response" });
-              }
-            );
-          } catch (err) {
-            console.warn("[Gem][Auth] gemDuplicateCampaign: sendMessage threw:", err && err.message ? err.message : String(err));
-            resolve({ ok: false, reason: "send_message_error" });
-          }
+        return window.gemCallGserviceDuplicate(campaignId, token).then(function (res) {
+          console.log("[Gem][Auth] gemDuplicateCampaign: gservice response:", res);
+          return res;
         });
       });
     };

@@ -9,6 +9,7 @@ function gemToast(message, opts = {}) {
 // ------------------------------------------------------------
 const GEM_DEBUG_LOGGING_KEY = "gemDebugLogging";
 const GEM_THEME_MODE_LOCAL_KEY = "gemThemeMode";
+const GEM_THEME_MODE_STORAGE_KEY = GEM_THEME_MODE_LOCAL_KEY;
 const GEM_RECENT_IMAGES_STORAGE_KEY = 'gemRecentImages';
 const GEM_RECENTLY_SEEN_IMAGES_STORAGE_KEY = 'gemRecentlySeenImages';
 const GEM_RECENTLY_SEEN_IMAGES_MAX_KEY = 'gemRecentlySeenImagesMax';
@@ -45,6 +46,10 @@ const GEM_PREFLIGHT_ICON_PIP_TOGGLES_DEFAULT = {
 const GEM_PREFLIGHT_DEFAULT_TOTAL_IMAGE_WEIGHT_THRESHOLD_VALUE = 3;
 const GEM_PREFLIGHT_DEFAULT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_VALUE = 2;
 const GEM_PREFLIGHT_DEFAULT_IMAGE_WEIGHT_THRESHOLD_UNIT = 'MB';
+const GEM_COMPARE_LANGUAGES_DESKTOP_WIDTH_KEY = 'gemCompareLanguagesDesktopWidth';
+const GEM_COMPARE_LANGUAGES_MOBILE_WIDTH_KEY = 'gemCompareLanguagesMobileWidth';
+const GEM_COMPARE_LANGUAGES_DEFAULT_DESKTOP_WIDTH = 620;
+const GEM_COMPARE_LANGUAGES_DEFAULT_MOBILE_WIDTH = 414;
 const GEM_FULL_BACKUP_TYPE = 'gemma-full-backup';
 const GEM_FULL_BACKUP_VERSION = 1;
 const GEM_SNIPPET_MAX_CHUNKS = 16;
@@ -671,7 +676,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
       <div id="gem-settings-header">
         <span class="gem-settings-header-title">
           Gemma Settings
-          <span class="gem-panel-shortcut-hint gem-panel-shortcut-hint--on-primary">${typeof window.gemPanelShortcutLabel === "function" ? window.gemPanelShortcutLabel("G") : "[ CTRL + G ]"}</span>
+          <span class="gem-shortcut-hint">${typeof window.gemPanelShortcutLabel === "function" ? window.gemPanelShortcutLabel("G") : "CTRL+G"}</span>
         </span>
         <div style="display: flex; flex-direction: row; gap: 16px; margin-left:auto">
           <div class="gem-welcome-link gem-border-hover-primary-600" style="border-radius: 8px; align-content: center; flex: 1; color: #fff; text-align: center; cursor: pointer; border: 1px solid #fff; padding: 0 12px;">
@@ -830,16 +835,6 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
                   <option value="1">100%</option>
                   <option value="0.5">50%</option>
                 </select>
-              </div>
-            </div>
-          </div>
-
-          <div class="gem-setting">
-            <div class="gem-e-switch-wrapper">
-              <label for="opt-show-finish-editing-btn">Show "Finish Editing" Button</label>
-              <div class="gem-e-switch--fat e-switch">
-                <input type="checkbox" class="e-switch__input" id="opt-show-finish-editing-btn" checked>
-                <label class="e-switch__toggle" for="opt-show-finish-editing-btn"></label>
               </div>
             </div>
           </div>
@@ -1029,6 +1024,21 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+
+        <h2>Compare Languages</h2>
+
+        <div class="gem-setting-section" id="gem-settings-compare-languages">
+          <h3>Preview Widths</h3>
+          <p class="sub-label">Column widths used in the Language Comparison dialog when toggling between Desktop and Mobile.</p>
+          <div class="gem-setting gem-setting-condensed" style="display: flex; gap: 12px; align-items: center;">
+            <label for="opt-compare-languages-desktop-width" style="flex: 1;">Desktop width (px)</label>
+            <input type="number" id="opt-compare-languages-desktop-width" min="200" max="1200" step="1" style="width: 120px;" value="620" />
+          </div>
+          <div class="gem-setting gem-setting-condensed" style="display: flex; gap: 12px; align-items: center;">
+            <label for="opt-compare-languages-mobile-width" style="flex: 1;">Mobile width (px)</label>
+            <input type="number" id="opt-compare-languages-mobile-width" min="200" max="800" step="1" style="width: 120px;" value="414" />
           </div>
         </div>
 
@@ -1306,6 +1316,11 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
       shortcutsBtn.addEventListener("click", window.showGemKeyboardShortcutsModal);
     }
 
+    const settingsShortcutHint = panelEl.querySelector(".gem-shortcut-hint");
+    if (settingsShortcutHint && typeof window.gemWireShortcutHint === "function") {
+      window.gemWireShortcutHint(settingsShortcutHint);
+    }
+
     return panelEl;
   }
 
@@ -1534,7 +1549,6 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
         [GEM_THEME_MODE_STORAGE_KEY]: "gemma",
         enableHighlighting: true,
         enableMobilePreview: true,
-        showFinishEditingBtn: true,
         colorSwatches: window.DEFAULT_COLOR_SWATCHES,
         blocksPanelLayout: "2",
         manageOptionalContent: "hide-if-disabled",
@@ -1572,7 +1586,9 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
         [GEM_PREFLIGHT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_UNIT_KEY]: GEM_PREFLIGHT_DEFAULT_IMAGE_WEIGHT_THRESHOLD_UNIT,
         [GEM_PREFLIGHT_ENABLE_LIVE_LINK_VERIFY_KEY]: false,
         [GEM_SHARED_LINK_AUTO_SELECT_KEY]: true,
-        [GEM_PREFLIGHT_ICON_PIP_TOGGLES_KEY]: GEM_PREFLIGHT_ICON_PIP_TOGGLES_DEFAULT
+        [GEM_PREFLIGHT_ICON_PIP_TOGGLES_KEY]: GEM_PREFLIGHT_ICON_PIP_TOGGLES_DEFAULT,
+        [GEM_COMPARE_LANGUAGES_DESKTOP_WIDTH_KEY]: GEM_COMPARE_LANGUAGES_DEFAULT_DESKTOP_WIDTH,
+        [GEM_COMPARE_LANGUAGES_MOBILE_WIDTH_KEY]: GEM_COMPARE_LANGUAGES_DEFAULT_MOBILE_WIDTH
       }, (settings) => {
         syncThemeSwatchUI(settings[GEM_THEME_MODE_STORAGE_KEY]);
 
@@ -1657,14 +1673,20 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
         const sharedLinkAutoSelectEl = document.getElementById("opt-shared-link-auto-select");
         if (sharedLinkAutoSelectEl) sharedLinkAutoSelectEl.checked = settings[GEM_SHARED_LINK_AUTO_SELECT_KEY] !== false;
 
+        const compareDesktopWidthEl = document.getElementById("opt-compare-languages-desktop-width");
+        if (compareDesktopWidthEl) {
+          compareDesktopWidthEl.value = String(settings[GEM_COMPARE_LANGUAGES_DESKTOP_WIDTH_KEY] ?? GEM_COMPARE_LANGUAGES_DEFAULT_DESKTOP_WIDTH);
+        }
+        const compareMobileWidthEl = document.getElementById("opt-compare-languages-mobile-width");
+        if (compareMobileWidthEl) {
+          compareMobileWidthEl.value = String(settings[GEM_COMPARE_LANGUAGES_MOBILE_WIDTH_KEY] ?? GEM_COMPARE_LANGUAGES_DEFAULT_MOBILE_WIDTH);
+        }
+
         const widthInput = document.getElementById("opt-mobile-preview-width");
         if (widthInput) widthInput.value = settings.mobilePreviewWidth || 414;
 
         const scaleSelect = document.getElementById("opt-mobile-preview-scale");
         if (scaleSelect) scaleSelect.value = String(settings.mobilePreviewScale || 0.5);
-
-        document.getElementById("opt-show-finish-editing-btn").checked =
-          settings.showFinishEditingBtn;
 
         const emailCampaignListLoadAll = document.getElementById("opt-email-campaign-list-load-all");
         if (emailCampaignListLoadAll) {
@@ -1727,6 +1749,15 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
           const scaleVal = parseFloat(document.getElementById("opt-mobile-preview-scale")?.value);
           const safeScale = scaleVal === 1 ? 1 : 0.5;
 
+          const compareDesktopWidthVal = parseInt(document.getElementById("opt-compare-languages-desktop-width")?.value, 10);
+          const safeCompareDesktopWidth = Number.isFinite(compareDesktopWidthVal) && compareDesktopWidthVal > 0
+            ? compareDesktopWidthVal
+            : GEM_COMPARE_LANGUAGES_DEFAULT_DESKTOP_WIDTH;
+          const compareMobileWidthVal = parseInt(document.getElementById("opt-compare-languages-mobile-width")?.value, 10);
+          const safeCompareMobileWidth = Number.isFinite(compareMobileWidthVal) && compareMobileWidthVal > 0
+            ? compareMobileWidthVal
+            : GEM_COMPARE_LANGUAGES_DEFAULT_MOBILE_WIDTH;
+
           const mobileVisible =
             document.getElementById("opt-enable-mobile-preview")?.checked ?? true;
           const expandedModeEnabled =
@@ -1773,8 +1804,6 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
               document.getElementById("opt-enable-highlighting")?.checked ?? true,
             enableMobilePreview: mobileVisible,
             mobileViewVisible: mobileVisible,
-            showFinishEditingBtn:
-              document.getElementById("opt-show-finish-editing-btn")?.checked ?? true,
             [GEM_EMAIL_CAMPAIGN_LIST_LOAD_ALL_KEY]:
               document.getElementById("opt-email-campaign-list-load-all")?.checked ?? false,
             [GEM_EMAIL_CAMPAIGN_LIST_OVERFLOW_TOGGLES_KEY]: readEmailCampaignListOverflowTogglesFromUI(),
@@ -1801,7 +1830,9 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
               document.getElementById("opt-preflight-enable-live-link-verify")?.checked ?? false,
             [GEM_PREFLIGHT_ICON_PIP_TOGGLES_KEY]: readPreflightIconPipTogglesFromUI(),
             [GEM_SHARED_LINK_AUTO_SELECT_KEY]:
-              document.getElementById("opt-shared-link-auto-select")?.checked ?? true
+              document.getElementById("opt-shared-link-auto-select")?.checked ?? true,
+            [GEM_COMPARE_LANGUAGES_DESKTOP_WIDTH_KEY]: safeCompareDesktopWidth,
+            [GEM_COMPARE_LANGUAGES_MOBILE_WIDTH_KEY]: safeCompareMobileWidth
           };
 
           // Apply immediately + cache synchronously for next page load
@@ -1946,7 +1977,6 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
       "opt-enable-highlighting",
       "opt-enable-expanded-mode",
       "opt-enable-mobile-preview",
-      "opt-show-finish-editing-btn",
       "opt-email-campaign-list-load-all",
       "opt-email-campaign-list-overflow-edit-translations",
       "opt-email-campaign-list-overflow-distribute",
@@ -1977,7 +2007,9 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
       "opt-preflight-pip-link-titles",
       "opt-preflight-pip-link-lint",
       "opt-preflight-pip-image-weight",
-      "opt-shared-link-auto-select"
+      "opt-shared-link-auto-select",
+      "opt-compare-languages-desktop-width",
+      "opt-compare-languages-mobile-width"
     ];
 
     settingsIds.forEach((id) => {
@@ -2437,6 +2469,9 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
     requestAnimationFrame(() => {
       panelEl.style.right = "0";
       isOpen = true;
+      if (typeof window.gemLayerRaise === "function") {
+        window.gemLayerRaise(panelEl, { tier: "modal" });
+      }
       console.log("[gem] Panel opened, isOpen now:", isOpen);
     });
   }
@@ -2445,6 +2480,9 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
     console.log("[gem] closePanel called, isOpen was:", isOpen);
     if (!panelEl) return;
     panelEl.style.right = "-580px";
+    if (typeof window.gemLayerRelease === "function") {
+      window.gemLayerRelease(panelEl);
+    }
     isOpen = false;
     console.log("[gem] Panel closed, isOpen now:", isOpen);
   }
@@ -2469,6 +2507,29 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
   // ------------------------------------------------------------
   function setupOpenSettingsPanelShortcut() {
     function handleKeyDown(e) {
+      if (e.key === 'Escape' || e.code === 'Escape') {
+        if (!isOpen) return;
+
+        const shortcutsModal = document.getElementById('gem-keyboard-shortcuts-modal');
+        if (shortcutsModal) {
+          if (typeof window.closeGemKeyboardShortcutsModal === 'function') {
+            window.closeGemKeyboardShortcutsModal();
+          } else {
+            shortcutsModal.remove();
+          }
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation && e.stopImmediatePropagation();
+          return false;
+        }
+
+        closePanel();
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation && e.stopImmediatePropagation();
+        return false;
+      }
+
       // ⌘+G (macOS) / Ctrl+G (Win/Linux)
       if (!(e.metaKey || e.ctrlKey)) return;
       if (e.shiftKey || e.altKey) return;
@@ -2556,20 +2617,34 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
     document.querySelectorAll('iframe').forEach(waitForIframeReady);
 
     // New iframes
-    const iframeObserver = new MutationObserver((mutations) => {
-      mutations.forEach((m) => {
-        m.addedNodes.forEach((node) => {
-          if (!node || node.nodeType !== Node.ELEMENT_NODE) return;
-          if (node.tagName === 'IFRAME') {
-            waitForIframeReady(node);
-          } else if (node.querySelectorAll) {
-            node.querySelectorAll('iframe').forEach(waitForIframeReady);
-          }
+    if (typeof gemDomWatchSubscribe === 'function') {
+      gemDomWatchSubscribe((mutations) => {
+        mutations.forEach((m) => {
+          m.addedNodes.forEach((node) => {
+            if (!node || node.nodeType !== Node.ELEMENT_NODE) return;
+            if (node.tagName === 'IFRAME') {
+              waitForIframeReady(node);
+            } else if (node.querySelectorAll) {
+              node.querySelectorAll('iframe').forEach(waitForIframeReady);
+            }
+          });
         });
       });
-    });
-    // body may not exist at document_start; observe documentElement to be safe
-    iframeObserver.observe(document.documentElement, { childList: true, subtree: true });
+    } else {
+      const iframeObserver = new MutationObserver((mutations) => {
+        mutations.forEach((m) => {
+          m.addedNodes.forEach((node) => {
+            if (!node || node.nodeType !== Node.ELEMENT_NODE) return;
+            if (node.tagName === 'IFRAME') {
+              waitForIframeReady(node);
+            } else if (node.querySelectorAll) {
+              node.querySelectorAll('iframe').forEach(waitForIframeReady);
+            }
+          });
+        });
+      });
+      iframeObserver.observe(document.documentElement, { childList: true, subtree: true });
+    }
   }
 
   setupOpenSettingsPanelShortcut();
@@ -2662,6 +2737,19 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
       const widthInput = document.getElementById("opt-mobile-preview-width");
       if (widthInput) {
         widthInput.value = changes.mobilePreviewWidth.newValue;
+      }
+    }
+
+    if (changes[GEM_COMPARE_LANGUAGES_DESKTOP_WIDTH_KEY]) {
+      const el = document.getElementById("opt-compare-languages-desktop-width");
+      if (el) {
+        el.value = String(changes[GEM_COMPARE_LANGUAGES_DESKTOP_WIDTH_KEY].newValue ?? GEM_COMPARE_LANGUAGES_DEFAULT_DESKTOP_WIDTH);
+      }
+    }
+    if (changes[GEM_COMPARE_LANGUAGES_MOBILE_WIDTH_KEY]) {
+      const el = document.getElementById("opt-compare-languages-mobile-width");
+      if (el) {
+        el.value = String(changes[GEM_COMPARE_LANGUAGES_MOBILE_WIDTH_KEY].newValue ?? GEM_COMPARE_LANGUAGES_DEFAULT_MOBILE_WIDTH);
       }
     }
 

@@ -14,7 +14,7 @@ console.log("[Gem] alt-text-preview.js loaded");
   let settingVisibility = "always-show";
   let overlayContainer = null;
   let iframeMutationObserver = null;
-  let lifecycleObserver = null;
+  let lifecycleUnsub = null;
   let currentIframe = null;
   let debounceTimer = null;
   let hoverHandler = null;
@@ -120,14 +120,9 @@ console.log("[Gem] alt-text-preview.js loaded");
       return;
     }
 
-    const obs = new MutationObserver(() => {
-      if (document.querySelector(BUTTON_GROUP_SELECTOR) && document.querySelector(ANCHOR_SELECTOR)) {
-        obs.disconnect();
-        injectButton();
-      }
+    window.gemDomWatchWaitFor(BUTTON_GROUP_SELECTOR, function () {
+      if (document.querySelector(ANCHOR_SELECTOR)) injectButton();
     });
-
-    obs.observe(document.documentElement, { childList: true, subtree: true });
   }
 
   // ── Toggle ────────────────────────────────────────────
@@ -193,11 +188,9 @@ console.log("[Gem] alt-text-preview.js loaded");
 
     if (tryReady()) return;
 
-    const obs = new MutationObserver(() => {
-      if (tryReady()) obs.disconnect();
+    window.gemDomWatchWaitFor(IFRAME_SELECTOR, function () {
+      tryReady();
     });
-
-    obs.observe(document.documentElement, { childList: true, subtree: true });
   }
 
   // ── Overlay container ─────────────────────────────────
@@ -457,12 +450,12 @@ console.log("[Gem] alt-text-preview.js loaded");
   // ── Iframe lifecycle watcher ──────────────────────────
 
   function watchIframeLifecycle() {
-    if (lifecycleObserver) {
-      lifecycleObserver.disconnect();
-      lifecycleObserver = null;
+    if (lifecycleUnsub) {
+      lifecycleUnsub();
+      lifecycleUnsub = null;
     }
 
-    lifecycleObserver = new MutationObserver(() => {
+    lifecycleUnsub = window.gemDomWatchSubscribe(function () {
       if (!isActive) return;
 
       const iframe = document.querySelector(IFRAME_SELECTOR);
@@ -480,11 +473,6 @@ console.log("[Gem] alt-text-preview.js loaded");
       if (iframe && iframe !== currentIframe) {
         waitForIframeReady(bindToIframe);
       }
-    });
-
-    lifecycleObserver.observe(document.documentElement, {
-      childList: true,
-      subtree: true,
     });
   }
 

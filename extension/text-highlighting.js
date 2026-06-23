@@ -1,4 +1,4 @@
-console.log("text-highlighting.js loaded");
+console.log("[Gem] text-highlighting.js loaded");
 
 // Global variables for dynamic configuration
 let PLACEHOLDERS = [];
@@ -131,7 +131,7 @@ loadHighlightConfig();
 
 let overlayContainer = null;
 let iframeMutationObserver = null;
-let lifecycleObserver = null;
+let lifecycleUnsub = null;
 let debounceTimer = null;
 let currentIframe = null;
 
@@ -325,13 +325,8 @@ function waitForIframeReady(callback) {
 
   if (tryReady()) return;
 
-  const obs = new MutationObserver(() => {
-    if (tryReady()) obs.disconnect();
-  });
-
-  obs.observe(document.documentElement, {
-    childList: true,
-    subtree: true
+  window.gemDomWatchWaitFor(TARGET_IFRAME_SELECTOR, function () {
+    tryReady();
   });
 }
 
@@ -413,15 +408,14 @@ function bindToIframe(iframe) {
 
 // Watch the top-level DOM so we detect iframe removal + re-addition
 function watchIframeLifecycle() {
-  if (lifecycleObserver) {
-    lifecycleObserver.disconnect();
-    lifecycleObserver = null;
+  if (lifecycleUnsub) {
+    lifecycleUnsub();
+    lifecycleUnsub = null;
   }
 
-  lifecycleObserver = new MutationObserver(() => {
+  lifecycleUnsub = window.gemDomWatchSubscribe(function () {
     const iframe = document.querySelector(TARGET_IFRAME_SELECTOR);
 
-    // Case 1: iframe disappeared
     if (!iframe && currentIframe) {
       currentIframe = null;
       clearOverlays();
@@ -431,15 +425,9 @@ function watchIframeLifecycle() {
       }
     }
 
-    // Case 2: iframe re-added or changed instance
     if (iframe && iframe !== currentIframe) {
       waitForIframeReady(bindToIframe);
     }
-  });
-
-  lifecycleObserver.observe(document.documentElement, {
-    childList: true,
-    subtree: true
   });
 }
 
@@ -453,9 +441,9 @@ function initializeHighlighting() {
 // Disable highlighting functionality
 function disableHighlighting() {
   // Disconnect observers
-  if (lifecycleObserver) {
-    lifecycleObserver.disconnect();
-    lifecycleObserver = null;
+  if (lifecycleUnsub) {
+    lifecycleUnsub();
+    lifecycleUnsub = null;
   }
   if (iframeMutationObserver) {
     iframeMutationObserver.disconnect();

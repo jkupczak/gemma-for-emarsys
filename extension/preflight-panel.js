@@ -31,7 +31,7 @@ function initializePreflightPanel() {
   let refreshTimer = null;
   let currentScanToken = 0;
   let initialScanTriggered = false;
-  let initialIframeObserver = null;
+  let initialIframeUnsub = null;
   let initialScanAttemptCount = 0;
   let initialScanRetryTimer = null;
   let boundPreviewIframe = null;
@@ -68,6 +68,9 @@ function initializePreflightPanel() {
   let cachedLinkTitleRows = [];
   let preflightLiveLinkVerifyEnabled = false;
   let preflightHideLinksSection = false;
+  let preflightSectionAutoCollapseEnabled = false;
+  /** True only during initial panel open until the first scan finishes. */
+  let preflightAutoCollapsePending = false;
   let editorLinkLiveVerifyAllInFlight = false;
   /** Editor `rowKey` → synthetic row shown after Contact Preview renders personalization (cleared on editor rescan). */
   const contactPreviewRenderedRowByEditorKey = new Map();
@@ -589,6 +592,7 @@ function initializePreflightPanel() {
 
     chrome.storage.local.get({ [PREFLIGHT_LANGUAGE_ALERTS_KEY]: {} }, (res) => {
       const map = ((res[PREFLIGHT_LANGUAGE_ALERTS_KEY] || {})[campaignId]) || {};
+      cachedLanguageAlertMap = map;
       const rows = meta.map(({ value, text }) => {
         const entry = getLanguageAlertEntry(map, value);
         const isCurrent = value === currentLang;
@@ -778,8 +782,9 @@ function initializePreflightPanel() {
     refreshLanguagePickerPreflightBadges();
     renderLanguageOverviewPanel();
 
-    const observer = new MutationObserver(() => scheduleLanguagePickerPreflightBadges());
-    observer.observe(document.body, { childList: true, subtree: true });
+    window.gemDomWatchSubscribe(function () {
+      scheduleLanguagePickerPreflightBadges();
+    });
 
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area !== 'local' || !changes[PREFLIGHT_LANGUAGE_ALERTS_KEY]) return;
@@ -1253,13 +1258,52 @@ function initializePreflightPanel() {
     });
   }
 
+  function getLanguageOverviewAlertCount() {
+    const map = cachedLanguageAlertMap && typeof cachedLanguageAlertMap === 'object' ? cachedLanguageAlertMap : {};
+    return Object.keys(map).reduce((sum, langValue) => {
+      return sum + (getLanguageAlertEntry(map, langValue).count > 0 ? 1 : 0);
+    }, 0);
+  }
+
+  function getPreflightSectionAlertCounts() {
+    return {
+      languageOverview: getLanguageOverviewAlertCount(),
+      textAnalysis: Math.max(0, Number.parseInt(String(latestNotifyAlertCount), 10) || 0),
+      accessibility: getAccessibilityCombinedAlertCount(),
+      links: preflightHideLinksSection ? 0 : (Math.max(0, Number.parseInt(String(latestLinksAlertCount), 10) || 0)),
+      images: Math.max(0, Number.parseInt(String(latestImageAlertCount), 10) || 0)
+    };
+  }
+
+  function applyPreflightSectionCollapseByAlerts() {
+    const els = getPreflightPanelEls();
+    if (!els || !els.panel) return;
+    const counts = getPreflightSectionAlertCounts();
+    ['languageOverview', 'textAnalysis', 'accessibility', 'links', 'images'].forEach((key) => {
+      syncPreflightSectionCollapseUI(els.panel, key, (counts[key] || 0) <= 0);
+    });
+  }
+
+  function maybeApplyPreflightSectionCollapseByAlerts() {
+    if (!preflightSectionAutoCollapseEnabled || !preflightAutoCollapsePending || !isPreflightActive()) return;
+    applyPreflightSectionCollapseByAlerts();
+  }
+
+  function finishPreflightAutoCollapse() {
+    preflightAutoCollapsePending = false;
+  }
+
   function syncPreflightSectionCollapseUI(panel, sectionKey, collapsed) {
     if (!panel || !sectionKey) return;
     const sectionWrap = panel.querySelector(`[data-role="${sectionKey}Section"]`);
     const body = panel.querySelector(`[data-role="${sectionKey}SectionBody"]`);
     const btn = panel.querySelector(`[data-role="toggleSectionBtn"][data-section-key="${sectionKey}"]`);
-    if (sectionWrap) sectionWrap.classList.toggle('gem-preflight-collapsible-section--collapsed', !!collapsed);
-    if (body) body.style.display = collapsed ? 'none' : '';
+    const wantCollapsed = !!collapsed;
+    const isCollapsed = !!(sectionWrap && sectionWrap.classList.contains('gem-preflight-collapsible-section--collapsed'));
+    const btnExpanded = btn ? btn.getAttribute('aria-expanded') !== 'false' : !wantCollapsed;
+    if (isCollapsed === wantCollapsed && btnExpanded === !wantCollapsed) return;
+    if (sectionWrap) sectionWrap.classList.toggle('gem-preflight-collapsible-section--collapsed', wantCollapsed);
+    if (body) body.style.display = wantCollapsed ? 'none' : '';
     if (!btn) return;
     btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
     const arrow = btn.querySelector('.gem-preflight-section-toggle-arrow');
@@ -1289,6 +1333,7 @@ function initializePreflightPanel() {
       if (!btn || !panel.contains(btn)) return;
       const sectionKey = btn.getAttribute('data-section-key');
       if (!sectionKey) return;
+      preflightSectionAutoCollapseEnabled = false;
       const isExpanded = btn.getAttribute('aria-expanded') !== 'false';
       const nextCollapsed = isExpanded;
       syncPreflightSectionCollapseUI(panel, sectionKey, nextCollapsed);
@@ -3255,13 +3300,14 @@ function initializePreflightPanel() {
       latestNotifyAlertCount = 0;
       latestTextAnalysisSnapshot = { totalMatches: 0, totalNotifyMatches: 0, notifyRows: [] };
       persistAndUpdateOverallAlertPip();
-      syncPreflightSectionCollapseUI(panel, 'textAnalysis', true);
+      maybeApplyPreflightSectionCollapseByAlerts();
       return;
     }
 
     els.textAnalysisResultsWrap.style.display = '';
     if (latestTextAnalysisSnapshot) {
       renderTextAnalysisPayloadToUi(panel, els, latestTextAnalysisSnapshot);
+      maybeApplyPreflightSectionCollapseByAlerts();
       return;
     }
 
@@ -3394,7 +3440,7 @@ function initializePreflightPanel() {
           if (textNotifyMatchesTotalEl) textNotifyMatchesTotalEl.textContent = '0';
           if (els.notifyMatchesWrap) els.notifyMatchesWrap.style.display = 'none';
           updateTextAnalysisSectionPip(0);
-          syncPreflightSectionCollapseUI(els.panel, 'textAnalysis', true);
+          maybeApplyPreflightSectionCollapseByAlerts();
           return;
         }
       }
@@ -3416,6 +3462,11 @@ function initializePreflightPanel() {
     const els = getPreflightPanelEls();
     if (!els || !els.notifyMatchesTable || !els.notifyMatchesWrap) return;
     renderTextAnalysisPayloadToUi(panel, els, textAnalysis);
+  }
+
+  function finalizePreflightAutoCollapseAfterScan() {
+    maybeApplyPreflightSectionCollapseByAlerts();
+    finishPreflightAutoCollapse();
   }
 
   function scheduleTextAnalysisRefreshFromHighlightEvent() {
@@ -3556,6 +3607,7 @@ function initializePreflightPanel() {
         syncLiveVerifyAllButtonState();
         updateLinksSectionPip(0);
       }
+      finalizePreflightAutoCollapseAfterScan();
       return;
     }
 
@@ -3633,6 +3685,7 @@ function initializePreflightPanel() {
 
     const linkTitleRows = Array.isArray(payload.linkTitleRows) ? payload.linkTitleRows : [];
     renderLinkTitlesTable(els.linkTitlesTable, linkTitleRows);
+    finalizePreflightAutoCollapseAfterScan();
   }
 
   async function scanAndRenderImageMetrics(opts = {}) {
@@ -3831,11 +3884,10 @@ function initializePreflightPanel() {
       }
       updateLinksSectionPip(0);
       updateImagesSectionPip(0);
-      void readSectionCollapseState().then((state) => {
-        ['languageOverview', 'textAnalysis', 'accessibility', 'links', 'images'].forEach((key) => {
-          syncPreflightSectionCollapseUI(els.panel, key, !!state[key]);
-        });
-      });
+      preflightSectionAutoCollapseEnabled = true;
+      preflightAutoCollapsePending = true;
+      renderLanguageOverviewPanel();
+      applyPreflightSectionCollapseByAlerts();
     }
     void initializeTextAnalysisSectionState();
 
@@ -3845,6 +3897,8 @@ function initializePreflightPanel() {
   }
 
   function deactivatePreflightPanel() {
+    preflightSectionAutoCollapseEnabled = false;
+    preflightAutoCollapsePending = false;
     const navItem = document.querySelector(`#${PRELIGHT_TAB_ID} e-verticalnav-item`);
     if (navItem) {
       navItem.removeAttribute('status');
@@ -3957,13 +4011,9 @@ function initializePreflightPanel() {
   }
 
   function observeForPreviewIframeAndRunInitialCalculation() {
-    if (initialIframeObserver) return;
-    initialIframeObserver = new MutationObserver(() => {
+    if (initialIframeUnsub) return;
+    initialIframeUnsub = window.gemDomWatchSubscribe(function () {
       bindInitialCalculationToPreviewIframe();
-    });
-    initialIframeObserver.observe(document.body || document.documentElement, {
-      childList: true,
-      subtree: true
     });
   }
 
@@ -4089,10 +4139,16 @@ function initializePreflightPanel() {
 
   function waitForVerticalNav() {
     if (addPreflightTab()) return;
-    const observer = new MutationObserver(() => {
-      if (addPreflightTab()) observer.disconnect();
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
+    if (typeof gemDomWatchSubscribe === 'function') {
+      const unsub = gemDomWatchSubscribe(() => {
+        if (addPreflightTab()) unsub();
+      });
+    } else {
+      const observer = new MutationObserver(() => {
+        if (addPreflightTab()) observer.disconnect();
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+    }
   }
 
   waitForVerticalNav();

@@ -40,16 +40,9 @@
 
 .gem-settings-header-title {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
   flex-shrink: 0;
-}
-
-.gem-panel-shortcut-hint--on-primary {
-  font-size: 13px;
-  font-weight: 500;
-  color: rgba(255, 255, 255, 0.62);
-  white-space: nowrap;
 }
 
 #gem-settings-body {

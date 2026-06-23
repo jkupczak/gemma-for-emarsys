@@ -1,7 +1,7 @@
 console.log("[gem] condensed-blocks-panel.js loaded");
 
 const CONDENSED_SELECTOR = "main.e-layout__content section.e-contentblocks-navigation_section";
-let condensedObserver = null;
+let condensedUnsub = null;
 let condensedEnabled = false;
 
 function addCondensedClass(layout) {
@@ -26,18 +26,15 @@ function removeAllCondensedClasses() {
 }
 
 function ensureObserver() {
-  if (condensedObserver) return;
+  if (condensedUnsub) return;
 
-  condensedObserver = new MutationObserver(() => {
-    // Check if chrome APIs are available (extension context not invalidated)
+  condensedUnsub = window.gemDomWatchSubscribe(function () {
     if (!chrome || !chrome.storage || !chrome.storage.sync) {
       console.warn("[Gem] Chrome storage API not available - extension context may be invalidated");
       return;
     }
 
-    // Get current layout setting and reapply classes
     chrome.storage.sync.get({ blocksPanelLayout: "2" }, (settings) => {
-      // Check again if chrome APIs are still available after async call
       if (!chrome || !chrome.storage || !chrome.storage.sync) {
         console.warn("[Gem] Chrome storage API became unavailable during async call");
         return;
@@ -49,27 +46,20 @@ function ensureObserver() {
       }
     });
   });
-
-  condensedObserver.observe(document.documentElement, {
-    childList: true,
-    subtree: true
-  });
 }
 
 function stopObserver() {
-  if (condensedObserver) {
-    condensedObserver.disconnect();
-    condensedObserver = null;
+  if (condensedUnsub) {
+    condensedUnsub();
+    condensedUnsub = null;
   }
 }
 
-// Cleanup function for when page unloads
 function cleanupCondensedBlocks() {
   stopObserver();
 }
 
 function applyCondensedSetting(layout) {
-  // Remove all existing classes first
   removeAllCondensedClasses();
 
   if (layout === "2" || layout === "3") {
@@ -80,19 +70,15 @@ function applyCondensedSetting(layout) {
   }
 }
 
-// Initial load
 chrome.storage.sync.get({ blocksPanelLayout: "2" }, (settings) => {
   applyCondensedSetting(settings.blocksPanelLayout);
 });
 
-// React to setting changes
 chrome.storage.onChanged.addListener((changes, namespace) => {
   if (namespace === "sync" && changes.blocksPanelLayout) {
     applyCondensedSetting(changes.blocksPanelLayout.newValue);
   }
 });
 
-// Clean up observers when page unloads to prevent "Extension context invalidated" errors
 window.addEventListener('unload', cleanupCondensedBlocks);
 window.addEventListener('beforeunload', cleanupCondensedBlocks);
-

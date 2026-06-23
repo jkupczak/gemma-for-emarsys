@@ -637,19 +637,16 @@ function initializeMediaDBColumnVisibility() {
   loadAndApplySettings();
 
   // Watch for file data rows being added to the table
-  const tableObserver = new MutationObserver((mutations) => {
+  const handleTableMutations = (mutations) => {
     mutations.forEach((mutation) => {
       if (mutation.type === 'childList') {
         let hasNewFileRows = false;
 
         mutation.addedNodes.forEach((node) => {
           if (node.nodeType === Node.ELEMENT_NODE) {
-            // Check if this node is a file data row
-          if (node.classList && (node.classList.contains('file-table-row') || node.classList.contains('folder-table-row'))) {
+            if (node.classList && (node.classList.contains('file-table-row') || node.classList.contains('folder-table-row'))) {
               hasNewFileRows = true;
-            }
-            // Also check within subtrees for file rows
-            else if (node.querySelectorAll) {
+            } else if (node.querySelectorAll) {
               const fileOrFolderRows = node.querySelectorAll('.file-table-row, .folder-table-row');
               if (fileOrFolderRows.length > 0) {
                 hasNewFileRows = true;
@@ -659,17 +656,21 @@ function initializeMediaDBColumnVisibility() {
         });
 
         if (hasNewFileRows) {
-          // Small delay to ensure rows are fully rendered
           setTimeout(() => applyColumnVisibilityFromStorage(), 100);
         }
       }
     });
-  });
+  };
 
-  tableObserver.observe(document.body, {
-    childList: true,
-    subtree: true
-  });
+  if (typeof gemDomWatchSubscribe === 'function') {
+    gemDomWatchSubscribe(handleTableMutations);
+  } else {
+    const tableObserver = new MutationObserver(handleTableMutations);
+    tableObserver.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
+  }
 
 }
 

@@ -21,19 +21,29 @@
     `;
   }
 
+  let shortcutsModalEscapeUnsub = null;
+
+  function unbindShortcutsModalEscape() {
+    if (typeof shortcutsModalEscapeUnsub === 'function') {
+      shortcutsModalEscapeUnsub();
+    }
+    shortcutsModalEscapeUnsub = null;
+  }
+
   function showKeyboardShortcutsModal() {
     const existing = document.getElementById('gem-keyboard-shortcuts-modal');
     if (existing) existing.remove();
+    unbindShortcutsModalEscape();
 
     const mod = window.GEM_MOD_KEY || 'CTRL';
 
     const modal = document.createElement('div');
     modal.id = 'gem-keyboard-shortcuts-modal';
-    modal.className = 'gem-welcome-modal';
+    modal.className = 'gem-welcome-modal gem-layer-modal';
     modal.innerHTML = `
-    <div class="gem-welcome-modal__panel" role="dialog" aria-modal="true">
+    <div class="gem-welcome-modal__panel" role="dialog" aria-modal="true" aria-labelledby="gem-keyboard-shortcuts-modal-title">
       <div class="gem-welcome-modal__header">
-        <div style="font-weight:600;">Gemma Keyboard Shortcuts</div>
+        <div id="gem-keyboard-shortcuts-modal-title" style="font-weight:600;">Gemma Keyboard Shortcuts</div>
         <button class="e-btn e-btn-borderless e-btn-onlyicon gem-welcome-modal__close" type="button" aria-label="Close">
           ✕
         </button>
@@ -48,6 +58,7 @@
           [`${mod}+/`, 'Open or close Recent Campaigns'],
           [`${mod}+;`, 'Open or close Notes'],
           [`${mod}+Shift+F`, 'Toggle Expanded View mode (fullscreen email layout)'],
+          [`${mod}+Shift+M`, 'Toggle Mobile Preview pane'],
           [`${mod}+Shift+,`, 'Previous language version (when language selector is available)'],
           [`${mod}+Shift+.`, 'Next language version (when language selector is available)'],
           ['Esc', 'Close Gemma modals and panels that support it']
@@ -59,14 +70,20 @@
         ])}
 
         ${section('Image Properties Dialog', [
-          ['Enter', 'Accept changes (clicks OK) — when focus is not in a text field'],
+          ['Enter', 'Accept changes (clicks OK)'],
           [`${mod}+D`, 'Toggle Desktop and Mobile tabs'],
+          ['Hold Space', 'Temporarily hide the dialog to peek at the editor behind it'],
           [`${mod}+Click`, 'On an inactive Image Picker search pill — activate it exclusively and clear the search input'],
           ['Double-click', 'An editable image in the email preview to open Image Properties']
         ])}
 
         ${section('Block &amp; ESL Editing', [
           ['Double-click', 'An ESL token in the email preview to open the ESL snippet editor']
+        ])}
+
+        ${section('Email Campaign List', [
+          ['←', 'Previous campaign in the side preview (when preview is open; not while typing in a field)'],
+          ['→', 'Next campaign in the side preview (when preview is open; not while typing in a field)']
         ])}
       </div>
       <div class="gem-welcome-modal__footer">
@@ -77,7 +94,19 @@
 
     document.body.appendChild(modal);
 
-    const closeModal = () => modal.remove();
+    if (typeof window.gemLayerRaise === 'function') {
+      window.gemLayerRaise(modal, { tier: 'modal' });
+    }
+
+    modal.tabIndex = -1;
+
+    const closeModal = () => {
+      unbindShortcutsModalEscape();
+      if (typeof window.gemLayerRelease === 'function') {
+        window.gemLayerRelease(modal);
+      }
+      modal.remove();
+    };
 
     modal.addEventListener('click', (e) => {
       if (e.target === modal || e.target.classList.contains('gem-welcome-modal__close') || e.target.classList.contains('gem-keyboard-shortcuts-close')) {
@@ -85,15 +114,78 @@
       }
     });
 
-    modal.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
+    if (typeof window.gemLayerBindEscape === 'function') {
+      shortcutsModalEscapeUnsub = window.gemLayerBindEscape(closeModal, {
+        whileConnected: () => !!document.getElementById('gem-keyboard-shortcuts-modal')
+      });
+    } else {
+      const onEscape = (e) => {
+        if (e.key !== 'Escape' && e.code !== 'Escape') return;
+        if (!document.getElementById('gem-keyboard-shortcuts-modal')) {
+          unbindShortcutsModalEscape();
+          return;
+        }
         closeModal();
         e.preventDefault();
         e.stopPropagation();
+      };
+      document.addEventListener('keydown', onEscape, true);
+      shortcutsModalEscapeUnsub = () => document.removeEventListener('keydown', onEscape, true);
+    }
+
+    requestAnimationFrame(() => {
+      try {
+        modal.focus({ preventScroll: true });
+      } catch (_) {
+        try { modal.focus(); } catch (_) {}
       }
     });
   }
 
   window.showGemKeyboardShortcutsModal = showKeyboardShortcutsModal;
+
+  function closeGemKeyboardShortcutsModal() {
+    const modal = document.getElementById('gem-keyboard-shortcuts-modal');
+    if (!modal) {
+      unbindShortcutsModalEscape();
+      return;
+    }
+    unbindShortcutsModalEscape();
+    if (typeof window.gemLayerRelease === 'function') {
+      window.gemLayerRelease(modal);
+    }
+    modal.remove();
+  }
+
+  window.closeGemKeyboardShortcutsModal = closeGemKeyboardShortcutsModal;
+
+  function gemWireShortcutHint(el) {
+    if (!el || el._gemShortcutHintWired) return el;
+    el._gemShortcutHintWired = true;
+    el.setAttribute('role', 'button');
+    el.setAttribute('tabindex', '0');
+    el.setAttribute('title', 'View keyboard shortcuts');
+    el.setAttribute('aria-label', 'View keyboard shortcuts');
+    const open = () => {
+      if (typeof window.showGemKeyboardShortcutsModal === 'function') {
+        window.showGemKeyboardShortcutsModal();
+      }
+    };
+    el.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      open();
+    });
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        e.stopPropagation();
+        open();
+      }
+    });
+    return el;
+  }
+
+  window.gemWireShortcutHint = gemWireShortcutHint;
 
 })();

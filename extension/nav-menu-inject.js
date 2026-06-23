@@ -54,9 +54,9 @@ function scanAndInsert(root = document) {
 }
 
 function observe() {
-  const observer = new MutationObserver((mutations) => {
-    mutations.forEach((mutation) => {
-      mutation.addedNodes.forEach((node) => {
+  window.gemDomWatchSubscribe(function (mutations) {
+    mutations.forEach(function (mutation) {
+      mutation.addedNodes.forEach(function (node) {
         if (node.nodeType !== 1) return;
         if (node.matches && node.matches(NAV_SELECTOR)) {
           insertItem(node);
@@ -65,11 +65,6 @@ function observe() {
         }
       });
     });
-  });
-
-  observer.observe(document.documentElement || document, {
-    childList: true,
-    subtree: true,
   });
 }
 

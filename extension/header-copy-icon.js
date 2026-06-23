@@ -181,31 +181,33 @@ function initializeHeaderCopyIcon() {
   setupHeaderHoverListeners();
 
   // Watch for new headers being added to the DOM
-  const observer = new MutationObserver((mutations) => {
-    mutations.forEach((mutation) => {
-      mutation.addedNodes.forEach((node) => {
-        if (node.nodeType === Node.ELEMENT_NODE) {
-          // Check if a new cb-header h1 was added
-          if (node.matches && node.matches('cb-header h1')) {
-            setupHeaderHoverListeners();
-          }
-
-          // Check descendants
-          if (node.querySelectorAll) {
-            const newHeaders = node.querySelectorAll('cb-header h1');
-            if (newHeaders.length > 0) {
+  if (typeof gemDomWatchSubscribe === 'function') {
+    gemDomWatchSubscribe(() => {
+      setupHeaderHoverListeners();
+    });
+  } else {
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        mutation.addedNodes.forEach((node) => {
+          if (node.nodeType === Node.ELEMENT_NODE) {
+            if (node.matches && node.matches('cb-header h1')) {
               setupHeaderHoverListeners();
             }
+            if (node.querySelectorAll) {
+              const newHeaders = node.querySelectorAll('cb-header h1');
+              if (newHeaders.length > 0) {
+                setupHeaderHoverListeners();
+              }
+            }
           }
-        }
+        });
       });
     });
-  });
-
-  observer.observe(document.documentElement, {
-    childList: true,
-    subtree: true
-  });
+    observer.observe(document.documentElement, {
+      childList: true,
+      subtree: true
+    });
+  }
 }
 
 // Wait for page to be ready before initializing

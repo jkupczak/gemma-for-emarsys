@@ -1,4 +1,4 @@
-console.log("keyboard-shortcuts.js loaded");
+console.log("[Gem] keyboard-shortcuts.js loaded");
 
 // Keyboard shortcuts for saving content
 // CMD+S (Mac) or CTRL+S (Windows/Linux) to trigger the save button
@@ -15,6 +15,106 @@ function initializeKeyboardShortcuts() {
     if (el.isContentEditable) return true;
     if (el.closest && el.closest('[contenteditable="true"]')) return true;
     return false;
+  }
+
+  /** True when Space should behave normally for the focused element (image picker peek disabled). */
+  function spacebarWouldAffectFocusedElement(el) {
+    if (!el || el === document.body || el === document.documentElement) return false;
+    const target = el.nodeType === Node.ELEMENT_NODE ? el : el.parentElement;
+    if (!target || !target.matches) return false;
+    if (isTypingTarget(target)) return true;
+    const tag = (target.tagName || '').toLowerCase();
+    if (tag === 'button' || tag === 'summary') return true;
+    if (target.closest && (
+      target.closest('.CodeMirror-focused') ||
+      target.closest('vce-codemirror') ||
+      target.closest('.e-select')
+    )) {
+      return true;
+    }
+    const roleEl = target.closest('[role]') || target;
+    const role = roleEl.getAttribute && roleEl.getAttribute('role');
+    if (role === 'textbox' || role === 'combobox' || role === 'listbox' ||
+        role === 'button' || role === 'checkbox' || role === 'radio' || role === 'searchbox') {
+      return true;
+    }
+    return false;
+  }
+
+  let gemImagePickerPeekActive = false;
+
+  function gemGetOpenEnhancedImagePropertiesDialog() {
+    const rootDoc = getRootDocument();
+    if (!rootDoc) return null;
+    const dialogs = rootDoc.querySelectorAll('.gem-enhanced-image-properties-dialog');
+    for (let i = dialogs.length - 1; i >= 0; i--) {
+      if (dialogs[i].isConnected) return dialogs[i];
+    }
+    return null;
+  }
+
+  function gemGetActiveElementForKeyboardEvent(event) {
+    try {
+      const doc = event.view && event.view.document;
+      if (doc && doc.activeElement) return doc.activeElement;
+    } catch (_) {}
+    try {
+      return getRootDocument().activeElement;
+    } catch (_) {
+      return document.activeElement;
+    }
+  }
+
+  function gemSetImagePickerPeek(active) {
+    const dialog = gemGetOpenEnhancedImagePropertiesDialog();
+    if (!dialog) {
+      gemImagePickerPeekActive = false;
+      try {
+        getRootDocument().querySelectorAll('.gem-image-picker-peek-through').forEach((el) => {
+          el.classList.remove('gem-image-picker-peek-through');
+        });
+      } catch (_) {}
+      return;
+    }
+    gemImagePickerPeekActive = !!active;
+    dialog.classList.toggle('gem-image-picker-peek-through', !!active);
+  }
+
+  function gemClearImagePickerPeekIfStale() {
+    if (!gemImagePickerPeekActive) return;
+    if (!gemGetOpenEnhancedImagePropertiesDialog()) {
+      gemSetImagePickerPeek(false);
+    }
+  }
+
+  function handleImagePickerPeekKeyDown(event) {
+    const isSpaceKey = event.key === ' ' || event.code === 'Space';
+    if (!isSpaceKey || event.metaKey || event.ctrlKey || event.altKey) return;
+
+    gemClearImagePickerPeekIfStale();
+    if (!gemGetOpenEnhancedImagePropertiesDialog()) return;
+
+    const ae = gemGetActiveElementForKeyboardEvent(event);
+    if (spacebarWouldAffectFocusedElement(ae)) return;
+
+    if (event.repeat) {
+      if (gemImagePickerPeekActive) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      return;
+    }
+
+    gemSetImagePickerPeek(true);
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  function handleImagePickerPeekKeyUp(event) {
+    const isSpaceKey = event.key === ' ' || event.code === 'Space';
+    if (!isSpaceKey) return;
+    if (!gemImagePickerPeekActive) return;
+    gemSetImagePickerPeek(false);
   }
 
   function getRootDocument() {
@@ -228,6 +328,54 @@ function initializeKeyboardShortcuts() {
     return true;
   }
 
+  function gemGetOpenLinkEditorFloatContainer(rootDoc) {
+    if (!rootDoc) return null;
+    for (const float of rootDoc.querySelectorAll('e-float-container')) {
+      const title = float.querySelector('.e-dialog__title');
+      if (!title) continue;
+      const text = String(title.textContent || '').replace(/\s+/g, ' ').trim();
+      if (text !== 'Link Editor') continue;
+      if (!float.querySelector('.apply')) continue;
+      return float;
+    }
+    return null;
+  }
+
+  function gemBlurLinkEditorCommitFields(float, event) {
+    if (!float) return;
+    try {
+      const rootDoc = getRootDocument();
+      const ae = rootDoc.activeElement;
+      if (ae && float.contains(ae) && gemShouldCommitImagePickerInputField(ae)) {
+        ae.blur();
+        ae.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      const w = event && event.view;
+      const d = w && w.document;
+      if (d && d !== rootDoc) {
+        const ae2 = d.activeElement;
+        if (ae2 && float.contains(ae2) && gemShouldCommitImagePickerInputField(ae2)) {
+          ae2.blur();
+          ae2.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      }
+    } catch (_) {}
+  }
+
+  function gemClickLinkEditorOkButton(event) {
+    const rootDoc = getRootDocument();
+    const float = gemGetOpenLinkEditorFloatContainer(rootDoc);
+    if (!float) return false;
+
+    gemBlurLinkEditorCommitFields(float, event);
+
+    const ok = float.querySelector('.apply');
+    if (!ok || ok.disabled || ok.getAttribute('aria-disabled') === 'true') return false;
+
+    ok.click();
+    return true;
+  }
+
   function getLanguageSelectorState() {
     const rootDoc = getRootDocument();
     const selector = rootDoc.querySelector('vce-languages-selector');
@@ -273,6 +421,16 @@ function initializeKeyboardShortcuts() {
     return String(text || '').replace(/\s+/g, ' ').trim();
   }
 
+  function getActionListItemLabelText(item) {
+    if (!item || item.nodeType !== Node.ELEMENT_NODE) return '';
+    if (!item.querySelector('.gem-lang-preflight-badge')) {
+      return normalizeOptionText(item.textContent || '');
+    }
+    const clone = item.cloneNode(true);
+    clone.querySelectorAll('.gem-lang-preflight-badge').forEach((el) => el.remove());
+    return normalizeOptionText(clone.textContent || '');
+  }
+
   function getActionListItems() {
     const rootDoc = getRootDocument();
     const containers = Array.from(rootDoc.querySelectorAll('e-float-container e-actionlist .e-actionlist__itemscontainer, e-actionlist .e-actionlist__itemscontainer'));
@@ -300,7 +458,7 @@ function initializeKeyboardShortcuts() {
       if (!items.length) return;
       let matches = 0;
       items.forEach((item) => {
-        const t = normalizeOptionText(item.textContent || '');
+        const t = getActionListItemLabelText(item);
         if (optionTextSet.has(t)) matches += 1;
       });
       const score = matches;
@@ -358,7 +516,7 @@ function initializeKeyboardShortcuts() {
       if (!match) return false;
 
       let targetItem = match.items.find((item) => {
-        const itemText = normalizeOptionText(item.textContent || '');
+        const itemText = getActionListItemLabelText(item);
         return itemText === targetText && itemText.length > 0;
       });
 
@@ -443,6 +601,7 @@ function initializeKeyboardShortcuts() {
 
           // Add the keyboard shortcut handler to the iframe
           iframeDoc.addEventListener('keydown', handleKeyDown, true);
+          iframeDoc.addEventListener('keyup', handleImagePickerPeekKeyUp, true);
           iframeDoc._gemKeyboardHandler = true;
 
           console.log("[Gem] Injected keyboard shortcuts into iframe");
@@ -524,6 +683,12 @@ function initializeKeyboardShortcuts() {
       !event.altKey &&
       (String(event.key || '').toLowerCase() === 'f');
 
+    const isMobilePreviewShortcut =
+      (event.metaKey || event.ctrlKey) &&
+      event.shiftKey &&
+      !event.altKey &&
+      String(event.key || '').toLowerCase() === 'm';
+
     const isLangPrevShortcut =
       (event.metaKey || event.ctrlKey) &&
       event.shiftKey &&
@@ -557,9 +722,23 @@ function initializeKeyboardShortcuts() {
 
     // In the Media DB iframe we only wire save, OK (Enter), and Desktop/Mobile (⌘D). Other Gem shortcuts stay inert.
     if (fromGemMediaDbIframe) {
-      if (isExpandedModeShortcut || isLangPrevShortcut || isLangNextShortcut) {
+      if (isExpandedModeShortcut || isMobilePreviewShortcut || isLangPrevShortcut || isLangNextShortcut) {
         return;
       }
+    }
+
+    if (
+      isEnterKey &&
+      !event.shiftKey &&
+      !event.metaKey &&
+      !event.ctrlKey &&
+      !event.altKey &&
+      gemClickLinkEditorOkButton(event)
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      return false;
     }
 
     if (isEnterKey && fromGemMediaDbIframe && !iframeTyping) {
@@ -633,7 +812,28 @@ function initializeKeyboardShortcuts() {
       }
 
       return false;
+    } else if (isMobilePreviewShortcut) {
+      console.log("[Gem] Mobile preview toggle shortcut detected:", event.metaKey ? 'CMD+SHIFT+M' : 'CTRL+SHIFT+M');
+
+      const ae = (event.target && event.target.ownerDocument ? event.target.ownerDocument.activeElement : document.activeElement);
+      if (isTypingTarget(ae || event.target)) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+
+      if (typeof window.gemToggleMobilePreview === 'function') {
+        if (!window.gemToggleMobilePreview()) {
+          console.log("[Gem] Mobile preview shortcut ignored — Inbox Preview is active");
+        }
+      }
+
+      return false;
     } else if (isLangPrevShortcut || isLangNextShortcut) {
+      if (document.getElementById('gem-compare-languages-modal')) {
+        return;
+      }
+
       console.log("[Gem] Language cycle shortcut detected:", {
         key: event.key,
         code: event.code,
@@ -668,13 +868,23 @@ function initializeKeyboardShortcuts() {
       event.stopImmediatePropagation();
       return false;
     }
+
+    handleImagePickerPeekKeyDown(event);
+  }
+
+  function handleKeyUp(event) {
+    handleImagePickerPeekKeyUp(event);
   }
 
   // Attach event listeners to window to catch events from anywhere (including iframes)
   window.addEventListener('keydown', handleKeyDown, true); // Use capture phase
+  window.addEventListener('keyup', handleKeyUp, true);
 
   // Also attach to document for redundancy
   document.addEventListener('keydown', handleKeyDown, true);
+  document.addEventListener('keyup', handleKeyUp, true);
+
+  window.addEventListener('blur', () => gemSetImagePickerPeek(false), true);
 
   // Monitor iframes and inject keyboard shortcuts into them
   monitorIframesForKeyboardShortcuts();

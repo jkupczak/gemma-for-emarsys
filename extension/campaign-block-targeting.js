@@ -245,14 +245,11 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
       return;
     }
 
-    const obs = new MutationObserver(() => {
+    window.gemDomWatchSubscribe(function () {
       if (document.querySelector(BUTTON_GROUP_SELECTOR) && document.querySelector(ANCHOR_SELECTOR)) {
-        obs.disconnect();
         injectToolbarButton();
       }
     });
-
-    obs.observe(document.documentElement, { childList: true, subtree: true });
   }
 
   function attachPreviewIframeLoadListener() {
@@ -430,7 +427,7 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
 
   // Watch for Block targeting dialogs appearing in the DOM
   function watchForBlockTargetingDialog() {
-    const dialogObserver = new MutationObserver((mutations) => {
+    window.gemDomWatchSubscribe(function (mutations) {
       for (const mutation of mutations) {
         for (const node of mutation.addedNodes) {
           if (node.nodeType !== Node.ELEMENT_NODE) continue;
@@ -459,8 +456,6 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
         }
       }
     });
-
-    dialogObserver.observe(document.documentElement, { childList: true, subtree: true });
   }
 
   // --- On-load: read from storage, or fall back to toolbar hints ---
@@ -485,8 +480,20 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
     });
   }
 
-  let toolbarHintsObserver = null;
+  let toolbarHintsUnsub = null;
+  let toolbarHintsIframeObs = null;
   let toolbarHintsTimer = null;
+
+  function clearToolbarHintsObservers() {
+    if (toolbarHintsUnsub) {
+      toolbarHintsUnsub();
+      toolbarHintsUnsub = null;
+    }
+    if (toolbarHintsIframeObs) {
+      toolbarHintsIframeObs.disconnect();
+      toolbarHintsIframeObs = null;
+    }
+  }
 
   function getIframeDoc() {
     try {
@@ -520,22 +527,25 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
       return;
     }
 
-    if (toolbarHintsObserver) return;
+    if (toolbarHintsUnsub || toolbarHintsIframeObs) return;
 
     console.log('[Gem][BlockTargeting][Debug] No toolbar buttons yet, setting up MutationObserver.');
 
-    // Observe both main document and iframe document for toolbar buttons
     const iframeDoc = getIframeDoc();
 
-    toolbarHintsObserver = new MutationObserver(() => {
+    toolbarHintsUnsub = window.gemDomWatchSubscribe(function () {
       if (findToolbarButtons()) {
         scheduleToolbarBuild();
       }
     });
 
-    toolbarHintsObserver.observe(document.documentElement, { childList: true, subtree: true });
     if (iframeDoc) {
-      toolbarHintsObserver.observe(iframeDoc.documentElement, { childList: true, subtree: true });
+      toolbarHintsIframeObs = new MutationObserver(function () {
+        if (findToolbarButtons()) {
+          scheduleToolbarBuild();
+        }
+      });
+      toolbarHintsIframeObs.observe(iframeDoc.documentElement, { childList: true, subtree: true });
       console.log('[Gem][BlockTargeting][Debug] Also observing iframe document.');
     }
   }
@@ -549,10 +559,7 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
   }
 
   function buildFromToolbar() {
-    if (toolbarHintsObserver) {
-      toolbarHintsObserver.disconnect();
-      toolbarHintsObserver = null;
-    }
+    clearToolbarHintsObservers();
 
     const toolbarBtns = findToolbarButtons();
     console.log('[Gem][BlockTargeting][Debug] buildFromToolbar — toolbar button count:', toolbarBtns ? toolbarBtns.length : 0);
@@ -590,22 +597,9 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
       return;
     }
 
-    const observer = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        for (const node of mutation.addedNodes) {
-          if (node.nodeType !== Node.ELEMENT_NODE) continue;
-          const found = (node.matches && node.matches(IFRAME_SELECTOR) && node)
-            || (node.querySelector && node.querySelector(IFRAME_SELECTOR));
-          if (found) {
-            observer.disconnect();
-            tryApplyWhenReady(found);
-            return;
-          }
-        }
-      }
+    window.gemDomWatchWaitFor(IFRAME_SELECTOR, function (found) {
+      tryApplyWhenReady(found);
     });
-
-    observer.observe(document.documentElement, { childList: true, subtree: true });
   }
 
   function tryApplyWhenReady(iframe) {
@@ -656,10 +650,7 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
       if (!Array.isArray(blocks)) return;
 
       // Real data arrived; stop watching for toolbar hints
-      if (toolbarHintsObserver) {
-        toolbarHintsObserver.disconnect();
-        toolbarHintsObserver = null;
-      }
+      clearToolbarHintsObservers();
 
       applyTargeting(blocks);
     } catch (_) {}
@@ -674,10 +665,9 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
   });
 
   attachPreviewIframeLoadListener();
-  const iframeForLoadObs = new MutationObserver(() => {
+  window.gemDomWatchSubscribe(function () {
     attachPreviewIframeLoadListener();
   });
-  iframeForLoadObs.observe(document.documentElement, { childList: true, subtree: true });
 
   console.log('[Gem][BlockTargeting] Initialized.');
 })();

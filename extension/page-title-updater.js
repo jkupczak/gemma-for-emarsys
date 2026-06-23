@@ -1,9 +1,12 @@
-console.log("page-title-updater.js loaded");
+console.log("[Gem] page-title-updater.js loaded");
 
 // Global variables
 let currentCampaignName = null;
 let campaignNameObserver = null;
-let saveButtonObserver = null;
+let saveButtonDomUnsub = null;
+let saveButtonAttributeUnsub = null;
+/** @type {Element | null} */
+let saveButtonAttributeTarget = null;
 let hasUnsavedChanges = false;
 let titleAnimationInterval = null;
 let animationState = 0; // 0 for 🔴, 1 for ⚫
@@ -70,6 +73,14 @@ function stopTitleAnimation() {
 }
 
 // Function to check if there are unsaved changes (save button not disabled)
+function reportUnsavedDraftToBackground(unsaved) {
+  try {
+    if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage) {
+      chrome.runtime.sendMessage({ action: "gemReportUnsavedDraft", unsaved: !!unsaved });
+    }
+  } catch (_) {}
+}
+
 function checkUnsavedChanges() {
   const saveButton = document.querySelector('cb-draft-save-button button');
   const isDisabled = saveButton && saveButton.hasAttribute('disabled');
@@ -79,6 +90,7 @@ function checkUnsavedChanges() {
   if (newHasUnsavedChanges !== hasUnsavedChanges) {
     console.log(`[Gem] Unsaved changes state changed: ${hasUnsavedChanges} → ${newHasUnsavedChanges}`);
     hasUnsavedChanges = newHasUnsavedChanges;
+    reportUnsavedDraftToBackground(newHasUnsavedChanges);
 
     // Start or stop animation based on unsaved changes state
     if (newHasUnsavedChanges) {
@@ -103,94 +115,142 @@ function monitorCampaignName() {
     console.log("[Gem] Found cb-campaign-name element:", campaignElement);
     const campaignName = campaignElement.textContent;
     updatePageTitle(campaignName);
+    monitorCampaignNameChanges(campaignElement);
   }
 
   // Set up a mutation observer to watch for the element appearing
   if (campaignNameObserver) {
-    campaignNameObserver.disconnect();
+    if (typeof campaignNameObserver === 'function') {
+      campaignNameObserver();
+    } else {
+      campaignNameObserver.disconnect();
+    }
+    campaignNameObserver = null;
   }
 
-  campaignNameObserver = new MutationObserver((mutations) => {
-    mutations.forEach((mutation) => {
-      mutation.addedNodes.forEach((node) => {
-        if (node.nodeType === Node.ELEMENT_NODE) {
-          // Check if this is the campaign name element
-          let campaignElement = null;
+  const onCampaignNameFound = (campaignElement) => {
+    console.log("[Gem] cb-campaign-name element appeared in DOM:", campaignElement);
+    const campaignName = campaignElement.textContent;
+    updatePageTitle(campaignName);
+    monitorCampaignNameChanges(campaignElement);
+  };
 
-          if (node.tagName === 'CB-CAMPAIGN-NAME') {
-            campaignElement = node;
-          } else if (node.querySelector) {
-            campaignElement = node.querySelector('cb-campaign-name');
+  if (typeof gemDomWatchWaitFor === 'function') {
+    campaignNameObserver = gemDomWatchWaitFor('cb-campaign-name', onCampaignNameFound);
+  } else {
+    campaignNameObserver = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        mutation.addedNodes.forEach((node) => {
+          if (node.nodeType === Node.ELEMENT_NODE) {
+            let campaignElement = null;
+
+            if (node.tagName === 'CB-CAMPAIGN-NAME') {
+              campaignElement = node;
+            } else if (node.querySelector) {
+              campaignElement = node.querySelector('cb-campaign-name');
+            }
+
+            if (campaignElement) {
+              onCampaignNameFound(campaignElement);
+            }
           }
-
-          if (campaignElement) {
-            console.log("[Gem] cb-campaign-name element appeared in DOM:", campaignElement);
-            const campaignName = campaignElement.textContent;
-            updatePageTitle(campaignName);
-
-            // Also monitor for changes to the campaign name text
-            monitorCampaignNameChanges(campaignElement);
-          }
-        }
+        });
       });
     });
-  });
 
-  campaignNameObserver.observe(document.body, {
-    childList: true,
-    subtree: true
-  });
+    campaignNameObserver.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
+  }
 
   console.log("[Gem] Started monitoring for cb-campaign-name element");
 }
 
 // Function to monitor save button state for unsaved changes indicator
-function monitorSaveButton() {
-  // Check initial state
-  checkUnsavedChanges();
+const SAVE_BUTTON_SELECTOR = 'cb-draft-save-button button';
 
-  // Set up mutation observer for save button changes
-  if (saveButtonObserver) {
-    saveButtonObserver.disconnect();
+function bindSaveButtonDisabledWatch(saveButton) {
+  if (!saveButton || saveButton.nodeType !== Node.ELEMENT_NODE) return;
+  if (saveButtonAttributeTarget === saveButton && saveButtonAttributeUnsub) return;
+
+  if (saveButtonAttributeUnsub) {
+    saveButtonAttributeUnsub();
+    saveButtonAttributeUnsub = null;
+  }
+  saveButtonAttributeTarget = saveButton;
+
+  if (typeof gemDomWatchObserveAttributes === 'function') {
+    saveButtonAttributeUnsub = gemDomWatchObserveAttributes(
+      saveButton,
+      () => checkUnsavedChanges(),
+      ['disabled']
+    );
+    return;
   }
 
-  saveButtonObserver = new MutationObserver((mutations) => {
-    mutations.forEach((mutation) => {
-      // Check if this mutation affects the save button
-      if (mutation.type === 'attributes' && mutation.attributeName === 'disabled') {
-        const target = mutation.target;
-        if (target.matches && target.matches('cb-draft-save-button button')) {
-          console.log("[Gem] Save button disabled state changed");
-          checkUnsavedChanges();
-        }
-      }
-
-      // Also check for newly added save buttons
-      mutation.addedNodes.forEach((node) => {
-        if (node.nodeType === Node.ELEMENT_NODE) {
-          let saveButton = null;
-
-          if (node.matches && node.matches('cb-draft-save-button button')) {
-            saveButton = node;
-          } else if (node.querySelector) {
-            saveButton = node.querySelector('cb-draft-save-button button');
-          }
-
-          if (saveButton) {
-            console.log("[Gem] Save button appeared in DOM, monitoring state");
-            checkUnsavedChanges();
-          }
-        }
-      });
-    });
-  });
-
-  saveButtonObserver.observe(document.body, {
-    childList: true,
-    subtree: true,
+  const attrObserver = new MutationObserver(() => checkUnsavedChanges());
+  attrObserver.observe(saveButton, {
     attributes: true,
     attributeFilter: ['disabled']
   });
+  saveButtonAttributeUnsub = () => {
+    attrObserver.disconnect();
+    saveButtonAttributeTarget = null;
+  };
+}
+
+function attachSaveButtonWatchIfPresent() {
+  const saveButton = document.querySelector(SAVE_BUTTON_SELECTOR);
+  if (!saveButton) return;
+  bindSaveButtonDisabledWatch(saveButton);
+  checkUnsavedChanges();
+}
+
+function onSaveButtonFound(saveButton) {
+  console.log("[Gem] Save button appeared in DOM, monitoring state");
+  bindSaveButtonDisabledWatch(saveButton);
+  checkUnsavedChanges();
+}
+
+function monitorSaveButton() {
+  checkUnsavedChanges();
+  reportUnsavedDraftToBackground(hasUnsavedChanges);
+  attachSaveButtonWatchIfPresent();
+
+  if (saveButtonDomUnsub) {
+    saveButtonDomUnsub();
+    saveButtonDomUnsub = null;
+  }
+
+  if (typeof gemDomWatchWaitFor === 'function') {
+    saveButtonDomUnsub = gemDomWatchWaitFor(SAVE_BUTTON_SELECTOR, onSaveButtonFound);
+  }
+
+  const domUnsub = typeof gemDomWatchSubscribe === 'function'
+    ? gemDomWatchSubscribe(function (mutations) {
+        mutations.forEach(function (mutation) {
+          mutation.addedNodes.forEach(function (node) {
+            if (node.nodeType !== Node.ELEMENT_NODE) return;
+            let saveButton = null;
+            if (node.matches && node.matches(SAVE_BUTTON_SELECTOR)) {
+              saveButton = node;
+            } else if (node.querySelector) {
+              saveButton = node.querySelector(SAVE_BUTTON_SELECTOR);
+            }
+            if (saveButton) onSaveButtonFound(saveButton);
+          });
+        });
+      })
+    : null;
+
+  if (domUnsub) {
+    const waitForUnsub = saveButtonDomUnsub;
+    saveButtonDomUnsub = function () {
+      if (typeof waitForUnsub === 'function') waitForUnsub();
+      domUnsub();
+    };
+  }
 
   console.log("[Gem] Started monitoring save button for unsaved changes");
 }
@@ -224,6 +284,15 @@ function cleanupTitleAnimation() {
     clearInterval(titleAnimationInterval);
     titleAnimationInterval = null;
   }
+  if (saveButtonDomUnsub) {
+    saveButtonDomUnsub();
+    saveButtonDomUnsub = null;
+  }
+  if (saveButtonAttributeUnsub) {
+    saveButtonAttributeUnsub();
+    saveButtonAttributeUnsub = null;
+  }
+  saveButtonAttributeTarget = null;
 }
 
 // Initialize the page title updater

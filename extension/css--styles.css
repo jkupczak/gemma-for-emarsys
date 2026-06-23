@@ -2753,3 +2753,22 @@ input.gem-input, select.gem-select {
 tr.gem-selected-image {
     box-shadow: inset 0 0 12px var(--token-primary-500);
 }
+
+.e-layout__back { display: none; }
+
+cb-header.e-layout__header .gem-compact-email-tools-menu-wrap--header {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  margin-right: 12px;
+  vertical-align: middle;
+}
+
+cb-header.e-layout__header .gem-compact-email-tools-menu-wrap--header .gem-recent-campaign-row-menu-trigger {
+  width: 36px;
+  height: 36px;
+}
+
+cb-header.e-layout__header .gem-compact-email-tools-menu-wrap--header .gem-recent-campaign-row-menu-trigger::before {
+  font-size: var(--token-icon-default-size);
+}

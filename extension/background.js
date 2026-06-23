@@ -7,6 +7,11 @@ try { importScripts('debug-logging-gate.js'); } catch (_) {}
 
 console.log("[Gem] Background script loading...");
 let recentCampaignOpenTabsCache = { byCampaignId: {}, openCampaignUrls: {}, openCampaignKeys: {} };
+/** @type {Record<string, boolean>} tab id string -> unsaved draft state */
+let recentCampaignUnsavedByTabId = {};
+let rcTabsRefreshTimer = null;
+const RC_TABS_REFRESH_DEBOUNCE_MS = 300;
+const EMARSYS_TAB_URL_PATTERN = 'https://*.emarsys.net/*';
 
 // --- Emarsys duplicate campaign ---
 
@@ -44,9 +49,10 @@ function rcGetCampaignIdFromTabUrl(url) {
     if (!raw) return null;
     const parsed = new URL(url);
 
-    // campaignmanager.php?action=details&camp_id=... (e.g. after duplicate redirect)
+    // campaignmanager.php?action=details|save&camp_id=... (settings / save workflow)
     if ((parsed.pathname || "").includes("campaignmanager.php")) {
-      if (parsed.searchParams.get("action") === "details") {
+      const action = (parsed.searchParams.get("action") || "").trim();
+      if (action === "details" || action === "save") {
         return (parsed.searchParams.get("camp_id") || "").trim() || null;
       }
       return null;
@@ -387,7 +393,32 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     Object.values(openCampaignKeys).forEach((tid) => {
       if (tid != null) tabIdSet.add(tid);
     });
-    queryTabsUnsavedDraftState(Array.from(tabIdSet), (tabUnsaved) => {
+    const tabIds = Array.from(tabIdSet);
+    const tabUnsaved = {};
+    const missingTabIds = [];
+    tabIds.forEach((tid) => {
+      const key = String(tid);
+      if (Object.prototype.hasOwnProperty.call(recentCampaignUnsavedByTabId, key)) {
+        tabUnsaved[key] = !!recentCampaignUnsavedByTabId[key];
+      } else {
+        missingTabIds.push(tid);
+      }
+    });
+    if (!missingTabIds.length) {
+      sendResponse({
+        ok: true,
+        byCampaignId,
+        openCampaignUrls,
+        openCampaignKeys,
+        tabUnsaved
+      });
+      return;
+    }
+    queryTabsUnsavedDraftState(missingTabIds, (queried) => {
+      Object.assign(tabUnsaved, queried);
+      Object.keys(queried).forEach((key) => {
+        recentCampaignUnsavedByTabId[key] = !!queried[key];
+      });
       sendResponse({
         ok: true,
         byCampaignId,
@@ -397,6 +428,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       });
     });
     return true;
+  }
+
+  if (action === "gemReportUnsavedDraft") {
+    const tabId = sender && sender.tab && sender.tab.id != null ? sender.tab.id : null;
+    if (tabId != null) {
+      recentCampaignUnsavedByTabId[String(tabId)] = !!msg.unsaved;
+    }
+    return;
   }
 
   if (action === "focusOrOpenCampaignTab") {
@@ -946,7 +985,7 @@ chrome.action.onClicked.addListener(async (tab) => {
 bgLog("Background service worker initialized");
 
 function broadcastRecentCampaignOpenTabsUpdated() {
-  chrome.tabs.query({}, (tabs) => {
+  chrome.tabs.query({ url: EMARSYS_TAB_URL_PATTERN }, (tabs) => {
     (Array.isArray(tabs) ? tabs : []).forEach((tab) => {
       if (tab && tab.id != null) {
         chrome.tabs.sendMessage(tab.id, { action: "recentCampaignOpenTabsUpdated" }, () => {});
@@ -979,13 +1018,24 @@ function refreshRecentCampaignOpenTabsCache() {
   });
 }
 
-chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
-  refreshRecentCampaignOpenTabsCache();
+function scheduleRefreshRecentCampaignOpenTabsCache() {
+  if (rcTabsRefreshTimer) clearTimeout(rcTabsRefreshTimer);
+  rcTabsRefreshTimer = setTimeout(() => {
+    rcTabsRefreshTimer = null;
+    refreshRecentCampaignOpenTabsCache();
+  }, RC_TABS_REFRESH_DEBOUNCE_MS);
+}
+
+chrome.tabs.onUpdated.addListener((_tabId, changeInfo) => {
+  if (changeInfo.url !== undefined || changeInfo.status === 'complete') {
+    scheduleRefreshRecentCampaignOpenTabsCache();
+  }
 });
-chrome.tabs.onActivated.addListener(() => refreshRecentCampaignOpenTabsCache());
-chrome.windows.onFocusChanged.addListener(() => refreshRecentCampaignOpenTabsCache());
-refreshRecentCampaignOpenTabsCache();
+chrome.tabs.onActivated.addListener(() => scheduleRefreshRecentCampaignOpenTabsCache());
+chrome.windows.onFocusChanged.addListener(() => scheduleRefreshRecentCampaignOpenTabsCache());
+scheduleRefreshRecentCampaignOpenTabsCache();
 
 chrome.tabs.onRemoved.addListener((tabId) => {
-  refreshRecentCampaignOpenTabsCache();
+  delete recentCampaignUnsavedByTabId[String(tabId)];
+  scheduleRefreshRecentCampaignOpenTabsCache();
 });

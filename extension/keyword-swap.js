@@ -10,11 +10,16 @@ function initializeKeywordSwap() {
 
   function initializePreheaderKeywordSwap() {
     // Watch for cb-preheader elements to appear
-    const preheaderObserver = new MutationObserver((mutations) => {
-      mutations.forEach((mutation) => {
-        mutation.addedNodes.forEach((node) => {
+    // Also check for existing preheader elements
+    const existingPreheader = document.querySelector('cb-preheader');
+    if (existingPreheader && !existingPreheader._gemKeywordSwapInitialized) {
+      setupPreheaderKeywordSwap(existingPreheader);
+    }
+
+    window.gemDomWatchSubscribe(function (mutations) {
+      mutations.forEach(function (mutation) {
+        mutation.addedNodes.forEach(function (node) {
           if (node.nodeType === Node.ELEMENT_NODE) {
-            // Check if this is a cb-preheader element
             const preheader = node.matches && node.matches('cb-preheader') ? node :
                              node.querySelector && node.querySelector('cb-preheader');
 
@@ -24,17 +29,6 @@ function initializeKeywordSwap() {
           }
         });
       });
-    });
-
-    // Also check for existing preheader elements
-    const existingPreheader = document.querySelector('cb-preheader');
-    if (existingPreheader && !existingPreheader._gemKeywordSwapInitialized) {
-      setupPreheaderKeywordSwap(existingPreheader);
-    }
-
-    preheaderObserver.observe(document.body, {
-      childList: true,
-      subtree: true
     });
 
     console.log("[Gem-Keyword-Swap] Preheader keyword swap handler initialized");
@@ -319,12 +313,17 @@ function initializeKeywordSwap() {
   // ------------------------------------------------------------
 
   function initializeConditionalEditorKeywordSwap() {
-    // Watch for cb-conditional-editor elements to appear
-    const conditionalObserver = new MutationObserver((mutations) => {
-      mutations.forEach((mutation) => {
-        mutation.addedNodes.forEach((node) => {
+    const existingConditionalEditors = document.querySelectorAll('cb-conditional-editor');
+    existingConditionalEditors.forEach(function (editor) {
+      if (!editor._gemConditionalKeywordSwapInitialized) {
+        setupConditionalEditorKeywordSwap(editor);
+      }
+    });
+
+    window.gemDomWatchSubscribe(function (mutations) {
+      mutations.forEach(function (mutation) {
+        mutation.addedNodes.forEach(function (node) {
           if (node.nodeType === Node.ELEMENT_NODE) {
-            // Check if this is a cb-conditional-editor element
             const conditionalEditor = node.matches && node.matches('cb-conditional-editor') ? node :
                                     node.querySelector && node.querySelector('cb-conditional-editor');
 
@@ -334,19 +333,6 @@ function initializeKeywordSwap() {
           }
         });
       });
-    });
-
-    // Also check for existing conditional editors
-    const existingConditionalEditors = document.querySelectorAll('cb-conditional-editor');
-    existingConditionalEditors.forEach(editor => {
-      if (!editor._gemConditionalKeywordSwapInitialized) {
-        setupConditionalEditorKeywordSwap(editor);
-      }
-    });
-
-    conditionalObserver.observe(document.body, {
-      childList: true,
-      subtree: true
     });
 
     console.log("[Gem-Keyword-Swap] Conditional editor keyword swap handler initialized");
@@ -498,12 +484,15 @@ function initializeKeywordSwap() {
   // ------------------------------------------------------------
 
   function initializeSubjectLineKeywordSwap() {
-    // Watch for subject line input elements to appear
-    const subjectObserver = new MutationObserver((mutations) => {
-      mutations.forEach((mutation) => {
-        mutation.addedNodes.forEach((node) => {
+    const existingSubjectInput = document.querySelector('cb-personalizable-input-with-context#subject-line-input');
+    if (existingSubjectInput && !existingSubjectInput._gemSubjectKeywordSwapInitialized) {
+      setupSubjectLineKeywordSwap(existingSubjectInput);
+    }
+
+    window.gemDomWatchSubscribe(function (mutations) {
+      mutations.forEach(function (mutation) {
+        mutation.addedNodes.forEach(function (node) {
           if (node.nodeType === Node.ELEMENT_NODE) {
-            // Check if this is a subject line input element
             const subjectInput = node.matches && node.matches('cb-personalizable-input-with-context#subject-line-input') ? node :
                                 node.querySelector && node.querySelector('cb-personalizable-input-with-context#subject-line-input');
 
@@ -513,17 +502,6 @@ function initializeKeywordSwap() {
           }
         });
       });
-    });
-
-    // Also check for existing subject line input
-    const existingSubjectInput = document.querySelector('cb-personalizable-input-with-context#subject-line-input');
-    if (existingSubjectInput && !existingSubjectInput._gemSubjectKeywordSwapInitialized) {
-      setupSubjectLineKeywordSwap(existingSubjectInput);
-    }
-
-    subjectObserver.observe(document.body, {
-      childList: true,
-      subtree: true
     });
 
     console.log("[Gem-Keyword-Swap] Subject line keyword swap handler initialized");

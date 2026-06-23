@@ -32,9 +32,13 @@
   setInterval(checkValue, 300);
 
   if (!startSelectObserver()) {
-    const domObs = new MutationObserver(() => {
-      if (startSelectObserver()) domObs.disconnect();
-    });
-    domObs.observe(document.documentElement, { childList: true, subtree: true });
+    if (typeof gemDomWatchWaitFor === 'function') {
+      gemDomWatchWaitFor('e-select', () => startSelectObserver());
+    } else {
+      const domObs = new MutationObserver(() => {
+        if (startSelectObserver()) domObs.disconnect();
+      });
+      domObs.observe(document.documentElement, { childList: true, subtree: true });
+    }
   }
 })();

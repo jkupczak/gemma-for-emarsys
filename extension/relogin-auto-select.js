@@ -193,7 +193,7 @@ function dismissOverlay() {
 // --- Relogin detection: navigate via value URL or click fallback ---
 
 let mutationCount = 0;
-let observer = null;
+let observerUnsub = null;
 /** @type {{ cancel: () => void } | null} */
 let buttonWatchTimer = null;
 let visibilityRetryInstalled = false;
@@ -269,9 +269,9 @@ function tryReloginContinue() {
 }
 
 function stopButtonWatch() {
-  if (observer) {
-    observer.disconnect();
-    observer = null;
+  if (observerUnsub) {
+    observerUnsub();
+    observerUnsub = null;
   }
   if (buttonWatchTimer) {
     buttonWatchTimer.cancel();
@@ -305,15 +305,26 @@ function startButtonWatch() {
     return;
   }
 
-  if (!observer) {
-    observer = new MutationObserver(() => {
-      mutationCount++;
-      if (tryReloginContinue()) {
-        log('Relogin interstitial found after', mutationCount, 'mutation batch(es). Observer disconnected.');
-        stopButtonWatch();
-      }
-    });
-    observer.observe(document.documentElement, { childList: true, subtree: true });
+  if (!observerUnsub) {
+    if (typeof gemDomWatchSubscribe === 'function') {
+      observerUnsub = gemDomWatchSubscribe(() => {
+        mutationCount++;
+        if (tryReloginContinue()) {
+          log('Relogin interstitial found after', mutationCount, 'mutation batch(es). Observer disconnected.');
+          stopButtonWatch();
+        }
+      });
+    } else {
+      const observer = new MutationObserver(() => {
+        mutationCount++;
+        if (tryReloginContinue()) {
+          log('Relogin interstitial found after', mutationCount, 'mutation batch(es). Observer disconnected.');
+          stopButtonWatch();
+        }
+      });
+      observer.observe(document.documentElement, { childList: true, subtree: true });
+      observerUnsub = () => observer.disconnect();
+    }
   }
 
   if (!buttonWatchTimer) {

@@ -151,10 +151,10 @@ html.FLIPPER-theme-eveningHorizon .e-navigation__panel #gem-nav-settings-item .e
 
 /* Welcome Modal */
 /* Settings panel: keyboard shortcuts modal (shared modal shell) */
-.gem-welcome-modal {
+.gem-welcome-modal,
+.gem-layer-modal {
     position: fixed;
     inset: 0;
-    z-index: 2147483647; /* stay above Emarsys dialogs */
     display: flex;
     align-items: center;
     justify-content: center;
@@ -191,16 +191,11 @@ html.FLIPPER-theme-eveningHorizon .e-navigation__panel #gem-nav-settings-item .e
 
 
 .gem-welcome-modal {
-    position: fixed;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
     background: rgba(0, 0, 0, 0.7);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 10000;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
@@ -514,6 +509,13 @@ span.gem-e-icon {
     margin-bottom: 0;
 }
 
+.gem-recent-campaigns-panel .gem-recent-campaign-row--preview-active {
+    box-shadow:
+        inset 0 -1px 0 1px var(--token-button-highlight-background),
+        inset 0 0 0 1px var(--token-button-highlight-background);
+    border-radius: 6px;
+}
+
 .gem-recent-campaigns-panel .gem-recent-campaign-row-inner {
     display: flex;
     flex-direction: row;
@@ -789,13 +791,30 @@ color-mix(in srgb, var(--token-gray-100, #dbeafe) 25%, transparent);
     text-overflow: ellipsis;
 }
 
+.gem-recent-campaigns-panel .gem-recent-campaign-status-notices {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin: 0 0 2px 0;
+}
+
+.gem-recent-campaigns-panel .gem-recent-campaign-status-notices:not(
+    :has(
+        .gem-recent-campaign-preflight-notice,
+        .gem-recent-campaign-unsaved-notice:not(.gem-recent-campaign-unsaved-notice--hidden)
+    )
+) {
+    display: none;
+}
+
 .gem-recent-campaigns-panel .gem-recent-campaign-unsaved-notice {
     display: inline-flex;
     align-items: center;
     align-self: flex-start;
     width: fit-content;
     max-width: 100%;
-    margin: 0 0 6px 0;
+    margin: 0;
     padding: 3px 9px;
     border-radius: 999px;
     font-size: 11px;
@@ -817,7 +836,7 @@ color-mix(in srgb, var(--token-gray-100, #dbeafe) 25%, transparent);
     align-self: flex-start;
     width: fit-content;
     max-width: 100%;
-    margin: 0 0 6px 0;
+    margin: 0;
     padding: 3px 9px;
     border-radius: 999px;
     font-size: 11px;
@@ -883,15 +902,39 @@ color-mix(in srgb, var(--token-gray-100, #dbeafe) 25%, transparent);
     flex: 1;
     min-width: 0;
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: 8px;
 }
 
-.gem-panel-shortcut-hint {
-    font-size: 12px;
-    font-weight: 400;
-    color: var(--token-font-secondary, rgba(0, 0, 0, 0.42));
+.gem-shortcut-hint {
+    --gem-shortcut-hint-hover-bg: rgba(255, 255, 255, 0.22);
+    background: transparent;
+    border-radius: 8px;
+    padding: 1px 8px;
+    display: inline-flex;
+    align-items: center;
+    height: 30px;
+    color: rgba(255, 255, 255, 0.72);
+    font-weight: bold;
+    font-size: 14px;
+    letter-spacing: 2px;
     white-space: nowrap;
+    cursor: pointer;
+    border: none;
+    box-sizing: border-box;
+    font-family: inherit;
+    line-height: 1;
+    box-shadow: none;
+}
+
+.gem-shortcut-hint:hover {
+    background: var(--gem-shortcut-hint-hover-bg);
+    box-shadow: 0 0 0 1px var(--gem-shortcut-hint-hover-bg);
+}
+
+.gem-shortcut-hint--on-surface {
+    --gem-shortcut-hint-hover-bg: rgba(0, 0, 0, 0.08);
+    color: rgba(0, 0, 0, 0.55);
 }
 
 .gem-recent-campaigns-panel-close {
@@ -1056,6 +1099,13 @@ color-mix(in srgb, var(--token-gray-100, #dbeafe) 25%, transparent);
     flex-direction: column;
 }
 
+.gem-recent-campaigns-preview-iframe-stack {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
 .gem-recent-campaigns-preview-iframe {
     flex: 1;
     width: 100%;
@@ -1063,6 +1113,23 @@ color-mix(in srgb, var(--token-gray-100, #dbeafe) 25%, transparent);
     min-height: 0;
     display: block;
     background: #fff;
+}
+
+.gem-recent-campaigns-preview-iframe--active {
+    position: relative;
+    opacity: 1;
+    visibility: visible;
+    z-index: 1;
+    height: 100%;
+}
+
+.gem-recent-campaigns-preview-iframe--cached {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    z-index: 0;
 }
 
 .gem-recent-campaigns-preview-loading {
@@ -1073,6 +1140,50 @@ color-mix(in srgb, var(--token-gray-100, #dbeafe) 25%, transparent);
     justify-content: center;
     background: color-mix(in srgb, var(--token-box-default-background, #fff) 72%, transparent);
     z-index: 2;
+}
+
+.gem-recent-campaigns-preview-loading--dimmed {
+    background: color-mix(in srgb, var(--token-box-default-background, #fff) 40%, transparent);
+}
+
+.gem-recent-campaigns-preview-loading--dimmed .gem-recent-campaigns-preview-loading-spinner {
+    display: none;
+}
+
+.gem-recent-campaigns-preview-loading--spinner {
+    background: color-mix(in srgb, var(--token-box-default-background, #fff) 72%, transparent);
+}
+
+.gem-recent-campaigns-preview-loading--flash {
+    background: color-mix(in srgb, var(--token-box-default-background, #fff) 50%, transparent);
+}
+
+.gem-recent-campaigns-preview-loading--flash .gem-recent-campaigns-preview-loading-spinner {
+    width: 20px;
+    height: 20px;
+    border-width: 2px;
+}
+
+.gem-recent-campaigns-preview-loading--error {
+    background: color-mix(in srgb, var(--token-box-default-background, #fff) 92%, transparent);
+}
+
+.gem-recent-campaigns-preview-loading--error .gem-recent-campaigns-preview-loading-spinner {
+    display: none;
+}
+
+.gem-recent-campaigns-preview-loading-message {
+    display: none;
+    max-width: 320px;
+    padding: 0 20px;
+    text-align: center;
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--token-box-default-text, #333);
+}
+
+.gem-recent-campaigns-preview-loading--error .gem-recent-campaigns-preview-loading-message {
+    display: block;
 }
 
 .gem-recent-campaigns-preview-loading[hidden] {
@@ -1304,6 +1415,7 @@ color-mix(in srgb, var(--token-gray-100, #dbeafe) 25%, transparent);
     background-image: linear-gradient(45deg, var(--token-background-strong) 25%, transparent 25%, transparent 75%, var(--token-background-strong) 75%, var(--token-background-strong)), linear-gradient(45deg, var(--token-background-strong) 25%, transparent 25%, transparent 75%, var(--token-background-strong) 75%, var(--token-background-strong));
     background-position: 0px 0px, 10px 10px;
     background-size: 20px 20px;
+    align-items: center;
 }
 
 

@@ -1,6 +1,6 @@
 {
   "name": "Gemma for Emarsys",
-  "version": "12.6.0",
+  "version": "13.0.0",
   "manifest_version": 3,
   "description": "Enhances the Emarsys email editor with a settings panel and more!",
   "permissions": ["storage", "tabs", "activeTab", "webNavigation"],
@@ -25,31 +25,31 @@
     {
       "matches": ["https://*.emarsys.net/*"], 
       "css": ["css--theme.css", "css--global-styles.css", "css--settings-panel.css"],
-      "js": ["debug-logging-gate.js", "emarsys-auth.js", "page-localstorage-guard.js", "platform.js", "highlight-terms-settings.js", "keyboard-shortcuts-modal.js", "theme-applier.js", "gem-toast.js", "settings-panel.js", "nav-menu-inject.js", "notes.js", "recent-campaigns.js", "storage-measurement.js", "welcome-modal.js"],
+      "js": ["debug-logging-gate.js", "gem-dom-watch.js", "emarsys-auth.js", "page-localstorage-guard.js", "platform.js", "gem-layer-stack.js", "highlight-terms-settings.js", "keyboard-shortcuts-modal.js", "theme-applier.js", "gem-toast.js", "settings-panel.js", "nav-menu-inject.js", "notes.js", "recent-campaigns.js", "storage-measurement.js", "welcome-modal.js"],
       "run_at": "document_start"
     },
     {
       "matches": ["https://*.emarsys.net/bootstrap.php?*r=MediaDB/popup*"], 
-      "js": ["media-db-popup.js"],
+      "js": ["debug-logging-gate.js", "gem-dom-watch.js", "media-db-popup.js"],
       "css": ["css--MediaDB-popup.css"],
       "all_frames": true,
       "run_at": "document_start"
     },
     {
       "matches": ["https://*.emarsys.net/bootstrap.php?*r=customer/Login/Relogin*"],
-      "js": ["relogin-auto-select.js"],
+      "js": ["debug-logging-gate.js", "gem-dom-watch.js", "relogin-auto-select.js"],
       "run_at": "document_start"
     },
     {
       "matches": ["https://*.emarsys.net/bootstrap.php?*r=emailCampaignList/index*"], 
       "css": ["css--email-campaign-list.css"],
-      "js": ["gem-toast.js", "email-campaign-list.js"],
+      "js": ["platform.js", "gem-toast.js", "email-campaign-list.js"],
       "run_at": "document_start"
     },
     {
       "matches": ["https://client-version.cf.emarsys.net/rti-node-dialog/latest/ac-send-email.html*"],
       "css": ["css--rti-send-email.css"],
-      "js": ["rti-send-email.js"],
+      "js": ["debug-logging-gate.js", "gem-dom-watch.js", "rti-send-email.js"],
       "all_frames": true,
       "run_at": "document_start"
     },
@@ -65,17 +65,16 @@
       "run_at": "document_start"
     },
     {
-      "matches": [
-        "https://*.emarsys.net/preview_fs.php?*gem_preview_context=emailCampaignList*"
-      ],
-      "css": ["css--email-campaign-list-preview-fs.css"],
+      "matches": ["https://*.emarsys.net/preview_fs_iframe.php?*camp_id=*"],
+      "js": ["preview-fs-iframe-bridge.js"],
+      "world": "MAIN",
       "all_frames": true,
       "run_at": "document_start"
     },
     {
       "matches": ["https://*.emarsys.net/bootstrap.php?*r=eventCenter/index*"],
       "css": ["css--event-center.css"],
-      "js": ["event-center.js"],
+      "js": ["debug-logging-gate.js", "gem-dom-watch.js", "event-center.js"],
       "run_at": "document_start"
     },
     {
@@ -85,8 +84,8 @@
         "https://*.emarsys.net//bootstrap.php?*r=contentBlocks/campaign*",
         "https://*.emarsys.net//bootstrap.php?*r=contentBlocks%2Fcampaign*"
       ],
-      "js": ["alt-text-preview.js", "verticalnav-enhancer.js", "mobile-view.js", "textarea-expand.js", "text-highlighting.js", "color-swatch-manager.js", "keyboard-shortcuts.js", "language-load-overlay.js", "toggle-page-elements.js", "page-title-updater.js", "draft-save-indicator.js", "condensed-blocks-panel.js", "mobile-contact-preview.js", "lz-string.min.js", "snippet-storage.js", "favorite-image-storage.js", "gem-toast.js", "content-block-toolbar.js", "header-copy-icon.js", "block-pinning.js", "sortable.min.js", "overlay-panel-controls.js", "expanded-view.js", "snippets-tab.js", "preflight-panel.js", "keyword-swap.js", "custom-paste-loader.js", "campaign-draft-data-loader.js", "campaign-block-targeting.js"],
-      "css": ["css--styles.css", "css--e-panels.css", "css--expanded-view.css"]
+      "js": ["debug-logging-gate.js", "gem-dom-watch.js", "gem-layer-stack.js", "alt-text-preview.js", "verticalnav-enhancer.js", "mobile-view.js", "textarea-expand.js", "text-highlighting.js", "color-swatch-manager.js", "keyboard-shortcuts.js", "language-load-overlay.js", "page-title-updater.js", "draft-save-indicator.js", "condensed-blocks-panel.js", "mobile-contact-preview.js", "lz-string.min.js", "snippet-storage.js", "favorite-image-storage.js", "gem-toast.js", "content-block-toolbar.js", "header-copy-icon.js", "block-pinning.js", "sortable.min.js", "overlay-panel-controls.js", "expanded-view.js", "snippets-tab.js", "preflight-panel.js", "keyword-swap.js", "custom-paste-loader.js", "campaign-draft-data-loader.js", "campaign-block-targeting.js", "compare-languages.js"],
+      "css": ["css--styles.css", "css--e-panels.css", "css--expanded-view.css", "css--compare-languages.css"]
     }
   ]
 } 

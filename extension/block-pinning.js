@@ -627,25 +627,21 @@ function initializeBlockPinning() {
   monitorBlockList();
 
   // Watch for new blocks being added to the DOM
-  const observer = new MutationObserver((mutations) => {
+  window.gemDomWatchSubscribe(function (mutations) {
     let hasNewBlocks = false;
 
-    mutations.forEach((mutation) => {
-      // Only process childList mutations (not attribute changes)
+    mutations.forEach(function (mutation) {
       if (mutation.type === 'childList') {
-        mutation.addedNodes.forEach((node) => {
+        mutation.addedNodes.forEach(function (node) {
           if (node.nodeType === Node.ELEMENT_NODE) {
-            // Check if a new block template was added
             if (node.matches && node.matches('.block-template')) {
               hasNewBlocks = true;
             }
 
-            // Check if a container with block templates was added
             if (node.matches && node.matches('.block-templates')) {
               hasNewBlocks = true;
             }
 
-            // Check descendants
             if (node.querySelectorAll) {
               const newBlocks = node.querySelectorAll('.block-template');
               const newContainers = node.querySelectorAll('.block-templates');
@@ -659,17 +655,11 @@ function initializeBlockPinning() {
     });
 
     if (hasNewBlocks) {
-      // Small delay to ensure DOM is ready, then process and apply classes
-      setTimeout(() => {
+      setTimeout(function () {
         processNewBlocks();
         applyPinnedClasses();
       }, 150);
     }
-  });
-
-  observer.observe(document.documentElement, {
-    childList: true,
-    subtree: true
   });
 
   // Listen for storage changes to update pin icons and classes
@@ -803,22 +793,19 @@ function initializeBlockPinning() {
 
   // Function to wait for and monitor the block list element
   function monitorBlockList() {
-    const observer = new MutationObserver((mutations) => {
+    window.gemDomWatchSubscribe(function (mutations) {
       let shouldCheckButtons = false;
       let shouldProcessBlocks = false;
 
-      mutations.forEach((mutation) => {
-        // Check added nodes for cb-available-block-list, block containers, or blocks
-        mutation.addedNodes.forEach((node) => {
+      mutations.forEach(function (mutation) {
+        mutation.addedNodes.forEach(function (node) {
           if (node.nodeType === Node.ELEMENT_NODE) {
-            // Check if the added node is cb-available-block-list
             if (node.matches && node.matches('cb-available-block-list')) {
               console.log("[Gem] Block list element added, checking for buttons");
               shouldCheckButtons = true;
               return;
             }
 
-            // Check if the added node contains cb-available-block-list
             const blockList = node.querySelector && node.querySelector('cb-available-block-list');
             if (blockList) {
               console.log("[Gem] Block list element found in added node, checking for buttons");
@@ -826,14 +813,12 @@ function initializeBlockPinning() {
               return;
             }
 
-            // Check if the added node is the header element
             if (node.matches && node.matches('cb-available-block-list .e-section__header')) {
               console.log("[Gem] Header element added directly, checking for buttons");
               shouldCheckButtons = true;
               return;
             }
 
-            // Check if the added node contains the header element
             const headerElement = node.querySelector && node.querySelector('cb-available-block-list .e-section__header');
             if (headerElement) {
               console.log("[Gem] Header element found in added node, checking for buttons");
@@ -841,7 +826,6 @@ function initializeBlockPinning() {
               return;
             }
 
-            // Check for block containers or individual blocks
             if (node.matches && node.matches('.block-templates')) {
               console.log("[Gem] Block container added, processing blocks");
               shouldProcessBlocks = true;
@@ -853,7 +837,6 @@ function initializeBlockPinning() {
               return;
             }
 
-            // Check if added node contains block containers or blocks
             const blockContainer = node.querySelector && node.querySelector('.block-templates');
             const blockElement = node.querySelector && node.querySelector('.block-template');
             if (blockContainer || blockElement) {
@@ -865,30 +848,23 @@ function initializeBlockPinning() {
         });
       });
 
-      // If we found relevant elements, check if buttons need to be added
       if (shouldCheckButtons) {
-        setTimeout(() => {
+        setTimeout(function () {
           const headerElement = document.querySelector('cb-available-block-list .e-section__header');
           if (headerElement && !headerElement.querySelector('.gem-show-hidden-toggle')) {
             console.log("[Gem] Buttons missing, adding them");
             addShowHiddenToggleButton();
           }
-        }, 100); // Small delay to ensure DOM is ready
+        }, 100);
       }
 
-      // If we found blocks, process them
       if (shouldProcessBlocks) {
-        setTimeout(() => {
+        setTimeout(function () {
           processNewBlocks();
           applyPinnedClasses();
           applyHiddenClasses();
-        }, 150); // Slightly longer delay for blocks
+        }, 150);
       }
-    });
-
-    observer.observe(document.documentElement, {
-      childList: true,
-      subtree: true
     });
   }
 

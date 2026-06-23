@@ -189,33 +189,43 @@ function createWelcomeModalHTML() {
 // Helper function to set up modal event handlers
 function setupModalHandlers(modal) {
   const closeButton = document.getElementById('gem-welcome-modal-close');
+  let escapeUnsub = null;
 
-// Close modal function
   function closeModal() {
+    if (typeof escapeUnsub === 'function') escapeUnsub();
+    escapeUnsub = null;
+    if (modal && typeof window.gemLayerRelease === 'function') {
+      window.gemLayerRelease(modal);
+    }
     if (modal && modal.parentNode) {
       modal.parentNode.removeChild(modal);
     }
   }
 
-// Close button click - close modal and open settings panel
   closeButton.addEventListener('click', () => {
     closeModal();
-    // Open settings panel if available
     if (window.openGemmaSettings) {
       window.openGemmaSettings();
     }
   });
 
-  // ESC key handler
-  function handleEscape(event) {
-    if (event.key === 'Escape') {
-      closeModal();
-      document.removeEventListener('keydown', handleEscape);
+  if (typeof window.gemLayerBindEscape === 'function') {
+    escapeUnsub = window.gemLayerBindEscape(closeModal, {
+      whileConnected: () => {
+        const el = document.getElementById('gem-welcome-modal');
+        return !!(el && el.isConnected);
+      }
+    });
+  } else {
+    function handleEscape(event) {
+      if (event.key === 'Escape') {
+        closeModal();
+        document.removeEventListener('keydown', handleEscape);
+      }
     }
+    document.addEventListener('keydown', handleEscape);
   }
-  document.addEventListener('keydown', handleEscape);
 
-  // Click outside to close
   modal.addEventListener('click', (event) => {
     if (event.target === modal) {
       closeModal();
@@ -270,6 +280,10 @@ function showWelcomeModal() {
 
   const modal = document.getElementById('gem-welcome-modal');
 
+  if (typeof window.gemLayerRaise === 'function') {
+    window.gemLayerRaise(modal, { tier: 'modal' });
+  }
+
   // Set up event handlers
   setupModalHandlers(modal);
 
@@ -291,6 +305,10 @@ window.showWelcomeModal = function() {
   document.body.insertAdjacentHTML('beforeend', modalHTML);
 
   const modal = document.getElementById('gem-welcome-modal');
+
+  if (typeof window.gemLayerRaise === 'function') {
+    window.gemLayerRaise(modal, { tier: 'modal' });
+  }
 
   // Set up event handlers
   setupModalHandlers(modal);

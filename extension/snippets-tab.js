@@ -2070,8 +2070,7 @@ function initializeSnippetsTab() {
   function ensureEmarsysEslObserver() {
     if (gemEmarsysEslObserver) return;
 
-    gemEmarsysEslObserver = new MutationObserver(() => {
-      // Only act if we initiated the dialog recently
+    const onDomChange = () => {
       if (!gemPendingEmarsysEslContext) return;
       if (Date.now() - gemPendingEmarsysEslContext.startedAt > 8000) {
         gemPendingEmarsysEslContext = null;
@@ -2081,12 +2080,16 @@ function initializeSnippetsTab() {
       const nameInput = document.getElementById(GEM_EMARSYS_ESL_NAME_INPUT_ID);
       if (!nameInput) return;
 
-      // Found the Emarsys ESL dialog - patch it once
       patchEmarsysEslDialog(nameInput, gemPendingEmarsysEslContext);
       gemPendingEmarsysEslContext = null;
-    });
+    };
 
-    gemEmarsysEslObserver.observe(document.body, { childList: true, subtree: true });
+    if (typeof gemDomWatchSubscribe === 'function') {
+      gemEmarsysEslObserver = gemDomWatchSubscribe(onDomChange);
+    } else {
+      gemEmarsysEslObserver = new MutationObserver(onDomChange);
+      gemEmarsysEslObserver.observe(document.body, { childList: true, subtree: true });
+    }
   }
 
   // ------------------------------------------------------------
@@ -2163,8 +2166,12 @@ function initializeSnippetsTab() {
     };
 
     // Observe DOM for new dialogs
-    gemEslValidationDisable.observer = new MutationObserver(scanAndWire);
-    gemEslValidationDisable.observer.observe(document.body, { childList: true, subtree: true });
+    if (typeof gemDomWatchSubscribe === 'function') {
+      gemEslValidationDisable.observer = gemDomWatchSubscribe(scanAndWire);
+    } else {
+      gemEslValidationDisable.observer = new MutationObserver(scanAndWire);
+      gemEslValidationDisable.observer.observe(document.body, { childList: true, subtree: true });
+    }
     scanAndWire();
   }
 
@@ -3473,21 +3480,21 @@ let insertionCounter = 0;
 
   // Function to set up iframe drop zone observer
   function setupIframeObserver() {
-    // Watch for the target iframe entering/leaving the DOM.
-    // When it appears, (re)wire drop zones to that *one* iframe doc.
     if (window._gemSnippetIframeObserver) return;
 
-    const observer = new MutationObserver(() => {
-      setupIframeDropZones();
-    });
+    if (typeof gemDomWatchSubscribe === 'function') {
+      window._gemSnippetIframeObserver = gemDomWatchSubscribe(() => {
+        setupIframeDropZones();
+      });
+    } else {
+      const observer = new MutationObserver(() => {
+        setupIframeDropZones();
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+      window._gemSnippetIframeObserver = observer;
+    }
 
-    observer.observe(document.body, { childList: true, subtree: true });
-    window._gemSnippetIframeObserver = observer;
-
-    // One-time cleanup of any legacy handlers that might already exist (including in the mobile clone)
     cleanupLegacyGemSnippetListenersEverywhere();
-
-    // Initial wiring attempt
     setupIframeDropZones();
   }
 
@@ -3503,7 +3510,17 @@ let insertionCounter = 0;
 
     console.log("[Gem] Vertical nav not found, waiting...");
 
-    // Watch for the vertical nav to be added
+    const onVerticalNavReady = () => {
+      console.log("[Gem] Vertical nav found, adding snippets tab");
+      addSnippetsTab();
+      setupIframeObserver();
+    };
+
+    if (typeof gemDomWatchWaitFor === 'function') {
+      gemDomWatchWaitFor('e-verticalnav-menu', onVerticalNavReady);
+      return;
+    }
+
     const observer = new MutationObserver((mutations) => {
       mutations.forEach((mutation) => {
         mutation.addedNodes.forEach((node) => {

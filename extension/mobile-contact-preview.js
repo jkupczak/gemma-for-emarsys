@@ -27,24 +27,30 @@ console.log("[Gem] mobile-contact-preview.js LOADED");
   function observeForOriginalIframe() {
     if (isObserving) return;
 
-    const observer = new MutationObserver((mutations) => {
-      mutations.forEach((mutation) => {
-        if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
-          // Check if the original iframe was added
-          const iframe = document.querySelector('e-float-container .cp-contact_preview__content iframe');
-          if (iframe && iframe !== originalIframe) {
-            console.log("[Gem] Original contact preview iframe detected");
-            originalIframe = iframe;
-            handleOriginalIframeFound(iframe);
-          }
-        }
-      });
-    });
+    const checkForIframe = () => {
+      const iframe = document.querySelector('e-float-container .cp-contact_preview__content iframe');
+      if (iframe && iframe !== originalIframe) {
+        console.log("[Gem] Original contact preview iframe detected");
+        originalIframe = iframe;
+        handleOriginalIframeFound(iframe);
+      }
+    };
 
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true
-    });
+    if (typeof gemDomWatchSubscribe === 'function') {
+      gemDomWatchSubscribe(checkForIframe);
+    } else {
+      const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+          if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+            checkForIframe();
+          }
+        });
+      });
+      observer.observe(document.body, {
+        childList: true,
+        subtree: true
+      });
+    }
 
     isObserving = true;
     console.log("[Gem] Observing for contact preview iframe");

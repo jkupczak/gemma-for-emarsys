@@ -1,4 +1,4 @@
-console.log("color-swatch-manager.js loaded");
+console.log("[Gem] color-swatch-manager.js loaded");
 
 // Global variables
 let customColors = [];
@@ -223,24 +223,21 @@ function monitorColorSelections() {
 
 // Monitor for new color pickers being added to the DOM
 function monitorForColorPickers() {
-  const observer = new MutationObserver((mutations) => {
+  const handleMutations = (mutations) => {
     let foundNewPicker = false;
 
     mutations.forEach((mutation) => {
       mutation.addedNodes.forEach((node) => {
         if (node.nodeType === Node.ELEMENT_NODE) {
-          // Check if this is a color picker or contains one
           const colorPickers = node.querySelectorAll ?
             node.querySelectorAll('.mce-colorbutton-grid') :
             [];
 
           if (node.classList && node.classList.contains('mce-colorbutton-grid')) {
-            // This element itself is a color picker
             console.log("[Gem] New color picker detected");
             foundNewPicker = true;
             applyCustomColorsToPickerWithDelay(node);
           } else if (colorPickers.length > 0) {
-            // This element contains color pickers
             console.log("[Gem] New color pickers detected:", colorPickers.length);
             foundNewPicker = true;
             colorPickers.forEach(picker => applyCustomColorsToPickerWithDelay(picker));
@@ -249,18 +246,22 @@ function monitorForColorPickers() {
       });
     });
 
-    // If we found new pickers, also check for any existing ones that might need updating
     if (foundNewPicker) {
       setTimeout(() => {
         applyCustomColorsToPickers();
       }, 200);
     }
-  });
+  };
 
-  observer.observe(document.body, {
-    childList: true,
-    subtree: true
-  });
+  if (typeof gemDomWatchSubscribe === 'function') {
+    gemDomWatchSubscribe(handleMutations);
+  } else {
+    const observer = new MutationObserver(handleMutations);
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
+  }
 }
 
 // Apply colors to a picker with multiple attempts (for timing issues)

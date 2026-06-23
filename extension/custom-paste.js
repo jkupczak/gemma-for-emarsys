@@ -345,7 +345,7 @@
     const doc = ed.getDoc();
     if (!body || !doc) return;
 
-    console.log("Patching live editor:", ed.id);
+    console.log("[Gem][CustomPaste] Patching live editor:", ed.id);
 
     let savedRange = null;
 
@@ -367,7 +367,7 @@
       event.stopImmediatePropagation();
 
       if (!savedRange) {
-        console.warn("No caret saved for", ed.id);
+        console.warn("[Gem][CustomPaste] No caret saved for", ed.id);
         return;
       }
 
@@ -403,7 +403,7 @@
 
     for (const [id, patch] of activePatches.entries()) {
       if (!liveIds.has(id)) {
-        console.log("Cleaning up destroyed editor:", id);
+        console.log("[Gem][CustomPaste] Cleaning up destroyed editor:", id);
         patch.destroy();
         activePatches.delete(id);
       }

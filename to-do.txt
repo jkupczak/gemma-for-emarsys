@@ -245,3 +245,19 @@ x Add a pinned folder dropdown to the media picker.
 ✓ Can I add a note to the content block about what block targeting is being done?
 
 ✓ Deprecate recently used tab and roll the functionality into recently seen. Recently seen images in storage should get a property for the used date. Images that were recently used should get some sort of visual highlight so that they stand out among the seen images that have not been used. Recently used images should not get pushed out as fast as unused recently seen image? Maybe they are part of a separate list that is capped at 100. Add a category grouping for Recently used by Day.
+
+✓ Hovering over the image in the details modal, or in the left panel of the image picker should reveal
+the images bounding box using a box shadow.
+
+✓ When Inbox Preview is selected, the mobile view should hide temporarily until the user returns back to Live preview
+
+✓ The overflow menu should swap out Inbox Preview for Live Preview when Inbox Preview is active.
+
+✓ Create a compare view for email campaigns with multiple languages. 
+  Can I load each language in its own iframe on the same page?
+
+✓ The campaign drawer can have campaigns that swap their position in real-time while you have it open. this can cause confusion when you're previewing emails and cycling through them with prev/next buttons. Fix this by highlighting the currently previewed email, ensuring that if its out of the viewport that we scroll to it, and try to reduce or eliminate campaigns swapping order in the first place.
+
+✓ Link editor dialog needs to respond to the enter key by clicking the "OK" button.
+
+✓ email drawer needs to not remember search inputs across tabs and page loads. its enough for it to remember on a single page load when it opens and closes. but a page refresh should kill it, and it shouldn't sync to other tabs

@@ -1,6 +1,7 @@
-console.log("mobile-view.js loaded");
+console.log("[Gem] mobile-view.js loaded");
 
 const LOG = "[Gem mobile-view]";
+const MOBILE_SYNC_DEBOUNCE_MS = 200;
 const DEFAULT_MOBILE_WIDTH = 414;
 const DEFAULT_MOBILE_SCALE = 0.5;
 const MIN_BASE_WIDTH = 200;
@@ -9,6 +10,98 @@ let mobilePreviewWidth = DEFAULT_MOBILE_WIDTH;
 let mobilePreviewScale = DEFAULT_MOBILE_SCALE;
 let mobilePreviewVisible = true;
 let bodyClassObserver = null;
+
+const INBOX_PREVIEW_SELECTOR = "cb-campaign-inbox-preview";
+let mobileShowBeforeInbox = null;
+let inboxPreviewWatcherStarted = false;
+
+function isInboxPreviewActive() {
+  const el = document.querySelector(INBOX_PREVIEW_SELECTOR);
+  return !!(el && !el.hasAttribute("hidden"));
+}
+
+function applyMobileFrameDisplay(show) {
+  let wrapper = document.getElementById("gem-mobile-frame");
+  if (!wrapper && show) {
+    initializeMobileView();
+    wrapper = document.getElementById("gem-mobile-frame");
+  }
+  if (wrapper) {
+    wrapper.style.display = show ? "block" : "none";
+  }
+}
+
+function updateMobilePreviewToggleUi() {
+  const blocked = isInboxPreviewActive();
+  document.querySelectorAll(".gem-mobile-nav-toggle").forEach((el) => {
+    el.classList.toggle("gem-mobile-nav-toggle--disabled", blocked);
+    el.setAttribute("aria-disabled", blocked ? "true" : "false");
+  });
+  if (typeof window.updateNavToggleIcons === "function") {
+    window.updateNavToggleIcons();
+  }
+}
+
+function syncInboxPreviewMobileSuppression() {
+  const inboxActive = isInboxPreviewActive();
+  if (inboxActive) {
+    if (mobileShowBeforeInbox === null) {
+      mobileShowBeforeInbox = mobilePreviewVisible;
+    }
+    applyMobileFrameDisplay(false);
+  } else if (mobileShowBeforeInbox !== null) {
+    const restore = mobileShowBeforeInbox;
+    mobileShowBeforeInbox = null;
+    if (restore) {
+      applyMobileFrameDisplay(true);
+    }
+  }
+  updateMobilePreviewToggleUi();
+}
+
+function setupInboxPreviewWatcher() {
+  if (inboxPreviewWatcherStarted) return;
+  inboxPreviewWatcherStarted = true;
+
+  const bind = (el) => {
+    syncInboxPreviewMobileSuppression();
+    if (typeof gemDomWatchObserveAttributes === "function") {
+      gemDomWatchObserveAttributes(el, syncInboxPreviewMobileSuppression, ["hidden"]);
+    }
+  };
+
+  const existing = document.querySelector(INBOX_PREVIEW_SELECTOR);
+  if (existing) {
+    bind(existing);
+    return;
+  }
+
+  if (typeof gemDomWatchWaitFor === "function") {
+    gemDomWatchWaitFor(INBOX_PREVIEW_SELECTOR, bind);
+  } else if (typeof gemDomWatchSubscribe === "function") {
+    gemDomWatchSubscribe(syncInboxPreviewMobileSuppression);
+  }
+}
+
+window.gemIsInboxPreviewActive = isInboxPreviewActive;
+window.gemIsMobilePreviewToggleBlocked = isInboxPreviewActive;
+window.gemGetMobilePreviewUserVisible = function gemGetMobilePreviewUserVisible() {
+  return mobilePreviewVisible;
+};
+window.gemUpdateMobilePreviewToggleUi = updateMobilePreviewToggleUi;
+
+function isMobilePreviewActiveForSync() {
+  if (!mobilePreviewVisible) return false;
+  const wrapper = document.getElementById("gem-mobile-frame") || document.querySelector(".gem-iframe-wrapper");
+  if (!wrapper) return false;
+  try {
+    const style = window.getComputedStyle(wrapper);
+    if (style.display === "none" || style.visibility === "hidden") return false;
+  } catch (_) {
+    if (wrapper.style.display === "none") return false;
+  }
+  return true;
+}
 
 function syncGemFrameHandleForExpandedMode() {
   const handle = document.querySelector("#gem-frame-handle");
@@ -242,23 +335,39 @@ function addResizeHandle(container, styleTarget, clone, originalIframe) {
   container.appendChild(handle);
 }
 
-function setMobileVisibility(show) {
+function setMobileVisibility(show, options) {
+  const opts = options && typeof options === "object" ? options : {};
+  if (isInboxPreviewActive() && show && !opts.bypassInboxBlock) {
+    return;
+  }
+
   mobilePreviewVisible = !!show;
 
-  const wrapper = document.getElementById("gem-mobile-frame");
-  if (!wrapper && show) {
-    initializeMobileView();
+  if (isInboxPreviewActive()) {
+    applyMobileFrameDisplay(false);
+  } else {
+    applyMobileFrameDisplay(show);
   }
 
-  const targetWrapper = wrapper || document.getElementById("gem-mobile-frame");
-  if (targetWrapper) {
-    targetWrapper.style.display = show ? "block" : "none";
+  if (!opts.skipStorage) {
+    const syncPayload = { mobileViewVisible: mobilePreviewVisible };
+    if (mobilePreviewVisible) syncPayload.enableMobilePreview = true;
+    chrome.storage.sync.set(syncPayload);
   }
 
-  const syncPayload = { mobileViewVisible: mobilePreviewVisible };
-  if (mobilePreviewVisible) syncPayload.enableMobilePreview = true;
-  chrome.storage.sync.set(syncPayload);
+  updateMobilePreviewToggleUi();
 }
+
+window.gemToggleMobilePreview = function gemToggleMobilePreview() {
+  if (isInboxPreviewActive()) {
+    return false;
+  }
+  if (!chrome?.storage?.sync) {
+    return false;
+  }
+  setMobileVisibility(!mobilePreviewVisible);
+  return true;
+};
 
 // Check if mobile preview is enabled and initialize accordingly
 chrome.storage.sync.get({
@@ -279,14 +388,32 @@ chrome.storage.sync.get({
 
   if (shouldMountMobileChrome) {
     initializeMobileView();
-    setMobileVisibility(mobilePreviewVisible);
+    if (isInboxPreviewActive()) {
+      if (mobileShowBeforeInbox === null) {
+        mobileShowBeforeInbox = mobilePreviewVisible;
+      }
+      applyMobileFrameDisplay(false);
+    } else {
+      applyMobileFrameDisplay(mobilePreviewVisible);
+    }
   }
   ensureBodyClassObserver();
+  setupInboxPreviewWatcher();
+  syncInboxPreviewMobileSuppression();
 });
 
 // Listen for setting changes
 chrome.storage.onChanged.addListener((changes, namespace) => {
-  if (namespace === 'sync' && changes.enableMobilePreview) {
+  if (namespace !== "sync") return;
+
+  if (isInboxPreviewActive()) {
+    const tryingToEnable =
+      (changes.enableMobilePreview && changes.enableMobilePreview.newValue === true) ||
+      (changes.mobileViewVisible && changes.mobileViewVisible.newValue === true);
+    if (tryingToEnable) return;
+  }
+
+  if (changes.enableMobilePreview) {
     const show = changes.enableMobilePreview.newValue;
     setMobileVisibility(show);
   }
@@ -301,7 +428,7 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
     applyMobilePreviewStyles();
   }
 
-   if (namespace === 'sync' && changes.mobileViewVisible) {
+   if (changes.mobileViewVisible) {
      setMobileVisibility(changes.mobileViewVisible.newValue);
    }
 });
@@ -317,18 +444,9 @@ function waitForIframe(selector, callback) {
   }
 
   console.log(LOG, "waitForIframe: iframe not yet in DOM, observing...", selector);
-  const obs = new MutationObserver(() => {
-    const iframeNow = document.querySelector(selector);
-    if (iframeNow) {
-      console.log(LOG, "waitForIframe: iframe appeared in DOM", { selector, src: iframeNow.src?.slice?.(0, 80) });
-      obs.disconnect();
-      callback(iframeNow);
-    }
-  });
-
-  obs.observe(document.documentElement, {
-    childList: true,
-    subtree: true,
+  window.gemDomWatchWaitFor(selector, function (iframeNow) {
+    console.log(LOG, "waitForIframe: iframe appeared in DOM", { selector, src: iframeNow.src?.slice?.(0, 80) });
+    callback(iframeNow);
   });
 }
 
@@ -433,34 +551,33 @@ function setupClonedIframe(originalIframe) {
         // --- Batch execution: one sync per rAF ---
         if (!currentContentObserver.pendingSync) {
           currentContentObserver.pendingSync = true;
-
-          requestAnimationFrame(() => {
-            currentContentObserver.pendingSync = false;
-
-            const originalDoc = originalIframe.contentDocument;
-            if (!originalDoc) return;
-
-            // Hash the content of the blocks container only
-            const currentContainer = originalDoc.querySelector('[e-blocks-container="true"]');
-            if (!currentContainer) {
-              console.log(LOG, "MutationObserver: no e-blocks-container in originalDoc, skipping sync");
-              return;
-            }
-
-            const snapshot = currentContainer.innerHTML.trim();
-            const hash = quickHash(snapshot);
-
-            if (hash === lastContentHash) {
-              console.log(LOG, "MutationObserver: skip sync - blocks container hash unchanged", { hash });
-              return;
-            }
-
-            console.log(LOG, "MutationObserver: content changed, syncing", { hash, prevHash: lastContentHash });
-            lastContentHash = hash;
-
-            syncIframe();
-          });
         }
+        clearTimeout(currentContentObserver.syncTimer);
+        currentContentObserver.syncTimer = setTimeout(function () {
+          currentContentObserver.pendingSync = false;
+
+          const originalDoc = originalIframe.contentDocument;
+          if (!originalDoc) return;
+
+          const currentContainer = originalDoc.querySelector('[e-blocks-container="true"]');
+          if (!currentContainer) {
+            console.log(LOG, "MutationObserver: no e-blocks-container in originalDoc, skipping sync");
+            return;
+          }
+
+          const snapshot = currentContainer.innerHTML.trim();
+          const hash = quickHash(snapshot);
+
+          if (hash === lastContentHash) {
+            console.log(LOG, "MutationObserver: skip sync - blocks container hash unchanged", { hash });
+            return;
+          }
+
+          console.log(LOG, "MutationObserver: content changed, syncing", { hash, prevHash: lastContentHash });
+          lastContentHash = hash;
+
+          syncIframe();
+        }, MOBILE_SYNC_DEBOUNCE_MS);
       });
 
       // Observe the e-blocks-container for any changes to its children or attributes
@@ -1077,6 +1194,7 @@ function setupCustomScrollbars(iframe, container) {
   // Sync clone with original
   //----------------------------------------------------------
   function syncIframe() {
+    if (!isMobilePreviewActiveForSync()) return;
     console.log(LOG, "syncIframe: START");
     try {
       const originalDoc = originalIframe.contentDocument;
@@ -1241,34 +1359,33 @@ function setupCustomScrollbars(iframe, container) {
         // --- Batch execution: one sync per rAF ---
         if (!currentContentObserver.pendingSync) {
           currentContentObserver.pendingSync = true;
-
-          requestAnimationFrame(() => {
-            currentContentObserver.pendingSync = false;
-
-            const originalDoc = originalIframe.contentDocument;
-            if (!originalDoc) return;
-
-            // Hash the content of the blocks container only
-            const currentContainer = originalDoc.querySelector('[e-blocks-container="true"]');
-            if (!currentContainer) {
-              console.log(LOG, "MutationObserver: no e-blocks-container in originalDoc, skipping sync");
-              return;
-            }
-
-            const snapshot = currentContainer.innerHTML.trim();
-            const hash = quickHash(snapshot);
-
-            if (hash === lastContentHash) {
-              console.log(LOG, "MutationObserver: skip sync - blocks container hash unchanged", { hash });
-              return;
-            }
-
-            console.log(LOG, "MutationObserver: content changed, syncing", { hash, prevHash: lastContentHash });
-            lastContentHash = hash;
-
-            syncIframe();
-          });
         }
+        clearTimeout(currentContentObserver.syncTimer);
+        currentContentObserver.syncTimer = setTimeout(function () {
+          currentContentObserver.pendingSync = false;
+
+          const originalDoc = originalIframe.contentDocument;
+          if (!originalDoc) return;
+
+          const currentContainer = originalDoc.querySelector('[e-blocks-container="true"]');
+          if (!currentContainer) {
+            console.log(LOG, "MutationObserver: no e-blocks-container in originalDoc, skipping sync");
+            return;
+          }
+
+          const snapshot = currentContainer.innerHTML.trim();
+          const hash = quickHash(snapshot);
+
+          if (hash === lastContentHash) {
+            console.log(LOG, "MutationObserver: skip sync - blocks container hash unchanged", { hash });
+            return;
+          }
+
+          console.log(LOG, "MutationObserver: content changed, syncing", { hash, prevHash: lastContentHash });
+          lastContentHash = hash;
+
+          syncIframe();
+        }, MOBILE_SYNC_DEBOUNCE_MS);
       });
 
       // Observe the e-blocks-container for any changes to its children or attributes
@@ -1378,34 +1495,44 @@ function initializeMobileView() {
     setupClonedIframe(iframe);
 
     // Watch for this iframe being removed
-    currentRemovalObserver = new MutationObserver(() => {
-      if (!document.contains(iframe)) {
-        if (currentRemovalObserver) {
+    const disconnectRemovalWatch = () => {
+      if (currentRemovalObserver) {
+        if (typeof currentRemovalObserver === 'function') {
+          currentRemovalObserver();
+        } else {
           currentRemovalObserver.disconnect();
-          currentRemovalObserver = null;
         }
-        console.log("Original iframe removed. Cleaning up clone...");
+        currentRemovalObserver = null;
+      }
+    };
 
-        // Delete clone + container
+    const onIframeRemoved = () => {
+      if (!document.contains(iframe)) {
+        disconnectRemovalWatch();
+        console.log("[Gem] Original iframe removed. Cleaning up clone...");
+
         const oldClone = document.querySelector(".iframe-duplicate");
         const oldContainer = oldClone?.parentElement;
         if (oldContainer) oldContainer.remove();
 
-        // Only respawn if mobile view is still active
         if (isMobileViewActive) {
-          // Wait for next iframe
           waitForIframe("iframe.e-contentblocks-preview__iframe-desktop", (newIframe) => {
-            console.log("New original iframe detected — rebuilding clone.");
+            console.log("[Gem] New original iframe detected — rebuilding clone.");
             startForNewIframe(newIframe);
           });
         }
       }
-    });
+    };
 
-    currentRemovalObserver.observe(document.documentElement, {
-      childList: true,
-      subtree: true,
-    });
+    if (typeof gemDomWatchSubscribe === 'function') {
+      currentRemovalObserver = gemDomWatchSubscribe(onIframeRemoved);
+    } else {
+      currentRemovalObserver = new MutationObserver(onIframeRemoved);
+      currentRemovalObserver.observe(document.documentElement, {
+        childList: true,
+        subtree: true,
+      });
+    }
   }
 
   // Begin first cycle
@@ -1419,11 +1546,15 @@ function disableMobileView() {
   if (!isMobileViewActive) return; // Already disabled
   isMobileViewActive = false;
 
-  console.log("Disabling mobile view...");
+  console.log("[Gem] Disabling mobile view...");
 
   // Disconnect removal observer
   if (currentRemovalObserver) {
-    currentRemovalObserver.disconnect();
+    if (typeof currentRemovalObserver === 'function') {
+      currentRemovalObserver();
+    } else {
+      currentRemovalObserver.disconnect();
+    }
     currentRemovalObserver = null;
   }
 

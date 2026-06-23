@@ -1,20 +1,4 @@
 /* Custom styles for the Email Campaign List page (r=emailCampaignList/index) */
-.e-datagrid__item_actions.e-inputgroup.e-inputgroup-inline {
-    gap: 2px !important;
-}
-
-
-.e-datagrid__item_actions.e-inputgroup.e-inputgroup-inline .e-btn-onlyicon {
-    width: 30px !important;
-}
-
-.e-table__col.e-table__col.e-table__col-actions > div[class] {
-    display: inline-flex;
-    gap: 2px;
-    align-items: end;
-    justify-content: end;
-}
-
 #email-campaign-list e-tooltip[content="Delete"],
 #email-campaign-list e-tooltip[content="Edit Translations"],
 #email-campaign-list e-tooltip[content="Distribute a copy to another account"],
@@ -33,6 +17,17 @@
 
 #email-campaign-list #campaign-list-container .e-table.e-table-datagrid_overview.e-datagrid__table tr.gem-campaign-list-row--preview-active {
     background-color: color-mix(in srgb, var(--token-primary-default, #523ae6) 10%, transparent) !important;
+    border-radius: 5px;
+}
+
+.e-table.e-table-datagrid_overview.e-datagrid__table .e-table__titles {
+    position: sticky;
+    top: 0;
+    z-index: 9;
+}
+
+tr.gem-campaign-list-row--preview-active:hover td {
+    background:transparent !important;
 }
 
 html, body {
@@ -57,20 +52,16 @@ html, body {
     padding: 0 !important;
 }
 
-#email-campaign-list e-datagrid-wrapper .e-datagrid__table_wrapper {
-    padding-bottom: 76px !important;
-}
-
 #email-campaign-list e-datagrid-wrapper .e-datagrid__footer {
     position: fixed !important;
     z-index: 609 !important;
     bottom: 0 !important;
-    width: 100% !important;
+    width: calc(100% - 72px) !important;
     border-radius: 0;
 }
 
 #email-campaign-list.gem-email-campaign-list-preview-open e-datagrid-wrapper .e-datagrid__footer {
-    width: calc(100% - 439px) !important;
+    width: calc(100% - 427px) !important;
 }
 
 #gem-campaign-list-preview-panel {
@@ -83,10 +74,10 @@ html, body {
     height: 100vh;
     display: none;
     flex-direction: column;
-    z-index: 9999;
-    padding: 18px;
-    width: 367px !important;
-    min-width: 367px !important;
+    z-index: 615;
+    padding: 12px;
+    width: 355px !important;
+    min-width: 355px !important;
     border: 0;
     border-right: 1px solid var(--token-box-default-border, #ccc);
     background: var(--token-box-default-background, #fff);
@@ -95,10 +86,11 @@ html, body {
 
 #gem-campaign-list-preview-panel.gem-campaign-list-preview-panel--open {
     display: flex;
+    background: var(--token-neutral-100);
 }
 
 #email-campaign-list.gem-email-campaign-list-preview-open main {
-    margin-right: 367px !important;
+    margin-right: 355px !important;
 }
 
 .gem-campaign-list-preview-iframe-wrap {
@@ -110,6 +102,14 @@ html, body {
     flex-direction: column;
     width: 330px;
     border-radius: 9px;
+    box-shadow: 0 4px 10px 0px rgba(0 0 0 / 0.15), 0 0 0 1px rgba(0 0 0 / 0.05);
+}
+
+.gem-campaign-list-preview-iframe-stack {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
 }
 
 .gem-campaign-list-preview-iframe {
@@ -126,6 +126,22 @@ html, body {
     background: #fff !important;
 }
 
+.gem-campaign-list-preview-iframe--active {
+    position: relative;
+    opacity: 1;
+    visibility: visible;
+    z-index: 1;
+}
+
+.gem-campaign-list-preview-iframe--cached {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    z-index: 0;
+}
+
 .gem-campaign-list-preview-loading {
     position: absolute;
     inset: 0;
@@ -134,6 +150,50 @@ html, body {
     justify-content: center;
     background: color-mix(in srgb, var(--token-box-default-background, #fff) 72%, transparent);
     z-index: 2;
+}
+
+.gem-campaign-list-preview-loading--dimmed {
+    background: color-mix(in srgb, var(--token-box-default-background, #fff) 40%, transparent);
+}
+
+.gem-campaign-list-preview-loading--dimmed .gem-campaign-list-preview-loading-spinner {
+    display: none;
+}
+
+.gem-campaign-list-preview-loading--spinner {
+    background: color-mix(in srgb, var(--token-box-default-background, #fff) 72%, transparent);
+}
+
+.gem-campaign-list-preview-loading--flash {
+    background: color-mix(in srgb, var(--token-box-default-background, #fff) 50%, transparent);
+}
+
+.gem-campaign-list-preview-loading--flash .gem-campaign-list-preview-loading-spinner {
+    width: 20px;
+    height: 20px;
+    border-width: 2px;
+}
+
+.gem-campaign-list-preview-loading--error {
+    background: color-mix(in srgb, var(--token-box-default-background, #fff) 92%, transparent);
+}
+
+.gem-campaign-list-preview-loading--error .gem-campaign-list-preview-loading-spinner {
+    display: none;
+}
+
+.gem-campaign-list-preview-loading-message {
+    display: none;
+    max-width: 280px;
+    padding: 0 20px;
+    text-align: center;
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--token-box-default-text, #333);
+}
+
+.gem-campaign-list-preview-loading--error .gem-campaign-list-preview-loading-message {
+    display: block;
 }
 
 .gem-campaign-list-preview-loading[hidden] {
@@ -164,4 +224,82 @@ html, body {
 
 [data-e-version="2"].e-table-datagrid_overview tbody tr:not(.e-table__row-group):hover td {
     background-color: unset;
+}
+
+e-datagrid-wrapper .e-table-datagrid_overview {
+    padding-left: 12px;
+}
+
+.gem-email-campaign-list-preview-open e-shellbar.e-shellbar {
+    padding-right: 360px !important;
+}
+
+.e-table__col.e-table__col.e-table__col-actions > div[class] {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+
+    padding: 0px 1px 0px 6px;
+
+    gap: 2px !important;
+    background-color: var(--token-box-default-background);
+    border: 1px solid var(--token-box-default-border);
+    box-shadow: var(--token-shadow-light);
+    opacity: 0;
+    border-radius: 8px;
+
+    display: inline-flex;
+    gap: 2px;
+    align-items: end;
+    justify-content: end;
+
+    & e-tooltip > a.e-datagrid__item_action , & e-tooltip > button.e-btn-onlyicon {
+        width: 24px !important;
+        display: flex;
+        vertical-align: middle;
+        display: inline-flex;
+    }
+
+    & .e-datagrid__item_action  {
+        height: var(--token-button-default-height);
+    }
+}
+
+.e-datagrid__item_actions:focus-within .e-table__col.e-table__col.e-table__col-actions > div[class], .e-datagrid__row:hover .e-table__col.e-table__col.e-table__col-actions > div[class] {
+    opacity: 1;
+}
+
+
+
+.e-table__col.e-table__col.e-table__col-actions > div[class] {
+
+}
+
+e-datagrid-wrapper .e-datagrid {
+    padding-bottom: 61px !important;
+    height: calc(100vh - 116px);
+    display: flex;
+    flex-direction: column;
+}
+
+e-datagrid-wrapper [data-e-version="2"].e-table.e-table-datagrid_overview td:last-child, 
+e-datagrid-wrapper [data-e-version="2"].e-table.e-table-datagrid_overview th:last-child {
+    padding: 0 !important;
+    width: 0px !important;
+    max-width: 0px !important;
+    min-width: 0px !important;
+    position: relative !important;
+}
+
+e-datagrid-wrapper .e-table__col-actions e-tooltip .e-icon-table {
+    margin-top:0 !important;
+    margin-bottom:0 !important;
+}
+
+#email-campaign-list > .e-layout {
+    max-width: 100% !important;
+}
+
+#email-campaign-list .gem-campaign-list-row-menu-wrap {
+    z-index: 6px;
 }

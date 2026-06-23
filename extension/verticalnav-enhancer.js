@@ -1,4 +1,4 @@
-console.log("verticalnav-enhancer.js loaded");
+console.log("[Gem] verticalnav-enhancer.js loaded");
 
 // Check if fullscreen was active on previous page load and restore it
 chrome.storage.sync.get({ fullscreenActive: false }, (settings) => {
@@ -70,7 +70,7 @@ function getExpandSvg(iconEntity = EXPAND_ICON_OFF) {
 
 function getMobileSvg(iconEntity = MOBILE_ICON_OFF) {
   return `
-    <div class="gem-e-verticalnavitem"><e-tooltip placement="right" content="Mobile View" role="tooltip" aria-description="Mobile View">
+    <div class="gem-e-verticalnavitem"><e-tooltip placement="right" content="Mobile View (` + window.GEM_MOD_KEY + `+Shift+M)" role="tooltip" aria-description="Mobile View">
       <div class="e-verticalnavitem__icon e-svgclickfix">
         <gem-e-icon icon="mediadb"><div aria-hidden="true" class="e-icon-wrapper"><div class="e-icon gem-mobile-icon-glyph">${iconEntity}</div></div></gem-e-icon>
       </div>
@@ -79,6 +79,9 @@ function getMobileSvg(iconEntity = MOBILE_ICON_OFF) {
 }
 
 function isMobileViewVisible() {
+  if (typeof window.gemGetMobilePreviewUserVisible === "function") {
+    return window.gemGetMobilePreviewUserVisible();
+  }
   const mobileFrame = document.getElementById("gem-mobile-frame");
   if (!mobileFrame) return true;
   return mobileFrame.style.display !== "none";
@@ -101,6 +104,11 @@ function updateNavToggleIcons() {
 // Utility: wait for an element to appear
 // ------------------------------------------------------------
 function waitForElement(selector, callback) {
+  if (typeof gemDomWatchWaitFor === 'function') {
+    gemDomWatchWaitFor(selector, callback);
+    return;
+  }
+
   const el = document.querySelector(selector);
   if (el) return callback(el);
 
@@ -124,19 +132,24 @@ function setupNavToggleIconObservers() {
 
   const body = document.body;
   if (body) {
-    const bodyObserver = new MutationObserver((mutations) => {
+    const onBodyClassChange = (mutations) => {
       const classChanged = mutations.some((mutation) =>
         mutation.type === 'attributes' && mutation.attributeName === 'class'
       );
       if (classChanged) {
         updateNavToggleIcons();
       }
-    });
+    };
 
-    bodyObserver.observe(body, {
-      attributes: true,
-      attributeFilter: ['class']
-    });
+    if (typeof gemDomWatchObserveAttributes === 'function') {
+      gemDomWatchObserveAttributes(body, onBodyClassChange, ['class']);
+    } else {
+      const bodyObserver = new MutationObserver(onBodyClassChange);
+      bodyObserver.observe(body, {
+        attributes: true,
+        attributeFilter: ['class']
+      });
+    }
   }
 
   waitForElement("#gem-mobile-frame", (mobileFrame) => {
@@ -214,6 +227,7 @@ function createIconBar() {
   });
 
   const mobile = document.createElement("div");
+  mobile.className = "gem-mobile-nav-toggle";
   mobile.innerHTML = getMobileSvg();
   Object.assign(mobile.style, {
     cursor: "pointer",
@@ -225,44 +239,23 @@ function createIconBar() {
   mobile.addEventListener("click", () => {
     console.log("[Gem] Mobile button clicked");
 
-    if (!chrome?.storage?.sync) {
-      console.warn("[Gem] Mobile click - Chrome storage API unavailable");
-      return;
+    const toggled = typeof window.gemToggleMobilePreview === "function" && window.gemToggleMobilePreview();
+    if (!toggled && typeof window.gemIsMobilePreviewToggleBlocked === "function" && window.gemIsMobilePreviewToggleBlocked()) {
+      console.log("[Gem] Mobile click ignored — Inbox Preview is active");
     }
-
-    // Toggle storage and let mobile-view.js
-    // onChanged apply visibility / create the frame when missing.
-    chrome.storage.sync.get({ mobileViewVisible: true }, (result) => {
-      if (!chrome?.storage?.sync) return;
-
-      const storedVisible = result.mobileViewVisible !== false;
-      const frame = document.getElementById("gem-mobile-frame");
-      const currentState = frame ? frame.style.display !== "none" : false;
-      const newState = !currentState;
-      console.log("[Gem] Mobile click - toggling:", currentState, "->", newState, {
-        framePresent: !!frame,
-        storedMobileViewVisible: storedVisible,
-      });
-
-      const payload = { mobileViewVisible: newState };
-      if (newState) payload.enableMobilePreview = true;
-
-      chrome.storage.sync.set(payload, () => {
-        if (chrome.runtime.lastError) {
-          console.error("[Gem] Mobile click - storage error:", chrome.runtime.lastError);
-        } else {
-          console.log("[Gem] Mobile click - State saved to storage:", newState);
-        }
-      });
-    });
   });
 
   bar.appendChild(expand);
   bar.appendChild(mobile);
   updateNavToggleIcons();
+  if (typeof window.gemUpdateMobilePreviewToggleUi === "function") {
+    window.gemUpdateMobilePreviewToggleUi();
+  }
 
   return bar;
 }
+
+window.updateNavToggleIcons = updateNavToggleIcons;
 
 // ------------------------------------------------------------
 // Inject UI into <e-verticalnav-menu>
@@ -409,20 +402,31 @@ function initializeBlockSearchMonitoring() {
   }
 
   // Watch for the search input to appear in the DOM
-  const observer = new MutationObserver((mutations) => {
-    const shouldRescan = mutations.some((mutation) => {
-      if (mutation.type !== 'childList') return false;
-      return mutation.addedNodes.length > 0 || mutation.removedNodes.length > 0;
+  if (typeof gemDomWatchSubscribe === 'function') {
+    gemDomWatchSubscribe((mutations) => {
+      const shouldRescan = mutations.some((mutation) => {
+        if (mutation.type !== 'childList') return false;
+        return mutation.addedNodes.length > 0 || mutation.removedNodes.length > 0;
+      });
+      if (shouldRescan) {
+        scheduleSearchInputScan();
+      }
     });
-    if (shouldRescan) {
-      scheduleSearchInputScan();
-    }
-  });
-
-  observer.observe(document.body, {
-    childList: true,
-    subtree: true
-  });
+  } else {
+    const observer = new MutationObserver((mutations) => {
+      const shouldRescan = mutations.some((mutation) => {
+        if (mutation.type !== 'childList') return false;
+        return mutation.addedNodes.length > 0 || mutation.removedNodes.length > 0;
+      });
+      if (shouldRescan) {
+        scheduleSearchInputScan();
+      }
+    });
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
+  }
 
   // Check for existing search input
   findAndMonitorSearchInput();
@@ -440,16 +444,26 @@ waitForElement("e-verticalnav-menu", (menu) => {
   updateNavToggleIcons();
 
   // Also re-inject if the menu is replaced in DOM
-  const obs = new MutationObserver(() => {
-    const newMenu = document.querySelector("e-verticalnav-menu");
-    if (newMenu && !newMenu.querySelector(".gem-nav-icons")) {
-      console.log("[Gem] Navigation menu changed, re-injecting icons");
-      injectIcons(newMenu);
-      updateNavToggleIcons();
-    }
-  });
-
-  obs.observe(document.documentElement, { childList: true, subtree: true });
+  if (typeof gemDomWatchSubscribe === 'function') {
+    gemDomWatchSubscribe(() => {
+      const newMenu = document.querySelector("e-verticalnav-menu");
+      if (newMenu && !newMenu.querySelector(".gem-nav-icons")) {
+        console.log("[Gem] Navigation menu changed, re-injecting icons");
+        injectIcons(newMenu);
+        updateNavToggleIcons();
+      }
+    });
+  } else {
+    const obs = new MutationObserver(() => {
+      const newMenu = document.querySelector("e-verticalnav-menu");
+      if (newMenu && !newMenu.querySelector(".gem-nav-icons")) {
+        console.log("[Gem] Navigation menu changed, re-injecting icons");
+        injectIcons(newMenu);
+        updateNavToggleIcons();
+      }
+    });
+    obs.observe(document.documentElement, { childList: true, subtree: true });
+  }
 });
 
 // Initialize block search monitoring
