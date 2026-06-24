@@ -17,6 +17,8 @@ let compactEmailToolsSendTestPending = null;
 let compactEmailToolsSendTestObserver = null;
 /** @type {ReturnType<typeof setTimeout> | null} */
 let compactEmailToolsSendTestTimeout = null;
+let compactEmailToolsCampaignPreviewToolbarStorageListenerInstalled = false;
+let compactEmailToolsOutsideCloseSuppressed = false;
 
 function escapeCompactToolsHtml(text) {
   return String(text || '')
@@ -73,6 +75,100 @@ function isCompactToolsInboxPreviewActive() {
   return !!(el && !el.hasAttribute('hidden'));
 }
 
+function isHighlightEditablesActive() {
+  const input = document.querySelector(
+    'cb-highlight-editables-switch [aria-description="Highlight editable content"]'
+  );
+  return !!(input && input.checked);
+}
+
+function clickHighlightEditablesSwitch() {
+  const labelEl = document.querySelector('cb-highlight-editables-switch label');
+  if (!labelEl) {
+    if (window.gemShowToast) {
+      window.gemShowToast('Could not find "Highlight Editables" control.', { type: 'error' });
+    }
+    return false;
+  }
+  compactEmailToolsOutsideCloseSuppressed = true;
+  labelEl.click();
+  setTimeout(() => {
+    compactEmailToolsOutsideCloseSuppressed = false;
+  }, 0);
+  return true;
+}
+
+let highlightEditablesWatcherStarted = false;
+
+function setupHighlightEditablesWatcher() {
+  if (highlightEditablesWatcherStarted) return;
+  highlightEditablesWatcherStarted = true;
+
+  const bind = (switchEl) => {
+    syncCompactEmailToolsFeatureMenuItems();
+    const input = switchEl.querySelector('[aria-description="Highlight editable content"]');
+    if (!input) return;
+    input.addEventListener('change', syncCompactEmailToolsFeatureMenuItems);
+    if (typeof gemDomWatchObserveAttributes === 'function') {
+      gemDomWatchObserveAttributes(input, syncCompactEmailToolsFeatureMenuItems, ['checked']);
+    }
+  };
+
+  const existing = document.querySelector('cb-highlight-editables-switch');
+  if (existing) {
+    bind(existing);
+    return;
+  }
+
+  if (typeof gemDomWatchWaitFor === 'function') {
+    gemDomWatchWaitFor('cb-highlight-editables-switch', bind);
+  } else if (typeof gemDomWatchSubscribe === 'function') {
+    gemDomWatchSubscribe(() => {
+      const switchEl = document.querySelector('cb-highlight-editables-switch');
+      if (switchEl) bind(switchEl);
+    });
+  }
+}
+
+const COMPACT_TOOLS_CAMPAIGN_PREVIEW_TOOLBAR_VISIBLE_KEY = 'gemCampaignPreviewToolbarVisible';
+
+function applyCampaignPreviewToolbarVisibility(visible) {
+  document.body.classList.toggle('gem-campaign-preview-toolbar-hidden', !visible);
+}
+
+function loadAndApplyCampaignPreviewToolbarVisibility() {
+  try {
+    chrome.storage.sync.get({ [COMPACT_TOOLS_CAMPAIGN_PREVIEW_TOOLBAR_VISIBLE_KEY]: true }, (result) => {
+      applyCampaignPreviewToolbarVisibility(result[COMPACT_TOOLS_CAMPAIGN_PREVIEW_TOOLBAR_VISIBLE_KEY] !== false);
+    });
+  } catch (_) {
+    applyCampaignPreviewToolbarVisibility(true);
+  }
+}
+
+function setupCampaignPreviewToolbarVisibility() {
+  loadAndApplyCampaignPreviewToolbarVisibility();
+
+  if (compactEmailToolsCampaignPreviewToolbarStorageListenerInstalled) return;
+  compactEmailToolsCampaignPreviewToolbarStorageListenerInstalled = true;
+
+  try {
+    chrome.storage.onChanged.addListener((changes, namespace) => {
+      if (namespace !== 'sync' || !changes[COMPACT_TOOLS_CAMPAIGN_PREVIEW_TOOLBAR_VISIBLE_KEY]) return;
+      applyCampaignPreviewToolbarVisibility(
+        changes[COMPACT_TOOLS_CAMPAIGN_PREVIEW_TOOLBAR_VISIBLE_KEY].newValue !== false
+      );
+    });
+  } catch (_) {}
+}
+
+window.gemApplyCampaignPreviewToolbarVisibility = applyCampaignPreviewToolbarVisibility;
+window.gemIsHighlightEditablesActive = isHighlightEditablesActive;
+
+function isCompactToolsLivePreviewActive() {
+  return !isCompactToolsInboxPreviewActive();
+}
+
 function clickLivePreviewButton() {
   const btn = document.querySelector('button[aria-label="Live Preview"]');
   if (btn) {
@@ -86,10 +182,292 @@ function clickLivePreviewButton() {
   return false;
 }
 
-function updateCompactEmailToolsInboxPreviewMenuItem(item) {
-  if (!item) return;
-  item.textContent = isCompactToolsInboxPreviewActive() ? 'Live Preview' : 'Inbox Preview';
+function runCompactEmailToolsActionAfterLivePreview(action) {
+  if (typeof action !== 'function') return;
+
+  if (!isCompactToolsInboxPreviewActive()) {
+    action();
+    return;
+  }
+
+  compactEmailToolsOutsideCloseSuppressed = true;
+  if (!clickLivePreviewButton()) {
+    compactEmailToolsOutsideCloseSuppressed = false;
+    return;
+  }
+
+  let attemptsLeft = 40;
+  const waitForLivePreview = () => {
+    if (!isCompactToolsInboxPreviewActive() || attemptsLeft <= 0) {
+      compactEmailToolsOutsideCloseSuppressed = false;
+      action();
+      return;
+    }
+    attemptsLeft -= 1;
+    requestAnimationFrame(waitForLivePreview);
+  };
+
+  requestAnimationFrame(waitForLivePreview);
 }
+
+function openCompactEmailToolsContactPreview() {
+  runCompactEmailToolsActionAfterLivePreview(() => {
+    clickEmarsysTooltipAction('Contact Preview');
+  });
+}
+
+function syncCompactEmailToolsPreviewMenuItems() {
+  const menu = compactEmailToolsOverflowMenuWrap
+    ? compactEmailToolsOverflowMenuWrap.querySelector('.gem-recent-campaign-row-menu')
+    : null;
+  if (!menu) return;
+
+  const inboxActive = isCompactToolsInboxPreviewActive();
+  const liveActive = isCompactToolsLivePreviewActive();
+
+  const liveItem = menu.querySelector('[data-gem-live-preview-toggle]');
+  if (liveItem) {
+    setCompactEmailToolsMenuItemIndicator(liveItem, liveActive);
+    liveItem.disabled = false;
+    liveItem.classList.toggle('gem-recent-campaign-row-menu-item--preview-active', liveActive);
+    liveItem.setAttribute('aria-disabled', liveActive ? 'true' : 'false');
+  }
+
+  const inboxItem = menu.querySelector('[data-gem-inbox-preview-toggle]');
+  if (inboxItem) {
+    setCompactEmailToolsMenuItemIndicator(inboxItem, inboxActive);
+    inboxItem.disabled = false;
+    inboxItem.classList.toggle('gem-recent-campaign-row-menu-item--preview-active', inboxActive);
+    inboxItem.setAttribute('aria-disabled', inboxActive ? 'true' : 'false');
+  }
+}
+
+let compactEmailToolsPreviewMenuWatcherStarted = false;
+
+function setupCompactEmailToolsPreviewMenuWatcher() {
+  if (compactEmailToolsPreviewMenuWatcherStarted) return;
+  compactEmailToolsPreviewMenuWatcherStarted = true;
+
+  const bind = (el) => {
+    syncCompactEmailToolsPreviewMenuItems();
+    if (typeof gemDomWatchObserveAttributes === 'function') {
+      gemDomWatchObserveAttributes(el, syncCompactEmailToolsPreviewMenuItems, ['hidden']);
+    }
+  };
+
+  const existing = document.querySelector('cb-campaign-inbox-preview');
+  if (existing) {
+    bind(existing);
+    return;
+  }
+
+  if (typeof gemDomWatchWaitFor === 'function') {
+    gemDomWatchWaitFor('cb-campaign-inbox-preview', bind);
+  } else if (typeof gemDomWatchSubscribe === 'function') {
+    gemDomWatchSubscribe(() => {
+      const el = document.querySelector('cb-campaign-inbox-preview');
+      if (el) bind(el);
+    });
+  }
+}
+
+const COMPACT_TOOLS_CAMPAIGN_NOT_EDITABLE_NOTICE = 'This campaign cannot be edited.';
+
+function isCompactToolsSendTestMenuItemAvailable() {
+  const notice = document.querySelector('cb-editing-state-notice');
+  if (!notice) return true;
+  return !(notice.textContent || '').includes(COMPACT_TOOLS_CAMPAIGN_NOT_EDITABLE_NOTICE);
+}
+
+function syncCompactEmailToolsSendTestMenuItem() {
+  const item = compactEmailToolsOverflowMenuWrap
+    ? compactEmailToolsOverflowMenuWrap.querySelector('[data-gem-send-test-menu]')
+    : document.querySelector('[data-gem-send-test-menu]');
+  if (!item) return;
+
+  const show = isCompactToolsSendTestMenuItemAvailable();
+  item.hidden = !show;
+  item.style.display = show ? '' : 'none';
+
+  if (!show && isCompactEmailToolsSendTestPending()) {
+    resetCompactEmailToolsSendTestPending();
+  }
+}
+
+let compactEmailToolsSendTestMenuWatcherStarted = false;
+
+function setupCompactEmailToolsSendTestMenuWatcher() {
+  if (compactEmailToolsSendTestMenuWatcherStarted) return;
+  compactEmailToolsSendTestMenuWatcherStarted = true;
+
+  const bind = (el) => {
+    if (el._gemSendTestMenuWatchBound) return;
+    el._gemSendTestMenuWatchBound = true;
+    syncCompactEmailToolsSendTestMenuItem();
+    if (typeof gemDomWatchObserveAttributes === 'function') {
+      gemDomWatchObserveAttributes(el, syncCompactEmailToolsSendTestMenuItem, ['class', 'hidden']);
+    }
+    new MutationObserver(syncCompactEmailToolsSendTestMenuItem).observe(el, {
+      childList: true,
+      subtree: true,
+      characterData: true
+    });
+  };
+
+  const existing = document.querySelector('cb-editing-state-notice');
+  if (existing) {
+    bind(existing);
+    return;
+  }
+
+  if (typeof gemDomWatchWaitFor === 'function') {
+    gemDomWatchWaitFor('cb-editing-state-notice', bind);
+  } else if (typeof gemDomWatchSubscribe === 'function') {
+    gemDomWatchSubscribe(() => {
+      const el = document.querySelector('cb-editing-state-notice');
+      if (el) bind(el);
+      else syncCompactEmailToolsSendTestMenuItem();
+    });
+  }
+}
+
+function isCompactEmailToolsExpandedViewActive() {
+  return document.body.classList.contains('gem-expanded');
+}
+
+function setCompactEmailToolsMenuItemIndicator(item, isOn) {
+  if (!item) return;
+  item.classList.toggle('gem-recent-campaign-row-menu-item--active', !!isOn);
+  item.setAttribute('aria-checked', isOn ? 'true' : 'false');
+}
+
+function syncCompactEmailToolsFeatureMenuItems() {
+  const menu = compactEmailToolsOverflowMenuWrap
+    ? compactEmailToolsOverflowMenuWrap.querySelector('.gem-recent-campaign-row-menu')
+    : null;
+  if (!menu) return;
+
+  const expandedItem = menu.querySelector('[data-gem-expanded-view-toggle]');
+  if (expandedItem) {
+    const label = expandedItem.querySelector('.gem-recent-campaign-row-menu-item-label');
+    if (label) {
+      label.textContent = isCompactEmailToolsExpandedViewActive() ? 'Classic View' : 'Expanded View';
+    }
+  }
+
+  setCompactEmailToolsMenuItemIndicator(
+    menu.querySelector('[data-gem-mobile-preview-toggle]'),
+    typeof window.gemGetMobilePreviewUserVisible === 'function' && window.gemGetMobilePreviewUserVisible()
+  );
+
+  const mobilePreviewItem = menu.querySelector('[data-gem-mobile-preview-toggle]');
+  if (mobilePreviewItem) {
+    const blocked = typeof window.gemIsMobilePreviewToggleBlocked === 'function'
+      && window.gemIsMobilePreviewToggleBlocked();
+    mobilePreviewItem.disabled = blocked;
+    mobilePreviewItem.classList.toggle('gem-recent-campaign-row-menu-item--inbox-blocked', blocked);
+    mobilePreviewItem.setAttribute('aria-disabled', blocked ? 'true' : 'false');
+  }
+
+  setCompactEmailToolsMenuItemIndicator(
+    menu.querySelector('[data-gem-alt-text-preview-toggle]'),
+    typeof window.gemIsAltTextPreviewActive === 'function' && window.gemIsAltTextPreviewActive()
+  );
+
+  setCompactEmailToolsMenuItemIndicator(
+    menu.querySelector('[data-gem-targeting-preview-toggle]'),
+    typeof window.gemIsBlockTargetingPreviewEnabled === 'function' && window.gemIsBlockTargetingPreviewEnabled()
+  );
+
+  setCompactEmailToolsMenuItemIndicator(
+    menu.querySelector('[data-gem-highlight-editables-toggle]'),
+    isHighlightEditablesActive()
+  );
+
+  syncCompactEmailToolsPreviewMenuItems();
+}
+
+function toggleCompactEmailToolsExpandedView() {
+  document.body.classList.toggle('gem-expanded');
+  const isNowExpanded = document.body.classList.contains('gem-expanded');
+  if (typeof window.updateNavToggleIcons === 'function') {
+    window.updateNavToggleIcons();
+  }
+  try {
+    chrome.storage.sync.set({ fullscreenActive: isNowExpanded });
+  } catch (_) {}
+  syncCompactEmailToolsFeatureMenuItems();
+}
+
+function makeCompactEmailToolsToggleMenuItem(label, options = {}) {
+  const { withIndicator = false, dataAttr = '' } = options;
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'gem-recent-campaign-row-menu-item';
+  if (withIndicator) {
+    btn.classList.add('gem-recent-campaign-row-menu-item--has-indicator');
+  }
+  btn.setAttribute('role', 'menuitem');
+  if (withIndicator) {
+    btn.setAttribute('aria-checked', 'false');
+  }
+  if (dataAttr) {
+    btn.setAttribute(dataAttr, 'true');
+  }
+
+  const labelSpan = document.createElement('span');
+  labelSpan.className = 'gem-recent-campaign-row-menu-item-label';
+  labelSpan.textContent = label;
+  btn.appendChild(labelSpan);
+
+  if (withIndicator) {
+    const indicator = document.createElement('span');
+    indicator.className = 'gem-recent-campaign-row-menu-item-indicator';
+    indicator.setAttribute('aria-hidden', 'true');
+    btn.appendChild(indicator);
+  }
+
+  return btn;
+}
+
+function setupCompactEmailToolsFeatureMenuSync() {
+  if (setupCompactEmailToolsFeatureMenuSync._started) return;
+  setupCompactEmailToolsFeatureMenuSync._started = true;
+
+  try {
+    chrome.storage.onChanged.addListener((changes, namespace) => {
+      if (namespace !== 'sync') return;
+      const syncKeys = [
+        'mobileViewVisible',
+        'gemAltTextPreviewOverlayActive',
+        'gemAltTextPreviewEnabled',
+        'gemBlockTargetingPreviewEnabled',
+        'fullscreenActive'
+      ];
+      if (syncKeys.some((key) => changes[key])) {
+        syncCompactEmailToolsFeatureMenuItems();
+      }
+    });
+  } catch (_) {}
+
+  const onBodyClassChange = () => syncCompactEmailToolsFeatureMenuItems();
+  if (typeof gemDomWatchObserveAttributes === 'function') {
+    gemDomWatchObserveAttributes(document.body, onBodyClassChange, ['class']);
+  } else {
+    new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+          onBodyClassChange();
+          break;
+        }
+      }
+    }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+  }
+}
+
+window.gemSyncCompactEmailToolsFeatureMenuItems = syncCompactEmailToolsFeatureMenuItems;
+window.gemSyncCompactEmailToolsPreviewMenuItems = syncCompactEmailToolsPreviewMenuItems;
+window.gemSyncCompactEmailToolsSendTestMenuItem = syncCompactEmailToolsSendTestMenuItem;
 
 async function copyRichTextCampaignLink() {
   const url = window.location.href;
@@ -224,6 +602,9 @@ function positionCompactEmailToolsMenu(wrap, menu) {
   }
   if (wrap.classList.contains('gem-compact-email-tools-menu-wrap--header')) {
     left = 96;
+  } else if (document.body.classList.contains('gem-expanded')) {
+    left = triggerRect.left;
+    left = Math.min(left, window.innerWidth - menuRect.width - 8);
   } else {
     left = Math.max(8, Math.min(left, window.innerWidth - menuRect.width - 8));
   }
@@ -240,12 +621,12 @@ function openCompactEmailToolsMenuAt(wrap) {
   if (!trigger || !menu) return;
   menu.classList.add('gem-recent-campaign-row-menu--open');
   trigger.setAttribute('aria-expanded', 'true');
-  updateCompactEmailToolsInboxPreviewMenuItem(
-    menu.querySelector('[data-gem-inbox-preview-toggle]')
-  );
   if (typeof window.gemSyncCompareLanguagesOverflowMenuItem === 'function') {
     window.gemSyncCompareLanguagesOverflowMenuItem();
   }
+  syncCompactEmailToolsSendTestMenuItem();
+  syncCompactEmailToolsFeatureMenuItems();
+  syncCompactEmailToolsPreviewMenuItems();
   positionCompactEmailToolsMenu(wrap, menu);
   openCompactEmailToolsMenu = { wrap, trigger, menu };
 }
@@ -347,11 +728,11 @@ function syncCompactEmailToolsOverflowMenuPlacement() {
     if (compactEmailToolsDropdownContainer) {
       const select = compactEmailToolsDropdownContainer.querySelector('.gem-email-tools-select');
       if (select) {
-        if (select.nextElementSibling !== wrap) {
-          select.insertAdjacentElement('afterend', wrap);
+        if (select.previousElementSibling !== wrap) {
+          select.insertAdjacentElement('beforebegin', wrap);
         }
       } else if (wrap.parentElement !== compactEmailToolsDropdownContainer) {
-        compactEmailToolsDropdownContainer.appendChild(wrap);
+        compactEmailToolsDropdownContainer.prepend(wrap);
       }
     }
     return;
@@ -429,6 +810,7 @@ function setupCompactEmailToolsOverflowMenu(dropdownContainer) {
   sendTestItem.type = 'button';
   sendTestItem.className = 'gem-recent-campaign-row-menu-item';
   sendTestItem.setAttribute('role', 'menuitem');
+  sendTestItem.setAttribute('data-gem-send-test-menu', 'true');
 
   const sendTestLabel = document.createElement('span');
   sendTestLabel.textContent = 'Send a Test';
@@ -445,38 +827,59 @@ function setupCompactEmailToolsOverflowMenu(dropdownContainer) {
     e.stopPropagation();
     if (sendTestItem.classList.contains('gem-recent-campaign-row-menu-item--duplicating')) return;
 
-    sendTestItem.classList.add('gem-recent-campaign-row-menu-item--duplicating');
-    sendTestItem.setAttribute('aria-busy', 'true');
-    sendTestSpinner.hidden = false;
+    const launchSendTest = () => {
+      sendTestItem.classList.add('gem-recent-campaign-row-menu-item--duplicating');
+      sendTestItem.setAttribute('aria-busy', 'true');
+      sendTestSpinner.hidden = false;
 
-    // Block outside-click close before triggering Emarsys — programmatic .click() bubbles to document.
-    beginCompactEmailToolsSendTestPending(sendTestItem, sendTestSpinner);
+      // Block outside-click close before triggering Emarsys — programmatic .click() bubbles to document.
+      beginCompactEmailToolsSendTestPending(sendTestItem, sendTestSpinner);
 
-    if (!clickEmarsysTooltipAction('Testmail')) {
-      resetCompactEmailToolsSendTestPending();
-      return;
-    }
+      if (!clickEmarsysTooltipAction('Testmail')) {
+        resetCompactEmailToolsSendTestPending();
+        return;
+      }
 
-    waitForTestEmailDialogThenCloseMenu();
+      waitForTestEmailDialogThenCloseMenu();
+    };
+
+    runCompactEmailToolsActionAfterLivePreview(launchSendTest);
+  });
+
+  const livePreviewItem = makeCompactEmailToolsToggleMenuItem('Live Preview', {
+    withIndicator: true,
+    dataAttr: 'data-gem-live-preview-toggle'
+  });
+  const livePreviewLabel = livePreviewItem.querySelector('.gem-recent-campaign-row-menu-item-label');
+  if (livePreviewLabel) {
+    livePreviewLabel.insertAdjacentHTML(
+      'beforebegin',
+      '<e-icon class="gem-inline-icon" icon="bolt"><div aria-hidden="true" class="e-icon-wrapper"><div class="e-icon">\uF087</div></div></e-icon>'
+    );
+  }
+  livePreviewItem.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (isCompactToolsLivePreviewActive()) return;
+    closeCompactEmailToolsMenu();
+    clickLivePreviewButton();
+  });
+
+  const inboxPreviewItem = makeCompactEmailToolsToggleMenuItem('Inbox Preview', {
+    withIndicator: true,
+    dataAttr: 'data-gem-inbox-preview-toggle'
+  });
+  inboxPreviewItem.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (isCompactToolsInboxPreviewActive()) return;
+    closeCompactEmailToolsMenu();
+    clickEmarsysTooltipAction('Inbox Preview');
   });
 
   const contactPreviewItem = makeMenuItem('Contact Preview');
   contactPreviewItem.addEventListener('click', (e) => {
     e.stopPropagation();
     closeCompactEmailToolsMenu();
-    clickEmarsysTooltipAction('Contact Preview');
-  });
-
-  const inboxPreviewItem = makeMenuItem('Inbox Preview');
-  inboxPreviewItem.setAttribute('data-gem-inbox-preview-toggle', 'true');
-  inboxPreviewItem.addEventListener('click', (e) => {
-    e.stopPropagation();
-    closeCompactEmailToolsMenu();
-    if (isCompactToolsInboxPreviewActive()) {
-      clickLivePreviewButton();
-    } else {
-      clickEmarsysTooltipAction('Inbox Preview');
-    }
+    openCompactEmailToolsContactPreview();
   });
 
   const compareLanguagesItem = makeMenuItem('Compare Languages');
@@ -496,6 +899,63 @@ function setupCompactEmailToolsOverflowMenu(dropdownContainer) {
     e.stopPropagation();
     closeCompactEmailToolsMenu();
     void copyRichTextCampaignLink();
+  });
+
+  const expandedViewItem = makeCompactEmailToolsToggleMenuItem('Expanded View', {
+    dataAttr: 'data-gem-expanded-view-toggle'
+  });
+  expandedViewItem.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleCompactEmailToolsExpandedView();
+  });
+
+  const mobilePreviewItem = makeCompactEmailToolsToggleMenuItem('Mobile Preview', {
+    withIndicator: true,
+    dataAttr: 'data-gem-mobile-preview-toggle'
+  });
+  mobilePreviewItem.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (typeof window.gemIsMobilePreviewToggleBlocked === 'function' && window.gemIsMobilePreviewToggleBlocked()) {
+      return;
+    }
+    if (typeof window.gemToggleMobilePreview === 'function') {
+      window.gemToggleMobilePreview();
+    }
+    syncCompactEmailToolsFeatureMenuItems();
+  });
+
+  const altTextPreviewItem = makeCompactEmailToolsToggleMenuItem('ALT Text Preview', {
+    withIndicator: true,
+    dataAttr: 'data-gem-alt-text-preview-toggle'
+  });
+  altTextPreviewItem.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (typeof window.gemToggleAltTextPreview === 'function') {
+      window.gemToggleAltTextPreview();
+    }
+    syncCompactEmailToolsFeatureMenuItems();
+  });
+
+  const targetingPreviewItem = makeCompactEmailToolsToggleMenuItem('Highlight Targeting', {
+    withIndicator: true,
+    dataAttr: 'data-gem-targeting-preview-toggle'
+  });
+  targetingPreviewItem.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (typeof window.gemToggleBlockTargetingPreview === 'function') {
+      window.gemToggleBlockTargetingPreview();
+    }
+    syncCompactEmailToolsFeatureMenuItems();
+  });
+
+  const highlightEditablesItem = makeCompactEmailToolsToggleMenuItem('Highlight Editables', {
+    withIndicator: true,
+    dataAttr: 'data-gem-highlight-editables-toggle'
+  });
+  highlightEditablesItem.addEventListener('click', (e) => {
+    e.stopPropagation();
+    clickHighlightEditablesSwitch();
+    syncCompactEmailToolsFeatureMenuItems();
   });
 
   const divider = document.createElement('div');
@@ -523,13 +983,24 @@ function setupCompactEmailToolsOverflowMenu(dropdownContainer) {
     duplicateCompactEmailToolsCampaign(duplicateItem, e);
   });
 
-  menu.appendChild(sendTestItem);
-  menu.appendChild(contactPreviewItem);
+  const previewSectionDivider = document.createElement('div');
+  previewSectionDivider.className = 'gem-recent-campaign-row-menu-divider';
+  previewSectionDivider.setAttribute('role', 'separator');
+
+  menu.appendChild(livePreviewItem);
   menu.appendChild(inboxPreviewItem);
+  menu.appendChild(contactPreviewItem);
+  menu.appendChild(previewSectionDivider);
+  menu.appendChild(sendTestItem);
   menu.appendChild(compareLanguagesItem);
-  menu.appendChild(shareItem);
+  menu.appendChild(expandedViewItem);
+  menu.appendChild(mobilePreviewItem);
+  menu.appendChild(altTextPreviewItem);
+  menu.appendChild(targetingPreviewItem);
+  menu.appendChild(highlightEditablesItem);
   menu.appendChild(divider);
   menu.appendChild(duplicateItem);
+  menu.appendChild(shareItem);
 
   trigger.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -543,14 +1014,22 @@ function setupCompactEmailToolsOverflowMenu(dropdownContainer) {
   wrap.appendChild(trigger);
   wrap.appendChild(menu);
   compactEmailToolsOverflowMenuWrap = wrap;
+  syncCompactEmailToolsFeatureMenuItems();
   syncCompactEmailToolsOverflowMenuPlacement();
   setupCompactEmailToolsOverflowMenuPlacementWatcher();
+  setupCompactEmailToolsFeatureMenuSync();
+  setupHighlightEditablesWatcher();
+  setupCompactEmailToolsPreviewMenuWatcher();
+  setupCompactEmailToolsSendTestMenuWatcher();
+  syncCompactEmailToolsPreviewMenuItems();
+  syncCompactEmailToolsSendTestMenuItem();
 
   if (!compactEmailToolsMenuListenersInstalled) {
     compactEmailToolsMenuListenersInstalled = true;
     const handleCompactEmailToolsOutsidePointer = (e) => {
       if (!openCompactEmailToolsMenu) return;
       if (isCompactEmailToolsSendTestPending()) return;
+      if (compactEmailToolsOutsideCloseSuppressed) return;
       if (openCompactEmailToolsMenu.wrap.contains(e.target)) return;
       closeCompactEmailToolsMenu();
     };
@@ -564,6 +1043,7 @@ function setupCompactEmailToolsOverflowMenu(dropdownContainer) {
 
 function initializeCompactEmailTools() {
   console.log("[Gem] Initializing compact email tools dropdown");
+  setupCampaignPreviewToolbarVisibility();
 
   // Wait for the navigation section to appear
   waitForElement('.e-contentblocks-navigation_section', (navSection) => {

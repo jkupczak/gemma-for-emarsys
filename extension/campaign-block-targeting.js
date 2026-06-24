@@ -180,6 +180,9 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
   function updateToolbarButtonState() {
     if (!toolbarButtonEl) return;
     toolbarButtonEl.classList.toggle('e-btn-active', previewEnabled);
+    if (typeof window.gemSyncCompactEmailToolsFeatureMenuItems === 'function') {
+      window.gemSyncCompactEmailToolsFeatureMenuItems();
+    }
   }
 
   try {
@@ -668,6 +671,16 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
   window.gemDomWatchSubscribe(function () {
     attachPreviewIframeLoadListener();
   });
+
+  window.gemToggleBlockTargetingPreview = function gemToggleBlockTargetingPreview() {
+    try {
+      chrome.storage.sync.set({ [STORAGE_PREVIEW_ENABLED]: !previewEnabled });
+    } catch (_) {}
+  };
+
+  window.gemIsBlockTargetingPreviewEnabled = function gemIsBlockTargetingPreviewEnabled() {
+    return previewEnabled;
+  };
 
   console.log('[Gem][BlockTargeting] Initialized.');
 })();

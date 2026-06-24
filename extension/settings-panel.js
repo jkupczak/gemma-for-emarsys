@@ -48,6 +48,7 @@ const GEM_PREFLIGHT_DEFAULT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_VALUE = 2;
 const GEM_PREFLIGHT_DEFAULT_IMAGE_WEIGHT_THRESHOLD_UNIT = 'MB';
 const GEM_COMPARE_LANGUAGES_DESKTOP_WIDTH_KEY = 'gemCompareLanguagesDesktopWidth';
 const GEM_COMPARE_LANGUAGES_MOBILE_WIDTH_KEY = 'gemCompareLanguagesMobileWidth';
+const GEM_CAMPAIGN_PREVIEW_TOOLBAR_VISIBLE_KEY = 'gemCampaignPreviewToolbarVisible';
 const GEM_COMPARE_LANGUAGES_DEFAULT_DESKTOP_WIDTH = 620;
 const GEM_COMPARE_LANGUAGES_DEFAULT_MOBILE_WIDTH = 414;
 const GEM_FULL_BACKUP_TYPE = 'gemma-full-backup';
@@ -794,6 +795,22 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
             </div>
             <p class="sub-label">
               Decide whether targeting previews are always visible or only when you hover over a block.
+            </p>
+          </div>
+        </div>
+
+        <div class="gem-setting-section">
+          <h3>Campaign Preview</h3>
+          <div class="gem-setting gem-setting-condensed">
+            <div class="gem-e-switch-wrapper">
+              <label for="opt-campaign-preview-toolbar-visible">Show Campaign Preview Toolbar</label>
+              <div class="gem-e-switch--fat e-switch">
+                <input type="checkbox" class="e-switch__input" id="opt-campaign-preview-toolbar-visible" checked>
+                <label class="e-switch__toggle" for="opt-campaign-preview-toolbar-visible"></label>
+              </div>
+            </div>
+            <p class="sub-label">
+              The vertical toolbar beside your email preview includes undo/redo, highlight editables, and Gemma preview tools. Turn it off for a cleaner preview area.
             </p>
           </div>
         </div>
@@ -1580,6 +1597,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
         gemAltTextVisibility: "always-show",
         gemBlockTargetingPreviewEnabled: true,
         gemBlockTargetingVisibility: "always-show",
+        [GEM_CAMPAIGN_PREVIEW_TOOLBAR_VISIBLE_KEY]: true,
         [GEM_PREFLIGHT_TOTAL_IMAGE_WEIGHT_THRESHOLD_VALUE_KEY]: GEM_PREFLIGHT_DEFAULT_TOTAL_IMAGE_WEIGHT_THRESHOLD_VALUE,
         [GEM_PREFLIGHT_TOTAL_IMAGE_WEIGHT_THRESHOLD_UNIT_KEY]: GEM_PREFLIGHT_DEFAULT_IMAGE_WEIGHT_THRESHOLD_UNIT,
         [GEM_PREFLIGHT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_VALUE_KEY]: GEM_PREFLIGHT_DEFAULT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_VALUE,
@@ -1657,6 +1675,11 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
 
         const blockTargetingVisibilityEl = document.getElementById("opt-block-targeting-visibility");
         if (blockTargetingVisibilityEl) blockTargetingVisibilityEl.value = settings.gemBlockTargetingVisibility || "always-show";
+
+        const campaignPreviewToolbarEl = document.getElementById("opt-campaign-preview-toolbar-visible");
+        if (campaignPreviewToolbarEl) {
+          campaignPreviewToolbarEl.checked = settings[GEM_CAMPAIGN_PREVIEW_TOOLBAR_VISIBLE_KEY] !== false;
+        }
 
         const preflightTotalValueEl = document.getElementById("opt-preflight-total-image-weight-threshold-value");
         if (preflightTotalValueEl) preflightTotalValueEl.value = String(settings[GEM_PREFLIGHT_TOTAL_IMAGE_WEIGHT_THRESHOLD_VALUE_KEY] ?? GEM_PREFLIGHT_DEFAULT_TOTAL_IMAGE_WEIGHT_THRESHOLD_VALUE);
@@ -1818,6 +1841,8 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
               document.getElementById("opt-block-targeting-preview-enabled")?.checked ?? true,
             gemBlockTargetingVisibility:
               document.getElementById("opt-block-targeting-visibility")?.value ?? "always-show",
+            [GEM_CAMPAIGN_PREVIEW_TOOLBAR_VISIBLE_KEY]:
+              document.getElementById("opt-campaign-preview-toolbar-visible")?.checked ?? true,
             [GEM_PREFLIGHT_TOTAL_IMAGE_WEIGHT_THRESHOLD_VALUE_KEY]:
               Math.max(0.1, parseFloat(document.getElementById("opt-preflight-total-image-weight-threshold-value")?.value || String(GEM_PREFLIGHT_DEFAULT_TOTAL_IMAGE_WEIGHT_THRESHOLD_VALUE)) || GEM_PREFLIGHT_DEFAULT_TOTAL_IMAGE_WEIGHT_THRESHOLD_VALUE),
             [GEM_PREFLIGHT_TOTAL_IMAGE_WEIGHT_THRESHOLD_UNIT_KEY]:
@@ -1838,6 +1863,12 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
           // Apply immediately + cache synchronously for next page load
           applyGemThemeMode(settingsToSave[GEM_THEME_MODE_STORAGE_KEY], { persistLocal: true });
           applyExpandedMode(settingsToSave[GEM_EXPANDED_MODE_STORAGE_KEY]);
+          const toolbarVisible = settingsToSave[GEM_CAMPAIGN_PREVIEW_TOOLBAR_VISIBLE_KEY] !== false;
+          if (typeof window.gemApplyCampaignPreviewToolbarVisibility === 'function') {
+            window.gemApplyCampaignPreviewToolbarVisibility(toolbarVisible);
+          } else {
+            document.body.classList.toggle('gem-campaign-preview-toolbar-hidden', !toolbarVisible);
+          }
 
           chrome.storage.sync.set(settingsToSave);
 
@@ -1997,6 +2028,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
       "opt-alt-text-visibility",
       "opt-block-targeting-preview-enabled",
       "opt-block-targeting-visibility",
+      "opt-campaign-preview-toolbar-visible",
       "opt-preflight-total-image-weight-threshold-value",
       "opt-preflight-total-image-weight-threshold-unit",
       "opt-preflight-singular-image-weight-threshold-value",
@@ -2774,6 +2806,11 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
     if (changes.gemBlockTargetingVisibility) {
       const el = document.getElementById("opt-block-targeting-visibility");
       if (el) el.value = changes.gemBlockTargetingVisibility.newValue || "always-show";
+    }
+
+    if (changes[GEM_CAMPAIGN_PREVIEW_TOOLBAR_VISIBLE_KEY]) {
+      const el = document.getElementById("opt-campaign-preview-toolbar-visible");
+      if (el) el.checked = changes[GEM_CAMPAIGN_PREVIEW_TOOLBAR_VISIBLE_KEY].newValue !== false;
     }
 
     if (changes[GEM_PREFLIGHT_TOTAL_IMAGE_WEIGHT_THRESHOLD_VALUE_KEY]) {

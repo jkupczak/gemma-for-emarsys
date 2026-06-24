@@ -92,8 +92,6 @@ Add a fullwidth banner when the user has pending preflight issues. provide an X 
 
 Save and Continue button on the Email Settings page? After saving it pushes you to the next step instead of just refresing the page
 
-Remember when a language version has preflight errors. Store it and add it to the language picker.
-
 Add a "New!" chip on the email list for emails created today?
 
 Could I open the Email Settings page in an iframe above the content editor to save some time? Need to see if the user could save changes on the page, and then save changes on the editor without reloading first and not lose any data (one way or the other).
@@ -261,3 +259,5 @@ the images bounding box using a box shadow.
 ✓ Link editor dialog needs to respond to the enter key by clicking the "OK" button.
 
 ✓ email drawer needs to not remember search inputs across tabs and page loads. its enough for it to remember on a single page load when it opens and closes. but a page refresh should kill it, and it shouldn't sync to other tabs
+
+✓ Remember when a language version has preflight errors. Store it and add it to the language picker.

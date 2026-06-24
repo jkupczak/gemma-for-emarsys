@@ -37,8 +37,11 @@ function updateMobilePreviewToggleUi() {
     el.classList.toggle("gem-mobile-nav-toggle--disabled", blocked);
     el.setAttribute("aria-disabled", blocked ? "true" : "false");
   });
-  if (typeof window.updateNavToggleIcons === "function") {
+  if (typeof window.updateNavToggleIcons === 'function') {
     window.updateNavToggleIcons();
+  }
+  if (typeof window.gemSyncCompactEmailToolsFeatureMenuItems === 'function') {
+    window.gemSyncCompactEmailToolsFeatureMenuItems();
   }
 }
 

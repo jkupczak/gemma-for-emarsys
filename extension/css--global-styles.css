@@ -1431,3 +1431,10 @@ color-mix(in srgb, var(--token-gray-100, #dbeafe) 25%, transparent);
 .gem-recent-campaign-group.gem-recent-campaign-group--list-other {
     margin-bottom:0;
 }
+
+.gem-inline-icon {
+  & .e-icon {
+        color: var(--token-button-default-text);
+        transition: color .2s ease-in-out;
+    }
+}

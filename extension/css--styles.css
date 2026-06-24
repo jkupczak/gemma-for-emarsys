@@ -79,7 +79,7 @@ body.gem-toolbar-convertEslToTokens-always-hide e-tooltip[e-button-id="gem-conve
 }
 
 cb-header.e-layout__header h1 {
-    font-size: 14px !important
+    font-size: 16px !important
 }
 
 .gem-border-hover-primary-600:hover {
@@ -904,6 +904,16 @@ td:has(input.gem-export-snippet-checkbox) ~ td .gem-snippet-row-actions {
 .gem-nav-icons e-tooltip {
     width: 100%;
     justify-content: center;
+}
+
+.gem-mobile-nav-toggle--disabled {
+    opacity: 0.5;
+    cursor: default;
+    pointer-events: none;
+}
+
+.gem-mobile-nav-toggle--disabled:hover {
+    background: transparent;
 }
 
 /* Adjusting input widths of the image properties dialog to make them thinner. */
@@ -2267,6 +2277,10 @@ input.gem-image-search:not(:placeholder-shown) {
 }
 
 /* campaign preview toolbar */
+body.gem-campaign-preview-toolbar-hidden cb-campaign-preview > .e-section > .e-section__header {
+    display: none !important;
+}
+
 cb-campaign-preview > .e-section {
     display: flex;
     flex-direction: row-reverse;

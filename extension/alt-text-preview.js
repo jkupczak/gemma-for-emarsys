@@ -68,6 +68,9 @@ console.log("[Gem] alt-text-preview.js loaded");
       if (buttonEl) buttonEl.classList.toggle("e-btn-active", isActive);
       if (isActive) enable();
       else disable();
+      if (typeof window.gemSyncCompactEmailToolsFeatureMenuItems === 'function') {
+        window.gemSyncCompactEmailToolsFeatureMenuItems();
+      }
     }
 
     if (changes.gemAltTextVisibility) {
@@ -150,6 +153,10 @@ console.log("[Gem] alt-text-preview.js loaded");
     try {
       chrome.storage.sync.set({ [STORAGE_OVERLAY_ACTIVE_KEY]: isActive });
     } catch (_) {}
+
+    if (typeof window.gemSyncCompactEmailToolsFeatureMenuItems === 'function') {
+      window.gemSyncCompactEmailToolsFeatureMenuItems();
+    }
   }
 
   function enable() {
@@ -158,9 +165,9 @@ console.log("[Gem] alt-text-preview.js loaded");
   }
 
   function disable() {
-    if (lifecycleObserver) {
-      lifecycleObserver.disconnect();
-      lifecycleObserver = null;
+    if (lifecycleUnsub) {
+      lifecycleUnsub();
+      lifecycleUnsub = null;
     }
     if (iframeMutationObserver) {
       iframeMutationObserver.disconnect();
@@ -484,4 +491,13 @@ console.log("[Gem] alt-text-preview.js loaded");
     }
     waitForButtonGroup();
   });
+
+  window.gemToggleAltTextPreview = function gemToggleAltTextPreview() {
+    toggle();
+    return isActive;
+  };
+
+  window.gemIsAltTextPreviewActive = function gemIsAltTextPreviewActive() {
+    return !!(settingEnabled && isActive);
+  };
 })();
