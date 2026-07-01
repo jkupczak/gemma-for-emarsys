@@ -93,6 +93,135 @@ window.gemGetMobilePreviewUserVisible = function gemGetMobilePreviewUserVisible(
 };
 window.gemUpdateMobilePreviewToggleUi = updateMobilePreviewToggleUi;
 
+const PREVIEW_LONG_WORD_THRESHOLD = 20;
+const SANITIZED_PREVIEW_GEM_REMOVE_SELECTORS =
+  "#gem-text-highlight-container, #gem-alt-text-overlay-container, #gem-block-targeting-styles, #gem-block-targeting-settings-styles";
+const SANITIZED_PREVIEW_VCE_REMOVE_SELECTORS = [
+  "e-vce-borderer",
+  "e-vce-borderer-element",
+  "e-vce-dropline",
+  ".two_click_insert_dropzone",
+  "div.two_click_insert_dropzone",
+  ".vce-drag-and-drop-auto-scroll-layer",
+  "e-vce-positioner-editable",
+  ".dnd_reorder_dropzone",
+  ".dnd_insert_dropzone",
+  "div.dnd_insert_dropzone",
+  ".e-contentblocks-dragview",
+  "e-vce-positioner-block",
+];
+
+function breakLongWordsInPreviewRoot(root) {
+  if (!root) return;
+  const walker = document.createTreeWalker(
+    root,
+    NodeFilter.SHOW_TEXT,
+    {
+      acceptNode(node) {
+        if (!node.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
+        return NodeFilter.FILTER_ACCEPT;
+      },
+    },
+  );
+
+  const nodes = [];
+  let n;
+  while ((n = walker.nextNode())) {
+    nodes.push(n);
+  }
+
+  for (const textNode of nodes) {
+    const text = textNode.nodeValue;
+    const parts = text.split(/(\s+)/);
+    let needsReplacement = false;
+    const processed = parts.map((part) => {
+      if (/\s/.test(part)) return part;
+      if (part.length > PREVIEW_LONG_WORD_THRESHOLD) {
+        needsReplacement = true;
+        const regex = new RegExp(`.{1,${PREVIEW_LONG_WORD_THRESHOLD}}`, "g");
+        return part.match(regex).join("<wbr>");
+      }
+      return part;
+    });
+
+    if (needsReplacement) {
+      const span = textNode.ownerDocument.createElement("span");
+      span.innerHTML = processed.join("");
+      textNode.parentNode.replaceChild(span, textNode);
+    }
+  }
+}
+
+function buildSanitizedPreviewHtml(originalDoc) {
+  if (!originalDoc || !originalDoc.documentElement) return "";
+
+  const parser = new DOMParser();
+  const tempDoc = parser.parseFromString(originalDoc.documentElement.outerHTML, "text/html");
+
+  tempDoc.querySelectorAll("script").forEach((script) => script.remove());
+  SANITIZED_PREVIEW_VCE_REMOVE_SELECTORS.forEach((selector) => {
+    tempDoc.querySelectorAll(selector).forEach((item) => item.remove());
+  });
+  tempDoc.querySelectorAll(SANITIZED_PREVIEW_GEM_REMOVE_SELECTORS).forEach((item) => item.remove());
+
+  const body = tempDoc.querySelector("body");
+  if (body && body.hasAttribute("spellcheck")) {
+    body.removeAttribute("spellcheck");
+  }
+  if (body) {
+    body.querySelectorAll('[contenteditable="true"]').forEach((el) => {
+      el.setAttribute("contenteditable", "false");
+    });
+  }
+
+  return tempDoc.documentElement.outerHTML;
+}
+
+function applySanitizedPreviewHtmlToIframe(html, targetIframe, options) {
+  const opts = options && typeof options === "object" ? options : {};
+  const targetDoc = targetIframe && targetIframe.contentDocument;
+  if (!targetDoc || !html) return false;
+
+  targetDoc.open();
+  targetDoc.write(html);
+  targetDoc.close();
+
+  if (opts.hideScrollbars !== false) {
+    const scrollbarStyle = targetDoc.createElement("style");
+    scrollbarStyle.textContent = `
+      html, body {
+        margin: 0 !important;
+        padding: 0 !important;
+      }
+      ::-webkit-scrollbar:vertical {
+        display: none !important;
+      }
+      * {
+        scrollbar-width: none !important;
+      }
+    `;
+    if (targetDoc.head) {
+      targetDoc.head.appendChild(scrollbarStyle);
+    }
+  }
+
+  if (opts.breakLongWords !== false && targetDoc.body) {
+    breakLongWordsInPreviewRoot(targetDoc.body);
+  }
+
+  return true;
+}
+
+function syncSanitizedPreviewClone(sourceIframe, targetIframe, options) {
+  const originalDoc = sourceIframe && sourceIframe.contentDocument;
+  if (!originalDoc) return false;
+  const html = buildSanitizedPreviewHtml(originalDoc);
+  if (!html) return false;
+  return applySanitizedPreviewHtmlToIframe(html, targetIframe, options);
+}
+
+window.gemSyncSanitizedPreviewClone = syncSanitizedPreviewClone;
+
 function isMobilePreviewActiveForSync() {
   if (!mobilePreviewVisible) return false;
   const wrapper = document.getElementById("gem-mobile-frame") || document.querySelector(".gem-iframe-wrapper");
@@ -1212,67 +1341,13 @@ function setupCustomScrollbars(iframe, container) {
         return;
       }
 
-      // Serialize the original HTML to a string
-      const originalHTML = originalDoc.documentElement.outerHTML;
-      console.log(LOG, "syncIframe: original HTML length:", originalHTML.length, "body length:", originalDoc.body?.innerHTML?.length ?? 0);
-
-      // Parse it into a temporary DOM so we can remove scripts and clean content
-      const parser = new DOMParser();
-      const tempDoc = parser.parseFromString(originalHTML, "text/html");
-
-      const scriptsRemoved = tempDoc.querySelectorAll("script").length;
-      tempDoc.querySelectorAll("script").forEach(script => script.remove());
-
-      const vceBordererRemoved = tempDoc.querySelectorAll("e-vce-borderer").length;
-      const vceBordererElRemoved = tempDoc.querySelectorAll("e-vce-borderer-element").length;
-      const droplineRemoved = tempDoc.querySelectorAll("e-vce-dropline").length;
-      tempDoc.querySelectorAll("e-vce-borderer").forEach(item => item.remove());
-      tempDoc.querySelectorAll("e-vce-borderer-element").forEach(item => item.remove());
-      tempDoc.querySelectorAll("e-vce-dropline").forEach(item => item.remove());
-
-      const excludedFromMobileClone =
-        "#gem-text-highlight-container, #gem-alt-text-overlay-container, #gem-block-targeting-styles, #gem-block-targeting-settings-styles";
-      const highlightRemoved = tempDoc.querySelectorAll(excludedFromMobileClone).length;
-      tempDoc.querySelectorAll(excludedFromMobileClone).forEach((item) => item.remove());
-
-      console.log(LOG, "syncIframe: removed elements", { scriptsRemoved, vceBordererRemoved, vceBordererElRemoved, droplineRemoved, highlightRemoved });
-
-      // Remove spellcheck attribute from body element if present
-      const body = tempDoc.querySelector("body");
-      if (body && body.hasAttribute("spellcheck")) {
-        body.removeAttribute("spellcheck");
-      }
-
-      const htmlToWrite = tempDoc.documentElement.outerHTML;
-      console.log(LOG, "syncIframe: writing to clone, HTML length:", htmlToWrite.length);
-
-      cloneDoc.open();
-      cloneDoc.write(htmlToWrite);
-      cloneDoc.close();
+      console.log(LOG, "syncIframe: original body length:", originalDoc.body?.innerHTML?.length ?? 0);
+      syncSanitizedPreviewClone(originalIframe, cloneIframe, {
+        hideScrollbars: true,
+        breakLongWords: true,
+      });
 
       console.log(LOG, "syncIframe: clone written, body innerHTML length:", cloneDoc.body?.innerHTML?.length ?? 0);
-
-      // Inject CSS to hide scrollbars while maintaining scrollability
-      const scrollbarStyle = cloneDoc.createElement('style');
-      scrollbarStyle.textContent = `
-        html, body {
-          margin: 0 !important;
-          padding: 0 !important;
-        }
-        /* Hide scrollbars in Webkit browsers (Chrome, Safari, Edge) */
-        ::-webkit-scrollbar:vertical {
-          display: none !important;
-        }
-        /* Hide scrollbars in Firefox */
-        * {
-          scrollbar-width: none !important;
-        }
-      `;
-      if (cloneDoc.head) {
-        cloneDoc.head.appendChild(scrollbarStyle);
-      }
-
-      breakLongWords(cloneDoc.body);
 
       // Set up custom overlay scrollbars
       setupCustomScrollbars(cloneIframe, wrapperDiv);

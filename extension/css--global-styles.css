@@ -1513,8 +1513,46 @@ color-mix(in srgb, var(--token-gray-100, #dbeafe) 25%, transparent);
     margin-bottom: 0 !important;
 }
 
+.gem-recent-segments__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 4px;
+    margin-top: 16px;
+}
+
 .gem-recent-segments__label {
-    margin-bottom: 8px;
+    margin-bottom: 0 !important;
+}
+
+.gem-recent-segments__label--other {
+    display: block;
+    margin-top: 16px !important;
+    margin-bottom: 4px !important;
+}
+
+.gem-recent-segments__show-all {
+    flex-shrink: 0;
+    padding: 2px 8px;
+    border: 1px solid var(--token-border-default, #d1d5db);
+    border-radius: 4px;
+    background: var(--token-primary-100, #fff);
+    color: var(--token-font-default, #111);
+    font: inherit;
+    font-size: 12px;
+    line-height: 1.4;
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.gem-recent-segments__show-all:hover {
+    border-color: var(--token-border-strong, #9ca3af);
+    background: var(--token-neutral-100, #f9fafb);
+}
+
+.gem-recent-segments__other {
+    margin-top: 0;
 }
 
 .gem-recent-segments__list {
@@ -1558,4 +1596,8 @@ color-mix(in srgb, var(--token-gray-100, #dbeafe) 25%, transparent);
 .gem-recent-segments__item--active:hover {
     border-color: var(--token-primary-500, #2563eb);
     background: var(--token-primary-300, #eff6ff);
+}
+
+.e-dialog__header {
+    padding:12px 20px !important;
 }

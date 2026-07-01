@@ -8,6 +8,12 @@
 |                                                                                |
  --------------------------------------------------------------------------------
 
+- CMD+S should save on the General Settings page.
+
+- Generate a screenshot of the email
+
+- Find and Replace: in the snippets panel(?), allow the user to pick an existing snippet or enter a text string. Then let them enter what to replace it with. Then replace it across all editable sections, alt text, subject line, and preview text.
+
 - Compare links across languages. Compare links across versions. Also compare subject lines and preview text. Work this into the existing compare dialog with toggles. Subject line and preview text could be a toggle that shows them above each frame. Links can be a toggle that replaces the frames entirely with a table of links.
 
 - A quick access shortcut to pull up a snippet dialog? Found myself having to switch between the subject line panel and the snippets panel a lot. What if a shortcut just brought up all of my snippets? Or just the most recently used ones?

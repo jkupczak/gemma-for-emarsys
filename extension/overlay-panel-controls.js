@@ -441,6 +441,7 @@ const COMPACT_EMAIL_TOOLS_SEND_TEST_SVG = '<svg xmlns="http://www.w3.org/2000/sv
 const COMPACT_EMAIL_TOOLS_DUPLICATE_SVG = '<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor"><path d="M560-320h80v-120h120v-80H640v-120h-80v120H440v80h120v120ZM240-140Q131-178 65.5-271.5T0-480q0-115 65.5-208.5T240-820v88q-74 35-117 103T80-480q0 81 43 149t117 103v88Zm219.5-8.5q-65.5-28.5-114-77t-77-114Q240-405 240-480t28.5-140.5q28.5-65.5 77-114t114-77Q525-840 600-840t140.5 28.5q65.5 28.5 114 77t77 114Q960-555 960-480t-28.5 140.5q-28.5 65.5-77 114t-114 77Q675-120 600-120t-140.5-28.5ZM600-480Zm0 280q117 0 198.5-81.5T880-480q0-117-81.5-198.5T600-760q-117 0-198.5 81.5T320-480q0 117 81.5 198.5T600-200Z"/></svg>';
 
 const COMPACT_EMAIL_TOOLS_SHARE_SVG = '<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor"><path d="M680-80q-50 0-85-35t-35-85q0-6 3-28L282-392q-16 15-37 23.5t-45 8.5q-50 0-85-35t-35-85q0-50 35-85t85-35q24 0 45 8.5t37 23.5l281-164q-2-7-2.5-13.5T560-760q0-50 35-85t85-35q50 0 85 35t35 85q0 50-35 85t-85 35q-24 0-45-8.5T598-672L317-508q2 7 2.5 13.5t.5 14.5q0 8-.5 14.5T317-452l281 164q16-15 37-23.5t45-8.5q50 0 85 35t35 85q0 50-35 85t-85 35Zm0-80q17 0 28.5-11.5T720-200q0-17-11.5-28.5T680-240q-17 0-28.5 11.5T640-200q0 17 11.5 28.5T680-160ZM200-440q17 0 28.5-11.5T240-480q0-17-11.5-28.5T200-520q-17 0-28.5 11.5T160-480q0 17 11.5 28.5T200-440Zm508.5-291.5Q720-743 720-760t-11.5-28.5Q697-800 680-800t-28.5 11.5Q640-777 640-760t11.5 28.5Q663-720 680-720t28.5-11.5ZM680-200ZM200-480Zm480-280Z"/></svg>';
+const COMPACT_EMAIL_TOOLS_SHARE_SCREENSHOT_SVG = '<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor"><path d="M480-260q75 0 127.5-52.5T660-440q0-75-52.5-127.5T480-620q-75 0-127.5 52.5T300-440q0 75 52.5 127.5T480-260Zm0-80q-42 0-71-29t-29-71q0-42 29-71t71-29q42 0 71 29t29 71q0 42-29 71t-71 29ZM160-120q-33 0-56.5-23.5T80-200v-480q0-33 23.5-56.5T160-760h126l74-80h240l74 80h126q33 0 56.5 23.5T880-680v480q0 33-23.5 56.5T800-120H160Zm0-80h640v-480H638l-73-80H395l-73 80H160v480Zm320-240Z"/></svg>';
 
 const COMPACT_EMAIL_TOOLS_CONTACT_PREVIEW_SVG = '<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor"><path d="M480-40 360-160H200q-33 0-56.5-23.5T120-240v-560q0-33 23.5-56.5T200-880h560q33 0 56.5 23.5T840-800v560q0 33-23.5 56.5T760-160H600L480-40ZM200-286q54-53 125.5-83.5T480-400q83 0 154.5 30.5T760-286v-514H200v514Zm379-235q41-41 41-99t-41-99q-41-41-99-41t-99 41q-41 41-41 99t41 99q41 41 99 41t99-41ZM280-240h400v-10q-42-35-93-52.5T480-320q-56 0-107 17.5T280-250v10Zm157.5-337.5Q420-595 420-620t17.5-42.5Q455-680 480-680t42.5 17.5Q540-645 540-620t-17.5 42.5Q505-560 480-560t-42.5-17.5ZM480-543Z"/></svg>';
 
@@ -1039,6 +1040,9 @@ function setupCompactEmailToolsOverflowMenu(dropdownContainer) {
   const navColumn = document.createElement('div');
   navColumn.className = 'gem-compact-email-tools-menu-column gem-compact-email-tools-menu-column--nav';
 
+  const collaborateColumn = document.createElement('div');
+  collaborateColumn.className = 'gem-compact-email-tools-menu-column gem-compact-email-tools-menu-column--collaborate';
+
   function makeMenuItem(label) {
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -1174,12 +1178,24 @@ function setupCompactEmailToolsOverflowMenu(dropdownContainer) {
     }
   });
 
-  const shareItem = makeMenuItem('Share');
-  prependCompactEmailToolsMenuInlineSvgIcon(shareItem, COMPACT_EMAIL_TOOLS_SHARE_SVG);
-  shareItem.addEventListener('click', (e) => {
+  const shareLinkItem = makeMenuItem('Share Link');
+  prependCompactEmailToolsMenuInlineSvgIcon(shareLinkItem, COMPACT_EMAIL_TOOLS_SHARE_SVG);
+  shareLinkItem.addEventListener('click', (e) => {
     e.stopPropagation();
     closeCompactEmailToolsMenu();
     void copyRichTextCampaignLink();
+  });
+
+  const shareScreenshotItem = makeMenuItem('Share Screenshot');
+  prependCompactEmailToolsMenuInlineSvgIcon(shareScreenshotItem, COMPACT_EMAIL_TOOLS_SHARE_SCREENSHOT_SVG);
+  shareScreenshotItem.addEventListener('click', (e) => {
+    e.stopPropagation();
+    closeCompactEmailToolsMenu();
+    if (typeof window.gemOpenShareScreenshotStage === 'function') {
+      window.gemOpenShareScreenshotStage();
+    } else if (window.gemShowToast) {
+      window.gemShowToast('Share Screenshot is unavailable on this page.', { type: 'error' });
+    }
   });
 
   const standardEditorItem = makeCompactEmailToolsToggleMenuItem('Standard Layout', {
@@ -1303,6 +1319,10 @@ function setupCompactEmailToolsOverflowMenu(dropdownContainer) {
     duplicateCompactEmailToolsCampaign(duplicateItem, e);
   });
 
+  const navActionsDivider = document.createElement('div');
+  navActionsDivider.className = 'gem-recent-campaign-row-menu-divider';
+  navActionsDivider.setAttribute('role', 'separator');
+
   const previewSectionDivider = document.createElement('div');
   previewSectionDivider.className = 'gem-recent-campaign-row-menu-divider';
   previewSectionDivider.setAttribute('role', 'separator');
@@ -1326,17 +1346,17 @@ function setupCompactEmailToolsOverflowMenu(dropdownContainer) {
   menu.appendChild(navColumn);
   menu.appendChild(previewColumn);
   menu.appendChild(featuresColumn);
+  menu.appendChild(collaborateColumn);
+
+  collaborateColumn.appendChild(shareLinkItem);
+  collaborateColumn.appendChild(shareScreenshotItem);
 
   COMPACT_EMAIL_TOOL_NAV_ITEMS.forEach((entry) => {
     navColumn.appendChild(makeCompactEmailToolsNavMenuItem(entry));
   });
 
-  const navActionsDivider = document.createElement('div');
-  navActionsDivider.className = 'gem-recent-campaign-row-menu-divider';
-  navActionsDivider.setAttribute('role', 'separator');
   navColumn.appendChild(navActionsDivider);
   navColumn.appendChild(duplicateItem);
-  navColumn.appendChild(shareItem);
 
   trigger.addEventListener('click', (e) => toggleCompactEmailToolsMenuFromWrap(wrap, e));
   pageTitle.addEventListener('click', (e) => toggleCompactEmailToolsMenuFromWrap(wrap, e));

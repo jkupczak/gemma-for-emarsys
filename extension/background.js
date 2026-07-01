@@ -557,19 +557,56 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   function hasAllPreflightNetworkOrigins(callback) {
     let pending = PREFLIGHT_NETWORK_ORIGINS.length;
     let allGranted = true;
+    let settled = false;
+    const finish = (granted) => {
+      if (settled) return;
+      settled = true;
+      callback(!!granted);
+    };
+    const timer = setTimeout(() => finish(false), 4000);
+    if (!pending) {
+      clearTimeout(timer);
+      finish(true);
+      return;
+    }
     PREFLIGHT_NETWORK_ORIGINS.forEach((origin) => {
-      chrome.permissions.contains({ origins: [origin] }, (ok) => {
-        if (!ok) allGranted = false;
+      try {
+        chrome.permissions.contains({ origins: [origin] }, (ok) => {
+          if (!ok) allGranted = false;
+          pending -= 1;
+          if (pending === 0) {
+            clearTimeout(timer);
+            finish(allGranted);
+          }
+        });
+      } catch (_) {
         pending -= 1;
-        if (pending === 0) callback(allGranted);
-      });
+        allGranted = false;
+        if (pending === 0) {
+          clearTimeout(timer);
+          finish(false);
+        }
+      }
     });
   }
 
   function requestAllPreflightNetworkOrigins(callback) {
-    chrome.permissions.request({ origins: PREFLIGHT_NETWORK_ORIGINS.slice() }, (granted) => {
+    let settled = false;
+    const finish = (granted) => {
+      if (settled) return;
+      settled = true;
       callback(!!granted);
-    });
+    };
+    const timer = setTimeout(() => finish(false), 5000);
+    try {
+      chrome.permissions.request({ origins: PREFLIGHT_NETWORK_ORIGINS.slice() }, (granted) => {
+        clearTimeout(timer);
+        finish(granted);
+      });
+    } catch (_) {
+      clearTimeout(timer);
+      finish(false);
+    }
   }
 
   if (action === 'preflightEnsureImageHostAccess') {
@@ -609,6 +646,58 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     hasAllPreflightNetworkOrigins((granted) => {
       sendResponse({ ok: true, granted: !!granted });
     });
+    return true;
+  }
+
+  if (action === 'gemFetchScreenshotAsset') {
+    const url = String(msg.url || '').trim();
+    if (!url) {
+      sendResponse({ ok: false, reason: 'missing_url' });
+      return true;
+    }
+
+    function inferScreenshotAssetMime(assetUrl, blobType) {
+      if (blobType && blobType !== 'application/octet-stream') return blobType;
+      try {
+        const path = new URL(assetUrl).pathname.toLowerCase();
+        if (path.endsWith('.svg')) return 'image/svg+xml';
+        if (path.endsWith('.png')) return 'image/png';
+        if (path.endsWith('.jpg') || path.endsWith('.jpeg')) return 'image/jpeg';
+        if (path.endsWith('.gif')) return 'image/gif';
+        if (path.endsWith('.webp')) return 'image/webp';
+      } catch (_) {}
+      return blobType || 'application/octet-stream';
+    }
+
+    fetch(url, {
+      cache: 'no-store',
+      credentials: 'omit',
+      redirect: 'follow',
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error(`fetch_failed_${res.status}`);
+        return res.blob();
+      })
+      .then(async (blob) => {
+        const mime = inferScreenshotAssetMime(url, blob.type);
+        if (mime === 'image/svg+xml') {
+          const text = await blob.text();
+          sendResponse({ ok: true, dataUrl: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(text)}` });
+          return;
+        }
+        const buffer = await blob.arrayBuffer();
+        const bytes = new Uint8Array(buffer);
+        let binary = '';
+        const chunkSize = 0x8000;
+        for (let i = 0; i < bytes.length; i += chunkSize) {
+          binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+        }
+        sendResponse({ ok: true, dataUrl: `data:${mime};base64,${btoa(binary)}` });
+      })
+      .catch((err) => {
+        bgLog('gemFetchScreenshotAsset failed', err?.message || err, { url });
+        sendResponse({ ok: false, reason: err?.message || 'fetch_error' });
+      });
     return true;
   }
 

@@ -9,8 +9,10 @@
 
   const READONLY_STYLE_ID = 'gem-stripped-preview-readonly-styles';
   const READONLY_STYLE = [
-    'e-vce-borderer-element, e-vce-borderer, .two_click_insert_dropzone, e-vce-dropline, .vce-drag-and-drop-auto-scroll-layer, e-vce-positioner-editable, .dnd_reorder_dropzone, .e-contentblocks-dragview, e-vce-positioner-block {',
+    '#gem-text-highlight-container, e-vce-borderer-element, e-vce-borderer, .two_click_insert_dropzone, div.two_click_insert_dropzone, e-vce-dropline, .vce-drag-and-drop-auto-scroll-layer, e-vce-positioner-editable, .dnd_reorder_dropzone, .dnd_insert_dropzone, div.dnd_insert_dropzone, .e-contentblocks-dragview, e-vce-positioner-block {',
     '  display: none !important;',
+    '  visibility: hidden !important;',
+    '  pointer-events: none !important;',
     '}',
     '[contenteditable="true"] {',
     '  -webkit-user-modify: read-only;',
@@ -44,10 +46,19 @@
     }
   }
 
-  function stripContentEditable(root) {
+  function stripContentEditable(root, snapshots) {
     if (!root || !root.querySelectorAll) return;
     root.querySelectorAll('[contenteditable="true"]').forEach((el) => {
+      snapshots.push({ el, value: el.getAttribute('contenteditable') || 'true' });
       el.setAttribute('contenteditable', 'false');
+    });
+  }
+
+  function restoreContentEditable(snapshots) {
+    snapshots.forEach(({ el, value }) => {
+      if (!el.isConnected) return;
+      if (value == null) el.removeAttribute('contenteditable');
+      else el.setAttribute('contenteditable', value);
     });
   }
 
@@ -59,6 +70,10 @@
     (doc.head || doc.documentElement).appendChild(style);
   }
 
+  function removeReadonlyStyles(doc) {
+    doc?.getElementById(READONLY_STYLE_ID)?.remove();
+  }
+
   function shouldBlockEditKey(event) {
     if (NAV_KEYS.has(event.key)) return false;
     if (event.ctrlKey || event.metaKey || event.altKey) return false;
@@ -66,18 +81,23 @@
     return event.key.length === 1;
   }
 
-  function lockPreviewDocument(doc) {
-    if (!doc || doc._gemStrippedPreviewReadonlyLocked) return;
-    doc._gemStrippedPreviewReadonlyLocked = true;
+  function attachPreviewDocumentLock(doc, options) {
+    const state = {
+      lockCount: 1,
+      permanent: !!(options && options.permanent),
+      contentEditableSnapshots: [],
+      handlers: {},
+      observer: null,
+    };
 
     injectReadonlyStyles(doc);
-    stripContentEditable(doc);
+    stripContentEditable(doc, state.contentEditableSnapshots);
 
-    if (doc.body && !doc._gemStrippedPreviewReadonlyObserver) {
-      doc._gemStrippedPreviewReadonlyObserver = new MutationObserver(() => {
-        stripContentEditable(doc);
+    if (doc.body) {
+      state.observer = new MutationObserver(() => {
+        stripContentEditable(doc, state.contentEditableSnapshots);
       });
-      doc._gemStrippedPreviewReadonlyObserver.observe(doc.body, {
+      state.observer.observe(doc.body, {
         childList: true,
         subtree: true,
         attributes: true,
@@ -95,11 +115,64 @@
       }
     };
 
+    state.handlers.blockDefault = blockDefault;
+    state.handlers.blockEditKeys = blockEditKeys;
+
     doc.addEventListener('beforeinput', blockDefault, true);
     doc.addEventListener('paste', blockDefault, true);
     doc.addEventListener('drop', blockDefault, true);
     doc.addEventListener('cut', blockDefault, true);
     doc.addEventListener('keydown', blockEditKeys, true);
+
+    doc._gemPreviewReadonlyState = state;
+    doc._gemStrippedPreviewReadonlyLocked = true;
+    return state;
+  }
+
+  function lockPreviewDocument(doc, options) {
+    if (!doc) return false;
+
+    const existing = doc._gemPreviewReadonlyState;
+    if (existing) {
+      existing.lockCount += 1;
+      injectReadonlyStyles(doc);
+      stripContentEditable(doc, existing.contentEditableSnapshots);
+      return true;
+    }
+
+    attachPreviewDocumentLock(doc, options);
+    return true;
+  }
+
+  function unlockPreviewDocument(doc) {
+    const state = doc && doc._gemPreviewReadonlyState;
+    if (!state || state.permanent) return false;
+
+    state.lockCount -= 1;
+    if (state.lockCount > 0) return true;
+
+    removeReadonlyStyles(doc);
+    restoreContentEditable(state.contentEditableSnapshots);
+
+    if (state.observer) {
+      state.observer.disconnect();
+      state.observer = null;
+    }
+
+    if (state.handlers.blockDefault) {
+      doc.removeEventListener('beforeinput', state.handlers.blockDefault, true);
+      doc.removeEventListener('paste', state.handlers.blockDefault, true);
+      doc.removeEventListener('drop', state.handlers.blockDefault, true);
+      doc.removeEventListener('cut', state.handlers.blockDefault, true);
+    }
+    if (state.handlers.blockEditKeys) {
+      doc.removeEventListener('keydown', state.handlers.blockEditKeys, true);
+    }
+
+    delete doc._gemPreviewReadonlyState;
+    delete doc._gemStrippedPreviewReadonlyLocked;
+    delete doc._gemStrippedPreviewReadonlyObserver;
+    return true;
   }
 
   function tryLockPreviewIframe(previewIframe) {
@@ -109,7 +182,7 @@
       try {
         const doc = previewIframe.contentDocument;
         if (!doc || !doc.documentElement) return;
-        lockPreviewDocument(doc);
+        lockPreviewDocument(doc, { permanent: true });
       } catch (_) {}
     };
 
@@ -162,7 +235,9 @@
 
   window.gemStrippedPreviewReadonly = {
     PREVIEW_IFRAME_SELECTOR,
+    READONLY_STYLE,
     lockPreviewDocument,
+    unlockPreviewDocument,
     bindPreviewIframe,
     scanForPreviewIframe,
   };

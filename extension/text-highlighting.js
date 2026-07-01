@@ -134,6 +134,19 @@ let iframeMutationObserver = null;
 let lifecycleUnsub = null;
 let debounceTimer = null;
 let currentIframe = null;
+let textHighlightsPaused = false;
+
+window.gemPauseTextHighlights = function () {
+  textHighlightsPaused = true;
+  clearOverlays();
+};
+
+window.gemResumeTextHighlights = function () {
+  textHighlightsPaused = false;
+  if (currentIframe && currentIframe.isConnected) {
+    debounce(() => highlightMatchesInIframe(currentIframe));
+  }
+};
 
 // Simple debounce helper
 function debounce(fn, delay = 150) {
@@ -151,6 +164,8 @@ function clearOverlays() {
 
 // Ensure we have a single overlay container in the given document
 function ensureOverlayContainer(doc) {
+  if (textHighlightsPaused) return null;
+
   if (
     overlayContainer &&
     overlayContainer.ownerDocument === doc &&
@@ -175,6 +190,8 @@ function ensureOverlayContainer(doc) {
 
 // MAIN highlight function
 function highlightMatchesInIframe(iframe) {
+  if (textHighlightsPaused) return;
+
   const doc = iframe.contentDocument;
   if (!doc || !doc.body) return;
 
@@ -182,6 +199,7 @@ function highlightMatchesInIframe(iframe) {
   if (!win) return;
 
   const container = ensureOverlayContainer(doc);
+  if (!container) return;
 
   // Clear existing boxes but keep container
   container.innerHTML = "";

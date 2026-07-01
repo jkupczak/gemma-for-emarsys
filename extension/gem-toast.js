@@ -23,7 +23,11 @@
       }
 
       const toast = document.createElement("div");
-      toast.style.pointerEvents = "none";
+      toast.className = "gem-toast";
+      toast.style.pointerEvents = "auto";
+      toast.style.userSelect = "text";
+      toast.style.webkitUserSelect = "text";
+      toast.style.cursor = "text";
       toast.style.padding = "10px 12px";
       toast.style.borderRadius = "10px";
       toast.style.boxShadow = "0 10px 30px rgba(0,0,0,0.20)";
@@ -54,11 +58,33 @@
         toast.style.transform = "translateY(0)";
       });
 
-      setTimeout(() => {
+      let dismissTimer = null;
+      let removeTimer = null;
+
+      const dismissToast = () => {
         toast.style.opacity = "0";
         toast.style.transform = "translateY(6px)";
-        setTimeout(() => toast.remove(), 180);
-      }, durationMs);
+        removeTimer = setTimeout(() => toast.remove(), 180);
+      };
+
+      const scheduleDismiss = (delayMs) => {
+        if (dismissTimer) clearTimeout(dismissTimer);
+        if (removeTimer) clearTimeout(removeTimer);
+        dismissTimer = setTimeout(dismissToast, delayMs);
+      };
+
+      scheduleDismiss(durationMs);
+
+      toast.addEventListener("mouseenter", () => {
+        if (dismissTimer) clearTimeout(dismissTimer);
+        if (removeTimer) clearTimeout(removeTimer);
+        toast.style.opacity = "1";
+        toast.style.transform = "translateY(0)";
+      });
+
+      toast.addEventListener("mouseleave", () => {
+        scheduleDismiss(1200);
+      });
     } catch (_) {}
   };
 })();

@@ -119,7 +119,7 @@
     right: 0;
     top: calc(100% + 4px);
     z-index: 4;
-    min-width: 520px;
+    min-width: 680px;
     padding: 0;
     border: 1px solid var(--token-box-default-border, rgba(0, 0, 0, 0.16));
     border-radius: 8px;
@@ -735,6 +735,9 @@
 .gem-compact-email-tools-menu-column--nav::before {
     content: "CAMPAIGN";
 }
+.gem-compact-email-tools-menu-column--collaborate::before {
+    content: "COLLABORATE";
+}
 
 .gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu {
 
@@ -753,7 +756,14 @@
 
     & > :nth-child(3) {
         border: none;
-        margin: 10px 10px 10px 5px;
+        margin: 10px 5px 10px 0;
+        border-radius: 9px;
+        padding: 10px;
+    }
+
+    & > :nth-child(4) {
+        background: rgba(255 255 255 / 0.02);
+        margin: 10px 10px 10px 0;
         border-radius: 9px;
         border: none;
         padding: 10px;

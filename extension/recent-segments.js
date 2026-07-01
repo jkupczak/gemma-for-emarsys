@@ -2,20 +2,22 @@ console.log("[gem] recent-segments.js loaded");
 
 (function () {
   const STORAGE_KEY = "gemRecentCombinedSegments";
-  const MAX_RECENT = 10;
+  const MAX_RECENT_PER_CATEGORY = 10;
   const COMBINED_SOURCE = "registry_segmentuniversal_combined";
   const CONTAINER_CLASS = "gem-recent-segments";
   const SEGMENT_SELECT_ID = "universal_combined_registry_id";
   const SEGMENT_TABLE_ID = "table_universal_combined_segment";
   const SEGMENT_TABLE_ENABLED_CLASS = "gem-recent-segments-table";
   const SOURCE_SELECT_ID = "sourceSelect";
+  const CAMPAIGN_CATEGORY_SELECT_SELECTOR = 'select[name="campaign_category"]';
   const SEGMENT_DETECT_MAX_ATTEMPTS = 40;
   const SEGMENT_DETECT_INTERVAL_MS = 250;
 
-  /** @type {string[]} */
-  let recentSegmentIdsCache = [];
+  /** @type {{ id: string, campaignCategory: string }[]} */
+  let recentSegmentsCache = [];
   let recentSegmentsInitialized = false;
   let initialSegmentLoadLogged = false;
+  let showAllRecentSegments = false;
 
   function isDebugEnabled() {
     try {
@@ -61,26 +63,48 @@ console.log("[gem] recent-segments.js loaded");
     return chrome.storage.local;
   }
 
-  /** @param {unknown} raw @returns {string[]} */
-  function normalizeSegmentIds(raw) {
-    if (!Array.isArray(raw)) return [];
-    const seen = new Set();
-    const out = [];
-    raw.forEach((entry) => {
-      let id = "";
-      if (typeof entry === "string" || typeof entry === "number") {
-        id = String(entry).trim();
-      } else if (entry && typeof entry === "object" && entry.id != null) {
-        id = String(entry.id).trim();
-      }
-      if (!id || id === "0" || seen.has(id)) return;
-      seen.add(id);
-      out.push(id);
-    });
-    return out.slice(0, MAX_RECENT);
+  function getCampaignCategoryId() {
+    const select = document.querySelector(CAMPAIGN_CATEGORY_SELECT_SELECTOR);
+    return select ? String(select.value || "").trim() : "";
   }
 
-  function loadRecentSegmentIds(callback) {
+  /** @param {unknown} entry @returns {{ id: string, campaignCategory: string } | null} */
+  function parseRecentSegmentEntry(entry) {
+    let id = "";
+    let campaignCategory = "";
+    if (typeof entry === "string" || typeof entry === "number") {
+      id = String(entry).trim();
+    } else if (entry && typeof entry === "object") {
+      if (entry.id != null) id = String(entry.id).trim();
+      if (entry.campaignCategory != null) {
+        campaignCategory = String(entry.campaignCategory).trim();
+      }
+    }
+    if (!id || id === "0") return null;
+    return { id, campaignCategory };
+  }
+
+  /** @param {unknown} raw @returns {{ id: string, campaignCategory: string }[]} */
+  function normalizeRecentSegments(raw) {
+    if (!Array.isArray(raw)) return [];
+    /** @type {Map<string, Set<string>>} */
+    const seenByCategory = new Map();
+    /** @type {{ id: string, campaignCategory: string }[]} */
+    const out = [];
+    raw.forEach((entry) => {
+      const parsed = parseRecentSegmentEntry(entry);
+      if (!parsed) return;
+      const categoryKey = parsed.campaignCategory;
+      if (!seenByCategory.has(categoryKey)) seenByCategory.set(categoryKey, new Set());
+      const seen = seenByCategory.get(categoryKey);
+      if (seen.has(parsed.id) || seen.size >= MAX_RECENT_PER_CATEGORY) return;
+      seen.add(parsed.id);
+      out.push(parsed);
+    });
+    return out;
+  }
+
+  function loadRecentSegments(callback) {
     const area = getStorageArea();
     if (!area) {
       warn("load skipped — chrome.storage.local unavailable");
@@ -93,47 +117,62 @@ console.log("[gem] recent-segments.js loaded");
         callback([]);
         return;
       }
-      recentSegmentIdsCache = normalizeSegmentIds(result[STORAGE_KEY]);
-      debug("load", { count: recentSegmentIdsCache.length, ids: recentSegmentIdsCache });
-      callback(recentSegmentIdsCache);
+      recentSegmentsCache = normalizeRecentSegments(result[STORAGE_KEY]);
+      debug("load", { count: recentSegmentsCache.length, entries: recentSegmentsCache });
+      callback(recentSegmentsCache);
     });
   }
 
-  function saveRecentSegmentIds(ids, callback) {
-    recentSegmentIdsCache = normalizeSegmentIds(ids);
+  function saveRecentSegments(entries, callback) {
+    recentSegmentsCache = normalizeRecentSegments(entries);
     const area = getStorageArea();
     if (!area) {
-      warn("save skipped — chrome.storage.local unavailable", recentSegmentIdsCache);
-      if (typeof callback === "function") callback(recentSegmentIdsCache);
+      warn("save skipped — chrome.storage.local unavailable", recentSegmentsCache);
+      if (typeof callback === "function") callback(recentSegmentsCache);
       return;
     }
-    area.set({ [STORAGE_KEY]: recentSegmentIdsCache }, () => {
+    area.set({ [STORAGE_KEY]: recentSegmentsCache }, () => {
       if (chrome.runtime.lastError) {
         warn("save failed", chrome.runtime.lastError.message);
       } else {
         warn("saved to chrome.storage.local", {
           key: STORAGE_KEY,
-          count: recentSegmentIdsCache.length,
-          ids: recentSegmentIdsCache,
+          count: recentSegmentsCache.length,
+          entries: recentSegmentsCache,
         });
-        debug("save", { count: recentSegmentIdsCache.length, ids: recentSegmentIdsCache });
+        debug("save", { count: recentSegmentsCache.length, entries: recentSegmentsCache });
       }
-      if (typeof callback === "function") callback(recentSegmentIdsCache);
+      if (typeof callback === "function") callback(recentSegmentsCache);
     });
   }
 
-  function prependRecentSegmentId(segmentId, callback) {
+  function prependRecentSegment(segmentId, campaignCategory, callback) {
     const id = String(segmentId || "").trim();
+    const category = String(campaignCategory || "").trim();
     if (!id || id === "0" || !isRecentSegmentsAllowed()) {
-      debug("prepend skipped — invalid id or segment select disabled", { segmentId });
-      if (typeof callback === "function") callback(recentSegmentIdsCache);
+      debug("prepend skipped — invalid id or segment select disabled", { segmentId, campaignCategory: category });
+      if (typeof callback === "function") callback(recentSegmentsCache);
       return;
     }
 
-    loadRecentSegmentIds((existing) => {
-      const next = [id, ...existing.filter((item) => item !== id)].slice(0, MAX_RECENT);
-      saveRecentSegmentIds(next, callback);
+    loadRecentSegments((existing) => {
+      const withoutDup = existing.filter(
+        (item) => !(item.id === id && item.campaignCategory === category),
+      );
+      const next = normalizeRecentSegments([{ id, campaignCategory: category }, ...withoutDup]);
+      saveRecentSegments(next, callback);
     });
+  }
+
+  /** @param {{ id: string, campaignCategory: string }[]} entries @param {string} categoryId */
+  function partitionSegmentsByCategory(entries, categoryId) {
+    const matching = [];
+    const other = [];
+    entries.forEach((entry) => {
+      if (entry.campaignCategory === categoryId) matching.push(entry);
+      else other.push(entry);
+    });
+    return { matching, other };
   }
 
   function isCombinedSegmentSourceActive() {
@@ -229,7 +268,8 @@ console.log("[gem] recent-segments.js loaded");
       selectedOptionValue: selectedOption ? selectedOption.value : null,
       selectedOptionText: selectedOption ? String(selectedOption.textContent || "").trim() : null,
       optionCount: select ? select.options.length : 0,
-      storedCount: recentSegmentIdsCache.length,
+      campaignCategory: getCampaignCategoryId(),
+      storedCount: recentSegmentsCache.length,
       jQueryAvailable: typeof window.jQuery === "function",
       select2Bound: !!(select && typeof window.jQuery === "function" && window.jQuery(select).data("select2")),
     };
@@ -272,13 +312,14 @@ console.log("[gem] recent-segments.js loaded");
     return id && id !== "0" ? id : "";
   }
 
-  /** @param {string[]} ids @returns {{ id: string, name: string }[]} */
-  function buildDisplayEntries(ids) {
+  /** @param {{ id: string, campaignCategory: string }[]} entries @returns {{ id: string, name: string, campaignCategory: string }[]} */
+  function buildDisplayEntries(entries) {
     const select = document.getElementById(SEGMENT_SELECT_ID);
-    return normalizeSegmentIds(ids)
-      .map((id) => ({
-        id,
-        name: resolveSegmentNameFromSelect(select, id),
+    return entries
+      .map((entry) => ({
+        id: entry.id,
+        campaignCategory: entry.campaignCategory,
+        name: resolveSegmentNameFromSelect(select, entry.id),
       }))
       .filter((entry) => entry.name);
   }
@@ -324,7 +365,45 @@ console.log("[gem] recent-segments.js loaded");
     document.querySelectorAll(`.${CONTAINER_CLASS}`).forEach((node) => node.remove());
   }
 
-  function renderRecentSegmentsList(ids) {
+  function createSegmentButton(segment, currentId) {
+    const itemWrap = document.createElement("li");
+    itemWrap.className = "gem-recent-segments__item-wrap";
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "gem-recent-segments__item";
+    button.textContent = segment.name;
+    button.dataset.segmentId = segment.id;
+    button.title = segment.name;
+    if (segment.id === currentId) {
+      button.classList.add("gem-recent-segments__item--active");
+      button.setAttribute("aria-current", "true");
+    }
+
+    button.addEventListener("click", () => {
+      if (segment.id === getSelectedCombinedSegmentId()) return;
+      debug("recent segment clicked", {
+        id: segment.id,
+        campaignCategory: getCampaignCategoryId(),
+      });
+      applyCombinedSegmentId(segment.id);
+      prependRecentSegment(segment.id, getCampaignCategoryId(), (updated) => {
+        renderRecentSegmentsList(updated);
+      });
+    });
+
+    itemWrap.appendChild(button);
+    return itemWrap;
+  }
+
+  function populateSegmentList(list, segments, currentId) {
+    list.replaceChildren();
+    segments.forEach((segment) => {
+      list.appendChild(createSegmentButton(segment, currentId));
+    });
+  }
+
+  function renderRecentSegmentsList(entries) {
     const table = document.getElementById(SEGMENT_TABLE_ID);
     if (!table || !isRecentSegmentsAllowed()) {
       removeRecentSegmentsUI();
@@ -336,11 +415,18 @@ console.log("[gem] recent-segments.js loaded");
       return;
     }
 
-    const listData = buildDisplayEntries(ids);
+    const campaignCategory = getCampaignCategoryId();
+    const { matching, other } = partitionSegmentsByCategory(entries, campaignCategory);
+    const matchingData = buildDisplayEntries(matching);
+    const otherDisplayData = buildDisplayEntries(other);
+    const otherData = showAllRecentSegments ? otherDisplayData : [];
+    const hasHiddenOther = !showAllRecentSegments && otherDisplayData.length > 0;
+
     removeRecentSegmentsUI();
-    if (!listData.length) {
-      debug("render skipped — no matching segment options for stored ids", {
-        storedIds: normalizeSegmentIds(ids),
+    if (!matchingData.length && !otherData.length && !hasHiddenOther) {
+      debug("render skipped — no matching segment options for stored entries", {
+        storedEntries: normalizeRecentSegments(entries),
+        campaignCategory,
       });
       return;
     }
@@ -348,42 +434,61 @@ console.log("[gem] recent-segments.js loaded");
     const currentId = getSelectedCombinedSegmentId();
     const container = document.createElement("div");
     container.className = `${CONTAINER_CLASS} e-field`;
-    container.innerHTML = `
-      <label class="e-field__label gem-recent-segments__label">Recently used segments</label>
-      <ul class="gem-recent-segments__list" role="list"></ul>
-    `;
 
-    const list = container.querySelector(".gem-recent-segments__list");
-    listData.forEach((segment) => {
-      const itemWrap = document.createElement("li");
-      itemWrap.className = "gem-recent-segments__item-wrap";
+    const header = document.createElement("div");
+    header.className = "gem-recent-segments__header";
 
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "gem-recent-segments__item";
-      button.textContent = segment.name;
-      button.dataset.segmentId = segment.id;
-      button.title = segment.name;
-      if (segment.id === currentId) {
-        button.classList.add("gem-recent-segments__item--active");
-        button.setAttribute("aria-current", "true");
-      }
+    const label = document.createElement("label");
+    label.className = "e-field__label gem-recent-segments__label";
+    label.textContent = "Recently used segments";
+    header.appendChild(label);
 
-      button.addEventListener("click", () => {
-        if (segment.id === getSelectedCombinedSegmentId()) return;
-        debug("recent segment clicked", { id: segment.id });
-        applyCombinedSegmentId(segment.id);
-        prependRecentSegmentId(segment.id, (updated) => {
-          renderRecentSegmentsList(updated);
-        });
+    if (hasHiddenOther) {
+      const showAllButton = document.createElement("button");
+      showAllButton.type = "button";
+      showAllButton.className = "gem-recent-segments__show-all";
+      showAllButton.textContent = "Show All";
+      showAllButton.addEventListener("click", () => {
+        showAllRecentSegments = true;
+        renderRecentSegmentsList(recentSegmentsCache);
       });
+      header.appendChild(showAllButton);
+    }
 
-      itemWrap.appendChild(button);
-      list.appendChild(itemWrap);
-    });
+    const list = document.createElement("ul");
+    list.className = "gem-recent-segments__list";
+    list.setAttribute("role", "list");
+    populateSegmentList(list, matchingData, currentId);
+
+    container.appendChild(header);
+    container.appendChild(list);
+
+    if (otherData.length) {
+      const otherSection = document.createElement("div");
+      otherSection.className = "gem-recent-segments__other";
+
+      const otherLabel = document.createElement("label");
+      otherLabel.className = "e-field__label gem-recent-segments__label gem-recent-segments__label--other";
+      otherLabel.textContent = "Other recent segments";
+      otherSection.appendChild(otherLabel);
+
+      const otherList = document.createElement("ul");
+      otherList.className = "gem-recent-segments__list gem-recent-segments__list--other";
+      otherList.setAttribute("role", "list");
+      populateSegmentList(otherList, otherData, currentId);
+      otherSection.appendChild(otherList);
+
+      container.appendChild(otherSection);
+    }
 
     table.appendChild(container);
-    debug("render complete", { count: listData.length, currentId });
+    debug("render complete", {
+      matchingCount: matchingData.length,
+      otherCount: otherData.length,
+      campaignCategory,
+      showAllRecentSegments,
+      currentId,
+    });
   }
 
   function refreshRecentSegmentsUI() {
@@ -392,15 +497,16 @@ console.log("[gem] recent-segments.js loaded");
       removeRecentSegmentsUI();
       return;
     }
-    renderRecentSegmentsList(recentSegmentIdsCache);
+    renderRecentSegmentsList(recentSegmentsCache);
   }
 
   function logSegmentId(segmentId) {
     const id = String(segmentId || "").trim();
+    const campaignCategory = getCampaignCategoryId();
     if (!id || id === "0" || !isRecentSegmentsAllowed()) return;
 
-    debug("logging segment id", { id });
-    prependRecentSegmentId(id, refreshRecentSegmentsUI);
+    debug("logging segment id", { id, campaignCategory });
+    prependRecentSegment(id, campaignCategory, refreshRecentSegmentsUI);
   }
 
   function tryLogInitialSegmentOnce() {
@@ -431,7 +537,7 @@ console.log("[gem] recent-segments.js loaded");
     if (nextAttempt >= SEGMENT_DETECT_MAX_ATTEMPTS) {
       warn("segment detection gave up — nothing saved this load", getSegmentDebugSnapshot());
       if (isRecentSegmentsAllowed()) {
-        loadRecentSegmentIds(refreshRecentSegmentsUI);
+        loadRecentSegments(refreshRecentSegmentsUI);
       } else {
         syncCombinedSegmentTableState();
       }
@@ -466,7 +572,7 @@ console.log("[gem] recent-segments.js loaded");
       debug("sourceSelect changed", { value: sourceSelect.value });
       syncCombinedSegmentTableState();
       if (isRecentSegmentsAllowed()) {
-        loadRecentSegmentIds(refreshRecentSegmentsUI);
+        loadRecentSegments(refreshRecentSegmentsUI);
       } else {
         removeRecentSegmentsUI();
       }
@@ -481,7 +587,7 @@ console.log("[gem] recent-segments.js loaded");
     const sync = () => {
       syncCombinedSegmentTableState();
       if (!isRecentSegmentsAllowed()) return;
-      loadRecentSegmentIds(refreshRecentSegmentsUI);
+      loadRecentSegments(refreshRecentSegmentsUI);
     };
 
     if (typeof window.gemDomWatchObserveAttributes === "function") {
@@ -494,6 +600,18 @@ console.log("[gem] recent-segments.js loaded");
     }
 
     sync();
+  }
+
+  function bindCampaignCategoryListener() {
+    const categorySelect = document.querySelector(CAMPAIGN_CATEGORY_SELECT_SELECTOR);
+    if (!categorySelect || categorySelect.dataset.gemRecentSegmentsBound === "true") return;
+    categorySelect.dataset.gemRecentSegmentsBound = "true";
+    categorySelect.addEventListener("change", () => {
+      debug("campaign_category changed", { value: getCampaignCategoryId() });
+      showAllRecentSegments = false;
+      if (!isRecentSegmentsAllowed()) return;
+      loadRecentSegments(refreshRecentSegmentsUI);
+    });
   }
 
   function bindSegmentSelectListener() {
@@ -544,6 +662,7 @@ console.log("[gem] recent-segments.js loaded");
       debug("start", getSegmentDebugSnapshot());
 
       bindSourceSelectListener();
+      bindCampaignCategoryListener();
       bindSegmentSelectListener();
       bindSegmentSelectDisabledWatcher();
       logCurrentSegmentOnLoad();
@@ -561,6 +680,7 @@ console.log("[gem] recent-segments.js loaded");
       window.gemDomWatchWaitFor(`#${SEGMENT_TABLE_ID}`, start);
       window.gemDomWatchWaitFor(`#${SOURCE_SELECT_ID}`, start);
       window.gemDomWatchWaitFor(`#${SEGMENT_SELECT_ID}`, start);
+      window.gemDomWatchWaitFor(CAMPAIGN_CATEGORY_SELECT_SELECTOR, start);
     }
   }
 

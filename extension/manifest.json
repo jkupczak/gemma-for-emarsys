@@ -1,9 +1,9 @@
 {
   "name": "Gemma for Emarsys",
-  "version": "13.1.0",
+  "version": "13.1.1",
   "manifest_version": 3,
   "description": "Enhances the Emarsys email editor with a settings panel and more!",
-  "permissions": ["storage", "tabs", "activeTab", "webNavigation"],
+  "permissions": ["storage", "tabs", "webNavigation"],
   "host_permissions": ["https://*.emarsys.net/*", "https://*.cf.emarsys.net/*"],
   "optional_host_permissions": ["https://*/*", "http://*/*"],
   "background": {
@@ -111,8 +111,8 @@
         "https://*.emarsys.net//bootstrap.php?*r=contentBlocks%2Fcampaign*gemStripped=true*",
         "https://*.emarsys.net//bootstrap.php?*gemStripped=true*r=contentBlocks%2Fcampaign*"
       ],
-      "js": ["debug-logging-gate.js", "platform.js", "gem-dom-watch.js", "gem-layer-stack.js", "alt-text-preview.js", "verticalnav-enhancer.js", "mobile-view.js", "textarea-expand.js", "text-highlighting.js", "color-swatch-manager.js", "keyboard-shortcuts.js", "language-load-overlay.js", "page-title-updater.js", "draft-save-indicator.js", "condensed-blocks-panel.js", "mobile-contact-preview.js", "lz-string.min.js", "snippet-storage.js", "favorite-image-storage.js", "gem-toast.js", "content-block-toolbar.js", "header-copy-icon.js", "block-pinning.js", "sortable.min.js", "overlay-panel-controls.js", "expanded-view.js", "snippets-tab.js", "preflight-panel.js", "keyword-swap.js", "custom-paste-loader.js", "campaign-draft-data-loader.js", "campaign-block-targeting.js", "compare-preview-common.js", "compare-languages.js", "compare-versions.js"],
-      "css": ["css--styles.css", "css--e-panels.css", "css--expanded-view.css", "css--compare-languages.css"]
+      "js": ["debug-logging-gate.js", "platform.js", "gem-dom-watch.js", "gem-layer-stack.js", "alt-text-preview.js", "verticalnav-enhancer.js", "mobile-view.js", "textarea-expand.js", "text-highlighting.js", "color-swatch-manager.js", "keyboard-shortcuts.js", "language-load-overlay.js", "page-title-updater.js", "draft-save-indicator.js", "condensed-blocks-panel.js", "mobile-contact-preview.js", "lz-string.min.js", "snippet-storage.js", "favorite-image-storage.js", "gem-toast.js", "content-block-toolbar.js", "header-copy-icon.js", "block-pinning.js", "sortable.min.js", "html2canvas.min.js", "share-screenshot.js", "contact-preview-screenshot.js", "overlay-panel-controls.js", "expanded-view.js", "snippets-tab.js", "preflight-panel.js", "keyword-swap.js", "custom-paste-loader.js", "campaign-draft-data-loader.js", "campaign-block-targeting.js", "compare-preview-common.js", "compare-languages.js", "compare-versions.js"],
+      "css": ["css--styles.css", "css--e-panels.css", "css--expanded-view.css", "css--compare-languages.css", "css--share-screenshot.css"]
     }
   ]
 }
