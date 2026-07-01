@@ -60,7 +60,7 @@ const MOBILE_ICON_ON = '&#61746;';
 
 function getExpandSvg(iconEntity = EXPAND_ICON_OFF) {
   return `
-    <div class="gem-e-verticalnavitem"><e-tooltip placement="right" content="Expanded View (` + window.GEM_MOD_KEY + `+Shift+F)" role="tooltip" aria-description="Expanded View">
+    <div class="gem-e-verticalnavitem"><e-tooltip placement="right" content="Focus Editor (` + window.GEM_MOD_KEY + `+Shift+F)" role="tooltip" aria-description="Focus Editor">
       <div class="e-verticalnavitem__icon e-svgclickfix">
         <gem-e-icon icon="mediadb"><div aria-hidden="true" class="e-icon-wrapper"><div class="e-icon gem-expand-icon-glyph">${iconEntity}</div></div></gem-e-icon>
       </div>
@@ -70,7 +70,7 @@ function getExpandSvg(iconEntity = EXPAND_ICON_OFF) {
 
 function getMobileSvg(iconEntity = MOBILE_ICON_OFF) {
   return `
-    <div class="gem-e-verticalnavitem"><e-tooltip placement="right" content="Mobile View (` + window.GEM_MOD_KEY + `+Shift+M)" role="tooltip" aria-description="Mobile View">
+    <div class="gem-e-verticalnavitem"><e-tooltip placement="right" content="Mobile Sidepanel (` + window.GEM_MOD_KEY + `+Shift+M)" role="tooltip" aria-description="Mobile Sidepanel">
       <div class="e-verticalnavitem__icon e-svgclickfix">
         <gem-e-icon icon="mediadb"><div aria-hidden="true" class="e-icon-wrapper"><div class="e-icon gem-mobile-icon-glyph">${iconEntity}</div></div></gem-e-icon>
       </div>

@@ -166,7 +166,7 @@
     }
   }
 
-  (function bindNewTermRegexToggle() {
+  function bindNewTermControls() {
     const regexBtn = document.getElementById("new-term-regex-toggle");
     if (!regexBtn || regexBtn.dataset.gemBound === 'true') return;
     regexBtn.dataset.gemBound = 'true';
@@ -175,11 +175,12 @@
       regexBtn.classList.toggle('gem-settings-regex-toggle--active', nowActive);
       regexBtn.setAttribute('aria-pressed', String(nowActive));
     });
-  })();
+  }
 
   window.GemHighlightTerms = {
     load: loadHighlightTerms,
-    addNew: addNewTerm
+    addNew: addNewTerm,
+    bindNewTermControls,
   };
 
 })();

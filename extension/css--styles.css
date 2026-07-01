@@ -2276,9 +2276,58 @@ input.gem-image-search:not(:placeholder-shown) {
     content: "Copied!";
 }
 
-/* campaign preview toolbar */
+/* campaign preview toolbar — hide controls, not dialog hosts (Send Test, Contact Preview, etc.) */
 body.gem-campaign-preview-toolbar-hidden cb-campaign-preview > .e-section > .e-section__header {
+    width: 0;
+    min-width: 0;
+    max-width: 0;
+    padding: 0;
+    margin: 0;
+    border: 0;
+    overflow: visible;
+    pointer-events: none;
+    flex: 0 0 0;
+}
+
+body.gem-campaign-preview-toolbar-hidden cb-campaign-preview > .e-section > .e-section__header > .e-cell {
+    width: 0;
+    min-width: 0;
+    padding: 0;
+    overflow: visible;
+    pointer-events: none;
+}
+
+body.gem-campaign-preview-toolbar-hidden cb-campaign-preview > .e-section > .e-section__header .e-section__actions,
+body.gem-campaign-preview-toolbar-hidden cb-campaign-preview > .e-section > .e-section__header .e-buttongroup.e-section__action {
+    width: 0;
+    height: 0;
+    padding: 0;
+    margin: 0;
+    gap: 0;
+    overflow: visible;
+    border: 0;
+}
+
+body.gem-campaign-preview-toolbar-hidden cb-campaign-preview > .e-section > .e-section__header > .e-cell:first-child > .e-buttongroup > e-tooltip,
+body.gem-campaign-preview-toolbar-hidden cb-campaign-preview > .e-section > .e-section__header > .e-cell:first-child > .e-buttongroup > .e-border-right,
+body.gem-campaign-preview-toolbar-hidden cb-campaign-preview > .e-section > .e-section__header cb-highlight-editables-switch,
+body.gem-campaign-preview-toolbar-hidden cb-campaign-preview > .e-section > .e-section__header cb-undo-redo-buttons,
+body.gem-campaign-preview-toolbar-hidden cb-campaign-preview cb-device-selector-button > e-tooltip,
+body.gem-campaign-preview-toolbar-hidden cb-campaign-preview cb-contact-preview-button > e-tooltip,
+body.gem-campaign-preview-toolbar-hidden cb-campaign-preview cb-testmail-button > e-tooltip {
     display: none !important;
+}
+
+body.gem-campaign-preview-toolbar-hidden cb-test-email-dialog:not(:has(> .e-modal__visible)),
+body.gem-campaign-preview-toolbar-hidden cb-contact-preview-dialog:not(:has(.e-dialog-visible)),
+body.gem-campaign-preview-toolbar-hidden cb-screen-selector-dialog:not(:has(.e-dialog-visible)) {
+    display: none !important;
+}
+
+body.gem-campaign-preview-toolbar-hidden cb-test-email-dialog .e-modal.e-modal__visible,
+body.gem-campaign-preview-toolbar-hidden cb-contact-preview-dialog .e-dialog.e-dialog-visible,
+body.gem-campaign-preview-toolbar-hidden cb-screen-selector-dialog .e-dialog.e-dialog-visible {
+    pointer-events: auto;
 }
 
 cb-campaign-preview > .e-section {
@@ -2496,6 +2545,12 @@ input.gem-input, select.gem-select {
 
 .gem-enhanced-image-properties-dialog {
     background: var(--token-box-alternate-background) !important;
+}
+
+.gem-enhanced-image-properties-dialog.gem-modal-peek-through,
+.gem-enhanced-image-properties-dialog.gem-image-picker-peek-through {
+    opacity: 0 !important;
+    pointer-events: none !important;
 }
 
 .gem-enhanced-image-properties-dialog > .e-dialog__container {

@@ -22,7 +22,7 @@
       ".gem-recent-campaigns-backdrop",
       "#gem-keyboard-shortcuts-modal",
       "#gem-welcome-modal",
-      "#gem-compare-languages-modal",
+      "#gem-compare-modal",
       "[data-gem-layer-z]"
     ];
 
@@ -55,7 +55,7 @@
       }
 
       if (el.dataset && el.dataset.gemLayerRaised === "1") return true;
-      if (id === "gem-keyboard-shortcuts-modal" || id === "gem-welcome-modal" || id === "gem-compare-languages-modal") return true;
+      if (id === "gem-keyboard-shortcuts-modal" || id === "gem-welcome-modal" || id === "gem-compare-modal") return true;
 
       try {
         var cs = window.getComputedStyle(el);
@@ -142,6 +142,7 @@
 
       function injectIntoIframe(iframe) {
         try {
+          if (typeof window.gemIsGemStrippedEmbedIframe === 'function' && window.gemIsGemStrippedEmbedIframe(iframe)) return;
           var iframeDoc = iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document);
           if (!iframeDoc || iframeDoc._gemLayerEscapeHandler) return;
           iframeDoc.addEventListener("keydown", handler, true);

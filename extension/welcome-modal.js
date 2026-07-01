@@ -20,7 +20,7 @@ function createWelcomeModalHTML() {
           <h3>Feature List</h3>
           <ul class="gem-welcome-modal-features">
             <li><b>Drag-and-Drop Snippets</b> Drag and drop custom ESL snippets into your email editor. Create, edit, pin, categorize, and delete snippets from the Snippets tab in the vertical navigation. You can also import and export snippets as shareable JSON.</li>
-            <li><b>Fullscreen Email Editing</b> Go fullscreen for a bigger view of your email. Use the purple expand icon in the bottom left of the email editor to modify your layout, or press ${typeof window.GEM_MOD_KEY !== 'undefined' ? window.GEM_MOD_KEY : 'CTRL'}+Shift+F. This increases the total viewable area of your email by over 40%!</li>
+            <li><b>Focus Editor</b> Switch from Standard Editor to Focus Editor for a bigger view of your email. Use the purple expand icon in the bottom left of the email editor, choose it from the email tools menu, or press ${typeof window.GEM_MOD_KEY !== 'undefined' ? window.GEM_MOD_KEY : 'CTRL'}+Shift+F. This increases the total viewable area of your email by over 40%!</li>
             <li>
               <b>Convert ESL to Tokens</b> Instantly <b>convert plain text ESL into ESL tokens</b> by clicking the convert icon <span class="gem-e-icon"></span> wherever you see it.
             </li>
@@ -35,7 +35,7 @@ function createWelcomeModalHTML() {
             <li>
               <b>Preflight QA</b> Highlight important text, accessibility issues, image alt text, link problems, and more in the email editor preview. The Preflight panel includes a Languages overview (per-language issue counts), Text Analysis, Accessibility, Links, and Images sections. Issue counts persist per campaign and show up on Recent Campaign rows.
             </li>
-            <li><b>Mobile Previews</b> See a mobile preview of your email right next to your desktop view while you make edits. This is turned on by default and can be toggled from the settings menu or the <span class="gem-e-icon">&#xF133;</span> icon in the bottom left of the editor. You can also adjust width of it by dragging it or editing it in the settings panel.</li>
+            <li><b>Mobile Sidepanel</b> See a mobile preview of your email right next to your desktop view while you make edits. This is turned on by default and can be toggled from the settings menu or the <span class="gem-e-icon">&#xF133;</span> icon in the bottom left of the editor. You can also adjust width of it by dragging it or editing it in the settings panel.</li>
             <li><b>Custom Color Swatches</b> Custom color swatches are now permanent! Emarsys doesn't remember what colors you used when editing an email. But Gemma does. You can also add default presets that will always display at the top of the color picker (up to 8) from the settings panel.</li>
             <li><b>Notes</b> Keep notes right in Emarsys! Find the Notes nav item in the vertical navigation and start taking notes right from any page.</li>
             <li><b>ALT Text Preview</b> Make it easier to QA ALT text by showing it when you hover over images in the email editor preview.</li>

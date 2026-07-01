@@ -8,7 +8,23 @@
 |                                                                                |
  --------------------------------------------------------------------------------
 
+- Compare links across languages. Compare links across versions. Also compare subject lines and preview text. Work this into the existing compare dialog with toggles. Subject line and preview text could be a toggle that shows them above each frame. Links can be a toggle that replaces the frames entirely with a table of links.
+
+- A quick access shortcut to pull up a snippet dialog? Found myself having to switch between the subject line panel and the snippets panel a lot. What if a shortcut just brought up all of my snippets? Or just the most recently used ones?
+
+- Figure out if I can use the API to grab the HTML to avoid the Finish Editing issue.
+
+- When the mediadb is open, hitting the back button or CMD+<- should navigate back to the previous folder if the user clicked on any folders. It should keep going back through folders as long as there are any.
+
 - Is it possible to get snippet tokens into the subject line? Personalization tokes work there.
+
+- Add a grid toggle that outlines each block
+
+- Make duplicate harder to click.
+
+- Closing an email campaign tab and re-opening it brings back a previous version. Can we fix that? Maybe detect that we're re-opening it and autorefresh?
+
+- Maybe I can save URLs of language versions by taking on the country code and then auto-clicking to the language for the purposes of language previews. id=32328&gemlang=en-us
 
 _________________
 ### Text Highlighting Upgrade
@@ -261,3 +277,5 @@ the images bounding box using a box shadow.
 ✓ email drawer needs to not remember search inputs across tabs and page loads. its enough for it to remember on a single page load when it opens and closes. but a page refresh should kill it, and it shouldn't sync to other tabs
 
 ✓ Remember when a language version has preflight errors. Store it and add it to the language picker.
+
+✓ Track segment IDs when the user hits save on the settings screen. List them as "most recently used". Clicking on them adds them as the active segment. Do it on page load because the save button always reloads the page. Log the ID only and timestamp it. Keep 10. On page load check the selectbox for the ID and grab the name from there to display to the user.

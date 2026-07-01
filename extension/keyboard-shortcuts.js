@@ -17,14 +17,12 @@ function initializeKeyboardShortcuts() {
     return false;
   }
 
-  /** True when Space should behave normally for the focused element (image picker peek disabled). */
-  function spacebarWouldAffectFocusedElement(el) {
+  /** True when Space should behave normally instead of modal peek (typing, dropdowns, editors). */
+  function spacebarBlocksModalPeek(el) {
     if (!el || el === document.body || el === document.documentElement) return false;
     const target = el.nodeType === Node.ELEMENT_NODE ? el : el.parentElement;
     if (!target || !target.matches) return false;
     if (isTypingTarget(target)) return true;
-    const tag = (target.tagName || '').toLowerCase();
-    if (tag === 'button' || tag === 'summary') return true;
     if (target.closest && (
       target.closest('.CodeMirror-focused') ||
       target.closest('vce-codemirror') ||
@@ -32,16 +30,85 @@ function initializeKeyboardShortcuts() {
     )) {
       return true;
     }
-    const roleEl = target.closest('[role]') || target;
-    const role = roleEl.getAttribute && roleEl.getAttribute('role');
-    if (role === 'textbox' || role === 'combobox' || role === 'listbox' ||
-        role === 'button' || role === 'checkbox' || role === 'radio' || role === 'searchbox') {
-      return true;
-    }
     return false;
   }
 
-  let gemImagePickerPeekActive = false;
+  let gemModalPeekActive = false;
+
+  function gemGetOpenCompareModal() {
+    try {
+      return getRootDocument().getElementById('gem-compare-modal');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function gemGetModalPeekTarget() {
+    return gemGetOpenCompareModal() || gemGetOpenEnhancedImagePropertiesDialog();
+  }
+
+  function gemClearModalPeekClasses(rootDoc) {
+    if (!rootDoc) return;
+    rootDoc.querySelectorAll('.gem-modal-peek-through, .gem-image-picker-peek-through').forEach((el) => {
+      el.classList.remove('gem-modal-peek-through', 'gem-image-picker-peek-through');
+    });
+  }
+
+  function gemSetModalPeek(active) {
+    const target = gemGetModalPeekTarget();
+    if (!active) {
+      gemModalPeekActive = false;
+      try {
+        gemClearModalPeekClasses(getRootDocument());
+      } catch (_) {}
+      return;
+    }
+    if (!target) return;
+    gemModalPeekActive = true;
+    target.classList.add('gem-modal-peek-through');
+    if (target.classList.contains('gem-enhanced-image-properties-dialog')) {
+      target.classList.add('gem-image-picker-peek-through');
+    }
+  }
+
+  function gemClearModalPeekIfStale() {
+    if (!gemModalPeekActive) return;
+    if (!gemGetModalPeekTarget()) {
+      gemSetModalPeek(false);
+    }
+  }
+
+  function handleModalPeekKeyDown(event) {
+    const isSpaceKey = event.key === ' ' || event.code === 'Space';
+    if (!isSpaceKey || event.metaKey || event.ctrlKey || event.altKey) return;
+
+    gemClearModalPeekIfStale();
+    if (!gemGetModalPeekTarget()) return;
+
+    const ae = gemGetActiveElementForKeyboardEvent(event);
+    if (spacebarBlocksModalPeek(ae)) return;
+
+    if (event.repeat) {
+      if (gemModalPeekActive) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      return;
+    }
+
+    gemSetModalPeek(true);
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  function handleModalPeekKeyUp(event) {
+    const isSpaceKey = event.key === ' ' || event.code === 'Space';
+    if (!isSpaceKey) return;
+    if (!gemModalPeekActive) return;
+    gemSetModalPeek(false);
+    event.preventDefault();
+    event.stopPropagation();
+  }
 
   function gemGetOpenEnhancedImagePropertiesDialog() {
     const rootDoc = getRootDocument();
@@ -63,58 +130,6 @@ function initializeKeyboardShortcuts() {
     } catch (_) {
       return document.activeElement;
     }
-  }
-
-  function gemSetImagePickerPeek(active) {
-    const dialog = gemGetOpenEnhancedImagePropertiesDialog();
-    if (!dialog) {
-      gemImagePickerPeekActive = false;
-      try {
-        getRootDocument().querySelectorAll('.gem-image-picker-peek-through').forEach((el) => {
-          el.classList.remove('gem-image-picker-peek-through');
-        });
-      } catch (_) {}
-      return;
-    }
-    gemImagePickerPeekActive = !!active;
-    dialog.classList.toggle('gem-image-picker-peek-through', !!active);
-  }
-
-  function gemClearImagePickerPeekIfStale() {
-    if (!gemImagePickerPeekActive) return;
-    if (!gemGetOpenEnhancedImagePropertiesDialog()) {
-      gemSetImagePickerPeek(false);
-    }
-  }
-
-  function handleImagePickerPeekKeyDown(event) {
-    const isSpaceKey = event.key === ' ' || event.code === 'Space';
-    if (!isSpaceKey || event.metaKey || event.ctrlKey || event.altKey) return;
-
-    gemClearImagePickerPeekIfStale();
-    if (!gemGetOpenEnhancedImagePropertiesDialog()) return;
-
-    const ae = gemGetActiveElementForKeyboardEvent(event);
-    if (spacebarWouldAffectFocusedElement(ae)) return;
-
-    if (event.repeat) {
-      if (gemImagePickerPeekActive) {
-        event.preventDefault();
-        event.stopPropagation();
-      }
-      return;
-    }
-
-    gemSetImagePickerPeek(true);
-    event.preventDefault();
-    event.stopPropagation();
-  }
-
-  function handleImagePickerPeekKeyUp(event) {
-    const isSpaceKey = event.key === ' ' || event.code === 'Space';
-    if (!isSpaceKey) return;
-    if (!gemImagePickerPeekActive) return;
-    gemSetImagePickerPeek(false);
   }
 
   function getRootDocument() {
@@ -592,6 +607,7 @@ function initializeKeyboardShortcuts() {
     // Function to inject keyboard shortcuts into an iframe
     function injectIntoIframe(iframe) {
       try {
+        if (typeof window.gemIsGemStrippedEmbedIframe === 'function' && window.gemIsGemStrippedEmbedIframe(iframe)) return;
         const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
         if (iframeDoc) {
           // Check if our handler is already attached to avoid duplicates
@@ -601,7 +617,7 @@ function initializeKeyboardShortcuts() {
 
           // Add the keyboard shortcut handler to the iframe
           iframeDoc.addEventListener('keydown', handleKeyDown, true);
-          iframeDoc.addEventListener('keyup', handleImagePickerPeekKeyUp, true);
+          iframeDoc.addEventListener('keyup', handleModalPeekKeyUp, true);
           iframeDoc._gemKeyboardHandler = true;
 
           console.log("[Gem] Injected keyboard shortcuts into iframe");
@@ -621,6 +637,7 @@ function initializeKeyboardShortcuts() {
 
   // Function to wait for iframe to be ready and inject
   function waitForIframeReady(iframe) {
+      if (typeof window.gemIsGemStrippedEmbedIframe === 'function' && window.gemIsGemStrippedEmbedIframe(iframe)) return;
       bindKeyboardShortcutIframeReload(iframe);
       if (iframe.contentDocument && iframe.contentDocument.readyState === 'complete') {
         // Iframe is already loaded
@@ -830,7 +847,7 @@ function initializeKeyboardShortcuts() {
 
       return false;
     } else if (isLangPrevShortcut || isLangNextShortcut) {
-      if (document.getElementById('gem-compare-languages-modal')) {
+      if (document.getElementById('gem-compare-modal')) {
         return;
       }
 
@@ -869,11 +886,11 @@ function initializeKeyboardShortcuts() {
       return false;
     }
 
-    handleImagePickerPeekKeyDown(event);
+    handleModalPeekKeyDown(event);
   }
 
   function handleKeyUp(event) {
-    handleImagePickerPeekKeyUp(event);
+    handleModalPeekKeyUp(event);
   }
 
   // Attach event listeners to window to catch events from anywhere (including iframes)
@@ -884,10 +901,12 @@ function initializeKeyboardShortcuts() {
   document.addEventListener('keydown', handleKeyDown, true);
   document.addEventListener('keyup', handleKeyUp, true);
 
-  window.addEventListener('blur', () => gemSetImagePickerPeek(false), true);
+  window.addEventListener('blur', () => gemSetModalPeek(false), true);
 
   // Monitor iframes and inject keyboard shortcuts into them
   monitorIframesForKeyboardShortcuts();
+
+  window.gemSetModalPeek = gemSetModalPeek;
 
   console.log("[Gem] Keyboard shortcuts initialized - CMD+S / CTRL+S will trigger save");
 }

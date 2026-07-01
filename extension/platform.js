@@ -63,4 +63,34 @@
       return window.gemModCombo(key);
     };
   }
+
+  function gemIsGemStrippedCampaignUrl(href) {
+    try {
+      const url = new URL(href, window.location.href);
+      if (url.searchParams.get('gemStripped') !== 'true') return false;
+      const route = decodeURIComponent(url.searchParams.get('r') || '');
+      return route.includes('contentBlocks/campaign');
+    } catch (_) {
+      return false;
+    }
+  }
+
+  window.gemIsGemStrippedCampaignUrl = gemIsGemStrippedCampaignUrl;
+
+  window.gemIsGemStrippedEmbedIframe = function gemIsGemStrippedEmbedIframe(iframe) {
+    if (!iframe) return false;
+    try {
+      const win = iframe.contentWindow;
+      if (win && win.location && win.location.href) {
+        return gemIsGemStrippedCampaignUrl(win.location.href);
+      }
+    } catch (_) {}
+    try {
+      const src = iframe.getAttribute('src') || iframe.src || '';
+      if (src && src !== 'about:blank') {
+        return gemIsGemStrippedCampaignUrl(src);
+      }
+    } catch (_) {}
+    return false;
+  };
 })();

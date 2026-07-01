@@ -15,7 +15,7 @@
     justify-content: space-between;
     display: flex !important;
     gap: 16px;
-    padding: 12px 22px 0 30px;
+    padding: 12px 16px 0 22px;
 }
 .gem-expanded .gem-compact-email-tools-dropdown {
     display: flex;
@@ -33,9 +33,49 @@
     z-index: 9999;
 }
 
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-trigger {
+.gem-compact-email-tools-menu-trigger-group {
+    display: inline-flex;
+    align-items: stretch;
+    flex-shrink: 0;
     border: 1px solid var(--token-box-default-border, rgba(0, 0, 0, 0.16));
+    border-radius: 6px;
     background: var(--token-box-default-background, #fff);
+    overflow: hidden;
+}
+
+.gem-compact-email-tools-menu-trigger-group:hover {
+    border-color: var(--token-box-default-border, rgba(0, 0, 0, 0.16));
+}
+
+.gem-compact-email-tools-page-title {
+    display: inline-flex;
+    align-items: center;
+    padding: 0 10px 0 2px;
+    margin: 0;
+    border: 0;
+    background: none;
+    font-size: 19px;
+    font-weight: 700;
+    line-height: 1.2;
+    color: var(--token-font-default);
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+    outline: none !important;
+}
+
+.gem-compact-email-tools-menu-wrap--header .gem-compact-email-tools-menu-trigger-group {
+    border: 0;
+    background: transparent;
+}
+
+.gem-compact-email-tools-menu-wrap--header .gem-compact-email-tools-page-title {
+    display: none;
+}
+
+.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-trigger {
+    border: 0;
+    background: transparent;
     cursor: pointer;
     padding: 0;
     width: 36px;
@@ -44,11 +84,22 @@
     align-items: center;
     justify-content: center;
     color: var(--token-icon-default-text, inherit);
-    border-radius: 6px;
+    border-radius: 0;
     transition: opacity 0.12s ease;
+    flex-shrink: 0;
+}
+
+.gem-compact-email-tools-menu-wrap--header .gem-recent-campaign-row-menu-trigger {
+    border: 1px solid var(--token-box-default-border, rgba(0, 0, 0, 0.16));
+    background: var(--token-box-default-background, #fff);
+    border-radius: 6px;
 }
 
 .gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-trigger:hover {
+    background: transparent;
+}
+
+.gem-compact-email-tools-menu-wrap--header .gem-recent-campaign-row-menu-trigger:hover {
     background: var(--token-box-default-background, #fff);
     border-color: var(--token-box-default-border, rgba(0, 0, 0, 0.16));
 }
@@ -68,15 +119,14 @@
     right: 0;
     top: calc(100% + 4px);
     z-index: 4;
-    min-width: 170px;
-    max-width: min(260px, calc(100vw - 24px));
-    padding: 4px;
+    min-width: 520px;
+    padding: 0;
     border: 1px solid var(--token-box-default-border, rgba(0, 0, 0, 0.16));
     border-radius: 8px;
     background: var(--token-box-default-background, #fff);
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.16);
     box-sizing: border-box;
-    gap: 1px;
+    gap: 4px;
 }
 
 .gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu--floating {
@@ -89,7 +139,42 @@
 
 .gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu--open {
     display: flex;
+    flex-direction: row;
+}
+
+.gem-compact-email-tools-menu-wrap .gem-compact-email-tools-menu-column {
+    display: flex;
     flex-direction: column;
+    padding: 4px 4px 20px 4px;
+    min-width: 0;
+    gap: 6px;
+}
+
+.gem-compact-email-tools-menu-wrap .gem-compact-email-tools-menu-column + .gem-compact-email-tools-menu-column {
+    border-left: 1px solid var(--token-box-default-border, rgba(0, 0, 0, 0.1));
+    padding-left: 8px;
+}
+
+.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--with-nav-number {
+    padding-left: 4px;
+}
+
+.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item-number {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 19px;
+    height: 19px;
+    border-radius: 50%;
+    border: 1px solid var(--token-box-default-border, rgba(0, 0, 0, 0.16));
+    font-size: 10px;
+    font-weight: bold;
+    line-height: 1;
+    color: var(--token-font-default);
+    box-sizing: border-box;
+    margin-right:3px;
+    margin-left:2px;
 }
 
 .gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item {
@@ -100,13 +185,14 @@
     background: transparent;
     text-align: left;
     font-size: 14px;
-    padding: 7px 10px;
+    padding: 4px 10px;
     border-radius: 6px;
     cursor: pointer;
     color: var(--token-font-default);
+    white-space: nowrap;
 }
 
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item:not([data-gem-live-preview-toggle]) {
+.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item {
     padding-left: 28px;
 }
 
@@ -114,21 +200,33 @@
     width: 24px !important;
 }
 
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item[data-gem-live-preview-toggle] {
+.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--with-inline-icon,
+.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--with-nav-number,
+.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--with-left-indicator {
     padding-left: 4px;
 }
 
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item[data-gem-live-preview-toggle] .gem-inline-icon {
+.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--with-inline-icon .gem-inline-icon {
     flex-shrink: 0;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 14px;
+    width: 24px;
 }
 
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item[data-gem-live-preview-toggle] .gem-inline-icon .e-icon {
+.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--with-inline-icon .gem-inline-icon .e-icon {
     font-size: 14px;
     line-height: 1;
+}
+
+.gem-compact-email-tools-menu-wrap .gem-compact-email-tools-menu-column--features .gem-recent-campaign-row-menu-item--with-inline-icon .gem-inline-icon {
+    color: var(--token-button-default-text);
+}
+
+.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--with-inline-icon .gem-inline-icon svg {
+    display: block;
+    width: 16px;
+    height: 16px;
 }
 
 .gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item:hover {
@@ -146,22 +244,29 @@
 .gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item-label {
     flex: 1;
     min-width: 0;
+    white-space: nowrap;
 }
 
 .gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item-indicator {
     flex-shrink: 0;
     width: 8px;
     height: 8px;
+    margin-left: 24px;
     border-radius: 50%;
     background: transparent;
     box-shadow: none;
     transition: background 0.12s ease, box-shadow 0.12s ease;
 }
 
+.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--with-left-indicator .gem-recent-campaign-row-menu-item-indicator {
+    margin: 8px;
+    padding: 0px;
+    box-sizing: content-box;
+}
+
 .gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--active .gem-recent-campaign-row-menu-item-indicator {
     background: var(--token-primary-600);
     box-shadow: 0 0 6px 1px color-mix(in srgb, var(--token-primary-600) 55%, transparent);
-    margin-left: 24px;
 }
 
 .gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-divider {
@@ -181,11 +286,38 @@
     cursor: default;
     pointer-events: none;
     opacity: 1;
-    background: var(--token-primary-100);
+    background: var(--token-primary-200);
 }
 
 .gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--preview-active:hover {
-    background: var(--token-primary-100);
+    background: var(--token-primary-200);
+}
+
+.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--dim-when-idle.gem-recent-campaign-row-menu-item--menu-idle .gem-recent-campaign-row-menu-item-label,
+.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--dim-when-idle.gem-recent-campaign-row-menu-item--menu-idle .gem-inline-icon,
+.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--dim-when-idle.gem-recent-campaign-row-menu-item--menu-idle .gem-recent-campaign-row-menu-item-number,
+.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--dim-when-idle.gem-recent-campaign-row-menu-item--menu-idle .gem-recent-campaign-row-menu-item-indicator {
+    opacity: 0.5;
+    transition: opacity 0.12s ease;
+}
+
+.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--dim-when-idle.gem-recent-campaign-row-menu-item--menu-idle:hover .gem-recent-campaign-row-menu-item-label,
+.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--dim-when-idle.gem-recent-campaign-row-menu-item--menu-idle:hover .gem-inline-icon,
+.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--dim-when-idle.gem-recent-campaign-row-menu-item--menu-idle:hover .gem-recent-campaign-row-menu-item-number,
+.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--dim-when-idle.gem-recent-campaign-row-menu-item--menu-idle:hover .gem-recent-campaign-row-menu-item-indicator {
+    opacity: 1;
+}
+
+.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--dim-when-idle.gem-recent-campaign-row-menu-item--menu-idle[data-gem-live-preview-toggle] .gem-inline-icon,
+.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--dim-when-idle.gem-recent-campaign-row-menu-item--menu-idle[data-gem-inbox-preview-toggle] .gem-inline-icon,
+.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--dim-when-idle.gem-recent-campaign-row-menu-item--menu-idle[data-gem-standard-editor-toggle] .gem-inline-icon,
+.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--dim-when-idle.gem-recent-campaign-row-menu-item--menu-idle[data-gem-focus-editor-toggle] .gem-inline-icon {
+    color: var(--token-font-default);
+}
+
+.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--dim-when-idle.gem-recent-campaign-row-menu-item--menu-idle[data-gem-live-preview-toggle] .gem-inline-icon .e-icon,
+.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--dim-when-idle.gem-recent-campaign-row-menu-item--menu-idle[data-gem-inbox-preview-toggle] .gem-inline-icon .e-icon {
+    color: var(--token-font-default);
 }
 
 .gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--inbox-blocked {
@@ -220,19 +352,6 @@
 @keyframes gem-duplicate-spinner-spin {
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
-}
-
-.gem-expanded .gem-email-tools-select {
-    padding: 0 10px 0 2px;
-    border: 0;
-    background: none;
-    margin: 0;
-    font-size: 20px;
-    font-weight: bold;
-    display: block;
-    width: unset;
-    outline: none !important;
-    margin-left:-4px;
 }
 
 .gem-expanded .e-section__title {
@@ -304,7 +423,7 @@
 }
 .gem-expanded .gem-compact-email-versions.active {
     display: flex !important;
-    padding: 10px 22px 22px 30px;
+    padding: 16px 16px 16px 22px !important;
 }
 
 .gem-expanded e-verticalnav-menu {
@@ -343,7 +462,7 @@
     font-weight: normal !important;
     word-break: break-all;
     position: relative;
-    padding: 8px 18px 16px 30px;
+    padding: 10px 16px 14px 22px;
 }
 
 .gem-expanded main .gem-header-copy-icon {
@@ -594,4 +713,50 @@
     & section.e-contentblocks-navigation_section:has(.e-verticalnav__content cb-available-block-list) {
         flex: 0 0 554px !important;
     }
+}
+
+.gem-compact-email-tools-menu-column::before {
+    font-size: 11px;
+    font-weight: bold;
+    letter-spacing: 1px;
+    padding-top: 3px;
+    padding-left: 6px;
+    padding-bottom: 2px;
+    opacity: 0.6;
+    display:block;
+}
+
+.gem-compact-email-tools-menu-column--preview::before {
+    content: "VIEWS";
+}
+.gem-compact-email-tools-menu-column--features::before {
+    content: "EDITOR";
+}
+.gem-compact-email-tools-menu-column--nav::before {
+    content: "CAMPAIGN";
+}
+
+.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu {
+
+    & > :nth-child(1) {
+        margin: 10px 5px 10px 10px;
+        padding: 10px;
+    }
+
+    & > :nth-child(2) {
+        background: rgba(255 255 255 / 0.02);
+        margin: 10px 0;
+        border-radius: 9px;
+        border: none;
+        padding: 10px;
+    }
+
+    & > :nth-child(3) {
+        border: none;
+        margin: 10px 10px 10px 5px;
+        border-radius: 9px;
+        border: none;
+        padding: 10px;
+    }
+
 }

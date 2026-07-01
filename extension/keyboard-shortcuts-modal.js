@@ -57,8 +57,8 @@
           [`${mod}+G`, 'Open or close Gemma Settings'],
           [`${mod}+/`, 'Open or close Recent Campaigns'],
           [`${mod}+;`, 'Open or close Notes'],
-          [`${mod}+Shift+F`, 'Toggle Expanded View mode (fullscreen email layout)'],
-          [`${mod}+Shift+M`, 'Toggle Mobile Preview pane'],
+          [`${mod}+Shift+F`, 'Toggle between Standard Editor and Focus Editor'],
+          [`${mod}+Shift+M`, 'Toggle Mobile Sidepanel'],
           [`${mod}+Shift+,`, 'Previous language version (when language selector is available)'],
           [`${mod}+Shift+.`, 'Next language version (when language selector is available)'],
           ['Esc', 'Close Gemma modals and panels that support it']

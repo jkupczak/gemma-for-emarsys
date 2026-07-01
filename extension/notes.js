@@ -318,6 +318,7 @@ function setupNotesPanelShortcuts() {
 
   function injectIntoIframe(iframe) {
     try {
+      if (typeof window.gemIsGemStrippedEmbedIframe === 'function' && window.gemIsGemStrippedEmbedIframe(iframe)) return;
       const iframeDoc = iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document);
       if (!iframeDoc) return;
       if (iframeDoc._gemNotesShortcutHandler) return;
@@ -337,6 +338,7 @@ function setupNotesPanelShortcuts() {
 
   function waitForIframeReady(iframe) {
     try {
+      if (typeof window.gemIsGemStrippedEmbedIframe === 'function' && window.gemIsGemStrippedEmbedIframe(iframe)) return;
       bindNotesShortcutIframeReload(iframe);
       if (iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document)) {
         injectIntoIframe(iframe);

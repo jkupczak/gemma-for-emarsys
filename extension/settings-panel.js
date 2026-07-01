@@ -819,27 +819,27 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
           <h3>Layout</h3>
           <div class="gem-setting">
             <div class="gem-e-switch-wrapper">
-              <label for="opt-enable-expanded-mode">Toggle expanded mode</label>
+              <label for="opt-enable-expanded-mode">Focus Editor</label>
               <div class="gem-e-switch--fat e-switch">
                 <input type="checkbox" class="e-switch__input" id="opt-enable-expanded-mode">
                 <label class="e-switch__toggle" for="opt-enable-expanded-mode"></label>
               </div>
             </div>
             <p class="sub-label">
-              An alternative layout that increases the total viewable area of your email by over 40%. You can turn it on here, via the <span class="gem-e-icon">&#61658;</span> icon next to your email, or use the keyboard shortcut CMD+SHIFT+F or CTRL+SHIFT+F at any time.
+              Focus Editor increases the total viewable area of your email by over 40%. Turn it on here, choose it from the email tools menu, via the <span class="gem-e-icon">&#61658;</span> icon next to your email, or use the keyboard shortcut CMD+SHIFT+F or CTRL+SHIFT+F at any time. Turn it off to return to Standard Editor.
             </p>
           </div>
           <div class="gem-setting">
 
             <div class="gem-e-switch-wrapper">
-              <label for="opt-enable-mobile-preview">Toggle mobile preview pane</label>
+              <label for="opt-enable-mobile-preview">Mobile Sidepanel</label>
               <div class="gem-e-switch--fat e-switch">
                 <input type="checkbox" class="e-switch__input" id="opt-enable-mobile-preview">
                 <label class="e-switch__toggle" for="opt-enable-mobile-preview"></label>
               </div>
             </div>
             <p class="sub-label">
-              Keep a mobile preview of your email visible next to your desktop view while you make edits. You can turn it on here or via the <span class="gem-e-icon">&#61747;</span> icon in the left navigation.
+              Keep a mobile sidepanel of your email visible next to your desktop view while you make edits. You can turn it on here or via the <span class="gem-e-icon">&#61747;</span> icon in the left navigation.
             </p>
             <div class="gem-setting-section">
               <div class="gem-setting-condensed" style="display: flex; gap: 12px; align-items: center;">
@@ -2093,6 +2093,9 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
     if (addBtn) {
       addBtn.addEventListener("click", window.GemHighlightTerms.addNew);
     }
+    if (typeof window.GemHighlightTerms.bindNewTermControls === 'function') {
+      window.GemHighlightTerms.bindNewTermControls();
+    }
 
     const exportFullBackupBtn = document.getElementById("gem-export-full-backup-btn");
     if (exportFullBackupBtn) {
@@ -2600,6 +2603,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
     // Also attach into iframes so the shortcut works when focus is inside them
     function injectIntoIframe(iframe) {
       try {
+        if (typeof window.gemIsGemStrippedEmbedIframe === 'function' && window.gemIsGemStrippedEmbedIframe(iframe)) return;
         const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
         if (!iframeDoc) return;
         if (iframeDoc._gemSettingsShortcutHandler) return;
@@ -2620,6 +2624,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
 
     function waitForIframeReady(iframe) {
       try {
+        if (typeof window.gemIsGemStrippedEmbedIframe === 'function' && window.gemIsGemStrippedEmbedIframe(iframe)) return;
         bindSettingsShortcutIframeReload(iframe);
         // If we can access the iframe document at all, attach immediately.
         if (iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document)) {

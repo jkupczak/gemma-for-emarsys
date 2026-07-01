@@ -1,30 +1,10 @@
 // compare-languages.js — multi-language side-by-side preview comparison
 (function () {
-  const MODAL_ID = 'gem-compare-languages-modal';
-  const TOOLBAR_CLASS = 'gem-compare-languages-toolbar';
-  const PREVIEW_READY_TIMEOUT_MS = 4000;
-  const GEM_COMPARE_LANGUAGES_DESKTOP_WIDTH_KEY = 'gemCompareLanguagesDesktopWidth';
-  const GEM_COMPARE_LANGUAGES_MOBILE_WIDTH_KEY = 'gemCompareLanguagesMobileWidth';
-  const GEM_COMPARE_LANGUAGES_ZOOM_KEY = 'gemCompareLanguagesZoom';
-  const DEFAULT_COMPARE_LANGUAGES_DESKTOP_WIDTH = 620;
-  const DEFAULT_COMPARE_LANGUAGES_MOBILE_WIDTH = 414;
-  const DEFAULT_COMPARE_LANGUAGES_ZOOM = '50';
-  const COMPARE_COLUMNS_ZOOM_50_CLASS = 'gem-compare-languages-modal__columns--zoom-50';
-  const COMPARE_WIDTH_LIMITS = {
-    desktop: { min: 200, max: 1200, fallback: DEFAULT_COMPARE_LANGUAGES_DESKTOP_WIDTH },
-    mobile: { min: 200, max: 800, fallback: DEFAULT_COMPARE_LANGUAGES_MOBILE_WIDTH },
-  };
+  const common = window.gemComparePreviewCommon;
+  if (!common) return;
 
-  let compareDeviceMode = 'desktop';
-  let compareZoomLevel = DEFAULT_COMPARE_LANGUAGES_ZOOM;
-  let compareWidthSettings = {
-    desktop: DEFAULT_COMPARE_LANGUAGES_DESKTOP_WIDTH,
-    mobile: DEFAULT_COMPARE_LANGUAGES_MOBILE_WIDTH,
-  };
-  let compareSettingsListenerBound = false;
-  let activeComparisonCaptures = [];
-  let openCompareColumnMenu = null;
-  let compareColumnMenuListenersInstalled = false;
+  const COMPARE_MODE = 'languages';
+  const PREVIEW_READY_TIMEOUT_MS = 4000;
   const PREVIEW_DEBOUNCE_MS = 200;
   const IDENTICAL_CONTENT_SETTLE_MS = 400;
   const SELECT_POLL_MS = 75;
@@ -41,260 +21,16 @@
     'e-vce-borderer',
   ];
 
-  let escapeUnsub = null;
+  let activeComparisonCaptures = [];
   let captureAbort = false;
-  let localesTabToolbarEl = null;
+  const localesTabToolbarRef = { current: null };
 
-  function getCompareWidthLimits(mode) {
-    return mode === 'mobile' ? COMPARE_WIDTH_LIMITS.mobile : COMPARE_WIDTH_LIMITS.desktop;
+  function getModalEl() {
+    return common.getCompareModal();
   }
 
-  function normalizeCompareWidth(value, fallback) {
-    const parsed = parseInt(value, 10);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-  }
-
-  function normalizeCompareWidthForDevice(value, mode) {
-    const limits = getCompareWidthLimits(mode);
-    const parsed = parseInt(value, 10);
-    if (!Number.isFinite(parsed)) return limits.fallback;
-    return Math.min(limits.max, Math.max(limits.min, parsed));
-  }
-
-  function getActiveCompareWidthStorageKey(mode) {
-    return (mode || compareDeviceMode) === 'mobile'
-      ? GEM_COMPARE_LANGUAGES_MOBILE_WIDTH_KEY
-      : GEM_COMPARE_LANGUAGES_DESKTOP_WIDTH_KEY;
-  }
-
-  function persistCompareWidthForDevice(mode, width) {
-    const next = normalizeCompareWidthForDevice(width, mode);
-    if (mode === 'mobile') {
-      compareWidthSettings.mobile = next;
-    } else {
-      compareWidthSettings.desktop = next;
-    }
-    if (!chrome || !chrome.storage || !chrome.storage.sync) return;
-    chrome.storage.sync.set({ [getActiveCompareWidthStorageKey(mode)]: next });
-  }
-
-  function applyActiveCompareWidth(modal, width, { persist } = {}) {
-    const next = normalizeCompareWidthForDevice(width, compareDeviceMode);
-    if (compareDeviceMode === 'mobile') {
-      compareWidthSettings.mobile = next;
-    } else {
-      compareWidthSettings.desktop = next;
-    }
-    if (modal) {
-      modal.style.setProperty('--gem-compare-column-width', `${next}px`);
-    }
-    if (persist) persistCompareWidthForDevice(compareDeviceMode, next);
-    return next;
-  }
-
-  function applyCompareWidthSettings(settings) {
-    compareWidthSettings = {
-      desktop: normalizeCompareWidth(
-        settings && settings[GEM_COMPARE_LANGUAGES_DESKTOP_WIDTH_KEY],
-        DEFAULT_COMPARE_LANGUAGES_DESKTOP_WIDTH
-      ),
-      mobile: normalizeCompareWidth(
-        settings && settings[GEM_COMPARE_LANGUAGES_MOBILE_WIDTH_KEY],
-        DEFAULT_COMPARE_LANGUAGES_MOBILE_WIDTH
-      ),
-    };
-  }
-
-  function normalizeCompareZoom(value) {
-    return String(value) === '100' ? '100' : DEFAULT_COMPARE_LANGUAGES_ZOOM;
-  }
-
-  function applyCompareLanguagesSettings(settings) {
-    applyCompareWidthSettings(settings);
-    compareZoomLevel = normalizeCompareZoom(settings && settings[GEM_COMPARE_LANGUAGES_ZOOM_KEY]);
-  }
-
-  function loadCompareLanguagesSettings(callback) {
-    if (!chrome || !chrome.storage || !chrome.storage.sync) {
-      applyCompareLanguagesSettings(null);
-      if (callback) callback();
-      return;
-    }
-
-    chrome.storage.sync.get({
-      [GEM_COMPARE_LANGUAGES_DESKTOP_WIDTH_KEY]: DEFAULT_COMPARE_LANGUAGES_DESKTOP_WIDTH,
-      [GEM_COMPARE_LANGUAGES_MOBILE_WIDTH_KEY]: DEFAULT_COMPARE_LANGUAGES_MOBILE_WIDTH,
-      [GEM_COMPARE_LANGUAGES_ZOOM_KEY]: DEFAULT_COMPARE_LANGUAGES_ZOOM,
-    }, (res) => {
-      applyCompareLanguagesSettings(res || {});
-      if (callback) callback();
-    });
-  }
-
-  function persistCompareZoomLevel(level) {
-    const next = normalizeCompareZoom(level);
-    compareZoomLevel = next;
-    if (!chrome || !chrome.storage || !chrome.storage.sync) return;
-    chrome.storage.sync.set({ [GEM_COMPARE_LANGUAGES_ZOOM_KEY]: next });
-  }
-
-  function getActiveCompareColumnWidth() {
-    return compareDeviceMode === 'mobile'
-      ? compareWidthSettings.mobile
-      : compareWidthSettings.desktop;
-  }
-
-  function syncCompareZoomUi(modal) {
-    if (!modal) return;
-    modal.dataset.gemCompareZoom = compareZoomLevel;
-    modal.querySelectorAll('[data-gem-compare-zoom]').forEach((btn) => {
-      const active = btn.getAttribute('data-gem-compare-zoom') === compareZoomLevel;
-      btn.classList.toggle('gem-compare-languages-modal__zoom-btn--active', active);
-      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
-    });
-    modal.querySelectorAll('.gem-compare-languages-modal__columns').forEach((row) => {
-      row.classList.toggle(COMPARE_COLUMNS_ZOOM_50_CLASS, compareZoomLevel === '50');
-    });
-  }
-
-  function syncCompareModalUi(modal) {
-    syncCompareDeviceToggleUi(modal);
-    syncCompareZoomUi(modal);
-  }
-
-  function setCompareZoomLevel(modal, level) {
-    const next = normalizeCompareZoom(level);
-    if (compareZoomLevel === next) {
-      syncCompareZoomUi(modal);
-      return;
-    }
-    persistCompareZoomLevel(next);
-    syncCompareZoomUi(modal);
-  }
-
-  function bindCompareZoomToggle(modal) {
-    if (!modal || modal.dataset.gemCompareZoomToggleBound === 'true') return;
-    modal.dataset.gemCompareZoomToggleBound = 'true';
-
-    const toggle = modal.querySelector('.gem-compare-languages-modal__zoom-toggle');
-    if (!toggle) return;
-
-    toggle.addEventListener('click', (event) => {
-      const btn = event.target && event.target.closest('[data-gem-compare-zoom]');
-      if (!btn || !toggle.contains(btn)) return;
-      setCompareZoomLevel(modal, btn.getAttribute('data-gem-compare-zoom'));
-    });
-  }
-
-  function syncCompareDeviceWidthInput(modal) {
-    if (!modal) return;
-    const input = modal.querySelector('.gem-compare-languages-modal__width-input');
-    if (!input) return;
-    const limits = getCompareWidthLimits(compareDeviceMode);
-    input.min = String(limits.min);
-    input.max = String(limits.max);
-    input.value = String(getActiveCompareColumnWidth());
-    input.setAttribute(
-      'aria-label',
-      `${compareDeviceMode === 'mobile' ? 'Mobile' : 'Desktop'} preview width in pixels`
-    );
-  }
-
-  function syncCompareDeviceToggleUi(modal) {
-    if (!modal) return;
-    modal.dataset.gemCompareDevice = compareDeviceMode;
-    modal.style.setProperty('--gem-compare-column-width', `${getActiveCompareColumnWidth()}px`);
-    modal.querySelectorAll('[data-gem-compare-device]').forEach((btn) => {
-      const active = btn.getAttribute('data-gem-compare-device') === compareDeviceMode;
-      btn.classList.toggle('gem-compare-languages-modal__device-btn--active', active);
-      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
-    });
-    syncCompareDeviceWidthInput(modal);
-  }
-
-  function setCompareDeviceMode(modal, mode) {
-    const next = mode === 'mobile' ? 'mobile' : 'desktop';
-    if (compareDeviceMode === next) {
-      syncCompareDeviceToggleUi(modal);
-      return;
-    }
-    compareDeviceMode = next;
-    syncCompareDeviceToggleUi(modal);
-  }
-
-  function bindCompareWidthInput(modal) {
-    if (!modal || modal.dataset.gemCompareWidthInputBound === 'true') return;
-    modal.dataset.gemCompareWidthInputBound = 'true';
-
-    const input = modal.querySelector('.gem-compare-languages-modal__width-input');
-    if (!input) return;
-
-    function previewWidthFromInput() {
-      const limits = getCompareWidthLimits(compareDeviceMode);
-      const parsed = parseInt(input.value, 10);
-      if (!Number.isFinite(parsed) || parsed <= 0) return;
-      modal.style.setProperty(
-        '--gem-compare-column-width',
-        `${Math.min(limits.max, Math.max(limits.min, parsed))}px`
-      );
-    }
-
-    function commitWidthFromInput(persist) {
-      const next = applyActiveCompareWidth(modal, input.value, { persist: !!persist });
-      input.value = String(next);
-    }
-
-    input.addEventListener('input', previewWidthFromInput);
-    input.addEventListener('change', () => commitWidthFromInput(true));
-    input.addEventListener('blur', () => commitWidthFromInput(true));
-    input.addEventListener('keydown', (event) => {
-      if (event.key !== 'Enter') return;
-      event.preventDefault();
-      commitWidthFromInput(true);
-      input.blur();
-    });
-  }
-
-  function bindCompareDeviceToggle(modal) {
-    if (!modal || modal.dataset.gemCompareDeviceToggleBound === 'true') return;
-    modal.dataset.gemCompareDeviceToggleBound = 'true';
-
-    const toggle = modal.querySelector('.gem-compare-languages-modal__device-toggle');
-    if (!toggle) return;
-
-    toggle.addEventListener('click', (event) => {
-      const btn = event.target && event.target.closest('[data-gem-compare-device]');
-      if (!btn || !toggle.contains(btn)) return;
-      setCompareDeviceMode(modal, btn.getAttribute('data-gem-compare-device'));
-    });
-  }
-
-  function ensureCompareSettingsListener() {
-    if (compareSettingsListenerBound || !chrome || !chrome.storage || !chrome.storage.onChanged) return;
-    compareSettingsListenerBound = true;
-
-    chrome.storage.onChanged.addListener((changes, areaName) => {
-      if (areaName !== 'sync') return;
-      const desktopChange = changes[GEM_COMPARE_LANGUAGES_DESKTOP_WIDTH_KEY];
-      const mobileChange = changes[GEM_COMPARE_LANGUAGES_MOBILE_WIDTH_KEY];
-      const zoomChange = changes[GEM_COMPARE_LANGUAGES_ZOOM_KEY];
-      if (!desktopChange && !mobileChange && !zoomChange) return;
-
-      applyCompareLanguagesSettings({
-        [GEM_COMPARE_LANGUAGES_DESKTOP_WIDTH_KEY]: desktopChange
-          ? desktopChange.newValue
-          : compareWidthSettings.desktop,
-        [GEM_COMPARE_LANGUAGES_MOBILE_WIDTH_KEY]: mobileChange
-          ? mobileChange.newValue
-          : compareWidthSettings.mobile,
-        [GEM_COMPARE_LANGUAGES_ZOOM_KEY]: zoomChange
-          ? zoomChange.newValue
-          : compareZoomLevel,
-      });
-
-      const modal = getModalEl();
-      if (modal) syncCompareModalUi(modal);
-    });
+  function getLanguagesPanel(modal) {
+    return common.getCompareModePanel(modal, COMPARE_MODE);
   }
 
   function getRootDocument() {
@@ -684,223 +420,171 @@
     });
   }
 
-  function closeCompareColumnMenu() {
-    if (!openCompareColumnMenu) return;
-    const { wrap, trigger, menu } = openCompareColumnMenu;
-    menu.classList.remove('gem-recent-campaign-row-menu--open', 'gem-recent-campaign-row-menu--floating');
-    menu.style.removeProperty('top');
-    menu.style.removeProperty('left');
-    menu.style.removeProperty('visibility');
-    trigger.setAttribute('aria-expanded', 'false');
-    if (menu.parentNode !== wrap) {
-      try {
-        wrap.appendChild(menu);
-      } catch (_) {}
-    }
-    openCompareColumnMenu = null;
-  }
+  function createCompareColumnOverflowMenu(entry, modal, {
+    isActiveLanguage,
+    isPinned,
+    pinnedKey,
+  } = {}) {
+    const items = [];
+    const onLayoutChange = (nextModal) => {
+      applyCompareColumnOrder(nextModal);
+    };
 
-  function positionCompareColumnMenu(trigger, menu) {
-    menu.classList.add('gem-recent-campaign-row-menu--floating');
-    menu.style.visibility = 'hidden';
-    const triggerRect = trigger.getBoundingClientRect();
-    const menuRect = menu.getBoundingClientRect();
-    const gap = 4;
-    let top = triggerRect.bottom + gap;
-    let left = triggerRect.right - menuRect.width;
-    if (top + menuRect.height > window.innerHeight - 8) {
-      top = triggerRect.top - menuRect.height - gap;
-    }
-    left = Math.max(8, Math.min(left, window.innerWidth - menuRect.width - 8));
-    top = Math.max(8, Math.min(top, window.innerHeight - menuRect.height - 8));
-    menu.style.top = `${Math.round(top)}px`;
-    menu.style.left = `${Math.round(left)}px`;
-    menu.style.visibility = '';
-  }
-
-  function openCompareColumnMenuAt(wrap) {
-    closeCompareColumnMenu();
-    const trigger = wrap.querySelector('.gem-recent-campaign-row-menu-trigger');
-    const menu = wrap.querySelector('.gem-recent-campaign-row-menu');
-    if (!trigger || !menu) return;
-    document.body.appendChild(menu);
-    menu.classList.add('gem-recent-campaign-row-menu--open');
-    trigger.setAttribute('aria-expanded', 'true');
-    positionCompareColumnMenu(trigger, menu);
-    openCompareColumnMenu = { wrap, trigger, menu };
-  }
-
-  function ensureCompareColumnMenuListeners() {
-    if (compareColumnMenuListenersInstalled) return;
-    compareColumnMenuListenersInstalled = true;
-
-    document.addEventListener(
-      'click',
-      (e) => {
-        if (!openCompareColumnMenu) return;
-        if (openCompareColumnMenu.wrap.contains(e.target)) return;
-        if (openCompareColumnMenu.menu.contains(e.target)) return;
-        closeCompareColumnMenu();
-      },
-      true
-    );
-    window.addEventListener('scroll', closeCompareColumnMenu, true);
-    window.addEventListener('resize', closeCompareColumnMenu);
-  }
-
-  function makeCompareColumnMenuItem(label) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'gem-recent-campaign-row-menu-item';
-    btn.setAttribute('role', 'menuitem');
-    btn.textContent = label;
-    return btn;
-  }
-
-  function createCompareColumnOverflowMenu(entry, modal, { isActiveLanguage } = {}) {
-    const wrap = document.createElement('div');
-    wrap.className = 'gem-recent-campaign-row-menu-wrap gem-compare-languages-column__menu-wrap';
-
-    const trigger = document.createElement('button');
-    trigger.type = 'button';
-    trigger.className = 'gem-recent-campaign-row-menu-trigger';
-    trigger.setAttribute('aria-haspopup', 'menu');
-    trigger.setAttribute('aria-expanded', 'false');
-    trigger.setAttribute('aria-label', `Options for ${entry.label}`);
-
-    const menu = document.createElement('div');
-    menu.className = 'gem-recent-campaign-row-menu';
-    menu.setAttribute('role', 'menu');
+    items.push(common.buildComparePinMenuItem(
+      entry.value,
+      isActiveLanguage,
+      COMPARE_MODE,
+      modal,
+      onLayoutChange,
+      { isPinned }
+    ));
 
     if (!isActiveLanguage) {
-      const editItem = makeCompareColumnMenuItem('Edit');
-      editItem.addEventListener('click', (e) => {
-        e.stopPropagation();
-        closeCompareColumnMenu();
-        closeCompareLanguagesModal();
-        void selectLanguageByValue(entry.value);
+      items.push({
+        label: 'Edit',
+        onClick: () => {
+          closeCompareLanguagesModal();
+          void selectLanguageByValue(entry.value);
+        },
       });
-      menu.appendChild(editItem);
     }
 
-    const closeItem = makeCompareColumnMenuItem('Hide');
-    closeItem.addEventListener('click', (e) => {
-      e.stopPropagation();
-      closeCompareColumnMenu();
-      removeComparisonColumn(modal, entry.value);
-    });
-    menu.appendChild(closeItem);
-
-    trigger.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (openCompareColumnMenu && openCompareColumnMenu.wrap === wrap) {
-        closeCompareColumnMenu();
-      } else {
-        ensureCompareColumnMenuListeners();
-        openCompareColumnMenuAt(wrap);
-      }
+    items.push({
+      label: 'Hide',
+      onClick: () => removeComparisonColumn(modal, entry.value),
     });
 
-    wrap.appendChild(trigger);
-    wrap.appendChild(menu);
-    return wrap;
+    return common.createColumnOverflowMenu(entry.label, items);
+  }
+
+  function rebuildLanguagesOverflowMenu(entryKey, isPinned, pinnedKey) {
+    const entry = activeComparisonCaptures.find((item) => item.value === entryKey);
+    if (!entry) {
+      const empty = document.createElement('div');
+      empty.className = 'gem-recent-campaign-row-menu-wrap gem-compare-languages-column__menu-wrap';
+      return empty;
+    }
+    const activeLanguageValue = String(getSelectedLanguageValue() || '').trim();
+    return createCompareColumnOverflowMenu(entry, getModalEl(), {
+      isActiveLanguage: !!activeLanguageValue && entry.value === activeLanguageValue,
+      isPinned,
+      pinnedKey,
+    });
+  }
+
+  function refreshLanguagesColumnPinUi(modal) {
+    common.refreshCompareColumnPinUi(modal, COMPARE_MODE, {
+      datasetKey: 'gemCompareLanguage',
+      getActiveEntryKey: getSelectedLanguageValue,
+      rebuildOverflowMenu: rebuildLanguagesOverflowMenu,
+    });
   }
 
   function removeComparisonColumn(modal, langValue) {
     const value = String(langValue || '').trim();
+    const activeLanguageValue = String(getSelectedLanguageValue() || '').trim();
+    const pinnedKey = common.resolvePinnedEntryKey(COMPARE_MODE, activeLanguageValue);
+    if (pinnedKey === value) {
+      common.unpinCompareEntry(COMPARE_MODE, modal);
+    }
     activeComparisonCaptures = activeComparisonCaptures.filter((entry) => entry.value !== value);
     if (activeComparisonCaptures.length <= 1) {
       closeCompareLanguagesModal();
       return;
     }
 
-    const row = modal.querySelector('.gem-compare-languages-modal__columns');
-    const col = row
-      ? Array.from(row.querySelectorAll('.gem-compare-languages-column')).find(
-          (el) => el.dataset.gemCompareLanguage === value
-        )
-      : null;
+    const col = modal.querySelector(`.gem-compare-languages-column[data-gem-compare-language="${value}"]`);
     if (col) {
       col.remove();
+      applyCompareColumnOrder(modal);
       return;
     }
 
     renderComparisonResults(modal, activeComparisonCaptures);
   }
 
-  function unbindModalEscape() {
-    if (typeof escapeUnsub === 'function') escapeUnsub();
-    escapeUnsub = null;
-  }
-
-  function getModalEl() {
-    return document.getElementById(MODAL_ID);
-  }
-
   function closeCompareLanguagesModal() {
+    common.closeCompareModal();
+  }
+
+  function resetLanguagesCompareState() {
     captureAbort = true;
-    compareDeviceMode = 'desktop';
     activeComparisonCaptures = [];
-    closeCompareColumnMenu();
-    unbindModalEscape();
-    const modal = getModalEl();
-    if (modal) {
-      if (typeof window.gemLayerRelease === 'function') window.gemLayerRelease(modal);
-      modal.remove();
+  }
+
+  function createPendingLanguageCaptures(languages) {
+    return languages.map((lang) => ({
+      ...lang,
+      html: '',
+      error: '',
+      pending: true,
+    }));
+  }
+
+  function updateComparisonColumnCapture(modal, entry) {
+    const value = String(entry.value || '').trim();
+    if (!value) return;
+
+    activeComparisonCaptures = activeComparisonCaptures.map((item) => (
+      item.value === value ? { ...item, ...entry, pending: false } : item
+    ));
+
+    const captured = activeComparisonCaptures.find((item) => item.value === value) || entry;
+    const col = modal.querySelector(`.gem-compare-languages-column[data-gem-compare-language="${value}"]`);
+    const frameWrap = col && col.querySelector('.gem-compare-languages-column__frame-wrap');
+    if (frameWrap) {
+      renderComparisonColumnFrame(frameWrap, captured, modal);
     }
   }
 
-  function setModalLoading(modal, message) {
-    const body = modal.querySelector('.gem-compare-languages-modal__body');
-    if (!body) return;
-    body.innerHTML = `
-      <div class="gem-compare-languages-modal__loading">
-        <div class="gem-compare-languages-modal__spinner" aria-hidden="true"></div>
-        <p class="gem-compare-languages-modal__status">${message || 'Preparing…'}</p>
-        <button type="button" class="e-btn gem-compare-languages-modal__cancel">Cancel</button>
-      </div>
-    `.trim();
-    body.querySelector('.gem-compare-languages-modal__cancel')?.addEventListener('click', () => {
-      closeCompareLanguagesModal();
+  function markPendingLanguageCaptures(modal, languages, errorMessage) {
+    languages.forEach((lang) => {
+      const existing = activeComparisonCaptures.find((entry) => entry.value === lang.value);
+      if (existing && !existing.pending) return;
+      updateComparisonColumnCapture(modal, {
+        ...lang,
+        ...(existing || {}),
+        html: '',
+        error: errorMessage,
+        pending: false,
+      });
     });
   }
 
   function sortComparisonCaptures(captures) {
     const activeValue = String(getSelectedLanguageValue() || '').trim();
-    return captures.slice().sort((a, b) => {
-      const aActive = activeValue && a.value === activeValue;
-      const bActive = activeValue && b.value === activeValue;
-      if (aActive && !bActive) return -1;
-      if (!aActive && bActive) return 1;
-      return String(a.label || '').localeCompare(String(b.label || ''), undefined, { sensitivity: 'base' });
+    const pinnedEntryKey = common.resolvePinnedEntryKey(COMPARE_MODE, activeValue);
+    return common.sortEntries(captures, {
+      pinnedEntryKey,
+      getEntryKey: (entry) => entry.value,
+      getSortLabel: (entry) => entry.label || '',
     });
   }
 
-  function restoreColumnsScrollLeft(row, scrollLeft) {
-    if (!row || !Number.isFinite(scrollLeft) || scrollLeft <= 0) return;
-    const apply = () => {
-      const maxScroll = Math.max(0, row.scrollWidth - row.clientWidth);
-      row.scrollLeft = Math.min(scrollLeft, maxScroll);
-    };
-    apply();
-    requestAnimationFrame(apply);
-  }
-
-  function setColumnFrameLoading(frameWrap) {
-    if (!frameWrap) return;
-    frameWrap.innerHTML = `
-      <div class="gem-compare-languages-column__loading">
-        <div class="gem-compare-languages-modal__spinner gem-compare-languages-column__spinner" aria-hidden="true"></div>
-        <p class="gem-compare-languages-column__loading-text">Loading preview…</p>
-      </div>
-    `.trim();
+  function applyCompareColumnOrder(modal) {
+    if (!modal || !activeComparisonCaptures.length) return;
+    activeComparisonCaptures = sortComparisonCaptures(activeComparisonCaptures);
+    const activeLanguageValue = String(getSelectedLanguageValue() || '').trim();
+    const pinnedEntryKey = common.resolvePinnedEntryKey(COMPARE_MODE, activeLanguageValue);
+    common.applyColumnsLayout(modal, activeComparisonCaptures, {
+      compareMode: COMPARE_MODE,
+      datasetKey: 'gemCompareLanguage',
+      getEntryKey: (entry) => entry.value,
+      pinnedEntryKey,
+    });
+    refreshLanguagesColumnPinUi(modal);
   }
 
   function renderComparisonColumnFrame(frameWrap, entry, modal) {
     if (!frameWrap) return;
-    frameWrap.innerHTML = '';
+
+    if (entry.pending || (!entry.html && !entry.error)) {
+      common.setColumnLoading(frameWrap);
+      return;
+    }
 
     if (entry.error || !entry.html) {
+      frameWrap.innerHTML = '';
       const err = document.createElement('div');
       err.className = 'gem-compare-languages-column__error';
 
@@ -925,6 +609,11 @@
       return;
     }
 
+    const existingIframe = frameWrap.querySelector('iframe.gem-compare-languages-column__iframe');
+    if (existingIframe && existingIframe.srcdoc === entry.html) return;
+
+    frameWrap.innerHTML = '';
+
     const iframe = document.createElement('iframe');
     iframe.className = 'gem-compare-languages-column__iframe';
     iframe.title = `Preview: ${entry.label}`;
@@ -947,16 +636,11 @@
 
     const col = modal.querySelector(`.gem-compare-languages-column[data-gem-compare-language="${value}"]`);
     const frameWrap = col && col.querySelector('.gem-compare-languages-column__frame-wrap');
-    setColumnFrameLoading(frameWrap);
+    common.setColumnLoading(frameWrap);
 
     const originalLanguage = getSelectedLanguageValue();
     try {
-      const result = await captureLanguagePreview(
-        modal,
-        lang,
-        `Retrying ${lang.label}…`,
-        { showModalLoading: false }
-      );
+      const result = await captureLanguagePreview(modal, lang);
       if (!result) return;
 
       const nextEntry = { ...lang, ...result };
@@ -975,20 +659,23 @@
   }
 
   function renderComparisonResults(modal, captures) {
-    const body = modal.querySelector('.gem-compare-languages-modal__body');
-    if (!body) return;
+    const panel = getLanguagesPanel(modal);
+    if (!panel) return;
 
-    closeCompareColumnMenu();
-    const existingRow = body.querySelector('.gem-compare-languages-modal__columns');
-    const savedScrollLeft = existingRow ? existingRow.scrollLeft : 0;
+    if (common.isCompareModePanelLoaded(modal, COMPARE_MODE)) {
+      ensureCompareLanguagesVisible(modal);
+      return;
+    }
+
+    common.closeColumnMenu();
     activeComparisonCaptures = sortComparisonCaptures(captures);
     const activeLanguageValue = String(getSelectedLanguageValue() || '').trim();
-
-    const row = document.createElement('div');
-    row.className = 'gem-compare-languages-modal__columns';
+    const pinnedEntryKey = common.resolvePinnedEntryKey(COMPARE_MODE, activeLanguageValue);
+    const columnsByKey = new Map();
 
     activeComparisonCaptures.forEach((entry) => {
       const isActiveLanguage = !!activeLanguageValue && entry.value === activeLanguageValue;
+      const isPinned = !!pinnedEntryKey && entry.value === pinnedEntryKey;
       const col = document.createElement('div');
       col.className = 'gem-compare-languages-column' + (isActiveLanguage ? ' gem-compare-languages-column--active' : '');
       col.dataset.gemCompareLanguage = entry.value;
@@ -998,6 +685,14 @@
 
       const titleWrap = document.createElement('div');
       titleWrap.className = 'gem-compare-languages-column__header-title-wrap';
+
+      const pinBtn = common.createCompareColumnPinButton(() => {
+        common.unpinCompareEntry(COMPARE_MODE, modal, (nextModal) => {
+          applyCompareColumnOrder(nextModal);
+        });
+      });
+      pinBtn.hidden = !isPinned;
+      titleWrap.appendChild(pinBtn);
 
       const title = document.createElement('div');
       title.className = 'gem-compare-languages-column__header-title';
@@ -1013,7 +708,11 @@
       titleWrap.appendChild(title);
 
       header.appendChild(titleWrap);
-      header.appendChild(createCompareColumnOverflowMenu(entry, modal, { isActiveLanguage }));
+      header.appendChild(createCompareColumnOverflowMenu(entry, modal, {
+        isActiveLanguage,
+        isPinned,
+        pinnedKey: pinnedEntryKey,
+      }));
 
       const frameWrap = document.createElement('div');
       frameWrap.className = 'gem-compare-languages-column__frame-wrap';
@@ -1021,95 +720,47 @@
 
       col.appendChild(header);
       col.appendChild(frameWrap);
-      row.appendChild(col);
+      columnsByKey.set(entry.value, col);
     });
 
-    body.innerHTML = '';
-    body.appendChild(row);
-    restoreColumnsScrollLeft(row, savedScrollLeft);
-    syncCompareModalUi(modal);
+    common.mountComparisonColumns(panel, activeComparisonCaptures, {
+      datasetKey: 'gemCompareLanguage',
+      getEntryKey: (entry) => entry.value,
+      pinnedEntryKey,
+      columnsByKey,
+      modal,
+    });
+    common.setCompareModePanelLoaded(modal, COMPARE_MODE, true);
+    common.syncModalUi(modal);
+    refreshLanguagesColumnPinUi(modal);
   }
 
-  function ensureModalShell() {
-    let modal = getModalEl();
-    if (modal) return modal;
+  function restoreLanguagesStateFromPanel(modal) {
+    if (activeComparisonCaptures.length) return;
+    const panel = getLanguagesPanel(modal);
+    if (!panel || !common.isCompareModePanelLoaded(modal, COMPARE_MODE)) return;
 
-    modal = document.createElement('div');
-    modal.id = MODAL_ID;
-    modal.className = 'gem-compare-languages-modal gem-layer-modal';
-    modal.innerHTML = `
-      <div class="gem-compare-languages-modal__panel" role="dialog" aria-modal="true" aria-labelledby="gem-compare-languages-modal-title">
-        <div class="gem-compare-languages-modal__header">
-          <div id="gem-compare-languages-modal-title" class="gem-compare-languages-modal__title">Language Comparison</div>
-          <div class="gem-compare-languages-modal__header-actions">
-            <div class="gem-compare-languages-modal__header-control-group gem-compare-languages-modal__header-control-group--device">
-              <div class="e-buttongroup gem-compare-languages-modal__device-toggle" role="group" aria-label="Preview device">
-                <button type="button" class="e-btn gem-compare-languages-modal__device-btn gem-compare-languages-modal__device-btn--active" data-gem-compare-device="desktop" aria-pressed="true">Desktop</button>
-                <button type="button" class="e-btn gem-compare-languages-modal__device-btn" data-gem-compare-device="mobile" aria-pressed="false">Mobile</button>
-              </div>
-              <label class="gem-compare-languages-modal__width-field">
-                <input
-                  type="number"
-                  class="gem-compare-languages-modal__width-input"
-                  min="200"
-                  max="1200"
-                  step="1"
-                  value="620"
-                  aria-label="Desktop preview width in pixels"
-                />
-              </label>
-            </div>
-            <div class="gem-compare-languages-modal__header-control-group gem-compare-languages-modal__header-control-group--zoom">
-              <div class="e-buttongroup gem-compare-languages-modal__zoom-toggle" role="group" aria-label="Preview zoom">
-                <button type="button" class="e-btn gem-compare-languages-modal__zoom-btn" data-gem-compare-zoom="100" aria-pressed="false">100%</button>
-                <button type="button" class="e-btn gem-compare-languages-modal__zoom-btn gem-compare-languages-modal__zoom-btn--active" data-gem-compare-zoom="50" aria-pressed="true">50%</button>
-              </div>
-            </div>
-            <div class="gem-compare-languages-modal__header-control-group gem-compare-languages-modal__header-control-group--close">
-              <button type="button" class="e-btn e-btn-borderless e-btn-onlyicon gem-compare-languages-modal__close" aria-label="Close">✕</button>
-            </div>
-          </div>
-        </div>
-        <div class="gem-compare-languages-modal__body"></div>
-      </div>
-    `.trim();
+    const values = [...panel.querySelectorAll('.gem-compare-languages-column[data-gem-compare-language]')]
+      .map((col) => String(col.dataset.gemCompareLanguage || '').trim())
+      .filter(Boolean);
+    if (!values.length) return;
 
-    modal.querySelector('.gem-compare-languages-modal__close')?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      closeCompareLanguagesModal();
-    });
+    const capturesByValue = new Map(getCampaignLanguages().map((entry) => [entry.value, entry]));
+    activeComparisonCaptures = values
+      .map((value) => capturesByValue.get(value))
+      .filter(Boolean);
+  }
 
-    bindCompareDeviceToggle(modal);
-    bindCompareWidthInput(modal);
-    bindCompareZoomToggle(modal);
-    syncCompareModalUi(modal);
+  function ensureCompareLanguagesVisible(modal) {
+    if (!modal) return;
+    if (!common.isCompareModePanelLoaded(modal, COMPARE_MODE)) return;
 
-    modal.addEventListener('click', (e) => {
-      if (e.target === modal.querySelector('.gem-compare-languages-modal__close')) return;
-      // No backdrop dismiss — avoid accidental close during capture
-    });
-
-    document.body.appendChild(modal);
-
-    if (typeof window.gemLayerRaise === 'function') {
-      window.gemLayerRaise(modal, { tier: 'modal' });
+    restoreLanguagesStateFromPanel(modal);
+    if (activeComparisonCaptures.length) {
+      applyCompareColumnOrder(modal);
+    } else {
+      common.syncModalUi(modal);
     }
-
-    unbindModalEscape();
-    if (typeof window.gemLayerBindEscape === 'function') {
-      escapeUnsub = window.gemLayerBindEscape(closeCompareLanguagesModal, {
-        whileConnected: () => !!getModalEl(),
-      });
-    }
-
-    modal.tabIndex = -1;
-    requestAnimationFrame(() => {
-      try {
-        modal.focus({ preventScroll: true });
-      } catch (_) {}
-    });
-
-    return modal;
   }
 
   async function restoreLanguageIfNeeded(originalValue, currentAfterCapture) {
@@ -1123,12 +774,7 @@
     } catch (_) {}
   }
 
-  async function captureLanguagePreview(modal, lang, statusMessage, options = {}) {
-    const showModalLoading = options.showModalLoading !== false;
-    if (showModalLoading) {
-      setModalLoading(modal, statusMessage);
-    }
-
+  async function captureLanguagePreview(modal, lang, options = {}) {
     const previousContent = getPreviewContent();
     const wasSelected = getSelectedLanguageValue() === lang.value;
 
@@ -1171,7 +817,6 @@
 
     const originalLanguage = getSelectedLanguageValue();
     captureAbort = false;
-    const capturesByValue = new Map();
     const otherLanguages = languages.filter((entry) => entry.value !== originalLanguage);
     const originalEntry = languages.find((entry) => entry.value === originalLanguage);
 
@@ -1180,33 +825,21 @@
         if (captureAbort) break;
 
         const lang = otherLanguages[i];
-        const entry = await captureLanguagePreview(
-          modal,
-          lang,
-          `Capturing ${lang.label}… ${i + 1} of ${languages.length}`
-        );
+        const entry = await captureLanguagePreview(modal, lang);
         if (!entry) break;
 
-        capturesByValue.set(lang.value, entry);
+        updateComparisonColumnCapture(modal, entry);
         if (entry.error === 'Cancelled') break;
       }
 
       if (!captureAbort && originalEntry && originalLanguage) {
-        const entry = await captureLanguagePreview(
-          modal,
-          originalEntry,
-          `Capturing ${originalEntry.label}… (current language)`
-        );
-        if (entry) capturesByValue.set(originalLanguage, entry);
+        const entry = await captureLanguagePreview(modal, originalEntry);
+        if (entry) updateComparisonColumnCapture(modal, entry);
       }
 
-      if (captureAbort) return;
-
-      const captures = languages.map((lang) => (
-        capturesByValue.get(lang.value) || { ...lang, html: '', error: 'Not captured' }
-      ));
-
-      renderComparisonResults(modal, captures);
+      if (captureAbort) {
+        markPendingLanguageCaptures(modal, languages, 'Cancelled');
+      }
     } finally {
       await restoreLanguageIfNeeded(originalLanguage, getSelectedLanguageValue());
     }
@@ -1220,13 +853,24 @@
       return;
     }
 
-    loadCompareLanguagesSettings(() => {
-      closeCompareLanguagesModal();
+    common.loadSettings(() => {
       captureAbort = false;
 
-      const modal = ensureModalShell();
-      syncCompareModalUi(modal);
-      setModalLoading(modal, 'Preparing language comparison…');
+      const modal = common.ensureCompareModal({
+        compareMode: COMPARE_MODE,
+      });
+      common.switchCompareMode(modal, COMPARE_MODE);
+
+      if (common.isCompareModePanelLoaded(modal, COMPARE_MODE)) {
+        ensureCompareLanguagesVisible(modal);
+        return;
+      }
+
+      common.syncModalUi(modal);
+
+      const languages = getCampaignLanguages();
+      activeComparisonCaptures = sortComparisonCaptures(createPendingLanguageCaptures(languages));
+      renderComparisonResults(modal, activeComparisonCaptures);
       void runLanguageComparisonCapture(modal);
     });
   }
@@ -1236,42 +880,36 @@
   }
 
   function syncCompareLanguagesOverflowMenuItem() {
-    const item = document.querySelector('[data-gem-compare-languages-menu]');
-    if (!item) return;
-    const show = gemCanCompareLanguages();
-    item.hidden = !show;
-    item.style.display = show ? '' : 'none';
+    common.syncOverflowMenuItem({
+      menuSelector: '[data-gem-compare-languages-menu]',
+      canShow: gemCanCompareLanguages,
+    });
   }
 
   function ensureLocalesTabToolbar() {
-    const content = document.querySelector('cb-locales-tab .e-section__content');
-    if (!content || !gemCanCompareLanguages()) {
-      if (localesTabToolbarEl && localesTabToolbarEl.isConnected) {
-        localesTabToolbarEl.remove();
-      }
-      localesTabToolbarEl = null;
-      return;
-    }
-
-    if (localesTabToolbarEl && content.contains(localesTabToolbarEl)) return;
-
-    if (localesTabToolbarEl) localesTabToolbarEl.remove();
-
-    const toolbar = document.createElement('div');
-    toolbar.className = TOOLBAR_CLASS;
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'e-btn e-btn-primary gem-compare-languages-toolbar__btn';
-    btn.textContent = 'Compare Languages';
-    btn.addEventListener('click', () => openCompareLanguagesModal());
-    toolbar.appendChild(btn);
-    content.insertBefore(toolbar, content.firstChild);
-    localesTabToolbarEl = toolbar;
+    common.ensureTabToolbar({
+      tabSelector: 'cb-locales-tab .e-section__content',
+      toolbarClass: common.TOOLBAR_CLASS,
+      buttonText: 'Compare Languages',
+      canShow: gemCanCompareLanguages,
+      onClick: () => openCompareLanguagesModal(),
+      toolbarRef: localesTabToolbarRef,
+    });
   }
 
   function initCompareLanguages() {
-    ensureCompareSettingsListener();
-    loadCompareLanguagesSettings();
+    common.ensureSettingsListener();
+    common.registerCompareModeHandler(COMPARE_MODE, {
+      onActivate: ensureCompareLanguagesVisible,
+      onLayoutChange: applyCompareColumnOrder,
+      onClose: resetLanguagesCompareState,
+    });
+    common.registerLayoutRefreshHandler((modal) => {
+      if (!modal || modal.dataset.gemCompareMode !== COMPARE_MODE) return;
+      if (!activeComparisonCaptures.length) return;
+      applyCompareColumnOrder(modal);
+    });
+    common.loadSettings();
 
     if (typeof window.gemDomWatchSubscribe === 'function') {
       window.gemDomWatchSubscribe(() => {
@@ -1285,6 +923,7 @@
   }
 
   window.gemOpenCompareLanguagesModal = openCompareLanguagesModal;
+  window.gemCloseCompareLanguagesModal = closeCompareLanguagesModal;
   window.gemCanCompareLanguages = gemCanCompareLanguages;
   window.gemSyncCompareLanguagesOverflowMenuItem = syncCompareLanguagesOverflowMenuItem;
 

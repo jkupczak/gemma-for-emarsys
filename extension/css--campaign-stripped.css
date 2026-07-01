@@ -1,0 +1,28 @@
+/* Styles for bootstrap.php?r=contentBlocks/campaign&gemStripped=true when loaded in an iframe. */
+html, body { 
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: hidden !important;
+}
+* { 
+    background: var(--token-box-default-background, #fff) !important;
+    color: var(--token-box-default-background, #fff) !important;
+    border:none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    font-size:0 !important;
+    line-height: 0 !important;
+ }
+
+ body > *:not(#main), *::before, *::after {
+    display: none !important
+ }
+
+.e-contentblocks-preview_section, .e-contentblocks-preview, iframe.e-contentblocks-preview__iframe-desktop {
+    position:fixed !important;
+    width:100vw !important;
+    height:100vh !important;
+    z-index:9999999 !important;
+    border-radius: 0px !important;
+}

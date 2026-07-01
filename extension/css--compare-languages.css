@@ -5,6 +5,13 @@
     flex-direction: column;
     background: rgba(0, 0, 0, 0.75);
     z-index: 100000;
+    transition: opacity var(--token-transition-time, 0.2s) ease-out;
+    outline: none;
+}
+
+.gem-compare-languages-modal.gem-modal-peek-through {
+    opacity: 0 !important;
+    pointer-events: none !important;
 }
 
 .gem-compare-languages-modal__panel {
@@ -23,19 +30,21 @@
     justify-content: space-between;
     gap: 12px;
     flex-shrink: 0;
-    padding: 12px 16px;
+    padding: 8px 16px;
     border-bottom: 1px solid var(--token-box-default-border, rgba(0, 0, 0, 0.12));
     background: var(--token-box-alternate-background, #f7f7f7);
 }
 
-.gem-compare-languages-modal__title {
-    font-size: 16px;
-    font-weight: 600;
+.gem-compare-languages-modal__header-start {
+    display: flex;
+    align-items: center;
+    flex: 0 0 auto;
+    min-width: 0;
 }
 
 .gem-compare-languages-modal__header-actions {
     display: flex;
-    align-items: center;
+    align-items: stretch;
     gap: 0;
     flex-shrink: 0;
 }
@@ -46,12 +55,58 @@
     flex-shrink: 0;
 }
 
-.gem-compare-languages-modal__header-control-group--device {
-    gap: 10px;
-    padding: 4px 10px;
+.gem-compare-languages-modal__mode-toggle {
+    display: inline-flex;
+}
+
+.gem-compare-languages-modal__mode-toggle .gem-compare-languages-modal__mode-btn {
+    min-width: 88px;
+}
+
+.gem-compare-languages-modal__mode-toggle .gem-compare-languages-modal__mode-btn--active {
+    background: var(--token-primary-default, #2563eb);
+    border-color: var(--token-primary-default, #2563eb);
+    color: #fff;
+}
+
+.gem-compare-languages-modal__header-control-group--layout {
+    gap: 12px;
+    margin-right: 20px;
+    padding: 8px 10px;
     border: 1px solid var(--token-box-default-border, rgba(0, 0, 0, 0.16));
     border-radius: 8px;
     background: var(--token-box-default-background, #fff);
+}
+
+.gem-compare-languages-modal__sort-field {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+.gem-compare-languages-modal__sort-label {
+    color: var(--token-font-default, #111);
+}
+
+.gem-compare-languages-modal__sort-select {
+    height: 28px;
+    min-width: 88px;
+    padding: 0 8px;
+    border: 1px solid var(--token-box-default-border, rgba(0, 0, 0, 0.16));
+    border-radius: 6px;
+    background: var(--token-box-default-background, #fff);
+    font-size: 13px;
+}
+
+.gem-compare-languages-modal__sort-select:focus {
+    outline: 2px solid var(--token-focus-ring, rgba(0, 102, 204, 0.35));
+    outline-offset: 1px;
+}
+
+.gem-compare-languages-modal__header-control-group--device {
+    gap: 10px;
 }
 
 .gem-compare-languages-modal__header-control-group--zoom {
@@ -60,12 +115,6 @@
     border-left: 1px solid var(--token-box-default-border, rgba(0, 0, 0, 0.16));
 }
 
-.gem-compare-languages-modal__header-control-group--zoom .gem-compare-languages-modal__zoom-toggle {
-    padding: 4px;
-    border: 1px solid var(--token-box-default-border, rgba(0, 0, 0, 0.16));
-    border-radius: 8px;
-    background: var(--token-box-default-background, #fff);
-}
 
 .gem-compare-languages-modal__header-control-group--close {
     margin-left: 20px;
@@ -137,6 +186,17 @@
     flex: 1;
     min-height: 0;
     overflow: hidden;
+    position: relative;
+}
+
+.gem-compare-modal__mode-panel {
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.gem-compare-modal__mode-panel[hidden] {
+    display: none !important;
 }
 
 .gem-compare-languages-modal__loading {
@@ -171,16 +231,72 @@
     color: var(--token-font-muted, #666);
 }
 
+.gem-compare-languages-modal__columns-wrap {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    height: 100%;
+    min-height: 0;
+    box-sizing: border-box;
+}
+
+.gem-compare-languages-modal__pinned-slot {
+    flex: 0 0 auto;
+    position: relative;
+    margin-right: 32px;
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    height: 100%;
+}
+.gem-compare-languages-modal__columns-wrap--pinned .gem-compare-languages-modal__pinned-slot {
+    padding: 16px;
+    margin-right: 0 !important;
+}
+.gem-compare-languages-modal__columns-wrap--pinned .gem-compare-languages-modal__columns--scroll {
+    padding: 16px;
+}
+.gem-compare-languages-modal__columns-wrap--pinned .gem-compare-languages-modal__pinned-slot::after {
+    right:0px
+}
+
+.gem-compare-languages-modal__pinned-slot::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: -17px;
+    bottom: 0;
+    width: 1px;
+    background: var(--token-box-default-border, rgba(0, 0, 0, 0.16));
+}
+
+.gem-compare-languages-modal__columns-wrap--pinned .gem-compare-languages-modal__columns--scroll {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
 .gem-compare-languages-modal__columns {
     display: flex;
     flex-direction: row;
     align-items: stretch;
     gap: 16px;
     height: 100%;
-    padding: 16px;
     overflow-x: auto;
     overflow-y: hidden;
     box-sizing: border-box;
+}
+
+.gem-compare-languages-modal__columns-wrap:not(.gem-compare-languages-modal__columns-wrap--pinned) .gem-compare-languages-modal__columns {
+    width: 100%;
+    padding: 16px;
+}
+.gem-compare-languages-modal__columns-wrap.gem-compare-languages-modal__columns-wrap--pinned {
+    padding: 0;
+}
+
+.gem-compare-languages-column.gem-compare-languages-column--pinned {
+    position: relative;
+    z-index: 1;
 }
 
 .gem-compare-languages-column {
@@ -195,6 +311,10 @@
     overflow: hidden;
     background: var(--token-box-default-background, #fff);
     box-shadow: rgba(0, 0, 0, 0.15) 0px 4px 10px 0px, rgba(0, 0, 0, 0.05) 0px 0px 0px 1px;
+}
+
+.gem-compare-languages-column.gem-compare-languages-column--active {
+    box-shadow: var(--token-primary-default, #2563eb) 0px 0px 0 2px;
 }
 
 .gem-compare-languages-column__header {
@@ -216,6 +336,37 @@
     display: flex;
     align-items: center;
     gap: 8px;
+}
+
+.gem-compare-languages-column__pin-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    cursor: pointer;
+}
+
+.gem-compare-languages-column__pin-btn:hover {
+    background: color-mix(in srgb, var(--token-primary-default, #2563eb) 12%, transparent);
+}
+
+.gem-compare-languages-column__pin-btn gem-e-icon,
+.gem-compare-languages-column__pin-btn .e-icon-wrapper {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.gem-compare-languages-column__pin-btn .gem-compare-languages-column__pin-icon {
+    width: 20px;
+    height: 20px;
+    fill: var(--token-primary-default, #2563eb);
 }
 
 .gem-compare-languages-column__header-title {
@@ -324,13 +475,13 @@
     width: 100%;
 }
 
-.gem-compare-languages-modal__columns--zoom-50 .gem-compare-languages-column {
+.gem-compare-languages-modal[data-gem-compare-zoom="50"] .gem-compare-languages-column {
     width: calc(var(--gem-compare-column-width, 620px) * 0.5);
     min-width: calc(min(var(--gem-compare-column-width, 620px), 85vw) * 0.5);
     max-width: calc(var(--gem-compare-column-width, 620px) * 0.5);
 }
 
-.gem-compare-languages-modal__columns--zoom-50 iframe.gem-compare-languages-column__iframe {
+.gem-compare-languages-modal[data-gem-compare-zoom="50"] iframe.gem-compare-languages-column__iframe {
     height: 200%;
     width: var(--gem-compare-column-width, 620px);
     min-width: var(--gem-compare-column-width, 620px);

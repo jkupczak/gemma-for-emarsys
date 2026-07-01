@@ -125,11 +125,19 @@ console.log("[gem] recent-campaigns.js loaded");
       narrow
     ].join("\t");
     const rows = (Array.isArray(openList) ? openList : [])
-      .map((item) => {
-        const ub = String(item.urlBase || "").trim();
+      .map((entry) => {
+        const item = getRecentDisplayEntryPrimaryItem(entry) || {};
+        const ub = getRecentDisplayEntryKey(entry) || String(item.urlBase || "").trim();
         const tid = getOpenTabIdForItem(item);
-        const uns = isOpenTabUnsavedForItem(item) ? "1" : "0";
-        const pin = pinnedCampaignKeys.has(String(item.urlBase || "").trim()) ? "1" : "0";
+        const uns =
+          entry && entry.type === "group"
+            ? entry.siblings.some((sibling) => isOpenTabUnsavedForItem(sibling))
+              ? "1"
+              : "0"
+            : isOpenTabUnsavedForItem(item)
+              ? "1"
+              : "0";
+        const pin = isRecentDisplayEntryPinned(entry) ? "1" : "0";
         const title = String(item.title || "").trim();
         const subject = String(item.subject || "").trim();
         return [ub, tid == null ? "" : String(tid), uns, pin, title, subject].join("\t");
@@ -389,6 +397,24 @@ console.log("[gem] recent-campaigns.js loaded");
     return row.children.length ? row : null;
   }
 
+  function buildCampaignRowStatusNotices(options, versionTarget) {
+    const opts = options && typeof options === "object" ? options : {};
+    let noticesRow = buildCampaignStatusNoticesRow(opts);
+    if (!noticesRow) {
+      noticesRow = document.createElement("div");
+      noticesRow.className = "gem-recent-campaign-status-notices";
+    }
+
+    if (versionTarget && versionTarget.type === "group") {
+      appendVersionGroupChips(noticesRow, versionTarget.siblings);
+    } else if (versionTarget && versionTarget.item) {
+      appendCampaignVersionChip(noticesRow, versionTarget.item);
+    }
+
+    if (opts.activeUnsavedSlot) return noticesRow;
+    return noticesRow.children.length ? noticesRow : null;
+  }
+
   function appendCampaignStatusNotices(main, options) {
     const row = buildCampaignStatusNoticesRow(options);
     if (row) main.appendChild(row);
@@ -617,6 +643,12 @@ console.log("[gem] recent-campaigns.js loaded");
     if (!id) return null;
     const title = textOf("cb-campaign-name span") || textOf("cb-campaign-name");
     if (!title) return null;
+    const versionInfo = extractCampaignVersionInfo();
+    const versionLetter = getVersionLetterForCampaignId(versionInfo, id);
+    const versionGroupId =
+      versionInfo.isVersioned && versionInfo.versions[0] && versionInfo.versions[0].id
+        ? String(versionInfo.versions[0].id).trim()
+        : "";
     return {
       id,
       title,
@@ -629,7 +661,11 @@ console.log("[gem] recent-campaigns.js loaded");
       urlBase: canonicalCampaignUrlFromHref(window.location.href),
       lastViewedDate: getTodayDateLabel(),
       lastViewedAt: Date.now(),
-      previewImageUrl: pickDesktopPreviewGraphicUrl(id)
+      previewImageUrl: pickDesktopPreviewGraphicUrl(id),
+      versionLetter,
+      versionGroupId,
+      versionBackfilled: false,
+      _versionInfo: versionInfo
     };
   }
 
@@ -673,6 +709,343 @@ console.log("[gem] recent-campaigns.js loaded");
     return extractCampaignPayload() || extractCampIdCampaignPayload();
   }
 
+  // See extension/campaign-versioning.md
+  function parseVersionLetter(optionText) {
+    const text = String(optionText || "").trim();
+    const match = text.match(/#\s*([a-z])/i) || text.match(/version\s*#?\s*([a-z])/i);
+    return match && match[1] ? match[1].toUpperCase() : "";
+  }
+
+  function extractCampaignVersionInfo() {
+    const select = document.querySelector("cb-version-selector select");
+    if (!select) {
+      return { isVersioned: false, versions: [], selectorPresent: false, remainingIds: [] };
+    }
+    const options = [...select.options].filter((opt) => {
+      const id = String(opt.value || "").trim();
+      const label = String(opt.textContent || "").trim();
+      return id && label;
+    });
+    const remainingIds = options.map((opt) => String(opt.value).trim()).filter(Boolean);
+    if (options.length <= 1) {
+      return { isVersioned: false, versions: [], selectorPresent: true, remainingIds };
+    }
+    return {
+      isVersioned: true,
+      versions: options.map((opt) => ({
+        id: String(opt.value).trim(),
+        letter: parseVersionLetter(opt.textContent),
+        urlBase: urlBaseFromCampaignId(opt.value)
+      })),
+      selectorPresent: true,
+      remainingIds
+    };
+  }
+
+  function getVersionLetterForCampaignId(versionInfo, campaignId) {
+    if (!versionInfo || !versionInfo.isVersioned) return "";
+    const id = String(campaignId || "").trim();
+    const match = (versionInfo.versions || []).find((v) => v.id === id);
+    return match && match.letter ? match.letter : "";
+  }
+
+  function clearRecentItemVersionFields(item) {
+    return normalizeEntry({
+      ...item,
+      versionLetter: "",
+      versionGroupId: "",
+      versionBackfilled: false
+    });
+  }
+
+  function pruneRemovedCampaignVersions(items, normalized, versionInfo, existingBeforeUpdate) {
+    const list = Array.isArray(items) ? items.slice() : [];
+    const currentId = String(normalized && normalized.id ? normalized.id : "").trim();
+    if (!versionInfo || versionInfo.isVersioned || !versionInfo.selectorPresent || !currentId) {
+      return list;
+    }
+
+    const remainingIds = new Set(
+      (versionInfo.remainingIds || []).map((id) => String(id).trim()).filter(Boolean)
+    );
+    if (!remainingIds.size) return list;
+
+    const oldGroupId = String(
+      (existingBeforeUpdate && existingBeforeUpdate.versionGroupId) ||
+        list.find((item) => String(item.id || "").trim() === currentId)?.versionGroupId ||
+        ""
+    ).trim();
+
+    if (!oldGroupId) {
+      return list.map((item) =>
+        String(item.id || "").trim() === currentId ? clearRecentItemVersionFields(item) : item
+      );
+    }
+
+    const next = [];
+    list.forEach((item) => {
+      const id = String(item.id || "").trim();
+      const groupId = String(item.versionGroupId || "").trim();
+
+      if (groupId !== oldGroupId) {
+        if (id === currentId) next.push(clearRecentItemVersionFields(item));
+        else next.push(item);
+        return;
+      }
+
+      if (remainingIds.has(id)) {
+        next.push(clearRecentItemVersionFields(item));
+        return;
+      }
+
+      if (item.versionBackfilled) return;
+      next.push(clearRecentItemVersionFields(item));
+    });
+    return next;
+  }
+
+  function applyVersionInfoToRecentItems(list, normalized, versionInfo, existingBeforeUpdate) {
+    const items = Array.isArray(list) ? list.slice() : [];
+    const currentId = String(normalized && normalized.id ? normalized.id : "").trim();
+    if (!versionInfo || !versionInfo.isVersioned) {
+      return pruneRemovedCampaignVersions(items, normalized, versionInfo, existingBeforeUpdate);
+    }
+
+    const versions = versionInfo.versions || [];
+    const versionGroupId =
+      versions[0] && versions[0].id ? String(versions[0].id).trim() : "";
+    if (!versionGroupId) return items;
+
+    const indexById = new Map(
+      items.map((item, index) => [String(item.id || "").trim(), index])
+    );
+
+    versions.forEach((version) => {
+      const vid = String(version.id || "").trim();
+      if (!vid) return;
+      const letter = String(version.letter || "").trim();
+      const urlBase = String(version.urlBase || urlBaseFromCampaignId(vid)).trim();
+      const isCurrent = vid === currentId;
+      const existingIndex = indexById.get(vid);
+
+      if (existingIndex != null) {
+        const existing = items[existingIndex];
+        items[existingIndex] = normalizeEntry({
+          ...existing,
+          title: normalized.title || existing.title,
+          subject: normalized.subject || existing.subject,
+          languages: normalized.languages != null ? normalized.languages : existing.languages,
+          urlBase: urlBase || existing.urlBase,
+          versionLetter: letter,
+          versionGroupId,
+          versionBackfilled: isCurrent ? false : !!existing.versionBackfilled,
+          previewImageUrl: isCurrent
+            ? normalized.previewImageUrl || existing.previewImageUrl
+            : existing.previewImageUrl,
+          lastViewedAt: isCurrent ? normalized.lastViewedAt : existing.lastViewedAt,
+          lastViewedDate: isCurrent ? normalized.lastViewedDate : existing.lastViewedDate
+        });
+        return;
+      }
+
+      items.push(
+        normalizeEntry({
+          id: vid,
+          title: normalized.title,
+          subject: normalized.subject,
+          languages: normalized.languages,
+          urlBase,
+          versionLetter: letter,
+          versionGroupId,
+          versionBackfilled: !isCurrent,
+          previewImageUrl: isCurrent ? normalized.previewImageUrl : "",
+          lastViewedAt: isCurrent ? normalized.lastViewedAt : 0,
+          lastViewedDate: isCurrent ? normalized.lastViewedDate : ""
+        })
+      );
+      indexById.set(vid, items.length - 1);
+    });
+
+    return items;
+  }
+
+  function getVersionGroupPrimaryItem(siblings) {
+    const list = Array.isArray(siblings) ? siblings.slice() : [];
+    if (!list.length) return null;
+    list.sort((a, b) => {
+      const aBackfilled = a.versionBackfilled ? 1 : 0;
+      const bBackfilled = b.versionBackfilled ? 1 : 0;
+      if (aBackfilled !== bBackfilled) return aBackfilled - bBackfilled;
+      return (b.lastViewedAt || 0) - (a.lastViewedAt || 0);
+    });
+    return list[0];
+  }
+
+  function groupVersionedRecentItems(items) {
+    const byGroup = new Map();
+    const standalone = [];
+    (Array.isArray(items) ? items : []).forEach((item) => {
+      const groupId = String(item.versionGroupId || "").trim();
+      const letter = String(item.versionLetter || "").trim();
+      if (groupId && letter) {
+        if (!byGroup.has(groupId)) byGroup.set(groupId, []);
+        byGroup.get(groupId).push(item);
+        return;
+      }
+      standalone.push({ type: "single", item });
+    });
+    byGroup.forEach((siblings, versionGroupId) => {
+      if (siblings.length >= 2) {
+        standalone.push({
+          type: "group",
+          versionGroupId,
+          siblings: siblings.slice().sort((a, b) =>
+            String(a.versionLetter || "").localeCompare(String(b.versionLetter || ""), undefined, {
+              sensitivity: "base"
+            })
+          )
+        });
+      } else if (siblings.length === 1) {
+        standalone.push({ type: "single", item: siblings[0] });
+      }
+    });
+    return standalone;
+  }
+
+  function getRecentDisplayEntryKey(entry) {
+    if (!entry || entry.type === "group") {
+      return `group:${String(entry && entry.versionGroupId ? entry.versionGroupId : "").trim()}`;
+    }
+    return String(entry.item && entry.item.urlBase ? entry.item.urlBase : "").trim();
+  }
+
+  function getRecentDisplayEntryLastViewedAt(entry) {
+    if (!entry) return 0;
+    if (entry.type === "group") {
+      return Math.max(...entry.siblings.map((item) => item.lastViewedAt || 0), 0);
+    }
+    return entry.item.lastViewedAt || 0;
+  }
+
+  function getRecentDisplayEntryPrimaryItem(entry) {
+    if (!entry) return null;
+    if (entry.type === "group") return getVersionGroupPrimaryItem(entry.siblings);
+    return entry.item;
+  }
+
+  function isRecentDisplayEntryOpen(entry) {
+    if (!entry) return false;
+    if (entry.type === "group") {
+      return entry.siblings.some((item) => getOpenMatchDetails(item).isOpen);
+    }
+    return getOpenMatchDetails(entry.item).isOpen;
+  }
+
+  function isRecentDisplayEntryPinned(entry) {
+    if (!entry) return false;
+    if (entry.type === "group") {
+      return entry.siblings.some((item) => pinnedCampaignKeys.has(String(item.urlBase || "").trim()));
+    }
+    return pinnedCampaignKeys.has(String(entry.item.urlBase || "").trim());
+  }
+
+  function recentDisplayEntryMatchesSearch(entry, query) {
+    const q = String(query || "").trim().toLowerCase();
+    if (!q) return true;
+    function matchesSearch(item) {
+      const phrases = [];
+      let remainder = q.replace(/"([^"]+)"/g, (_, p1) => {
+        const phrase = String(p1 || "").trim();
+        if (phrase) phrases.push(phrase);
+        return " ";
+      });
+      const terms = remainder.split(/\s+/).map((v) => v.trim()).filter(Boolean);
+      const haystack = `${item.title} ${item.subject} ${(item.languages || []).join(" ")} ${item.id} ${item.versionLetter || ""}`.toLowerCase();
+      return phrases.every((p) => haystack.includes(p)) && terms.every((t) => haystack.includes(t));
+    }
+    if (entry.type === "group") {
+      return entry.siblings.some((item) => matchesSearch(item));
+    }
+    return matchesSearch(entry.item);
+  }
+
+  function buildRecentDisplayRowOpts(entry, baseRowOpts) {
+    if (!entry || entry.type !== "group") {
+      return baseRowOpts(getRecentDisplayEntryPrimaryItem(entry));
+    }
+    const primary = getVersionGroupPrimaryItem(entry.siblings);
+    const opts = primary ? baseRowOpts(primary) : baseRowOpts(getRecentDisplayEntryPrimaryItem(entry));
+    const showUnsavedNotice = entry.siblings.some((item) => isOpenTabUnsavedForItem(item));
+    let preflightSummary = null;
+    entry.siblings.forEach((item) => {
+      const summary = baseRowOpts(item).preflightSummary;
+      if (!summary || summary.total <= 0) return;
+      if (!preflightSummary) {
+        preflightSummary = { total: summary.total, languagesWithIssues: summary.languagesWithIssues };
+        return;
+      }
+      preflightSummary.total += summary.total;
+      preflightSummary.languagesWithIssues = Math.max(
+        preflightSummary.languagesWithIssues,
+        summary.languagesWithIssues
+      );
+    });
+    return {
+      ...opts,
+      showUnsavedNotice,
+      preflightSummary
+    };
+  }
+
+  function getCampaignOpenAriaLabel(title, versionLetter) {
+    const campaignTitle = String(title || "").trim();
+    const letter = String(versionLetter || "").trim();
+    if (letter) return `Open campaign ${campaignTitle} (Version ${letter})`;
+    return `Open campaign ${campaignTitle}`;
+  }
+
+  function appendCampaignVersionChip(noticesRow, item) {
+    const letter = String(item && item.versionLetter ? item.versionLetter : "").trim();
+    if (!letter || !noticesRow) return;
+    const chip = document.createElement("span");
+    chip.className = "gem-recent-campaign-version-chip";
+    chip.textContent = letter;
+    chip.setAttribute("aria-label", `Version ${letter}`);
+    noticesRow.appendChild(chip);
+  }
+
+  function appendVersionGroupChips(noticesRow, siblings) {
+    if (!noticesRow) return;
+    const wrap = document.createElement("div");
+    wrap.className = "gem-recent-campaign-version-chips";
+    (Array.isArray(siblings) ? siblings : []).forEach((sibling) => {
+      const letter = String(sibling.versionLetter || "").trim();
+      if (!letter) return;
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "gem-recent-campaign-version-chip gem-recent-campaign-version-chip--link";
+      if (sibling.versionBackfilled) {
+        chip.classList.add("gem-recent-campaign-version-chip--backfilled");
+      }
+      if (getOpenMatchDetails(sibling).isOpen) {
+        chip.classList.add("gem-recent-campaign-version-chip--open");
+      }
+      chip.textContent = letter;
+      chip.setAttribute("aria-label", `Open Version ${letter}`);
+      chip.addEventListener("click", (e) => {
+        e.stopPropagation();
+        chrome.runtime.sendMessage({
+          action: "focusOrOpenCampaignTab",
+          campaignId: sibling.id,
+          targetUrl: withCurrentSessionId(sibling.urlBase)
+        });
+      });
+      wrap.appendChild(chip);
+    });
+    if (!wrap.childElementCount) return;
+    noticesRow.appendChild(wrap);
+  }
+
   function getCurrentCampaignExclusion() {
     if (isCampaignPage()) {
       const id = getCampaignIdFromUrl();
@@ -705,7 +1078,10 @@ console.log("[gem] recent-campaigns.js loaded");
       urlBase: String(urlBase || "").trim(),
       lastViewedDate: String(e.lastViewedDate || "").trim(),
       lastViewedAt: Number.isFinite(e.lastViewedAt) ? e.lastViewedAt : 0,
-      previewImageUrl: String(e.previewImageUrl || "").trim()
+      previewImageUrl: String(e.previewImageUrl || "").trim(),
+      versionLetter: String(e.versionLetter || "").trim(),
+      versionGroupId: String(e.versionGroupId || "").trim(),
+      versionBackfilled: e.versionBackfilled === true
     };
     return normalized;
   }
@@ -898,19 +1274,27 @@ console.log("[gem] recent-campaigns.js loaded");
   }
 
   function upsertRecent(payload) {
+    const hasEditorVersionInfo = !!(payload && typeof payload._versionInfo === "object");
+    const versionInfo = hasEditorVersionInfo ? payload._versionInfo : null;
     const normalized = normalizeEntry(payload);
     if (!normalized.id || !normalized.title || !normalized.urlBase) return;
     readRecentItems(({ items, pinnedKeys }) => {
-      const list = items.slice();
+      let list = items.slice();
       const idx = list.findIndex((e) => e.urlBase === normalized.urlBase || e.id === normalized.id);
+      let existingBeforeUpdate = null;
       if (idx >= 0) {
         const existing = list[idx];
+        existingBeforeUpdate = existing;
         const nowTs = Date.now();
         const lastViewedAt = Number.isFinite(existing.lastViewedAt) ? existing.lastViewedAt : 0;
         const fieldsChanged =
           existing.title !== normalized.title ||
           existing.subject !== normalized.subject ||
           existing.urlBase !== normalized.urlBase ||
+          (hasEditorVersionInfo &&
+            (String(existing.versionLetter || "") !== String(normalized.versionLetter || "") ||
+              String(existing.versionGroupId || "") !== String(normalized.versionGroupId || "") ||
+              !!existing.versionBackfilled !== !!normalized.versionBackfilled)) ||
           JSON.stringify(
             existing.languages === null ? null : Array.isArray(existing.languages) ? existing.languages : []
           ) !==
@@ -919,8 +1303,14 @@ console.log("[gem] recent-campaigns.js loaded");
             ) ||
           String(existing.previewImageUrl || "") !== String(normalized.previewImageUrl || "");
         const shouldRefreshLastViewed = (nowTs - lastViewedAt) >= MIN_LAST_VIEWED_UPDATE_MS;
+        const needsVersionPatch =
+          versionInfo &&
+          (versionInfo.isVersioned ||
+            (versionInfo.selectorPresent &&
+              (!!String(existing.versionLetter || "").trim() ||
+                !!String(existing.versionGroupId || "").trim())));
         // Avoid reordering churn from frequent DOM mutations on the same campaign page.
-        if (!fieldsChanged && !shouldRefreshLastViewed) return;
+        if (!fieldsChanged && !shouldRefreshLastViewed && !needsVersionPatch) return;
         const prevPreview = String(existing.previewImageUrl || "");
         const nextPreview = String(normalized.previewImageUrl || "");
         if (prevPreview !== nextPreview && isRecentPreviewImageDebugEnabled()) {
@@ -936,6 +1326,13 @@ console.log("[gem] recent-campaigns.js loaded");
         list[idx] = {
           ...existing,
           ...normalized,
+          ...(hasEditorVersionInfo
+            ? {}
+            : {
+                versionLetter: existing.versionLetter,
+                versionGroupId: existing.versionGroupId,
+                versionBackfilled: existing.versionBackfilled
+              }),
           lastViewedAt: shouldRefreshLastViewed ? normalized.lastViewedAt : existing.lastViewedAt,
           lastViewedDate: shouldRefreshLastViewed ? normalized.lastViewedDate : existing.lastViewedDate
         };
@@ -949,6 +1346,9 @@ console.log("[gem] recent-campaigns.js loaded");
           });
         }
         list.push(normalized);
+      }
+      if (versionInfo) {
+        list = applyVersionInfoToRecentItems(list, normalized, versionInfo, existingBeforeUpdate);
       }
       writeRecentState({ items: list, pinnedKeys });
     });
@@ -1162,9 +1562,16 @@ console.log("[gem] recent-campaigns.js loaded");
       return btn;
     }
 
-    function openCampaignUrl(targetUrl) {
-      if (menuOpts.navigateInCurrentTab) {
+    function openCampaignUrl(targetUrl, clickEvent) {
+      const openInBackground = !!(clickEvent && (clickEvent.ctrlKey || clickEvent.metaKey));
+      if (menuOpts.navigateInCurrentTab && !openInBackground) {
         window.location.assign(targetUrl);
+      } else if (openInBackground) {
+        try {
+          chrome.runtime.sendMessage({ action: "openInNewTab", url: targetUrl, active: false });
+        } catch (_) {
+          window.open(targetUrl, "_blank");
+        }
       } else {
         chrome.runtime.sendMessage({
           action: "focusOrOpenCampaignTab",
@@ -1227,7 +1634,7 @@ console.log("[gem] recent-campaigns.js loaded");
         url.searchParams.set("camp_id", String(item.id || ""));
         url.searchParams.set("step", "camp3");
         url.searchParams.set("sec", String(Date.now()));
-        openCampaignUrl(url.toString());
+        openCampaignUrl(url.toString(), e);
       });
       menu.appendChild(editSettingsItem);
     }
@@ -1236,7 +1643,7 @@ console.log("[gem] recent-campaigns.js loaded");
       const editContentItem = makeNavMenuItem("Edit Content");
       editContentItem.addEventListener("click", (e) => {
         e.stopPropagation();
-        openCampaignUrl(withCurrentSessionId(item.urlBase));
+        openCampaignUrl(withCurrentSessionId(item.urlBase), e);
       });
       menu.appendChild(editContentItem);
     }
@@ -1356,9 +1763,13 @@ console.log("[gem] recent-campaigns.js loaded");
       ids.push(id);
       titles[id] = String(item && item.title ? item.title : id).trim() || id;
     }
-    (Array.isArray(openCampaigns) ? openCampaigns : []).forEach(pushItem);
-    (Array.isArray(pinnedCampaigns) ? pinnedCampaigns : []).forEach(pushItem);
-    (Array.isArray(recentlyEditedCampaigns) ? recentlyEditedCampaigns : []).forEach(pushItem);
+    function pushDisplayEntry(entry) {
+      const primary = getRecentDisplayEntryPrimaryItem(entry);
+      if (primary) pushItem(primary);
+    }
+    (Array.isArray(openCampaigns) ? openCampaigns : []).forEach(pushDisplayEntry);
+    (Array.isArray(pinnedCampaigns) ? pinnedCampaigns : []).forEach(pushDisplayEntry);
+    (Array.isArray(recentlyEditedCampaigns) ? recentlyEditedCampaigns : []).forEach(pushDisplayEntry);
     (Array.isArray(listOtherForSection) ? listOtherForSection : []).forEach(pushItem);
     if (previewOpen && previewCampaignId && previousTitles[previewCampaignId]) {
       titles[previewCampaignId] = previousTitles[previewCampaignId];
@@ -2226,6 +2637,7 @@ console.log("[gem] recent-campaigns.js loaded");
 
     function injectIntoIframe(iframe) {
       try {
+        if (typeof window.gemIsGemStrippedEmbedIframe === 'function' && window.gemIsGemStrippedEmbedIframe(iframe)) return;
         const iframeDoc = iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document);
         if (!iframeDoc) return;
         if (iframeDoc._gemRecentCampaignsShortcutHandler) return;
@@ -2244,6 +2656,7 @@ console.log("[gem] recent-campaigns.js loaded");
 
     function waitForIframeReady(iframe) {
       try {
+        if (typeof window.gemIsGemStrippedEmbedIframe === 'function' && window.gemIsGemStrippedEmbedIframe(iframe)) return;
         bindRecentShortcutIframeReload(iframe);
         if (iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document)) {
           injectIntoIframe(iframe);
@@ -2293,6 +2706,118 @@ console.log("[gem] recent-campaigns.js loaded");
     } else {
       nav.appendChild(recentItem);
     }
+  }
+
+  function buildRecentDisplayRow(entry, opts) {
+    if (entry && entry.type === "group") return buildVersionGroupRow(entry, opts);
+    return buildCampaignRow(entry.item, opts);
+  }
+
+  function buildVersionGroupRow(group, opts) {
+    const options = opts && typeof opts === "object" ? opts : {};
+    const siblings = Array.isArray(group.siblings) ? group.siblings : [];
+    const primary = getVersionGroupPrimaryItem(siblings) || siblings[0];
+    if (!primary) return document.createElement("div");
+
+    const row = document.createElement("div");
+    row.className = "gem-recent-campaign-row gem-recent-campaign-row--version-group";
+    if (group.versionGroupId) row.dataset.gemVersionGroupId = group.versionGroupId;
+    if (primary.id) row.dataset.gemCampaignId = primary.id;
+
+    const previewSibling =
+      siblings
+        .slice()
+        .sort((a, b) => (b.lastViewedAt || 0) - (a.lastViewedAt || 0))
+        .find((item) => String(item.previewImageUrl || "").trim()) || primary;
+    if (
+      previewOpen &&
+      previewCampaignId &&
+      siblings.some((item) => String(item.id || "").trim() === previewCampaignId)
+    ) {
+      row.classList.add(DRAWER_PREVIEW_ACTIVE_ROW_CLASS);
+    }
+
+    const openPrimary = () => {
+      chrome.runtime.sendMessage({
+        action: "focusOrOpenCampaignTab",
+        campaignId: primary.id,
+        targetUrl: withCurrentSessionId(primary.urlBase)
+      });
+    };
+
+    const inner = document.createElement("div");
+    inner.className = "gem-recent-campaign-row-inner";
+
+    const previewUrl = String(previewSibling.previewImageUrl || "").trim();
+    let thumb;
+    if (previewUrl) {
+      thumb = document.createElement("button");
+      thumb.type = "button";
+      thumb.className = "gem-recent-campaign-thumb gem-recent-campaign-thumb--open";
+      thumb.setAttribute("aria-label", getCampaignOpenAriaLabel(primary.title, primary.versionLetter));
+      thumb.addEventListener("click", openPrimary);
+      const imgEl = document.createElement("img");
+      imgEl.className = "gem-recent-campaign-thumb-img";
+      imgEl.src = previewUrl;
+      imgEl.alt = "";
+      imgEl.setAttribute("aria-hidden", "true");
+      imgEl.loading = "lazy";
+      imgEl.addEventListener("error", () => {
+        try {
+          imgEl.remove();
+        } catch (_) {}
+      });
+      thumb.appendChild(imgEl);
+    } else {
+      thumb = document.createElement("div");
+      thumb.className = "gem-recent-campaign-thumb";
+      thumb.setAttribute("aria-hidden", "true");
+    }
+
+    const main = document.createElement("div");
+    main.className = "gem-recent-campaign-row-main";
+
+    const titleRow = document.createElement("div");
+    titleRow.className = "gem-recent-campaign-title-row";
+
+    const title = document.createElement("button");
+    title.type = "button";
+    title.className = "gem-recent-campaign-title gem-recent-campaign-title-link";
+    title.setAttribute("aria-label", getCampaignOpenAriaLabel(primary.title, primary.versionLetter));
+    title.textContent = primary.title;
+    title.addEventListener("click", openPrimary);
+    titleRow.appendChild(title);
+    titleRow.appendChild(createCampaignRowOverflowMenu(primary, options));
+
+    const subject = document.createElement("div");
+    subject.className = "gem-recent-campaign-subject";
+    subject.textContent = primary.subject || "No subject";
+
+    const langs = document.createElement("div");
+    langs.className = "gem-recent-campaign-languages";
+    const seenLangs = new Set();
+    siblings.forEach((item) => {
+      (Array.isArray(item.languages) ? item.languages : []).forEach((lang) => {
+        const text = String(lang || "").trim();
+        if (!text || seenLangs.has(text)) return;
+        seenLangs.add(text);
+        const chip = document.createElement("span");
+        chip.className = "gem-recent-campaign-lang-chip";
+        chip.textContent = text;
+        langs.appendChild(chip);
+      });
+    });
+
+    const noticesRow = buildCampaignRowStatusNotices(options, { type: "group", siblings });
+    if (noticesRow) main.appendChild(noticesRow);
+
+    main.appendChild(titleRow);
+    main.appendChild(subject);
+    if (langs.childElementCount) main.appendChild(langs);
+    inner.appendChild(thumb);
+    inner.appendChild(main);
+    row.appendChild(inner);
+    return row;
   }
 
   function buildCampaignRow(item, opts) {
@@ -2351,7 +2876,7 @@ console.log("[gem] recent-campaigns.js loaded");
     const title = document.createElement("button");
     title.type = "button";
     title.className = "gem-recent-campaign-title gem-recent-campaign-title-link";
-    title.setAttribute("aria-label", `Open campaign ${item.title}`);
+    title.setAttribute("aria-label", getCampaignOpenAriaLabel(item.title, item.versionLetter));
     title.textContent = item.title;
 
     title.addEventListener("click", openCampaign);
@@ -2372,7 +2897,7 @@ console.log("[gem] recent-campaigns.js loaded");
       langs.appendChild(chip);
     });
 
-    const noticesRow = buildCampaignStatusNoticesRow(options);
+    const noticesRow = buildCampaignRowStatusNotices(options, { item });
     if (noticesRow) main.appendChild(noticesRow);
 
     main.appendChild(titleRow);
@@ -2413,13 +2938,14 @@ console.log("[gem] recent-campaigns.js loaded");
     const title = document.createElement("button");
     title.type = "button";
     title.className = "gem-recent-campaign-title gem-recent-campaign-title-link";
-    title.setAttribute("aria-label", `Open campaign ${item.title}`);
+    title.setAttribute("aria-label", getCampaignOpenAriaLabel(item.title, item.versionLetter));
     title.textContent = item.title;
     title.addEventListener("click", openCampaign);
     titleRow.appendChild(title);
     titleRow.appendChild(createCampaignRowOverflowMenu(item));
 
-    appendCampaignStatusNotices(main, opts || {});
+    const noticesRow = buildCampaignRowStatusNotices(opts || {}, { item });
+    if (noticesRow) main.appendChild(noticesRow);
     main.appendChild(titleRow);
     inner.appendChild(main);
     row.appendChild(inner);
@@ -2453,13 +2979,11 @@ console.log("[gem] recent-campaigns.js loaded");
     container.appendChild(group);
   }
 
-  function countRecentGroupSizes(list) {
-    const open = list.filter((item) => getOpenMatchDetails(item).isOpen).length;
-    const pinned = list.filter((item) => pinnedCampaignKeys.has(String(item.urlBase || "").trim())).length;
-    const recentlyEdited = list.filter((item) => {
-      const openMatch = getOpenMatchDetails(item);
-      const isPinned = pinnedCampaignKeys.has(String(item.urlBase || "").trim());
-      return !openMatch.isOpen && !isPinned;
+  function countRecentGroupSizes(displayEntries) {
+    const open = displayEntries.filter((entry) => isRecentDisplayEntryOpen(entry)).length;
+    const pinned = displayEntries.filter((entry) => isRecentDisplayEntryPinned(entry)).length;
+    const recentlyEdited = displayEntries.filter((entry) => {
+      return !isRecentDisplayEntryOpen(entry) && !isRecentDisplayEntryPinned(entry);
     }).length;
     return { open, pinned, recentlyEdited };
   }
@@ -2516,16 +3040,33 @@ console.log("[gem] recent-campaigns.js loaded");
         const filteredPinned = new Set(Array.from(pinnedCampaignKeys).filter(Boolean));
         pinnedCampaignKeys = filteredPinned;
         const overlapMain = buildMainRecentOverlapSet(items);
+        const excludeVersionGroupId = excludeCurrent
+          ? String(
+              (
+                items.find((item) => {
+                  const iid = String(item.id || "").trim();
+                  const iurl = String(item.urlBase || "").trim();
+                  return (
+                    (excludeCurrent.id && iid && iid === excludeCurrent.id) ||
+                    (excludeCurrent.urlBase && iurl && iurl === excludeCurrent.urlBase)
+                  );
+                }) || {}
+              ).versionGroupId || ""
+            ).trim()
+          : "";
         const baseList = excludeCurrent
           ? items.filter((item) => {
               const iid = String(item.id || "").trim();
               const iurl = String(item.urlBase || "").trim();
+              const igroup = String(item.versionGroupId || "").trim();
+              if (excludeVersionGroupId && igroup && igroup === excludeVersionGroupId) return false;
               if (excludeCurrent.urlBase && iurl && iurl === excludeCurrent.urlBase) return false;
               if (excludeCurrent.id && iid && iid === excludeCurrent.id) return false;
               return true;
             })
           : items.slice();
-        const baseGroupTotals = countRecentGroupSizes(baseList);
+        const baseDisplayEntries = groupVersionedRecentItems(baseList);
+        const baseGroupTotals = countRecentGroupSizes(baseDisplayEntries);
         const uniqueLanguages = [];
         const seenLangs = new Set();
         baseList.forEach((item) => {
@@ -2587,12 +3128,15 @@ console.log("[gem] recent-campaigns.js loaded");
         const searchFilteredMain = activeSearchQuery
           ? visibleList.filter((item) => matchesSearch(item, activeSearchQuery))
           : visibleList;
+        const displayEntries = groupVersionedRecentItems(searchFilteredMain);
 
         const otherEnriched = (Array.isArray(otherRaw) ? otherRaw : [])
           .map((e) => {
             const id = String(e && e.id ? e.id : "").trim();
             const title = String(e && e.title ? e.title : "").trim();
             const urlBase = urlBaseFromCampaignId(id);
+            const mainMatch = baseList.find((item) => String(item.id || "").trim() === id);
+            const versionLetter = mainMatch ? String(mainMatch.versionLetter || "").trim() : "";
             return {
               id,
               title,
@@ -2600,7 +3144,8 @@ console.log("[gem] recent-campaigns.js loaded");
               loggedAt: Number.isFinite(e.loggedAt) ? e.loggedAt : 0,
               subject: "",
               languages: [],
-              previewImageUrl: ""
+              previewImageUrl: "",
+              versionLetter
             };
           })
           .filter((o) => o.id && o.title && o.urlBase);
@@ -2615,7 +3160,7 @@ console.log("[gem] recent-campaigns.js loaded");
 
         const listOtherForSection = activeLanguageFilter ? [] : otherFilteredBySearch;
 
-        const hasMainRows = searchFilteredMain.length > 0;
+        const hasMainRows = displayEntries.length > 0;
         const hasListOtherSection = listOtherForSection.length > 0;
         const hasActiveTabSection = !!activeItem;
 
@@ -2624,33 +3169,35 @@ console.log("[gem] recent-campaigns.js loaded");
         let recentlyEditedCampaigns = [];
 
         if (hasMainRows) {
-          let sortedVisible = searchFilteredMain
+          let sortedVisible = displayEntries
             .slice()
-            .sort((a, b) => (b.lastViewedAt || 0) - (a.lastViewedAt || 0));
+            .sort(
+              (a, b) => getRecentDisplayEntryLastViewedAt(b) - getRecentDisplayEntryLastViewedAt(a)
+            );
           if (recentPanel && recentPanel.classList.contains("gem-recent-campaigns-panel--open")) {
             if (!stableOrderIds) {
-              stableOrderIds = sortedVisible.map((item) => item.urlBase);
+              stableOrderIds = sortedVisible.map((entry) => getRecentDisplayEntryKey(entry));
             } else {
               const indexMap = new Map(stableOrderIds.map((id, idx) => [id, idx]));
               sortedVisible = sortedVisible.sort((a, b) => {
-                const ai = indexMap.has(a.urlBase) ? indexMap.get(a.urlBase) : Number.MAX_SAFE_INTEGER;
-                const bi = indexMap.has(b.urlBase) ? indexMap.get(b.urlBase) : Number.MAX_SAFE_INTEGER;
+                const aKey = getRecentDisplayEntryKey(a);
+                const bKey = getRecentDisplayEntryKey(b);
+                const ai = indexMap.has(aKey) ? indexMap.get(aKey) : Number.MAX_SAFE_INTEGER;
+                const bi = indexMap.has(bKey) ? indexMap.get(bKey) : Number.MAX_SAFE_INTEGER;
                 if (ai !== bi) return ai - bi;
-                return (b.lastViewedAt || 0) - (a.lastViewedAt || 0);
+                return getRecentDisplayEntryLastViewedAt(b) - getRecentDisplayEntryLastViewedAt(a);
               });
             }
           }
 
-          const inFlow = sortedVisible.filter((item) => getOpenMatchDetails(item).isOpen);
+          const inFlow = sortedVisible.filter((entry) => isRecentDisplayEntryOpen(entry));
           openCampaigns = [
-            ...inFlow.filter((item) => pinnedCampaignKeys.has(String(item.urlBase || "").trim())),
-            ...inFlow.filter((item) => !pinnedCampaignKeys.has(String(item.urlBase || "").trim()))
+            ...inFlow.filter((entry) => isRecentDisplayEntryPinned(entry)),
+            ...inFlow.filter((entry) => !isRecentDisplayEntryPinned(entry))
           ];
-          pinnedCampaigns = sortedVisible.filter((item) => pinnedCampaignKeys.has(item.urlBase));
-          recentlyEditedCampaigns = sortedVisible.filter((item) => {
-            const openMatch = getOpenMatchDetails(item);
-            const isPinned = pinnedCampaignKeys.has(item.urlBase);
-            return !openMatch.isOpen && !isPinned;
+          pinnedCampaigns = sortedVisible.filter((entry) => isRecentDisplayEntryPinned(entry));
+          recentlyEditedCampaigns = sortedVisible.filter((entry) => {
+            return !isRecentDisplayEntryOpen(entry) && !isRecentDisplayEntryPinned(entry);
           });
         }
 
@@ -2729,9 +3276,12 @@ console.log("[gem] recent-campaigns.js loaded");
             const openGroupList = document.createElement("div");
             openGroupList.id = OPEN_GROUP_LIST_ID;
             openGroupList.className = "gem-recent-campaign-group-list";
-            openCampaigns.forEach((item) =>
+            openCampaigns.forEach((entry) =>
               openGroupList.appendChild(
-                buildCampaignRow(item, { ...rowOpts(item), showSwitchToTab: true })
+                buildRecentDisplayRow(entry, {
+                  ...buildRecentDisplayRowOpts(entry, rowOpts),
+                  showSwitchToTab: true
+                })
               )
             );
             openGroup.appendChild(openGroupList);
@@ -2747,7 +3297,11 @@ console.log("[gem] recent-campaigns.js loaded");
           pinnedHeader.className = "gem-recent-campaign-group-header";
           pinnedHeader.textContent = `Pinned favorites (${groupCountLabel(pinnedCampaigns.length, baseGroupTotals.pinned)})`;
           pinnedGroup.appendChild(pinnedHeader);
-          pinnedCampaigns.forEach((item) => pinnedGroup.appendChild(buildCampaignRow(item, rowOpts(item))));
+          pinnedCampaigns.forEach((entry) =>
+            pinnedGroup.appendChild(
+              buildRecentDisplayRow(entry, buildRecentDisplayRowOpts(entry, rowOpts))
+            )
+          );
           container.appendChild(pinnedGroup);
         }
 
@@ -2761,7 +3315,11 @@ console.log("[gem] recent-campaigns.js loaded");
             baseGroupTotals.recentlyEdited
           )})`;
           editedGroup.appendChild(editedHeader);
-          recentlyEditedCampaigns.forEach((item) => editedGroup.appendChild(buildCampaignRow(item, rowOpts(item))));
+          recentlyEditedCampaigns.forEach((entry) =>
+            editedGroup.appendChild(
+              buildRecentDisplayRow(entry, buildRecentDisplayRowOpts(entry, rowOpts))
+            )
+          );
           container.appendChild(editedGroup);
         }
 
@@ -2893,8 +3451,17 @@ console.log("[gem] recent-campaigns.js loaded");
         if (payload) upsertRecent(payload);
       }, 250);
     };
+    const bindVersionSelector = (el) => {
+      const select = el && el.querySelector ? el.querySelector("select") : null;
+      if (!select || select._gemVersionWatchBound) return;
+      select._gemVersionWatchBound = true;
+      select.addEventListener("change", scheduleCapture);
+    };
     scheduleCapture();
     window.gemDomWatchSubscribe(scheduleCapture);
+    if (isCampaignPage() && typeof window.gemDomWatchWaitFor === "function") {
+      window.gemDomWatchWaitFor("cb-version-selector", bindVersionSelector);
+    }
   }
 
   function handleDrawerPreviewFsIframeMessage(ev) {
