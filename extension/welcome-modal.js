@@ -20,7 +20,7 @@ function createWelcomeModalHTML() {
           <h3>Feature List</h3>
           <ul class="gem-welcome-modal-features">
             <li><b>Drag-and-Drop Snippets</b> Drag and drop custom ESL snippets into your email editor. Create, edit, pin, categorize, and delete snippets from the Snippets tab in the vertical navigation. You can also import and export snippets as shareable JSON.</li>
-            <li><b>Focus Editor</b> Switch from Standard Editor to Focus Editor for a bigger view of your email. Use the purple expand icon in the bottom left of the email editor, choose it from the email tools menu, or press ${typeof window.GEM_MOD_KEY !== 'undefined' ? window.GEM_MOD_KEY : 'CTRL'}+Shift+F. This increases the total viewable area of your email by over 40%!</li>
+            <li><b>Focus Layout</b> Switch from Standard Layout to Focus Layout for a bigger view of your email. Use the purple expand icon in the bottom left of the email editor, choose it from the email tools menu, or press ${typeof window.GEM_MOD_KEY !== 'undefined' ? window.GEM_MOD_KEY : 'CTRL'}+Shift+F. This increases the total viewable area of your email by over 40%!</li>
             <li>
               <b>Convert ESL to Tokens</b> Instantly <b>convert plain text ESL into ESL tokens</b> by clicking the convert icon <span class="gem-e-icon"></span> wherever you see it.
             </li>
@@ -121,6 +121,11 @@ function createWelcomeModalHTML() {
             <ul>
               <li>Shortcut: Double-clicking an ESL token in the email preview instantly opens the ESL snippet editor dialog.</li>
               <li>"OK" button is disabled while ESL code is actively being validated to help prevent accidental submission of invalid code.</li>
+            </ul>
+
+            <h5>Personalization Token Dialog</h5>
+            <ul>
+              <li>Shortcut: Double-clicking a personalization token in the email preview instantly opens the Personalization editor dialog.</li>
             </ul>
 
             <h5>Link Editor Dialog</h5>

@@ -69,12 +69,12 @@ runCheck('platform.js is not duplicated in campaign-specific script list', () =>
   assert.strictEqual(occurrences, 0, 'platform.js should not be in the campaign script list');
 });
 
-runCheck('expanded mode is wired into settings panel UI + storage', () => {
+runCheck('Focus Layout is wired into settings panel UI + storage', () => {
   const src = readFile('extension/settings-panel.js');
-  assert(src.includes('const GEM_EXPANDED_MODE_STORAGE_KEY = "fullscreenActive";'));
-  assert(src.includes('id="opt-enable-expanded-mode"'));
-  assert(src.includes('applyExpandedMode('));
-  assert(src.includes('[GEM_EXPANDED_MODE_STORAGE_KEY]'));
+  assert(src.includes('const GEM_FOCUS_LAYOUT_STORAGE_KEY = "fullscreenActive";'));
+  assert(src.includes('id="opt-enable-focus-layout"'));
+  assert(src.includes('applyFocusLayout('));
+  assert(src.includes('[GEM_FOCUS_LAYOUT_STORAGE_KEY]'));
 });
 
 runCheck('email campaign list waits for enabled state without polling intervals', () => {

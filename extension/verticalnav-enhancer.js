@@ -1,21 +1,29 @@
 console.log("[Gem] verticalnav-enhancer.js loaded");
 
-// Check if fullscreen was active on previous page load and restore it
+function migrateLegacyFocusLayoutClass(body) {
+  if (!body) return;
+  if (body.classList.contains("gem-expanded")) {
+    body.classList.remove("gem-expanded");
+    body.classList.add("gem-focus-layout");
+  }
+}
+
+// Check if Focus Layout was active on previous page load and restore it
 chrome.storage.sync.get({ fullscreenActive: false }, (settings) => {
-  console.log("[Gem] Fullscreen check - settings:", settings);
-  console.log("[Gem] Fullscreen check - fullscreenActive:", settings.fullscreenActive);
+  console.log("[Gem] Focus Layout check - settings:", settings);
+  console.log("[Gem] Focus Layout check - fullscreenActive:", settings.fullscreenActive);
 
   if (settings.fullscreenActive) {
-    console.log("[Gem] Fullscreen was active, waiting for content element...");
+    console.log("[Gem] Focus Layout was active, waiting for content element...");
 
-    // Wait for the content element to be available before activating fullscreen
+    // Wait for the content element to be available before activating Focus Layout
     waitForElement("main.e-layout__content", (contentElement) => {
-      console.log("[Gem] Content element now available, activating fullscreen...");
-      activateFullscreenMode();
+      console.log("[Gem] Content element now available, activating Focus Layout...");
+      activateFocusLayout();
       updateNavToggleIcons();
     });
   } else {
-    console.log("[Gem] Fullscreen was not active, skipping activation");
+    console.log("[Gem] Focus Layout was not active, skipping activation");
     updateNavToggleIcons();
   }
 });
@@ -60,7 +68,7 @@ const MOBILE_ICON_ON = '&#61746;';
 
 function getExpandSvg(iconEntity = EXPAND_ICON_OFF) {
   return `
-    <div class="gem-e-verticalnavitem"><e-tooltip placement="right" content="Focus Editor (` + window.GEM_MOD_KEY + `+Shift+F)" role="tooltip" aria-description="Focus Editor">
+    <div class="gem-e-verticalnavitem"><e-tooltip placement="right" content="Focus Layout (` + window.GEM_MOD_KEY + `+Shift+F)" role="tooltip" aria-description="Focus Layout">
       <div class="e-verticalnavitem__icon e-svgclickfix">
         <gem-e-icon icon="mediadb"><div aria-hidden="true" class="e-icon-wrapper"><div class="e-icon gem-expand-icon-glyph">${iconEntity}</div></div></gem-e-icon>
       </div>
@@ -90,8 +98,8 @@ function isMobileViewVisible() {
 function updateNavToggleIcons() {
   const expandGlyph = document.querySelector('.gem-expand-icon-glyph');
   if (expandGlyph) {
-    const isExpanded = !!(document.body && document.body.classList.contains("gem-expanded"));
-    expandGlyph.innerHTML = isExpanded ? EXPAND_ICON_ON : EXPAND_ICON_OFF;
+    const isFocusLayout = !!(document.body && document.body.classList.contains("gem-focus-layout"));
+    expandGlyph.innerHTML = isFocusLayout ? EXPAND_ICON_ON : EXPAND_ICON_OFF;
   }
 
   const mobileGlyph = document.querySelector('.gem-mobile-icon-glyph');
@@ -207,18 +215,19 @@ function createIconBar() {
     console.log("[Gem] Expand click - Content element found:", content);
 
     if (content) {
-      const wasExpanded = content.classList.contains("gem-expanded");
-      console.log("[Gem] Expand click - Was expanded:", wasExpanded);
+      migrateLegacyFocusLayoutClass(content);
+      const wasFocusLayout = content.classList.contains("gem-focus-layout");
+      console.log("[Gem] Expand click - Was Focus Layout:", wasFocusLayout);
 
-      content.classList.toggle("gem-expanded");
+      content.classList.toggle("gem-focus-layout");
 
-      const isNowExpanded = content.classList.contains("gem-expanded");
-      console.log("[Gem] Expand click - Now expanded:", isNowExpanded);
+      const isNowFocusLayout = content.classList.contains("gem-focus-layout");
+      console.log("[Gem] Expand click - Now Focus Layout:", isNowFocusLayout);
       updateNavToggleIcons();
 
-      // Store the fullscreen state
-      chrome.storage.sync.set({ fullscreenActive: isNowExpanded }, () => {
-        console.log("[Gem] Expand click - State saved to storage:", isNowExpanded);
+      // Store the Focus Layout state
+      chrome.storage.sync.set({ fullscreenActive: isNowFocusLayout }, () => {
+        console.log("[Gem] Expand click - State saved to storage:", isNowFocusLayout);
       });
 
     } else {
@@ -271,51 +280,52 @@ function injectIcons(menu) {
 }
 
 // ------------------------------------------------------------
-// Fullscreen mode activation/deactivation functions
+// Focus Layout activation/deactivation
 // ------------------------------------------------------------
-function activateFullscreenMode() {
-  console.log("[Gem] activateFullscreenMode() called");
+function activateFocusLayout() {
+  console.log("[Gem] activateFocusLayout() called");
 
   const content = document.querySelector("body");
   console.log("[Gem] Content element found:", content);
 
   if (content) {
-    const alreadyExpanded = content.classList.contains("gem-expanded");
-    console.log("[Gem] Content already expanded:", alreadyExpanded);
+    migrateLegacyFocusLayoutClass(content);
+    const alreadyFocusLayout = content.classList.contains("gem-focus-layout");
+    console.log("[Gem] Content already in Focus Layout:", alreadyFocusLayout);
 
-    if (!alreadyExpanded) {
-      content.classList.add("gem-expanded");
-      console.log("[Gem] Fullscreen mode activated - class added");
+    if (!alreadyFocusLayout) {
+      content.classList.add("gem-focus-layout");
+      console.log("[Gem] Focus Layout activated - class added");
       updateNavToggleIcons();
 
     } else {
-      console.log("[Gem] Fullscreen mode already active - skipping");
+      console.log("[Gem] Focus Layout already active - skipping");
     }
   } else {
-    console.log("[Gem] ERROR: Could not find main.e-layout__content element");
+    console.log("[Gem] ERROR: Could not find body element");
   }
 }
 
-function deactivateFullscreenMode() {
-  console.log("[Gem] deactivateFullscreenMode() called");
+function deactivateFocusLayout() {
+  console.log("[Gem] deactivateFocusLayout() called");
 
   const content = document.querySelector("body");
   console.log("[Gem] Content element found:", content);
 
   if (content) {
-    const isExpanded = content.classList.contains("gem-expanded");
-    console.log("[Gem] Content currently expanded:", isExpanded);
+    const isFocusLayout = content.classList.contains("gem-focus-layout");
+    console.log("[Gem] Content currently in Focus Layout:", isFocusLayout);
 
-    if (isExpanded) {
-      content.classList.remove("gem-expanded");
-      console.log("[Gem] Fullscreen mode deactivated - class removed");
+    if (isFocusLayout) {
+      content.classList.remove("gem-focus-layout");
+      console.log("[Gem] Focus Layout deactivated - class removed");
       updateNavToggleIcons();
 
     } else {
-      console.log("[Gem] Fullscreen mode already inactive - skipping");
+      console.log("[Gem] Focus Layout already inactive - skipping");
     }
   } else {
-    console.log("[Gem] ERROR: Could not find main.e-layout__content element");
+    console.log("[Gem] ERROR: Could not find body element");
   }
 }
 

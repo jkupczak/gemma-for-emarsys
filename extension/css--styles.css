@@ -998,7 +998,8 @@ main {
     & section.e-contentblocks-navigation_section:has(.e-verticalnav__content cb-custom-tab),
     & section.e-contentblocks-navigation_section:has(.e-verticalnav__content cb-campaign-latest-media),
     & section.e-contentblocks-navigation_section:has(.e-verticalnav__content cb-available-block-list) {
-        flex: 0 0 530px !important;
+        position: relative;
+        flex: 0 0 var(--gem-nav-width, 530px) !important;
     }
 }
 
@@ -2395,9 +2396,11 @@ cb-content-preview, cb-content-preview > div { display: block; height:100%; }
 cb-campaign-preview { width: 100% }
 .e-contentblocks-preview { position:static !important; height:100% !important; z-index: unset !important; top: unset !important; }
 cb-device-preview > .e-section > .e-section__content { overflow: hidden }
-#gem-frame-handle:before { content: ""; display: block; background: var(--token-box-default-border); position:absolute; top: 0; bottom: 0; left: 0; right: 0; width: 20%; max-width:6px; height: 66%; border-radius: 999px; margin: auto; }
-#gem-frame-handle:hover:before { background: var(--token-primary-500); }
-#gem-frame-handle.gem-frame-handle--active:before { background: var(--token-primary-800); }
+
+.gem-resize-handle:before { content: ""; display: block; background: var(--token-box-default-border); position:absolute; top: 0; bottom: 0; left: 0; right: 0; width: 20%; max-width:6px; height: 66%; border-radius: 999px; margin: auto; }
+
+.gem-resize-handle:hover:before { background: var(--token-primary-500); }
+.gem-resize-handle.gem-resize-handle--active:before { background: var(--token-primary-800); }
 .gem-frame-size-details-item { width: auto; font-size:16px; line-height:20px }
 .gem-frame-size-details-item label { display:block; font-size: 10px; line-height: 14px; text-transform: uppercase; }
 
@@ -2840,4 +2843,10 @@ cb-header.e-layout__header .gem-compact-email-tools-menu-wrap--header .gem-recen
 
 cb-header.e-layout__header .gem-compact-email-tools-menu-wrap--header .gem-recent-campaign-row-menu-trigger::before {
   font-size: var(--token-icon-default-size);
+}
+
+/* Contact preview isn't selectable because of Emarsys. This resets that. */
+e-float-container .e-dialog-iframe .e-dialog__content {
+    -webkit-user-select: unset;
+    user-select: unset;
 }

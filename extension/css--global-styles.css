@@ -1601,3 +1601,7 @@ color-mix(in srgb, var(--token-gray-100, #dbeafe) 25%, transparent);
 .e-dialog__header {
     padding:12px 20px !important;
 }
+
+.e-layout {
+    min-width: unset !important;
+}

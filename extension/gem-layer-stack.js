@@ -23,6 +23,7 @@
       "#gem-keyboard-shortcuts-modal",
       "#gem-welcome-modal",
       "#gem-compare-modal",
+      "#gem-snippet-context-menu",
       "[data-gem-layer-z]"
     ];
 
@@ -56,6 +57,9 @@
 
       if (el.dataset && el.dataset.gemLayerRaised === "1") return true;
       if (id === "gem-keyboard-shortcuts-modal" || id === "gem-welcome-modal" || id === "gem-compare-modal") return true;
+      if (id === "gem-snippet-context-menu") {
+        return cls && cls.contains("gem-snippet-context-menu--open");
+      }
 
       try {
         var cs = window.getComputedStyle(el);

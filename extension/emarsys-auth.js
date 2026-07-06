@@ -123,5 +123,304 @@
         });
       });
     };
+
+    /**
+     * Performs a gservice fetch from the page's main JS world so the request carries
+     * the Emarsys page Origin (matches devtools / native Emarsys fetch behavior).
+     */
+    function gemFetchGserviceFromPageContext(url, options) {
+      return new Promise(function (resolve, reject) {
+        const requestId = "gem-gfetch-" + Date.now() + "-" + Math.random().toString(36).slice(2);
+        let settled = false;
+
+        function finish(result, isError) {
+          if (settled) return;
+          settled = true;
+          window.removeEventListener("message", onMessage);
+          clearTimeout(timer);
+          if (isError) reject(result);
+          else resolve(result);
+        }
+
+        function onMessage(event) {
+          if (event.source !== window) return;
+          const data = event.data;
+          if (!data || data.source !== "gem-gservice-page-fetch" || data.requestId !== requestId) {
+            return;
+          }
+          finish(data, false);
+        }
+
+        window.addEventListener("message", onMessage);
+        const timer = setTimeout(function () {
+          finish(new Error("page context fetch timeout"), true);
+        }, 20000);
+
+        const script = document.createElement("script");
+        script.textContent =
+          "(function(){var u=" +
+          JSON.stringify(url) +
+          ";var h=" +
+          JSON.stringify((options && options.headers) || {}) +
+          ";var m=" +
+          JSON.stringify((options && options.method) || "GET") +
+          ";fetch(u,{method:m,headers:h,credentials:'include'})" +
+          ".then(function(r){return r.text().then(function(t){var d=null;try{d=JSON.parse(t);}catch(e){}return{ok:r.ok,status:r.status,data:d};});})" +
+          ".then(function(r){window.postMessage({source:'gem-gservice-page-fetch',requestId:" +
+          JSON.stringify(requestId) +
+          ",ok:r.ok,status:r.status,data:r.data},'*');})" +
+          ".catch(function(e){window.postMessage({source:'gem-gservice-page-fetch',requestId:" +
+          JSON.stringify(requestId) +
+          ",ok:false,error:e&&e.message?e.message:String(e)},'*');});})();";
+        (document.documentElement || document.head || document.body).appendChild(script);
+        script.remove();
+      });
+    }
+
+    function parsePersonalizationGserviceListResponse(res, data) {
+      if (!res.ok) {
+        return { ok: false, reason: "api_error", status: res.status, data: data };
+      }
+      const results = data && Array.isArray(data.results) ? data.results : [];
+      return { ok: true, results: results };
+    }
+
+    function fetchPersonalizationGserviceListFromPage(url, headers) {
+      console.log("[Gem][Auth] personalization gservice: retrying via page context", url);
+      return gemFetchGserviceFromPageContext(url, { method: "GET", headers: headers })
+        .then(function (pageRes) {
+          if (pageRes.error) {
+            return { ok: false, reason: "fetch_error", error: pageRes.error };
+          }
+          return parsePersonalizationGserviceListResponse(
+            { ok: pageRes.ok, status: pageRes.status },
+            pageRes.data
+          );
+        })
+        .catch(function (err) {
+          return {
+            ok: false,
+            reason: "fetch_error",
+            error: err && err.message ? err.message : String(err),
+          };
+        });
+    }
+
+    function gemFetchPersonalizationEditorList(customerId, sessionId, existingToken, resourcePath, logLabel) {
+      const cid = String(customerId || "").trim();
+      const sid = String(sessionId || "").trim();
+      const path = String(resourcePath || "").trim().replace(/^\/+/, "");
+      if (!cid || !sid || !path) {
+        return Promise.resolve({ ok: false, reason: "missing_customer_session_or_path" });
+      }
+
+      const bareExisting = String(existingToken || "").trim().replace(/^Bearer\s+/i, "");
+      const fetchToken =
+        bareExisting
+          ? Promise.resolve(bareExisting)
+          : window.gemFetchGserviceToken(sid, "personalization-editor");
+
+      return fetchToken.then(function (token) {
+        if (!token) {
+          return { ok: false, reason: "no_auth_token" };
+        }
+
+        const bareToken = String(token).trim().replace(/^Bearer\s+/i, "");
+        const url =
+          "https://personalization-editor.gservice.emarsys.net/customer/" +
+          encodeURIComponent(cid) +
+          "/" +
+          path;
+        const headers = {
+          accept: "application/json, text/plain, */*",
+          authorization: "Bearer " + bareToken,
+        };
+
+        console.log("[Gem][Auth]", logLabel || path, ": GET", url);
+
+        return fetch(url, {
+          method: "GET",
+          headers: headers,
+        })
+          .then(function (res) {
+            return res
+              .json()
+              .catch(function () {
+                return null;
+              })
+              .then(function (data) {
+                return parsePersonalizationGserviceListResponse(res, data);
+              });
+          })
+          .catch(function (err) {
+            console.warn(
+              "[Gem][Auth]",
+              logLabel || path,
+              "content-script fetch failed:",
+              err && err.message ? err.message : String(err)
+            );
+            return fetchPersonalizationGserviceListFromPage(url, headers);
+          });
+      });
+    }
+
+    /**
+     * Fetches the team's saved personalization tokens from the personalization-editor gservice.
+     *
+     * @param {string|number} customerId
+     * @param {string} sessionId
+     * @param {string} [existingToken] - Optional JWT already fetched for personalization-editor.
+     * @returns {Promise<{ok: boolean, results?: object[], reason?: string}>}
+     */
+    window.gemFetchPersonalizationTokenList = function gemFetchPersonalizationTokenList(
+      customerId,
+      sessionId,
+      existingToken
+    ) {
+      return gemFetchPersonalizationEditorList(
+        customerId,
+        sessionId,
+        existingToken,
+        "token/list",
+        "token/list"
+      );
+    };
+
+    /**
+     * Fetches RDS preset definitions used to build RDS personalization token Twig code.
+     *
+     * @param {string|number} customerId
+     * @param {string} sessionId
+     * @param {string} [existingToken] - Optional JWT already fetched for personalization-editor.
+     * @returns {Promise<{ok: boolean, results?: object[], reason?: string}>}
+     */
+    window.gemFetchRdsPresetList = function gemFetchRdsPresetList(customerId, sessionId, existingToken) {
+      return gemFetchPersonalizationEditorList(
+        customerId,
+        sessionId,
+        existingToken,
+        "rds-preset/list",
+        "rds-preset/list"
+      );
+    };
+
+    function parseContactSourcesResponse(res, data) {
+      if (!res.ok) {
+        return { ok: false, reason: "api_error", status: res.status, data: data };
+      }
+      if (!data || typeof data !== "object" || Array.isArray(data)) {
+        return { ok: false, reason: "invalid_shape", data: data };
+      }
+      return { ok: true, sources: data };
+    }
+
+    function fetchContactSourcesFromPage(url, headers) {
+      console.log("[Gem][Auth] contact sources: retrying via page context", url);
+      return gemFetchGserviceFromPageContext(url, { method: "GET", headers: headers })
+        .then(function (pageRes) {
+          if (pageRes.error) {
+            return { ok: false, reason: "fetch_error", error: pageRes.error };
+          }
+          return parseContactSourcesResponse(
+            { ok: pageRes.ok, status: pageRes.status },
+            pageRes.data
+          );
+        })
+        .catch(function (err) {
+          return {
+            ok: false,
+            reason: "fetch_error",
+            error: err && err.message ? err.message : String(err),
+          };
+        });
+    }
+
+    function gemFetchPersonalizationEditorJson(
+      customerId,
+      sessionId,
+      existingToken,
+      resourcePath,
+      logLabel,
+      parseResponse
+    ) {
+      const cid = String(customerId || "").trim();
+      const sid = String(sessionId || "").trim();
+      const path = String(resourcePath || "").trim().replace(/^\/+/, "");
+      if (!cid || !sid || !path) {
+        return Promise.resolve({ ok: false, reason: "missing_customer_session_or_path" });
+      }
+
+      const bareExisting = String(existingToken || "").trim().replace(/^Bearer\s+/i, "");
+      const fetchToken =
+        bareExisting
+          ? Promise.resolve(bareExisting)
+          : window.gemFetchGserviceToken(sid, "personalization-editor");
+
+      return fetchToken.then(function (token) {
+        if (!token) {
+          return { ok: false, reason: "no_auth_token" };
+        }
+
+        const bareToken = String(token).trim().replace(/^Bearer\s+/i, "");
+        const url =
+          "https://personalization-editor.gservice.emarsys.net/customer/" +
+          encodeURIComponent(cid) +
+          "/" +
+          path;
+        const headers = {
+          accept: "application/json, text/plain, */*",
+          authorization: "Bearer " + bareToken,
+        };
+
+        console.log("[Gem][Auth]", logLabel || path, ": GET", url);
+
+        return fetch(url, {
+          method: "GET",
+          headers: headers,
+        })
+          .then(function (res) {
+            return res
+              .json()
+              .catch(function () {
+                return null;
+              })
+              .then(function (data) {
+                return parseResponse(res, data);
+              });
+          })
+          .catch(function (err) {
+            console.warn(
+              "[Gem][Auth]",
+              logLabel || path,
+              "content-script fetch failed:",
+              err && err.message ? err.message : String(err)
+            );
+            return fetchContactSourcesFromPage(url, headers);
+          });
+      });
+    }
+
+    /**
+     * Fetches predefined contact-field tokens grouped by category (general, personal, etc.).
+     *
+     * @param {string|number} customerId
+     * @param {string} sessionId
+     * @param {string} [existingToken] - Optional JWT already fetched for personalization-editor.
+     * @returns {Promise<{ok: boolean, sources?: object, reason?: string}>}
+     */
+    window.gemFetchContactSourceList = function gemFetchContactSourceList(
+      customerId,
+      sessionId,
+      existingToken
+    ) {
+      return gemFetchPersonalizationEditorJson(
+        customerId,
+        sessionId,
+        existingToken,
+        "sources/contact",
+        "sources/contact",
+        parseContactSourcesResponse
+      );
+    };
   } catch (_) {}
 })();

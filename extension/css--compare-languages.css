@@ -297,6 +297,7 @@
 .gem-compare-languages-column.gem-compare-languages-column--pinned {
     position: relative;
     z-index: 1;
+    box-shadow: var(--token-primary-default, #2563eb) 0px 0px 0 2px;
 }
 
 .gem-compare-languages-column {
@@ -311,10 +312,6 @@
     overflow: hidden;
     background: var(--token-box-default-background, #fff);
     box-shadow: rgba(0, 0, 0, 0.15) 0px 4px 10px 0px, rgba(0, 0, 0, 0.05) 0px 0px 0px 1px;
-}
-
-.gem-compare-languages-column.gem-compare-languages-column--active {
-    box-shadow: var(--token-primary-default, #2563eb) 0px 0px 0 2px;
 }
 
 .gem-compare-languages-column__header {

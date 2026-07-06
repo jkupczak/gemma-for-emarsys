@@ -235,16 +235,16 @@ function isMobilePreviewActiveForSync() {
   return true;
 }
 
-function syncGemFrameHandleForExpandedMode() {
+function syncGemFrameHandleForFocusLayout() {
   const handle = document.querySelector("#gem-frame-handle");
   if (!handle || !document.body) return;
-  const expanded = document.body.classList.contains("gem-expanded");
-  handle.style.left = expanded ? "-10px" : "-24px";
-  handle.style.width = expanded ? "10px" : "24px";
+  const focusLayout = document.body.classList.contains("gem-focus-layout");
+  handle.style.left = focusLayout ? "-10px" : "-24px";
+  handle.style.width = focusLayout ? "10px" : "24px";
 }
 
 function applyMobilePreviewStyles(containerEl, iframeEl) {
-  syncGemFrameHandleForExpandedMode();
+  syncGemFrameHandleForFocusLayout();
 
   const container = containerEl || document.querySelector(".gem-iframe-wrapper");
   const clone = iframeEl || document.querySelector(".iframe-duplicate");
@@ -290,14 +290,15 @@ function addResizeHandle(container, styleTarget, clone, originalIframe) {
 
   const handle = document.createElement("div");
   handle.id = "gem-frame-handle";
-  const expandedOnCreate = document.body?.classList.contains("gem-expanded");
+  handle.className = "gem-resize-handle";
+  const focusLayoutOnCreate = document.body?.classList.contains("gem-focus-layout");
   Object.assign(handle.style, {
     margin: "auto",
     position: "absolute",
     top: "0",
     bottom: "0",
-    left: expandedOnCreate ? "-10px" : "-24px",
-    width: expandedOnCreate ? "10px" : "24px",
+    left: focusLayoutOnCreate ? "-10px" : "-24px",
+    width: focusLayoutOnCreate ? "10px" : "24px",
     height: "100%",
     cursor: "col-resize"
   });
@@ -347,7 +348,7 @@ function addResizeHandle(container, styleTarget, clone, originalIframe) {
     if (!dragging) return;
     dragging = false;
     document.body.style.cursor = prevCursor;
-    handle.classList.remove("gem-frame-handle--active");
+    handle.classList.remove("gem-resize-handle--active");
 
     // Remove the overlay immediately
     const overlay = document.getElementById("gem-resize-overlay");
@@ -384,7 +385,7 @@ function addResizeHandle(container, styleTarget, clone, originalIframe) {
     startBaseWidth = mobilePreviewWidth;
     prevCursor = document.body.style.cursor;
     document.body.style.cursor = "col-resize";
-    handle.classList.add("gem-frame-handle--active");
+    handle.classList.add("gem-resize-handle--active");
 
     // Clear any existing size details timeout and remove existing elements
     if (sizeDetailsTimeout) {

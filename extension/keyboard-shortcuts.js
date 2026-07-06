@@ -693,8 +693,8 @@ function initializeKeyboardShortcuts() {
     // Check for CMD+S (Mac) or CTRL+S (Windows/Linux)
     const isSaveShortcut = (event.metaKey || event.ctrlKey) && event.key === 's';
 
-    // Check for CMD+SHIFT+F (Mac) or CTRL+SHIFT+F (Windows/Linux) - Expanded Mode Toggle
-    const isExpandedModeShortcut =
+    // Check for CMD+SHIFT+F (Mac) or CTRL+SHIFT+F (Windows/Linux) - Focus Layout toggle
+    const isFocusLayoutShortcut =
       (event.metaKey || event.ctrlKey) &&
       event.shiftKey &&
       !event.altKey &&
@@ -739,7 +739,7 @@ function initializeKeyboardShortcuts() {
 
     // In the Media DB iframe we only wire save, OK (Enter), and Desktop/Mobile (⌘D). Other Gem shortcuts stay inert.
     if (fromGemMediaDbIframe) {
-      if (isExpandedModeShortcut || isMobilePreviewShortcut || isLangPrevShortcut || isLangNextShortcut) {
+      if (isFocusLayoutShortcut || isMobilePreviewShortcut || isLangPrevShortcut || isLangNextShortcut) {
         return;
       }
     }
@@ -792,7 +792,7 @@ function initializeKeyboardShortcuts() {
 
       // Return false to ensure no further processing
       return false;
-    } else if (isExpandedModeShortcut) {
+    } else if (isFocusLayoutShortcut) {
       console.log("[Gem] Expanded mode toggle shortcut detected:", event.metaKey ? 'CMD+SHIFT+F' : 'CTRL+SHIFT+F');
 
       // Don't trigger while typing
@@ -804,7 +804,7 @@ function initializeKeyboardShortcuts() {
       event.stopPropagation();
       event.stopImmediatePropagation();
 
-      // Toggle expanded mode (same behavior as the expand icon)
+      // Toggle Focus Layout (same behavior as the expand icon)
       try {
         const rootDoc = (() => {
           try { return window.top && window.top.document ? window.top.document : document; } catch (_) { return document; }
@@ -812,20 +812,24 @@ function initializeKeyboardShortcuts() {
         const body = rootDoc && rootDoc.body;
         if (!body) return false;
 
-        const wasExpanded = body.classList.contains("gem-expanded");
-        body.classList.toggle("gem-expanded");
-        const isNowExpanded = body.classList.contains("gem-expanded");
-        console.log("[Gem] Expanded mode toggled:", wasExpanded, "->", isNowExpanded);
+        if (body.classList.contains("gem-expanded")) {
+          body.classList.remove("gem-expanded");
+        }
+
+        const wasFocusLayout = body.classList.contains("gem-focus-layout");
+        body.classList.toggle("gem-focus-layout");
+        const isNowFocusLayout = body.classList.contains("gem-focus-layout");
+        console.log("[Gem] Focus Layout toggled:", wasFocusLayout, "->", isNowFocusLayout);
 
         // Persist state (used by verticalnav-enhancer.js restore)
-        chrome.storage.sync.set({ fullscreenActive: isNowExpanded }, () => {
+        chrome.storage.sync.set({ fullscreenActive: isNowFocusLayout }, () => {
           if (chrome.runtime.lastError) {
-            console.error("[Gem] Error saving expanded mode state:", chrome.runtime.lastError);
+            console.error("[Gem] Error saving Focus Layout state:", chrome.runtime.lastError);
           }
         });
 
       } catch (error) {
-        console.error("[Gem] Error toggling expanded mode:", error);
+        console.error("[Gem] Error toggling Focus Layout:", error);
       }
 
       return false;

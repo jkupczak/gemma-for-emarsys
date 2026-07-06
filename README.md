@@ -54,7 +54,7 @@ e-panel--links.css / e-panels.css          # Panel styles
 ## Regression Harness
 
 - Run `node scripts/regression-harness.js` to execute lightweight source-level regression checks.
-- The harness validates key wiring/invariants (manifest injection order, expanded-mode settings wiring, event-driven waits) and runs `node --check` on edited extension scripts.
+- The harness validates key wiring/invariants (manifest injection order, Focus Layout settings wiring, event-driven waits) and runs `node --check` on edited extension scripts.
 
 ## Contributing
 

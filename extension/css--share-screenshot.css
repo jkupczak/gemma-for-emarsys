@@ -103,6 +103,7 @@
     background: rgba(0, 0, 0, 0.72);
     pointer-events: auto;
     cursor: default;
+    backdrop-filter: blur(4px);
 }
 
 iframe.gem-share-screenshot-iframe--staged,

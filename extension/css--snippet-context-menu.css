@@ -1,0 +1,232 @@
+#gem-snippet-context-menu {
+  background: color-mix(
+    in srgb,
+    var(--token-box-default-background) 92%,
+    transparent
+  );
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255 255 255 / 0.3);
+  border-radius: 8px;
+  box-shadow: var(--token-shadow-medium), 0 0 0 1px #272727;
+  color: var(--token-text-default);
+  display: none;
+  font-size: 13px;
+  max-height: 70vh;
+  min-width: 280px;
+  overflow: hidden;
+  position: fixed;
+  width: 300px;
+  z-index: 100000;
+}
+
+#gem-snippet-context-menu.gem-snippet-context-menu--open {
+  display: flex;
+  flex-direction: column;
+}
+
+.gem-snippet-ctx-section {
+  border-bottom: 1px solid var(--token-box-default-border);
+  padding: 5px 4px;
+}
+
+.gem-snippet-ctx-section:last-child {
+  border-bottom: 0;
+}
+
+.gem-snippet-ctx-section-title {
+  color: var(--token-font-muted, #667085);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 6px 12px 4px;
+  text-transform: uppercase;
+}
+
+.gem-snippet-ctx-item,
+.gem-snippet-ctx-clipboard-item {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  font: inherit;
+  gap: 8px;
+  border-radius: 6px;
+  padding: 0px 11px;
+  font-size: 14px;
+  text-align: left;
+  width: 100%;
+}
+
+.gem-snippet-ctx-item:hover,
+.gem-snippet-ctx-clipboard-item:hover,
+.gem-snippet-ctx-item.gem-snippet-ctx-item--focused,
+.gem-snippet-ctx-clipboard-item.gem-snippet-ctx-item--focused {
+  background: var(--token-highlight-default);
+  color: var(--token-button-highlight-text);
+}
+
+.gem-snippet-ctx-item[disabled] {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.gem-snippet-ctx-search-wrap {
+  padding: 8px 10px;
+}
+
+.gem-snippet-ctx-search {
+  background: var(--token-box-default-background);
+  border: 1px solid var(--token-input-default-border);
+  border-radius: 6px;
+  box-sizing: border-box;
+  color: var(--token-text-default);
+  font: inherit;
+  padding: 6px 10px;
+  width: 100%;
+}
+
+.gem-snippet-ctx-list {
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.gem-snippet-ctx-row {
+  align-items: center;
+  display: flex;
+  gap: 4px;
+  position: relative;
+}
+
+.gem-snippet-ctx-row .gem-snippet-ctx-item {
+  flex: 1;
+  min-width: 0;
+}
+
+.gem-snippet-ctx-row-name {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.gem-snippet-ctx-type-icon {
+  align-items: center;
+  display: flex;
+  flex-shrink: 0;
+}
+
+.gem-snippet-ctx-type-icon svg {
+  display: block;
+  height: 16px;
+  width: 16px;
+}
+
+.gem-snippet-ctx-type-icon svg path {
+  fill: var(--token-box-default-text);
+}
+
+.gem-snippet-ctx-row-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gem-snippet-ctx-pin {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  display: flex;
+  flex-shrink: 0;
+  justify-content: center;
+  margin-right: 6px;
+  opacity: 0;
+  padding: 4px;
+  transition: opacity 0.15s;
+}
+
+.gem-snippet-ctx-pin--active {
+  opacity: 1;
+}
+
+.gem-snippet-ctx-row:hover .gem-snippet-ctx-pin,
+.gem-snippet-ctx-pin:hover,
+.gem-snippet-ctx-pin:focus-visible {
+  opacity: 1;
+}
+
+.gem-snippet-ctx-pin svg {
+  display: block;
+  height: 18px;
+  width: 18px;
+}
+
+.gem-snippet-ctx-pin--active svg path {
+  fill: var(--token-label-highlight-background);
+}
+
+.gem-snippet-ctx-row--search .gem-snippet-ctx-pin {
+  opacity: 0;
+}
+
+.gem-snippet-ctx-row--search .gem-snippet-ctx-pin--active {
+  opacity: 1;
+}
+
+.gem-snippet-ctx-row--search:hover .gem-snippet-ctx-pin,
+.gem-snippet-ctx-row--search .gem-snippet-ctx-pin:hover,
+.gem-snippet-ctx-row--search .gem-snippet-ctx-pin:focus-visible {
+  opacity: 1;
+}
+
+.gem-snippet-ctx-row .gem-snippet-ctx-pin svg path {
+  fill: var(--token-box-default-text);
+}
+
+.gem-snippet-ctx-empty {
+  color: var(--token-font-muted, #667085);
+  font-size: 12px;
+  padding: 10px 12px 12px;
+}
+
+.gem-snippet-ctx-insert-as {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px 10px;
+}
+
+.gem-snippet-ctx-insert-as-label {
+  color: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.gem-snippet-ctx-insert-as-toggle {
+  display: flex;
+  flex: 1;
+  gap: 4px;
+}
+
+.gem-snippet-ctx-mode-btn {
+  background-color: var(--token-button-default-background);
+  border: 1px solid var(--token-button-default-border);
+  border-radius: 6px;
+  color: inherit;
+  cursor: pointer;
+  flex: 1;
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 8px;
+}
+
+.gem-snippet-ctx-mode-btn:hover,
+.gem-snippet-ctx-mode-btn--active {
+  background-color: var(--token-button-highlight-background);
+  border: 1px solid var(--token-button-highlight-border);
+  color: var(--token-button-highlight-text);
+}

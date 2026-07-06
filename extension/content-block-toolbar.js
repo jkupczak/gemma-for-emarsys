@@ -48,6 +48,9 @@ function initializeContentBlockToolbar() {
   // Handle double-clicks on ESL tokens in desktop preview iframe
   setupEslTokenDoubleClickHandler();
 
+  // Handle double-clicks on personalization tokens in desktop preview iframe
+  setupPersonalizationTokenDoubleClickHandler();
+
   // Handle Enter key presses in Image Properties dialog
   setupImagePropertiesEnterKeyHandler();
 
@@ -939,6 +942,35 @@ function convertEslToTokensForBlock(eBlockId) {
   });
 }
 
+function findTinyMCEEditorForElement(doc, el) {
+  try {
+    const win = doc && doc.defaultView;
+    const tm = win && (win.tinymce || win.tinyMCE);
+    if (!tm) return null;
+
+    if (el && Array.isArray(tm.editors)) {
+      for (const editor of tm.editors) {
+        if (!editor) continue;
+        try {
+          const target = editor.targetElm;
+          if (target && (target === el || target.contains(el) || el.contains(target))) {
+            return editor;
+          }
+          const body = editor.getBody && editor.getBody();
+          if (body && (body === el || body.contains(el) || el.contains(body))) {
+            return editor;
+          }
+        } catch (_) {}
+      }
+      return null;
+    }
+
+    return tm.activeEditor || (Array.isArray(tm.editors) ? tm.editors[0] : null) || null;
+  } catch (_) {
+    return null;
+  }
+}
+
 function markEmarsysDraftDirty(doc, editables = []) {
   // 1) Dispatch richer input-ish events from the edited nodes
   editables.forEach((el) => {
@@ -957,9 +989,7 @@ function markEmarsysDraftDirty(doc, editables = []) {
 
   // 2) If TinyMCE is present in the iframe, explicitly mark dirty + fire change
   try {
-    const win = doc.defaultView;
-    const tm = win && (win.tinymce || win.tinyMCE);
-    const editor = tm && (tm.activeEditor || (Array.isArray(tm.editors) ? tm.editors[0] : null));
+    const editor = findTinyMCEEditorForElement(doc, editables && editables[0]);
     if (editor) {
       if (typeof editor.setDirty === 'function') editor.setDirty(true);
       if (editor.undoManager && typeof editor.undoManager.add === 'function') editor.undoManager.add();
@@ -1051,6 +1081,38 @@ function nudgeEmarsysDirtyDetectionViaFocus(doc, editables = []) {
     }
   } catch (_) {}
 }
+
+function markEmarsysTextControlDirty(el) {
+  if (!el) return;
+  const doc = el.ownerDocument || document;
+  try {
+    el.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true, inputType: 'insertText', data: '' }));
+  } catch (_) {}
+  try {
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    el.dispatchEvent(new Event('keyup', { bubbles: true }));
+  } catch (_) {}
+  try {
+    const host = el.closest(
+      'cb-preheader, cb-personalizable-input-with-context, vce-codemirror, vce-html-editor, vce-code-editor'
+    );
+    if (host && host !== el) {
+      host.dispatchEvent(new Event('input', { bubbles: true }));
+      host.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  } catch (_) {}
+  try {
+    if (doc.body && doc.body !== el) {
+      doc.body.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  } catch (_) {}
+}
+
+window.gemFindTinyMCEEditorForElement = findTinyMCEEditorForElement;
+window.gemMarkEmarsysDraftDirty = markEmarsysDraftDirty;
+window.gemMarkEmarsysTextControlDirty = markEmarsysTextControlDirty;
+window.gemNudgeEmarsysDirtyDetectionViaFocus = nudgeEmarsysDirtyDetectionViaFocus;
 
 function setupEditableImageDoubleClickHandler() {
   console.log("[gem] Setting up editable image double-click handler");
@@ -1156,6 +1218,66 @@ function setupEslTokenDoubleClickHandler() {
   }
 
   // Watch for the desktop preview iframe to appear
+  window.gemDomWatchSubscribe(function (mutations) {
+    mutations.forEach(function (mutation) {
+      mutation.addedNodes.forEach(function (node) {
+        if (node.nodeType !== Node.ELEMENT_NODE) return;
+        const iframe =
+          (node.matches && node.matches(DESKTOP_IFRAME_SELECTOR) && node) ||
+          (node.querySelector && node.querySelector(DESKTOP_IFRAME_SELECTOR));
+        if (iframe) attachToIframe(iframe);
+      });
+    });
+  });
+
+  attachToIframe(document.querySelector(DESKTOP_IFRAME_SELECTOR));
+}
+
+function setupPersonalizationTokenDoubleClickHandler() {
+  console.log("[gem] Setting up personalization token double-click handler (desktop preview iframe)");
+
+  const DESKTOP_IFRAME_SELECTOR = 'iframe.e-contentblocks-preview__iframe-desktop';
+
+  function findPersonalizationToolbarButton() {
+    return (
+      document.querySelector('.mce-active[aria-label="Personalization"] button') ||
+      document.querySelector('[aria-label="Personalization"] button') ||
+      document.querySelector('.mce-i-personalization')?.closest('button')
+    );
+  }
+
+  function handlePersonalizationTokenDoubleClick(event) {
+    const target = event.target;
+    if (!target || !target.closest) return;
+
+    const tokenEl = target.closest('[e-token="personalization"]');
+    if (!tokenEl) return;
+
+    console.log("[gem] Double-click detected on personalization token:", tokenEl);
+
+    const personalizationBtn = findPersonalizationToolbarButton();
+    if (personalizationBtn) {
+      console.log("[gem] Triggering click on Personalization toolbar button");
+      personalizationBtn.click();
+    } else {
+      console.log("[gem] Personalization toolbar button not found in DOM");
+    }
+  }
+
+  function attachToIframe(iframe) {
+    if (!iframe) return;
+    try {
+      const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+      if (!iframeDoc) return;
+      if (iframeDoc._gemPersTokenDblClickAttached) return;
+      iframeDoc._gemPersTokenDblClickAttached = true;
+      iframeDoc.addEventListener('dblclick', handlePersonalizationTokenDoubleClick, true);
+      console.log("[gem] Personalization token double-click handler attached to desktop iframe");
+    } catch (error) {
+      console.warn("[gem] Could not attach personalization token handler to desktop iframe:", error);
+    }
+  }
+
   window.gemDomWatchSubscribe(function (mutations) {
     mutations.forEach(function (mutation) {
       mutation.addedNodes.forEach(function (node) {

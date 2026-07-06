@@ -20,6 +20,7 @@ console.log("[gem] storage-measurement.js loaded");
         key === "sm" ||
         key === "s_meta" ||
         key === "gemSnippets" ||
+        key === "gemPinnedPersTokens" ||
         /^s\d+$/.test(key),
     },
     {
@@ -100,7 +101,10 @@ console.log("[gem] storage-measurement.js loaded");
     {
       name: "Snippets (UI state)",
       color: "var(--token-topaz-400)",
-      match: (key) => key === "gemSnippetCategoryCollapseState",
+      match: (key) =>
+        key === "gemSnippetCategoryCollapseState" ||
+        key === "gemSnippetContextRecent" ||
+        key === "gemPersTokenRecentCache",
     },
     {
       name: "Preflight",

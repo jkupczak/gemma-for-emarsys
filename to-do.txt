@@ -8,6 +8,13 @@
 |                                                                                |
  --------------------------------------------------------------------------------
 
+- only apply the box-shadow to a compare iframe when its pinned. not when its simply the active email
+
+- Let users toggle an overlay grid when using compare lang/ver to better visualize differences
+- CMD+SHIFT+P to open a command pallete like Parcel
+
+- The languages tab doesn't let you clicka  language to edit that email. fix it.
+
 - CMD+S should save on the General Settings page.
 
 - Generate a screenshot of the email

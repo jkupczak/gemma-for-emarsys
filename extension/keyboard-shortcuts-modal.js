@@ -48,7 +48,7 @@
           ✕
         </button>
       </div>
-      <div class="gem-welcome-modal__body gem-scrollable" style="max-height: 60vh; overflow-y: auto;">
+      <div class="gem-welcome-modal__body gem-scrollable" style="max-height: 70vh; overflow-y: auto;">
         <p style="margin: 0 0 20px 0; color: var(--token-font-muted, #666); font-size: 13px; line-height: 1.45;">
           Shortcuts work in the email editor and most Gemma panels. Opening Recent Campaigns, Notes, or Settings with a shortcut will close the other panel if it is already open.
         </p>
@@ -57,7 +57,7 @@
           [`${mod}+G`, 'Open or close Gemma Settings'],
           [`${mod}+/`, 'Open or close Recent Campaigns'],
           [`${mod}+;`, 'Open or close Notes'],
-          [`${mod}+Shift+F`, 'Toggle between Standard Editor and Focus Editor'],
+          [`${mod}+Shift+F`, 'Toggle between Standard Layout and Focus Layout'],
           [`${mod}+Shift+M`, 'Toggle Mobile Sidepanel'],
           [`${mod}+Shift+,`, 'Previous language version (when language selector is available)'],
           [`${mod}+Shift+.`, 'Next language version (when language selector is available)'],
@@ -66,7 +66,9 @@
 
         ${section('Email Editor', [
           [`${mod}+S`, 'Save the current email'],
-          [`${mod}+Shift+V`, 'Paste plain text (bypass Rich Paste formatting)']
+          [`${mod}+Shift+V`, 'Paste plain text (bypass Rich Paste formatting)'],
+          ['Right-click', 'Open snippet menu in editable fields (campaign editor)'],
+          [`${mod} + right-click`, 'Open the browser context menu instead of the snippet menu']
         ])}
 
         ${section('Image Properties Dialog', [
@@ -78,7 +80,8 @@
         ])}
 
         ${section('Block &amp; ESL Editing', [
-          ['Double-click', 'An ESL token in the email preview to open the ESL snippet editor']
+          ['Double-click', 'An ESL token in the email preview to open the ESL snippet editor'],
+          ['Double-click', 'A personalization token in the email preview to open the Personalization editor']
         ])}
 
         ${section('Email Campaign List', [

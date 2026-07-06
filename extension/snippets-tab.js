@@ -183,6 +183,1835 @@ function generateSnippetHTML(name, content) {
   return `<span e-token="cust_esl" token-template="${encodedTokenTemplate}" token-content="${encodedTokenContent}" token-meta="${encodedTokenMeta}" class="cbNonEditable" contenteditable="false">${name}</span>`;
 }
 
+function encodeBase64Utf8(str) {
+  try {
+    return btoa(unescape(encodeURIComponent(str)));
+  } catch (_) {
+    try {
+      const bytes = new TextEncoder().encode(String(str));
+      let binary = '';
+      bytes.forEach((byte) => {
+        binary += String.fromCharCode(byte);
+      });
+      return btoa(binary);
+    } catch (err) {
+      console.warn('[Gem] Gemma CodeMirror token base64 encode failed:', err);
+      return null;
+    }
+  }
+}
+
+function buildGemmaCodeMirrorToken(name, content) {
+  const tokenName = String(name || '').trim();
+  const script = String(content ?? '');
+  if (!tokenName || !script) return null;
+
+  const meta = {
+    tokenName,
+    type: 'cust_esl',
+    token: {
+      name: tokenName,
+      type: 'cust_esl',
+      content: { script },
+      template: '<%= script %>',
+      meta: {},
+    },
+    preview: script,
+  };
+
+  const metaB64 = encodeBase64Utf8(JSON.stringify(meta));
+  if (!metaB64) return null;
+
+  return `{# pers-token:1 ${metaB64} #}${script}{# pers-token:1 #}`;
+}
+
+const GEM_PERS_TOKEN_RE = /\{# pers-token:1 ([^#]+) #}([\s\S]*?)\{# pers-token:1 #\}/g;
+const GEM_CM_TOKEN_BLOCK_RE =
+  /\{# (?:pers-token:1|cond-token:1) ([^#]+) #\}([\s\S]*?)\{# (?:pers-token:1|cond-token:1) #\}/g;
+
+function parseCodeMirrorHtmlSegments(html) {
+  const source = String(html ?? '');
+  const segments = [];
+  const re = new RegExp(GEM_CM_TOKEN_BLOCK_RE.source, 'g');
+  let last = 0;
+  let match;
+  while ((match = re.exec(source)) !== null) {
+    if (match.index > last) {
+      segments.push({ type: 'text', text: source.slice(last, match.index) });
+    }
+    segments.push({ type: 'token', text: match[0], preview: match[2] });
+    last = match.index + match[0].length;
+  }
+  if (last < source.length) {
+    segments.push({ type: 'text', text: source.slice(last) });
+  }
+  return segments;
+}
+
+function createDocHtmlIndexMapper(html, cmValue) {
+  const htmlSource = String(html ?? '');
+  const docSource = String(cmValue ?? '');
+
+  if (!htmlSource || htmlSource === docSource) {
+    const clamp = (index) => Math.max(0, Math.min(Number(index) || 0, htmlSource.length));
+    return {
+      docToHtml: clamp,
+      htmlToDoc: clamp,
+      docLength: htmlSource.length,
+      htmlLength: htmlSource.length,
+    };
+  }
+
+  const segments = parseCodeMirrorHtmlSegments(htmlSource);
+  const plainDocChars = segments
+    .filter((segment) => segment.type === 'text')
+    .reduce((sum, segment) => sum + segment.text.length, 0);
+  const tokenCount = segments.filter((segment) => segment.type === 'token').length;
+  const remainingDocChars = Math.max(0, docSource.length - plainDocChars);
+  let tokenDocLen = 1;
+  if (tokenCount > 0) {
+    const even = remainingDocChars / tokenCount;
+    if (Number.isFinite(even) && even >= 1) {
+      tokenDocLen = Math.round(even);
+    }
+  }
+
+  const docEnds = [0];
+  const htmlEnds = [0];
+  let docPos = 0;
+  let htmlPos = 0;
+
+  segments.forEach((segment) => {
+    if (segment.type === 'text') {
+      docPos += segment.text.length;
+      htmlPos += segment.text.length;
+    } else {
+      docPos += tokenDocLen;
+      htmlPos += segment.text.length;
+    }
+    docEnds.push(docPos);
+    htmlEnds.push(htmlPos);
+  });
+
+  function docToHtml(index) {
+    const target = Math.max(0, Math.min(Number(index) || 0, docPos));
+    for (let i = 0; i < segments.length; i += 1) {
+      const segDocEnd = docEnds[i + 1];
+      if (target <= segDocEnd) {
+        const segDocStart = docEnds[i];
+        const segHtmlStart = htmlEnds[i];
+        const segment = segments[i];
+        if (segment.type === 'text') {
+          return segHtmlStart + (target - segDocStart);
+        }
+        return htmlEnds[i + 1];
+      }
+    }
+    return htmlPos;
+  }
+
+  function htmlToDoc(index) {
+    const target = Math.max(0, Math.min(Number(index) || 0, htmlPos));
+    for (let i = 0; i < segments.length; i += 1) {
+      const segHtmlEnd = htmlEnds[i + 1];
+      if (target <= segHtmlEnd) {
+        const segHtmlStart = htmlEnds[i];
+        const segDocStart = docEnds[i];
+        const segment = segments[i];
+        if (segment.type === 'text') {
+          return segDocStart + (target - segHtmlStart);
+        }
+        return docEnds[i + 1];
+      }
+    }
+    return docPos;
+  }
+
+  return { docToHtml, htmlToDoc, docLength: docPos, htmlLength: htmlPos, tokenDocLen };
+}
+
+function decodePersTokenMetaB64(encoded) {
+  const raw = String(encoded || '').trim();
+  if (!raw) return null;
+  try {
+    return JSON.parse(decodeURIComponent(escape(atob(raw))));
+  } catch (_) {
+    try {
+      return JSON.parse(atob(raw));
+    } catch (err) {
+      return null;
+    }
+  }
+}
+
+function parsePersTokensInHtml(html) {
+  const source = String(html ?? '');
+  const tokens = [];
+  const re = new RegExp(GEM_PERS_TOKEN_RE.source, 'g');
+  let match;
+  while ((match = re.exec(source)) !== null) {
+    const encoded = match[1].trim();
+    tokens.push({
+      start: match.index,
+      end: match.index + match[0].length,
+      encoded,
+      preview: match[2],
+      meta: decodePersTokenMetaB64(encoded),
+      full: match[0],
+    });
+  }
+  return tokens;
+}
+
+function findPersTokenAtIndex(html, index) {
+  const idx = Number(index);
+  if (!Number.isFinite(idx)) return null;
+  return (
+    parsePersTokensInHtml(html).find((token) => idx >= token.start && idx < token.end) || null
+  );
+}
+
+function findPersTokenByRange(html, start, end) {
+  const s = Number(start);
+  const e = Number(end);
+  if (!Number.isFinite(s) || !Number.isFinite(e)) return null;
+  return (
+    parsePersTokensInHtml(html).find((token) => token.start === s && token.end === e) ||
+    parsePersTokensInHtml(html).find((token) => token.start === s) ||
+    null
+  );
+}
+
+function replacePersonalizableCodeMirrorTokenRange(vceCm, cmEl, start, end, wrapped, caretAfter) {
+  if (!vceCm || !wrapped) return false;
+  const cmInstance = resolveCodeMirrorInstance(cmEl, vceCm, null);
+  const currentHtml = getCodeMirrorHtmlValue(vceCm, cmInstance);
+  const safeStart = Math.max(0, Math.min(start, currentHtml.length));
+  const safeEnd = Math.max(safeStart, Math.min(end, currentHtml.length));
+  const newHtml = currentHtml.slice(0, safeStart) + wrapped + currentHtml.slice(safeEnd);
+  const caret =
+    typeof caretAfter === 'number' ? caretAfter : safeStart + String(wrapped).length;
+  return refreshPersonalizableCodeMirrorFromHtml(vceCm, cmEl, cmInstance, newHtml, caret);
+}
+
+let dropEventCounter = 0;
+let insertionCounter = 0;
+
+function rangeFromDocumentPoint(doc, x, y) {
+  if (!doc || typeof x !== 'number' || typeof y !== 'number') return null;
+  try {
+    if (typeof doc.caretRangeFromPoint === 'function') {
+      return doc.caretRangeFromPoint(x, y);
+    }
+    if (typeof doc.caretPositionFromPoint === 'function') {
+      const pos = doc.caretPositionFromPoint(x, y);
+      if (pos && pos.offsetNode) {
+        const range = doc.createRange();
+        range.setStart(pos.offsetNode, pos.offset);
+        range.collapse(true);
+        return range;
+      }
+    }
+  } catch (_) {}
+  return null;
+}
+
+function isRangeInsideEditable(range, element) {
+  if (!range || !element) return false;
+  try {
+    const node = range.startContainer;
+    const el = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+    return !!(el && element.contains(el));
+  } catch (_) {
+    return false;
+  }
+}
+
+function isNonCollapsedRange(range) {
+  if (!range) return false;
+  try {
+    return !range.collapsed;
+  } catch (_) {
+    return false;
+  }
+}
+
+function resolveContentEditableInsertRange(ctx) {
+  const doc = ctx.doc;
+  const element = ctx.element;
+  if (!doc || !element) return null;
+
+  let range = null;
+
+  if (ctx.savedRange && isNonCollapsedRange(ctx.savedRange) && isRangeInsideEditable(ctx.savedRange, element)) {
+    range = ctx.savedRange;
+  }
+
+  if (!range && ctx.caretPoint) {
+    range = rangeFromDocumentPoint(doc, ctx.caretPoint.x, ctx.caretPoint.y);
+    if (range && !isRangeInsideEditable(range, element)) {
+      range = null;
+    }
+  }
+
+  if (!range && ctx.savedRange && isRangeInsideEditable(ctx.savedRange, element)) {
+    range = ctx.savedRange;
+  }
+
+  if (!range) {
+    try {
+      range = doc.createRange();
+      range.selectNodeContents(element);
+      range.collapse(false);
+    } catch (_) {
+      range = null;
+    }
+  }
+
+  return range;
+}
+
+function findTinyMCEEditorForCtx(ctx) {
+  const doc = ctx && ctx.doc;
+  const element = ctx && ctx.element;
+  if (!doc || !element) return null;
+
+  if (ctx.tinymceEditorId && typeof window.gemFindTinyMCEEditorForElement === 'function') {
+    try {
+      const tm = doc.defaultView && (doc.defaultView.tinymce || doc.defaultView.tinyMCE);
+      if (tm && Array.isArray(tm.editors)) {
+        const byId = tm.editors.find((ed) => ed && ed.id === ctx.tinymceEditorId);
+        if (byId) return byId;
+      }
+    } catch (_) {}
+  }
+
+  if (typeof window.gemFindTinyMCEEditorForElement === 'function') {
+    return window.gemFindTinyMCEEditorForElement(doc, element);
+  }
+  return null;
+}
+
+function applyContentEditableInsertRange(editor, element, range) {
+  if (!editor || !range || !isRangeInsideEditable(range, element)) {
+    return range;
+  }
+
+  const editorDoc = editor.getDoc && editor.getDoc();
+  try {
+    editor.focus();
+  } catch (_) {}
+
+  if (editor.selection) {
+    try {
+      if (typeof editor.selection.setRng === 'function') {
+        editor.selection.setRng(range);
+      }
+      if (typeof editor.selection.getRng === 'function') {
+        const synced = editor.selection.getRng();
+        if (synced) {
+          range = synced.cloneRange ? synced.cloneRange() : synced;
+        }
+      }
+    } catch (_) {}
+  }
+
+  if (editorDoc) {
+    try {
+      const sel = editorDoc.getSelection && editorDoc.getSelection();
+      if (sel) {
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+    } catch (_) {}
+  }
+
+  return range;
+}
+
+function restoreContentEditableCaret(ctx) {
+  const doc = ctx && ctx.doc;
+  const element = ctx && ctx.element;
+  if (!doc || !element) return { editor: null, range: null };
+
+  const editor = findTinyMCEEditorForCtx(ctx);
+  let range = null;
+
+  if (ctx.savedRange && isNonCollapsedRange(ctx.savedRange) && isRangeInsideEditable(ctx.savedRange, element)) {
+    range = ctx.savedRange;
+  }
+
+  if (!range && ctx.caretPoint) {
+    range = rangeFromDocumentPoint(doc, ctx.caretPoint.x, ctx.caretPoint.y);
+    if (range && !isRangeInsideEditable(range, element)) {
+      range = null;
+    }
+  }
+
+  if (!range && ctx.savedRange && isRangeInsideEditable(ctx.savedRange, element)) {
+    range = ctx.savedRange;
+  }
+
+  if (editor) {
+    if (!range && ctx.tinymceBookmark && editor.selection && typeof editor.selection.moveToBookmark === 'function') {
+      try {
+        editor.focus();
+        editor.selection.moveToBookmark(ctx.tinymceBookmark);
+        if (typeof editor.selection.getRng === 'function') {
+          const tmRng = editor.selection.getRng();
+          if (tmRng && isRangeInsideEditable(tmRng, element)) {
+            range = tmRng.cloneRange ? tmRng.cloneRange() : tmRng;
+          }
+        }
+      } catch (_) {
+        range = null;
+      }
+    }
+
+    if (range) {
+      range = applyContentEditableInsertRange(editor, element, range);
+    } else {
+      range = resolveContentEditableInsertRange(ctx);
+      if (range) {
+        range = applyContentEditableInsertRange(editor, element, range);
+      }
+    }
+
+    return { editor, range };
+  }
+
+  if (!range) {
+    range = resolveContentEditableInsertRange(ctx);
+  }
+
+  restoreContentEditableInsertContext(doc, element, range);
+  return { editor: null, range };
+}
+
+function restoreContentEditableInsertContext(doc, element, savedRange) {
+  if (!doc || !element) return;
+  try {
+    element.focus({ preventScroll: true });
+  } catch (_) {
+    try { element.focus(); } catch (_) {}
+  }
+  if (!savedRange) return;
+  try {
+    const sel = doc.getSelection && doc.getSelection();
+    if (sel) {
+      sel.removeAllRanges();
+      sel.addRange(savedRange);
+    }
+  } catch (_) {}
+}
+
+const GEM_SNIPPET_MSG_EXT = 'gem-snippet-extension';
+const GEM_SNIPPET_MSG_BRIDGE = 'gem-snippet-iframe-bridge';
+
+function postMessageToSnippetBridge(contentWindow, type, payload = {}, timeoutMs = 600) {
+  return new Promise((resolve) => {
+    if (!contentWindow) {
+      resolve(null);
+      return;
+    }
+
+    const requestId = `gem-snippet-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    let settled = false;
+
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      window.removeEventListener('message', onMessage);
+      resolve(value);
+    };
+
+    const onMessage = (event) => {
+      const data = event.data;
+      if (!data || data.source !== GEM_SNIPPET_MSG_BRIDGE || data.requestId !== requestId) {
+        return;
+      }
+      finish(data);
+    };
+
+    window.addEventListener('message', onMessage);
+
+    try {
+      contentWindow.postMessage(
+        {
+          source: GEM_SNIPPET_MSG_EXT,
+          type,
+          requestId,
+          ...payload,
+        },
+        '*'
+      );
+    } catch (_) {
+      finish(null);
+      return;
+    }
+
+    setTimeout(() => finish(null), timeoutMs);
+  });
+}
+
+function getNodePathInDoc(node, doc) {
+  const path = [];
+  let current = node;
+  while (current && current !== doc) {
+    const parent = current.parentNode;
+    if (!parent) break;
+    path.unshift(Array.prototype.indexOf.call(parent.childNodes, current));
+    current = parent;
+  }
+  return path;
+}
+
+function serializeRangeForBridge(range, doc) {
+  if (!range || !doc) return null;
+  try {
+    return {
+      startPath: getNodePathInDoc(range.startContainer, doc),
+      startOffset: range.startOffset,
+      endPath: getNodePathInDoc(range.endContainer, doc),
+      endOffset: range.endOffset,
+    };
+  } catch (_) {
+    return null;
+  }
+}
+
+async function tryInsertViaIframeBridge(ctx, html, timeoutMs = 600) {
+  const doc = ctx && ctx.doc;
+  const element = ctx && ctx.element;
+  if (!doc || !element || doc.defaultView === window) return false;
+
+  const contentWindow = doc.defaultView;
+  const payload = {
+    editorId: ctx.tinymceEditorId || null,
+    elementId: element.id || null,
+    html,
+    caret: ctx.bridgeCaret || null,
+  };
+
+  const caretResponse = await postMessageToSnippetBridge(
+    contentWindow,
+    'get-caret',
+    {
+      editorId: payload.editorId,
+      elementId: payload.elementId,
+    },
+    300
+  );
+  if (caretResponse && caretResponse.ok && caretResponse.caret) {
+    payload.caret = caretResponse.caret;
+  }
+
+  if (
+    ctx.savedRange &&
+    isNonCollapsedRange(ctx.savedRange) &&
+    isRangeInsideEditable(ctx.savedRange, element)
+  ) {
+    payload.selectionRange = serializeRangeForBridge(ctx.savedRange, doc);
+  } else if (ctx.caretPoint) {
+    payload.point = ctx.caretPoint;
+  }
+
+  const response = await postMessageToSnippetBridge(contentWindow, 'insert', payload, timeoutMs);
+
+  return !!(response && response.ok);
+}
+
+async function insertHtmlIntoContentEditable(ctx, html, options = {}) {
+  const doc = ctx && ctx.doc;
+  const element = ctx && ctx.element;
+  if (!doc || !element) return false;
+
+  const bridgeTimeoutMs = options.bridgeTimeoutMs || 2500;
+  const isIframeDoc = doc.defaultView && doc.defaultView !== window;
+  let insertedViaTinyMCE = false;
+
+  if (isIframeDoc) {
+    insertedViaTinyMCE = await tryInsertViaIframeBridge(ctx, html, bridgeTimeoutMs);
+  }
+
+  if (!insertedViaTinyMCE) {
+    let { range } = restoreContentEditableCaret(ctx);
+    if (!range) {
+      range = resolveContentEditableInsertRange(ctx);
+    }
+    if (!range) return false;
+
+    insertedViaTinyMCE = tryInsertContentEditableViaTinyMCE(doc, element, html, ctx);
+    if (!insertedViaTinyMCE) {
+      insertSnippetAtCaret(element, html, doc, null, null, range);
+    }
+  }
+
+  if (!insertedViaTinyMCE) {
+    notifyEmarsysAfterContentEditableInsert(doc, element, { nudgeFocus: true });
+  }
+  return true;
+}
+
+function tryInsertContentEditableViaTinyMCE(doc, element, html, ctx) {
+  const { editor, range } = restoreContentEditableCaret(ctx);
+  if (!editor) return false;
+
+  const canInsert =
+    typeof editor.execCommand === 'function' ||
+    typeof editor.insertContent === 'function';
+  if (!canInsert) return false;
+
+  try {
+    if (range) {
+      applyContentEditableInsertRange(editor, element, range);
+    }
+
+    const insert = () => {
+      if (typeof editor.execCommand === 'function') {
+        editor.execCommand('mceInsertContent', false, html);
+      } else {
+        editor.insertContent(html);
+      }
+      if (typeof editor.nodeChanged === 'function') {
+        editor.nodeChanged();
+      }
+    };
+
+    if (editor.undoManager && typeof editor.undoManager.transact === 'function') {
+      editor.undoManager.transact(insert);
+    } else {
+      insert();
+      if (editor.undoManager && typeof editor.undoManager.add === 'function') {
+        editor.undoManager.add();
+      }
+    }
+    if (typeof editor.setDirty === 'function') editor.setDirty(true);
+    if (typeof editor.fire === 'function') editor.fire('change');
+    return true;
+  } catch (e) {
+    console.warn('[Gem] TinyMCE insert failed, falling back to DOM insert:', e);
+    return false;
+  }
+}
+
+function notifyEmarsysAfterContentEditableInsert(doc, element, { nudgeFocus = false } = {}) {
+  if (!doc || !element) return;
+  if (typeof window.gemMarkEmarsysDraftDirty === 'function') {
+    window.gemMarkEmarsysDraftDirty(doc, [element]);
+  } else {
+    try {
+      element.dispatchEvent(new Event('input', { bubbles: true }));
+      element.dispatchEvent(new Event('change', { bubbles: true }));
+    } catch (_) {}
+  }
+  if (nudgeFocus && typeof window.gemNudgeEmarsysDirtyDetectionViaFocus === 'function') {
+    window.gemNudgeEmarsysDirtyDetectionViaFocus(doc, [element]);
+  }
+}
+
+function insertSnippetAtCaret(element, snippetHTML, doc, dropId = null, dropEvent = null, savedRange = null) {
+  insertionCounter++;
+  const insertionId = `insert-${insertionCounter}-${Date.now()}`;
+
+  console.log(`[Gem] INSERT #${insertionCounter} (${insertionId}): insertSnippetAtCaret called for element ${element.id || 'unknown'}`);
+  console.log(`[Gem] INSERT #${insertionCounter}: From drop: ${dropId || 'unknown'}`);
+  try {
+    if (!doc || typeof doc.getSelection !== 'function') {
+      console.warn('[Gem] INSERT #' + insertionCounter + ': Document getSelection not available, using fallback');
+    }
+
+    const selection = doc.getSelection();
+    let range = null;
+
+    if (savedRange) {
+      range = savedRange;
+    } else if (dropEvent && typeof dropEvent.clientX === 'number' && typeof dropEvent.clientY === 'number') {
+      if (typeof doc.caretRangeFromPoint === 'function') {
+        range = doc.caretRangeFromPoint(dropEvent.clientX, dropEvent.clientY);
+      } else if (typeof doc.caretPositionFromPoint === 'function') {
+        const pos = doc.caretPositionFromPoint(dropEvent.clientX, dropEvent.clientY);
+        if (pos && pos.offsetNode) {
+          range = doc.createRange();
+          range.setStart(pos.offsetNode, pos.offset);
+          range.collapse(true);
+        }
+      }
+    }
+
+    if (!range && selection && typeof selection.rangeCount === 'number' && selection.rangeCount > 0) {
+      try {
+        const candidate = selection.getRangeAt(0);
+        const container = candidate.commonAncestorContainer;
+        const containerEl = container.nodeType === Node.ELEMENT_NODE ? container : container.parentElement;
+        if (containerEl && element.contains(containerEl)) {
+          range = candidate;
+        }
+      } catch (e) {
+        console.warn('[Gem] Error accessing selection range:', e);
+      }
+    }
+
+    if (!range) {
+      range = doc.createRange();
+      range.selectNodeContents(element);
+      range.collapse(false);
+    }
+
+    const tempDiv = doc.createElement('div');
+    tempDiv.innerHTML = snippetHTML;
+
+    const fragment = doc.createDocumentFragment();
+    const nodes = Array.from(tempDiv.childNodes).filter((n) => {
+      return !(n.nodeType === Node.ELEMENT_NODE && n.tagName === 'META');
+    });
+    nodes.forEach((n) => fragment.appendChild(n));
+    const lastInserted = fragment.lastChild;
+
+    range.deleteContents();
+    range.insertNode(fragment);
+
+    if (selection) {
+      if (lastInserted && lastInserted.parentNode) {
+        range.setStartAfter(lastInserted);
+        range.setEndAfter(lastInserted);
+      } else {
+        range.selectNodeContents(element);
+        range.collapse(false);
+      }
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+  } catch (error) {
+    console.log(`[Gem] INSERT #${insertionCounter} (${insertionId}): Error inserting snippet:`, error?.message || error);
+  }
+}
+
+function insertPlainTextAtSavedRange(doc, range, text, selection) {
+  if (!doc || !range) return;
+  try {
+    range.deleteContents();
+    const textNode = doc.createTextNode(String(text ?? ''));
+    range.insertNode(textNode);
+    if (selection) {
+      range.setStartAfter(textNode);
+      range.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+  } catch (e) {
+    console.warn('[Gem] insertPlainTextAtSavedRange failed:', e);
+  }
+}
+
+function dispatchTextControlChange(el) {
+  if (!el) return;
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  el.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+function restoreTextControlInsertContext(el, selectionStart, selectionEnd) {
+  if (!el) return;
+  try {
+    el.focus({ preventScroll: true });
+  } catch (_) {
+    try { el.focus(); } catch (_) {}
+  }
+  try {
+    const start = typeof selectionStart === 'number' ? selectionStart : el.selectionStart;
+    const end = typeof selectionEnd === 'number' ? selectionEnd : el.selectionEnd;
+    if (typeof start === 'number' && typeof end === 'number' && el.setSelectionRange) {
+      el.setSelectionRange(start, end);
+    }
+  } catch (_) {}
+}
+
+function tryInsertIntoTextControlViaExecCommand(el, text, selectionStart, selectionEnd) {
+  if (!el) return false;
+  const doc = el.ownerDocument || document;
+  restoreTextControlInsertContext(el, selectionStart, selectionEnd);
+  const insert = String(text ?? '');
+  try {
+    if (typeof doc.execCommand === 'function') {
+      const ok = doc.execCommand('insertText', false, insert);
+      if (ok) return true;
+    }
+  } catch (_) {}
+  return false;
+}
+
+function notifyEmarsysAfterTextControlInsert(el, { nudgeFocus = false } = {}) {
+  if (!el) return;
+  const doc = el.ownerDocument || document;
+  if (typeof window.gemMarkEmarsysTextControlDirty === 'function') {
+    window.gemMarkEmarsysTextControlDirty(el);
+  } else if (typeof window.gemMarkEmarsysDraftDirty === 'function') {
+    window.gemMarkEmarsysDraftDirty(doc, [el]);
+  } else {
+    dispatchTextControlChange(el);
+  }
+  if (nudgeFocus && typeof window.gemNudgeEmarsysDirtyDetectionViaFocus === 'function') {
+    window.gemNudgeEmarsysDirtyDetectionViaFocus(doc, [el]);
+  }
+}
+
+function restoreCodeMirrorInsertContext(ctx) {
+  if (!ctx) return;
+  const cmEl = ctx.cmEl;
+  const vceCm = cmEl ? cmEl.closest('vce-codemirror') : null;
+  const cmInstance = resolveCodeMirrorInstance(cmEl, vceCm, ctx);
+  const { cmFrom, cmTo, selectionStart, selectionEnd } = ctx;
+  if (cmInstance) {
+    try {
+      cmInstance.focus && cmInstance.focus();
+    } catch (_) {}
+    try {
+      const from = normalizeCodeMirrorPos(cmFrom);
+      const to = normalizeCodeMirrorPos(cmTo) || from;
+      if (from && to && typeof cmInstance.setSelection === 'function') {
+        cmInstance.setSelection(from, to);
+      }
+    } catch (_) {}
+    return;
+  }
+  const textarea = cmEl && cmEl.querySelector('textarea');
+  if (textarea) {
+    restoreTextControlInsertContext(textarea, selectionStart, selectionEnd);
+  }
+}
+
+function insertIntoTextControl(el, text, selectionStart, selectionEnd) {
+  if (!el) return false;
+  const start = typeof selectionStart === 'number' ? selectionStart : el.selectionStart;
+  const end = typeof selectionEnd === 'number' ? selectionEnd : el.selectionEnd;
+  if (tryInsertIntoTextControlViaExecCommand(el, text, start, end)) {
+    return true;
+  }
+
+  const value = String(el.value ?? '');
+  const insert = String(text ?? '');
+  restoreTextControlInsertContext(el, start, end);
+  el.value = value.slice(0, start) + insert + value.slice(end);
+  const pos = start + insert.length;
+  try {
+    el.selectionStart = pos;
+    el.selectionEnd = pos;
+  } catch (_) {}
+  notifyEmarsysAfterTextControlInsert(el, { nudgeFocus: true });
+  return true;
+}
+
+function syncCodeMirrorHostAttributes(cmEl, text) {
+  const vceCm = cmEl ? cmEl.closest('vce-codemirror') : null;
+  if (vceCm) {
+    try {
+      vceCm.setAttribute('html', text);
+    } catch (_) {}
+  }
+  const htmlEditor = vceCm ? vceCm.closest('vce-html-editor') : null;
+  if (htmlEditor) {
+    try {
+      htmlEditor.setAttribute('html', text);
+    } catch (_) {}
+  }
+}
+
+function getCodeMirrorHtmlValue(vceCm, cmInstance) {
+  if (vceCm) {
+    const attrHtml = vceCm.getAttribute('html');
+    if (attrHtml != null) return attrHtml;
+  }
+  try {
+    return typeof cmInstance?.getValue === 'function' ? cmInstance.getValue() : '';
+  } catch (_) {
+    return '';
+  }
+}
+
+function resolveCodeMirrorInstanceFromAngular(vceCm, cmEl) {
+  try {
+    const ngApi = typeof ng !== 'undefined' ? ng : null;
+    if (!ngApi || typeof ngApi.getComponent !== 'function') return null;
+
+    const targets = [
+      vceCm,
+      vceCm?.closest?.('vce-html-editor'),
+      vceCm?.closest?.('vce-code-editor'),
+      cmEl,
+    ].filter(Boolean);
+
+    for (const target of targets) {
+      const comp = ngApi.getComponent(target);
+      if (!comp) continue;
+      const candidates = [
+        comp.codeMirror,
+        comp.codemirror,
+        comp.CodeMirror,
+        comp.editor,
+        comp._editor,
+        comp._codemirror,
+        comp.cm,
+      ];
+      for (const candidate of candidates) {
+        if (candidate && typeof candidate.getValue === 'function') {
+          return candidate;
+        }
+      }
+    }
+  } catch (_) {}
+  return null;
+}
+
+function resolveCodeMirrorInstance(cmEl, vceCm, ctx) {
+  if (cmEl && cmEl.CodeMirror && typeof cmEl.CodeMirror.getValue === 'function') {
+    return cmEl.CodeMirror;
+  }
+
+  const host = vceCm || (cmEl && cmEl.closest && cmEl.closest('vce-codemirror'));
+  if (host) {
+    const candidates = [
+      host.CodeMirror,
+      host.codemirror,
+      host.codeMirror,
+      host.editor,
+      host._editor,
+      host._codemirror,
+    ];
+    for (const candidate of candidates) {
+      if (candidate && typeof candidate.getValue === 'function') {
+        return candidate;
+      }
+    }
+  }
+
+  const fromAngular = resolveCodeMirrorInstanceFromAngular(vceCm, cmEl);
+  if (fromAngular) return fromAngular;
+
+  const fromCtx = ctx && ctx.cmInstance;
+  if (fromCtx && typeof fromCtx.getValue === 'function') {
+    return fromCtx;
+  }
+
+  return null;
+}
+
+function getCodeMirrorInsertOffsets(cmInstance, ctx) {
+  if (!cmInstance) return { start: 0, end: 0 };
+  try {
+    const from = (ctx && ctx.cmFrom) || cmInstance.getCursor('from');
+    const to = (ctx && ctx.cmTo) || cmInstance.getCursor('to');
+    return {
+      start: cmInstance.indexFromPos(from),
+      end: cmInstance.indexFromPos(to),
+    };
+  } catch (_) {
+    return { start: 0, end: 0 };
+  }
+}
+
+function getCodeMirrorDocumentValue(cmInstance, vceCm) {
+  try {
+    const value = typeof cmInstance?.getValue === 'function' ? cmInstance.getValue() : '';
+    if (value) return value;
+  } catch (_) {}
+  return getCodeMirrorHtmlValue(vceCm, cmInstance);
+}
+
+function normalizeCodeMirrorPos(pos) {
+  if (!pos || typeof pos.line !== 'number' || typeof pos.ch !== 'number') return null;
+  return { line: pos.line, ch: pos.ch };
+}
+
+function resolveCodeMirrorCaretPositions(cmInstance, cmEl, ctx) {
+  const fromCtx = normalizeCodeMirrorPos(ctx?.cmFrom);
+  const toCtx = normalizeCodeMirrorPos(ctx?.cmTo) || fromCtx;
+  if (cmInstance && fromCtx && toCtx) {
+    return { from: fromCtx, to: toCtx };
+  }
+
+  const point = ctx?.cmClickPoint;
+  if (cmInstance && point && typeof point.clientX === 'number' && typeof point.clientY === 'number') {
+    try {
+      const pos = cmInstance.coordsChar({ left: point.clientX, top: point.clientY });
+      if (pos && typeof pos.line === 'number') {
+        return { from: pos, to: pos };
+      }
+    } catch (_) {}
+  }
+
+  if (cmInstance) {
+    try {
+      return {
+        from: cmInstance.getCursor('from'),
+        to: cmInstance.getCursor('to'),
+      };
+    } catch (_) {}
+  }
+
+  return null;
+}
+
+function resolveCodeMirrorTextInsertOffsets(ctx, cmInstance, cmEl, sourceText) {
+  const max = String(sourceText ?? '').length;
+  const clamp = (index) => Math.max(0, Math.min(typeof index === 'number' ? index : max, max));
+
+  const caret = resolveCodeMirrorCaretPositions(cmInstance, cmEl, ctx);
+  if (caret && cmInstance && typeof cmInstance.indexFromPos === 'function') {
+    try {
+      return {
+        start: clamp(cmInstance.indexFromPos(caret.from)),
+        end: clamp(cmInstance.indexFromPos(caret.to)),
+      };
+    } catch (_) {}
+  }
+
+  if (typeof ctx?.selectionStart === 'number' && typeof ctx?.selectionEnd === 'number') {
+    const caretPos = normalizeCodeMirrorPos(ctx?.cmFrom);
+    const selectionLooksStale =
+      caretPos && caretPos.ch > 0 && ctx.selectionStart === 0 && ctx.selectionEnd === 0;
+    if (!selectionLooksStale) {
+      return {
+        start: clamp(ctx.selectionStart),
+        end: clamp(ctx.selectionEnd),
+      };
+    }
+  }
+
+  const textarea = ctx?.cmEl?.querySelector?.('textarea');
+  if (textarea) {
+    const start =
+      typeof textarea.selectionStart === 'number'
+        ? textarea.selectionStart
+        : typeof ctx?.selectionStart === 'number'
+          ? ctx.selectionStart
+          : null;
+    const end =
+      typeof textarea.selectionEnd === 'number'
+        ? textarea.selectionEnd
+        : typeof ctx?.selectionEnd === 'number'
+          ? ctx.selectionEnd
+          : null;
+    if (typeof start === 'number' && typeof end === 'number') {
+      return { start: clamp(start), end: clamp(end) };
+    }
+  }
+
+  return { start: max, end: max };
+}
+
+function restoreCodeMirrorSelectionOnInstance(cmInstance, ctx) {
+  if (!cmInstance) return;
+  try {
+    cmInstance.focus && cmInstance.focus();
+  } catch (_) {}
+
+  const from = normalizeCodeMirrorPos(ctx?.cmFrom);
+  const to = normalizeCodeMirrorPos(ctx?.cmTo) || from;
+  if (from && to && typeof cmInstance.setSelection === 'function') {
+    try {
+      cmInstance.setSelection(from, to);
+      return;
+    } catch (_) {}
+  }
+
+  const point = ctx?.cmClickPoint;
+  if (
+    point &&
+    typeof point.clientX === 'number' &&
+    typeof point.clientY === 'number' &&
+    typeof cmInstance.coordsChar === 'function'
+  ) {
+    try {
+      const pos = normalizeCodeMirrorPos(
+        cmInstance.coordsChar({ left: point.clientX, top: point.clientY })
+      );
+      if (pos && typeof cmInstance.setSelection === 'function') {
+        cmInstance.setSelection(pos, pos);
+      }
+    } catch (_) {}
+  }
+}
+
+function resolveCodeMirrorCaretForInsert(cmInstance, ctx) {
+  restoreCodeMirrorSelectionOnInstance(cmInstance, ctx);
+  if (cmInstance) {
+    try {
+      const from = normalizeCodeMirrorPos(cmInstance.getCursor('from'));
+      const to = normalizeCodeMirrorPos(cmInstance.getCursor('to')) || from;
+      if (from && to) return { from, to };
+    } catch (_) {}
+  }
+  return resolveCodeMirrorCaretPositions(cmInstance, null, ctx);
+}
+
+function canUseDirectPersonalizableAttrHtmlInsert(ctx, cmInstance) {
+  if (ctx?.cmFrom) return true;
+  if (cmInstance && ctx?.cmClickPoint && typeof cmInstance.coordsChar === 'function') {
+    return true;
+  }
+  if (typeof ctx?.selectionStart !== 'number' || typeof ctx?.selectionEnd !== 'number') {
+    return false;
+  }
+
+  const caretPos = normalizeCodeMirrorPos(ctx?.cmFrom);
+  const selectionLooksStale =
+    caretPos && caretPos.ch > 0 && ctx.selectionStart === 0 && ctx.selectionEnd === 0;
+  if (selectionLooksStale) return false;
+
+  if (ctx.selectionStart > 0 || ctx.selectionEnd > 0 || ctx.selectionStart !== ctx.selectionEnd) {
+    return true;
+  }
+
+  return !ctx?.cmClickPoint;
+}
+
+function tryDirectPersonalizableAttrHtmlInsert(ctx, cmEl, vceCm, cmInstance, insert) {
+  const attrHtml = getCodeMirrorHtmlValue(vceCm, cmInstance);
+  if (attrHtml == null) return null;
+  if (!canUseDirectPersonalizableAttrHtmlInsert(ctx, cmInstance)) return null;
+
+  const resolved = resolveCodeMirrorTextInsertOffsets(ctx, cmInstance, cmEl, attrHtml);
+  const newHtml = attrHtml.slice(0, resolved.start) + insert + attrHtml.slice(resolved.end);
+  return {
+    newHtml,
+    insertIndex: resolved.start,
+    insertEnd: resolved.end,
+    caretAfter: resolved.start + insert.length,
+    path: 'direct-attrHtml',
+  };
+}
+
+function locateMarkerInPersonalizableSource(vceCm, cmEl, cmInstance, marker, attrHtmlBefore, ctx) {
+  const attrHtmlAfter = getCodeMirrorHtmlValue(vceCm, cmInstance);
+  const textarea = cmEl?.querySelector?.('textarea');
+  const candidates = [];
+
+  if (attrHtmlAfter != null && attrHtmlAfter !== '') {
+    candidates.push(attrHtmlAfter);
+  }
+  if (attrHtmlBefore != null && attrHtmlBefore !== '' && attrHtmlBefore !== attrHtmlAfter) {
+    candidates.push(attrHtmlBefore);
+  }
+  if (textarea?.value) {
+    const taValue = textarea.value;
+    const attrLen = attrHtmlAfter != null ? attrHtmlAfter.length : attrHtmlBefore?.length || 0;
+    if (taValue.length >= attrLen || taValue.indexOf(marker) >= 0) {
+      candidates.push(taValue);
+    }
+  }
+
+  for (const text of candidates) {
+    const insertIndex = text.indexOf(marker);
+    if (insertIndex >= 0) {
+      return { sourceText: text, insertIndex, markerLength: marker.length };
+    }
+  }
+
+  const baseHtml = attrHtmlBefore != null ? attrHtmlBefore : attrHtmlAfter;
+  if (baseHtml != null && ctx) {
+    const resolved = resolveCodeMirrorTextInsertOffsets(ctx, cmInstance, cmEl, baseHtml);
+    return { sourceText: baseHtml, insertIndex: resolved.start, markerLength: 0 };
+  }
+
+  return null;
+}
+
+function readPersonalizableCodeMirrorSourceText(vceCm, cmEl, cmInstance) {
+  const attrHtml = getCodeMirrorHtmlValue(vceCm, cmInstance);
+  if (attrHtml != null && attrHtml !== '') return attrHtml;
+
+  const textarea = cmEl?.querySelector?.('textarea');
+  if (textarea && textarea.value != null && textarea.value !== '') {
+    return textarea.value;
+  }
+
+  try {
+    const value = typeof cmInstance?.getValue === 'function' ? cmInstance.getValue() : '';
+    if (value) return value;
+  } catch (_) {}
+
+  return attrHtml != null ? attrHtml : '';
+}
+
+function focusCodeMirrorForMarkerInsert(ctx, cmEl, vceCm, cmInstance) {
+  const instance = cmInstance || resolveCodeMirrorInstance(cmEl, vceCm, ctx) || ctx?.cmInstance;
+  if (instance) {
+    try {
+      instance.focus?.();
+    } catch (_) {}
+    const from = normalizeCodeMirrorPos(ctx?.cmFrom);
+    const to = normalizeCodeMirrorPos(ctx?.cmTo) || from;
+    if (from && to && typeof instance.setSelection === 'function') {
+      try {
+        instance.setSelection(from, to);
+        return instance;
+      } catch (_) {}
+    }
+    const point = ctx?.cmClickPoint;
+    if (
+      point &&
+      typeof point.clientX === 'number' &&
+      typeof point.clientY === 'number' &&
+      typeof instance.coordsChar === 'function'
+    ) {
+      try {
+        const pos = normalizeCodeMirrorPos(
+          instance.coordsChar({ left: point.clientX, top: point.clientY })
+        );
+        if (pos && typeof instance.setSelection === 'function') {
+          instance.setSelection(pos, pos);
+        }
+      } catch (_) {}
+    }
+    return instance;
+  }
+
+  const textarea = cmEl?.querySelector?.('textarea');
+  if (textarea) {
+    try {
+      textarea.focus({ preventScroll: true });
+    } catch (_) {
+      try {
+        textarea.focus();
+      } catch (_) {}
+    }
+  }
+  return null;
+}
+
+function tryInsertMarkerViaReplaceSelection(cmInstance, marker) {
+  if (!cmInstance || typeof cmInstance.replaceSelection !== 'function') return false;
+  try {
+    cmInstance.replaceSelection(marker);
+    if (typeof cmInstance.save === 'function') {
+      cmInstance.save();
+    }
+    return true;
+  } catch (_) {}
+  return false;
+}
+
+function tryInsertMarkerViaTextareaExecCommand(cmEl, marker) {
+  const textarea = cmEl?.querySelector?.('textarea');
+  if (!textarea) return false;
+
+  const doc = textarea.ownerDocument || document;
+  try {
+    textarea.focus({ preventScroll: true });
+  } catch (_) {
+    try {
+      textarea.focus();
+    } catch (_) {}
+  }
+
+  try {
+    return typeof doc.execCommand === 'function' && doc.execCommand('insertText', false, marker);
+  } catch (_) {}
+
+  return false;
+}
+
+function insertTokenViaExecCommandMarker(ctx, cmEl, vceCm, cmInstance, insert) {
+  const attrHtmlBefore = getCodeMirrorHtmlValue(vceCm, cmInstance);
+  const marker = `§GEM§${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}§GEM§`;
+  const resolvedInstance = focusCodeMirrorForMarkerInsert(ctx, cmEl, vceCm, cmInstance);
+
+  let inserted = false;
+  let insertMethod = null;
+  if (resolvedInstance) {
+    inserted = tryInsertMarkerViaReplaceSelection(resolvedInstance, marker);
+    if (inserted) insertMethod = 'replaceSelection';
+  }
+  if (!inserted) {
+    inserted = tryInsertMarkerViaTextareaExecCommand(cmEl, marker);
+    if (inserted) insertMethod = 'execCommand';
+  }
+  if (!inserted) {
+    return null;
+  }
+
+  if (resolvedInstance && typeof resolvedInstance.save === 'function') {
+    try {
+      resolvedInstance.save();
+    } catch (_) {}
+  }
+
+  const located = locateMarkerInPersonalizableSource(
+    vceCm,
+    cmEl,
+    resolvedInstance || cmInstance,
+    marker,
+    attrHtmlBefore,
+    ctx
+  );
+  if (!located) {
+    return null;
+  }
+
+  const { sourceText, insertIndex, markerLength } = located;
+  const newValue =
+    sourceText.slice(0, insertIndex) + insert + sourceText.slice(insertIndex + markerLength);
+
+  return {
+    newValue,
+    insertIndex,
+    caretAfter: insertIndex + insert.length,
+    markerLength,
+    insertMethod,
+  };
+}
+
+function findInsertIndexViaCodeMirrorMarker(cmInstance, caret) {
+  const marker = `§GEM§${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}§GEM§`;
+  try {
+    cmInstance.replaceRange(marker, caret.from, caret.to);
+    if (typeof cmInstance.save === 'function') cmInstance.save();
+  } catch (_) {
+    return null;
+  }
+
+  let sourceText = '';
+  try {
+    sourceText = typeof cmInstance.getValue === 'function' ? cmInstance.getValue() : '';
+  } catch (_) {
+    return null;
+  }
+
+  let insertIndex = sourceText.indexOf(marker);
+  if (insertIndex < 0 && typeof cmInstance.indexFromPos === 'function') {
+    try {
+      const idx = cmInstance.indexFromPos(caret.from);
+      if (sourceText.slice(idx, idx + marker.length) === marker) {
+        insertIndex = idx;
+      }
+    } catch (_) {}
+  }
+
+  if (insertIndex < 0) {
+    try {
+      const found = sourceText.indexOf(marker);
+      if (found >= 0) {
+        const end = cmInstance.posFromIndex(found + marker.length);
+        cmInstance.replaceRange('', cmInstance.posFromIndex(found), end);
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  return {
+    sourceText,
+    insertIndex,
+    markerLength: marker.length,
+  };
+}
+
+function isGemDebugLoggingEnabled() {
+  try {
+    if (typeof window.gemIsDebugLoggingEnabled === 'function') {
+      return window.gemIsDebugLoggingEnabled();
+    }
+  } catch (_) {}
+  return false;
+}
+
+function buildPersonalizableCodeMirrorInsertDebugSnapshot(ctx, cmEl, vceCm, cmInstance, extra) {
+  const attrHtml = vceCm ? vceCm.getAttribute('html') : null;
+  let cmValue = '';
+  try {
+    cmValue = typeof cmInstance?.getValue === 'function' ? cmInstance.getValue() : '';
+  } catch (_) {}
+  const ta = cmEl?.querySelector?.('textarea');
+  const liveFromDom = cmEl?.CodeMirror || null;
+  const ctxInstance = ctx?.cmInstance || null;
+  let liveIndexFromPos = null;
+  try {
+    if (cmInstance?.getCursor && cmInstance?.indexFromPos) {
+      liveIndexFromPos = cmInstance.indexFromPos(cmInstance.getCursor('from'));
+    }
+  } catch (_) {}
+
+  return {
+    ...(extra || {}),
+    attrHtmlLength: attrHtml != null ? attrHtml.length : null,
+    getValueLength: cmValue.length,
+    stringsEqual: attrHtml != null ? attrHtml === cmValue : null,
+    tokenAtHtmlStart: attrHtml ? attrHtml.slice(0, 40) : null,
+    getValuePreview: cmValue ? cmValue.slice(0, 40) : null,
+    textareaSelection: ta ? { start: ta.selectionStart, end: ta.selectionEnd } : null,
+    ctxCmFrom: ctx?.cmFrom ?? null,
+    ctxCmTo: ctx?.cmTo ?? null,
+    ctxSelectionStart: ctx?.selectionStart ?? null,
+    ctxSelectionEnd: ctx?.selectionEnd ?? null,
+    ctxCmClickPoint: ctx?.cmClickPoint ?? null,
+    liveCursor: cmInstance?.getCursor?.() ?? null,
+    liveIndexFromPos,
+    instanceIdentity: {
+      liveEqualsCmElCodeMirror: !!(cmInstance && liveFromDom && cmInstance === liveFromDom),
+      liveEqualsCtxInstance: !!(cmInstance && ctxInstance && cmInstance === ctxInstance),
+      ctxInstanceEqualsCmElCodeMirror: !!(
+        ctxInstance &&
+        liveFromDom &&
+        ctxInstance === liveFromDom
+      ),
+    },
+  };
+}
+
+function logPersonalizableCodeMirrorInsertDebug(phase, ctx, cmEl, vceCm, cmInstance, extra) {
+  const snapshot = buildPersonalizableCodeMirrorInsertDebugSnapshot(ctx, cmEl, vceCm, cmInstance, {
+    phase,
+    ...(extra || {}),
+  });
+
+  const insertIndex = typeof extra?.insertIndex === 'number' ? extra.insertIndex : null;
+  const htmlStart = typeof extra?.htmlStart === 'number' ? extra.htmlStart : insertIndex;
+  const caretCh =
+    typeof snapshot.ctxCmFrom?.ch === 'number'
+      ? snapshot.ctxCmFrom.ch
+      : snapshot.liveCursor?.ch;
+  const suspiciousZero =
+    phase === 'complete' &&
+    (insertIndex === 0 || htmlStart === 0) &&
+    typeof caretCh === 'number' &&
+    caretCh > 0;
+
+  if (suspiciousZero) {
+    console.error(
+      '[Gem][CM Token Insert] Suspicious insert at index 0 while caret ch > 0. Enable Gemma debug logging for the full trace.',
+      snapshot
+    );
+  }
+
+  if (!isGemDebugLoggingEnabled()) return;
+
+  console.log('[Gem][CM Token Insert]', phase, snapshot);
+}
+
+function gemDebugPersonalizableCodeMirrorInsertState(ctx) {
+  const cmEl =
+    ctx?.cmEl ||
+    document.querySelector('#subject-line-input .CodeMirror') ||
+    document.querySelector('.CodeMirror');
+  const vceCm =
+    cmEl?.closest?.('vce-codemirror') ||
+    document.querySelector('#subject-line-input vce-codemirror');
+  const cmInstance = resolveCodeMirrorInstance(cmEl, vceCm, ctx || null);
+  const snapshot = buildPersonalizableCodeMirrorInsertDebugSnapshot(
+    ctx || null,
+    cmEl,
+    vceCm,
+    cmInstance,
+    { phase: 'manual' }
+  );
+  console.log('[Gem][CM Token Insert] manual snapshot', snapshot);
+  return snapshot;
+}
+
+function insertPersonalizationTokenIntoPersonalizableCodeMirror(ctx, tokenPayload) {
+  const cmEl = ctx && ctx.cmEl;
+  const vceCm = cmEl ? cmEl.closest('vce-codemirror') : null;
+  const insert = String(tokenPayload ?? '');
+  if (!vceCm || !insert) return false;
+
+  const cmInstance =
+    resolveCodeMirrorInstance(cmEl, vceCm, ctx) || (ctx && ctx.cmInstance) || null;
+
+  logPersonalizableCodeMirrorInsertDebug('start', ctx, cmEl, vceCm, cmInstance, null);
+
+  const directResult = tryDirectPersonalizableAttrHtmlInsert(ctx, cmEl, vceCm, cmInstance, insert);
+  if (directResult) {
+    logPersonalizableCodeMirrorInsertDebug('complete', ctx, cmEl, vceCm, cmInstance, {
+      path: directResult.path,
+      insertIndex: directResult.insertIndex,
+      htmlStart: directResult.insertIndex,
+      insertEnd: directResult.insertEnd,
+      caretAfter: directResult.caretAfter,
+      newValueLength: directResult.newHtml.length,
+    });
+    return refreshPersonalizableCodeMirrorFromHtml(
+      vceCm,
+      cmEl,
+      cmInstance,
+      directResult.newHtml,
+      directResult.caretAfter
+    );
+  }
+
+  const execResult = insertTokenViaExecCommandMarker(ctx, cmEl, vceCm, cmInstance, insert);
+  if (execResult) {
+    logPersonalizableCodeMirrorInsertDebug('complete', ctx, cmEl, vceCm, cmInstance, {
+      path: 'execCommand-marker',
+      insertMethod: execResult.insertMethod,
+      insertIndex: execResult.insertIndex,
+      htmlStart: execResult.insertIndex,
+      caretAfter: execResult.caretAfter,
+      newValueLength: execResult.newValue.length,
+      markerLength: execResult.markerLength,
+    });
+    return refreshPersonalizableCodeMirrorFromHtml(
+      vceCm,
+      cmEl,
+      cmInstance,
+      execResult.newValue,
+      execResult.caretAfter
+    );
+  }
+
+  logPersonalizableCodeMirrorInsertDebug('execCommand-marker-missed', ctx, cmEl, vceCm, cmInstance, null);
+
+  const caret = resolveCodeMirrorCaretForInsert(cmInstance, ctx);
+
+  if (cmInstance && caret && typeof cmInstance.replaceRange === 'function') {
+    const located = findInsertIndexViaCodeMirrorMarker(cmInstance, caret);
+    if (located) {
+      const { sourceText, insertIndex, markerLength } = located;
+      const newValue =
+        sourceText.slice(0, insertIndex) +
+        insert +
+        sourceText.slice(insertIndex + markerLength);
+      const caretAfter = insertIndex + insert.length;
+      logPersonalizableCodeMirrorInsertDebug('complete', ctx, cmEl, vceCm, cmInstance, {
+        path: 'marker',
+        insertIndex,
+        htmlStart: insertIndex,
+        caretAfter,
+        newValueLength: newValue.length,
+        markerLength,
+      });
+      return refreshPersonalizableCodeMirrorFromHtml(vceCm, cmEl, cmInstance, newValue, caretAfter);
+    }
+
+    logPersonalizableCodeMirrorInsertDebug('marker-missed', ctx, cmEl, vceCm, cmInstance, { caret });
+
+    if (typeof cmInstance.indexFromPos === 'function') {
+      try {
+        const sourceText =
+          typeof cmInstance.getValue === 'function'
+            ? cmInstance.getValue()
+            : getCodeMirrorHtmlValue(vceCm, cmInstance);
+        const insertIndex = cmInstance.indexFromPos(caret.from);
+        const insertEnd = cmInstance.indexFromPos(caret.to);
+        const newValue =
+          sourceText.slice(0, insertIndex) + insert + sourceText.slice(insertEnd);
+        const caretAfter = insertIndex + insert.length;
+        logPersonalizableCodeMirrorInsertDebug('complete', ctx, cmEl, vceCm, cmInstance, {
+          path: 'indexFromPos',
+          insertIndex,
+          htmlStart: insertIndex,
+          insertEnd,
+          caretAfter,
+          newValueLength: newValue.length,
+        });
+        return refreshPersonalizableCodeMirrorFromHtml(vceCm, cmEl, cmInstance, newValue, caretAfter);
+      } catch (err) {
+        logPersonalizableCodeMirrorInsertDebug('indexFromPos-error', ctx, cmEl, vceCm, cmInstance, {
+          caret,
+          error: err?.message || String(err),
+        });
+      }
+    }
+  }
+
+  const attrHtml = getCodeMirrorHtmlValue(vceCm, cmInstance);
+  let cmValue = '';
+  try {
+    cmValue = typeof cmInstance?.getValue === 'function' ? cmInstance.getValue() : '';
+  } catch (_) {}
+  if (!cmValue) cmValue = attrHtml;
+
+  const resolved = resolveCodeMirrorTextInsertOffsets(ctx, cmInstance, cmEl, cmValue);
+  let htmlStart = resolved.start;
+  let htmlEnd = resolved.end;
+  let docCaretAfter = resolved.start + insert.length;
+
+  if (attrHtml !== cmValue) {
+    const mapper = createDocHtmlIndexMapper(attrHtml, cmValue);
+    htmlStart = mapper.docToHtml(resolved.start);
+    htmlEnd = mapper.docToHtml(resolved.end);
+    docCaretAfter = mapper.htmlToDoc(htmlStart + insert.length);
+  }
+
+  const newHtml = attrHtml.slice(0, htmlStart) + insert + attrHtml.slice(htmlEnd);
+  logPersonalizableCodeMirrorInsertDebug('complete', ctx, cmEl, vceCm, cmInstance, {
+    path: 'fallback',
+    htmlStart,
+    htmlEnd,
+    insertIndex: htmlStart,
+    docCaretAfter,
+    attrHtmlLength: attrHtml.length,
+    cmValueLength: cmValue.length,
+    resolvedStart: resolved.start,
+    resolvedEnd: resolved.end,
+    newHtmlLength: newHtml.length,
+  });
+  return refreshPersonalizableCodeMirrorFromHtml(vceCm, cmEl, cmInstance, newHtml, docCaretAfter);
+}
+
+function restoreCodeMirrorCaretByIndex(cmInstance, index) {
+  if (!cmInstance || typeof cmInstance.posFromIndex !== 'function') return;
+  try {
+    const pos = cmInstance.posFromIndex(Math.max(0, index));
+    if (typeof cmInstance.setSelection === 'function') {
+      cmInstance.setSelection(pos, pos);
+    }
+    cmInstance.focus && cmInstance.focus();
+  } catch (_) {}
+}
+
+function tryInvokeAngularCodeMirrorRefresh(vceCm, newHtml) {
+  try {
+    const ngApi = typeof ng !== 'undefined' ? ng : null;
+    if (!ngApi || typeof ngApi.getComponent !== 'function') return false;
+
+    const targets = [
+      vceCm,
+      vceCm?.closest?.('vce-html-editor'),
+      vceCm?.closest?.('vce-code-editor'),
+      vceCm?.closest?.('vce-code-editor')?.querySelector?.('pe-code-editor-token-plugin'),
+    ].filter(Boolean);
+
+    for (const target of targets) {
+      const comp = ngApi.getComponent(target);
+      if (!comp) continue;
+
+      if (typeof comp.writeValue === 'function') {
+        comp.writeValue(newHtml);
+        return true;
+      }
+      if (typeof comp.setHtml === 'function') {
+        comp.setHtml(newHtml);
+        return true;
+      }
+      if ('html' in comp) {
+        const previous = comp.html;
+        comp.html = newHtml;
+        if (typeof comp.ngOnChanges === 'function') {
+          comp.ngOnChanges({
+            html: {
+              currentValue: newHtml,
+              previousValue: previous,
+              firstChange: false,
+              isFirstChange: () => false,
+            },
+          });
+        }
+        return true;
+      }
+    }
+  } catch (_) {}
+  return false;
+}
+
+function refreshPersonalizableCodeMirrorFromHtml(vceCm, cmEl, cmInstance, newHtml, caretAfter) {
+  syncCodeMirrorHostAttributes(cmEl, newHtml);
+
+  const finish = () => {
+    const freshCm = (cmEl && cmEl.CodeMirror) || cmInstance;
+    if (freshCm) {
+      restoreCodeMirrorCaretByIndex(freshCm, caretAfter);
+      const inputField = typeof freshCm.getInputField === 'function' ? freshCm.getInputField() : null;
+      if (inputField) {
+        notifyEmarsysAfterTextControlInsert(inputField, { nudgeFocus: true });
+      }
+    }
+  };
+
+  if (tryInvokeAngularCodeMirrorRefresh(vceCm, newHtml)) {
+    requestAnimationFrame(finish);
+    return true;
+  }
+
+  // Force Emarsys vce-codemirror to rebuild from html so token widgets render.
+  let hadAutoRefresh = null;
+  try {
+    hadAutoRefresh = vceCm.getAttribute('auto-refresh');
+    vceCm.setAttribute('auto-refresh', 'false');
+    vceCm.setAttribute('html', '');
+    const htmlEditor = vceCm.closest('vce-html-editor');
+    if (htmlEditor) htmlEditor.setAttribute('html', '');
+  } catch (_) {}
+
+  requestAnimationFrame(() => {
+    try {
+      syncCodeMirrorHostAttributes(cmEl, newHtml);
+      if (hadAutoRefresh != null) {
+        vceCm.setAttribute('auto-refresh', hadAutoRefresh);
+      } else {
+        vceCm.setAttribute('auto-refresh', 'true');
+      }
+    } catch (_) {}
+
+    try {
+      vceCm.dispatchEvent(new Event('input', { bubbles: true }));
+      vceCm.dispatchEvent(new Event('change', { bubbles: true }));
+    } catch (_) {}
+
+    requestAnimationFrame(finish);
+  });
+
+  return true;
+}
+
+function insertIntoCodeMirror(ctx, text) {
+  const cmEl = ctx && ctx.cmEl;
+  const vceCm = cmEl ? cmEl.closest('vce-codemirror') : null;
+  const cmInstance = resolveCodeMirrorInstance(cmEl, vceCm, ctx) || (ctx && ctx.cmInstance);
+  const insert = String(text ?? '');
+  if (!cmInstance && !cmEl) return false;
+
+  restoreCodeMirrorInsertContext(ctx);
+
+  if (cmInstance) {
+    const inputField = typeof cmInstance.getInputField === 'function' ? cmInstance.getInputField() : null;
+    if (inputField) {
+      const start = typeof ctx.selectionStart === 'number' ? ctx.selectionStart : inputField.selectionStart;
+      const end = typeof ctx.selectionEnd === 'number' ? ctx.selectionEnd : inputField.selectionEnd;
+      if (tryInsertIntoTextControlViaExecCommand(inputField, insert, start, end)) {
+        try {
+          if (typeof cmInstance.save === 'function') cmInstance.save();
+        } catch (_) {}
+        const val = typeof cmInstance.getValue === 'function' ? cmInstance.getValue() : inputField.value;
+        syncCodeMirrorHostAttributes(cmEl, val);
+        return true;
+      }
+    }
+
+    let usedCmApi = false;
+    if (ctx.cmFrom && ctx.cmTo && typeof cmInstance.replaceRange === 'function') {
+      cmInstance.replaceRange(insert, ctx.cmFrom, ctx.cmTo);
+      usedCmApi = true;
+    } else if (typeof cmInstance.replaceSelection === 'function') {
+      cmInstance.replaceSelection(insert);
+      usedCmApi = true;
+    } else if (typeof cmInstance.setValue === 'function') {
+      cmInstance.setValue(insert);
+    }
+
+    const val = typeof cmInstance.getValue === 'function' ? cmInstance.getValue() : insert;
+    syncCodeMirrorHostAttributes(cmEl, val);
+    if (inputField) {
+      notifyEmarsysAfterTextControlInsert(inputField, { nudgeFocus: true });
+    }
+    return usedCmApi || typeof cmInstance.setValue === 'function';
+  }
+
+  const textarea = cmEl ? cmEl.querySelector('textarea') : null;
+  if (textarea) {
+    return insertIntoTextControl(textarea, insert, ctx.selectionStart, ctx.selectionEnd);
+  }
+  return false;
+}
+
+async function gemInsertSnippetIntoTarget(ctx, snippet, options = {}) {
+  if (!ctx || !snippet) return false;
+  const mode = options.mode === 'plain' ? 'plain' : 'token';
+
+  if (snippet.kind === 'personalization') {
+    const rawToken = snippet.token;
+    if (!rawToken) return false;
+
+    const token =
+      typeof window.gemEnrichPersTokenWithRdsPresets === 'function'
+        ? window.gemEnrichPersTokenWithRdsPresets(rawToken) || rawToken
+        : rawToken;
+
+    const preview =
+      typeof window.gemBuildPersonalizationPreview === 'function'
+        ? window.gemBuildPersonalizationPreview(token)
+        : snippet.content || '';
+    if (!preview) return false;
+
+    if (ctx.type === 'contenteditable' && mode === 'token') {
+      const html =
+        typeof window.gemGeneratePersonalizationTokenHTML === 'function'
+          ? window.gemGeneratePersonalizationTokenHTML(token)
+          : null;
+      if (!html) return false;
+      return insertHtmlIntoContentEditable(ctx, html, { bridgeTimeoutMs: 3000 });
+    }
+
+    const plainContent = preview;
+    if (ctx.type === 'contenteditable') {
+      const doc = ctx.doc;
+      const element = ctx.element;
+      if (!doc || !element) return false;
+      const escaped = String(plainContent ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+      return insertHtmlIntoContentEditable(ctx, escaped);
+    }
+
+    if (ctx.type === 'textarea' || ctx.type === 'input') {
+      return insertIntoTextControl(ctx.element, plainContent, ctx.selectionStart, ctx.selectionEnd);
+    }
+
+    if (ctx.type === 'codemirror') {
+      if (mode === 'token' && ctx.personalizable) {
+        const wrapped =
+          typeof window.gemBuildPersonalizationCodeMirrorToken === 'function'
+            ? window.gemBuildPersonalizationCodeMirrorToken(token)
+            : null;
+        if (!wrapped) {
+          console.warn('[Gem] Personalization CodeMirror token payload generation failed');
+          return false;
+        }
+        try {
+          return insertPersonalizationTokenIntoPersonalizableCodeMirror(ctx, wrapped);
+        } catch (err) {
+          console.warn('[Gem] Personalization CodeMirror insert failed:', err);
+          return false;
+        }
+      }
+      return insertIntoCodeMirror(ctx, plainContent);
+    }
+
+    return false;
+  }
+
+  const content = snippet.content != null ? snippet.content : (snippet.name || '');
+
+  if (ctx.type === 'contenteditable') {
+    const doc = ctx.doc;
+    const element = ctx.element;
+    if (!doc || !element) return false;
+
+    if (mode === 'token') {
+      const html = generateSnippetHTML(snippet.name, content);
+      return insertHtmlIntoContentEditable(ctx, html);
+    }
+
+    const escaped = String(content ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+    return insertHtmlIntoContentEditable(ctx, escaped);
+  }
+
+  if (ctx.type === 'textarea' || ctx.type === 'input') {
+    return insertIntoTextControl(ctx.element, content, ctx.selectionStart, ctx.selectionEnd);
+  }
+
+  if (ctx.type === 'codemirror') {
+    if (mode === 'token' && ctx.personalizable) {
+      const wrapped = buildGemmaCodeMirrorToken(snippet.name, content);
+      if (!wrapped) {
+        console.warn('[Gem] Gemma CodeMirror token payload generation failed');
+        return false;
+      }
+      try {
+        return insertPersonalizationTokenIntoPersonalizableCodeMirror(ctx, wrapped);
+      } catch (err) {
+        console.warn('[Gem] Gemma CodeMirror insert failed:', err);
+        return false;
+      }
+    }
+    return insertIntoCodeMirror(ctx, content);
+  }
+
+  return false;
+}
+
 // Function to create the snippet modal HTML
 function createSnippetModalHTML(isEditing = false) {
   return `
@@ -303,7 +2132,7 @@ function initializeSnippetsTab() {
         <gem-e-icon icon="gem-snippets">
           <div aria-hidden="true" class="e-icon-wrapper">
             <div class="e-icon">
-              <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="var(--token-icon-default-text)"><path d="M320-240 80-480l240-240 57 57-184 184 183 183-56 56Zm320 0-57-57 184-184-183-183 56-56 240 240-240 240Z"/></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="var(--token-icon-default-text)" aria-hidden="true"><path d="M480-80 120-436l200-244h320l200 244L480-80ZM183-680l-85-85 57-56 85 85-57 56Zm257-80v-120h80v120h-80Zm335 80-57-57 85-85 57 57-85 85ZM480-192l210-208H270l210 208ZM358-600l-99 120h442l-99-120H358Z"/></svg>
             </div>
           </div>
         </gem-e-icon>
@@ -1474,22 +3303,41 @@ function initializeSnippetsTab() {
     updateSnippetExportSelectionUI(root);
   }
 
-  // Function to add the snippets tab after the links tab
+  function findSnippetsTabInsertAnchor() {
+    const menu = document.querySelector('e-verticalnav-menu');
+    if (!menu) return null;
+
+    const personalizationSpan = menu.querySelector('span:has(#customTab_personaliztation)');
+    if (personalizationSpan) return personalizationSpan;
+
+    const personalizationTab = menu.querySelector('#customTab_personaliztation');
+    if (personalizationTab) {
+      return personalizationTab.closest('span') || personalizationTab;
+    }
+
+    return null;
+  }
+
+  // Function to add the snippets tab after the Personalization tab
   function addSnippetsTab() {
-    const linksTab = document.querySelector('cb-vertical-tab#linksTab');
-    if (!linksTab) {
-      console.log("[Gem] Links tab not found, cannot add snippets tab");
+    const anchor = findSnippetsTabInsertAnchor();
+    if (!anchor) {
+      console.log("[Gem] Personalization tab not found, cannot add snippets tab yet");
       return false;
     }
 
-    // Check if snippets tab already exists
-    if (document.querySelector('#gem-snippets-tab')) {
-      console.log("[Gem] Snippets tab already exists");
+    const existing = document.querySelector('#gem-snippets-tab');
+    if (existing) {
+      if (anchor.nextElementSibling !== existing) {
+        anchor.insertAdjacentElement('afterend', existing);
+        console.log("[Gem] Snippets tab repositioned after Personalization tab");
+      } else {
+        console.log("[Gem] Snippets tab already exists");
+      }
       return true;
     }
 
-    // Insert the snippets tab after the links tab
-    linksTab.insertAdjacentHTML('afterend', createSnippetsTabHTML());
+    anchor.insertAdjacentHTML('afterend', createSnippetsTabHTML());
 
     const snippetsTab = document.querySelector('#gem-snippets-tab');
     if (snippetsTab) {
@@ -1789,6 +3637,10 @@ function initializeSnippetsTab() {
   }
 
   function markEmarsysDraftDirty(doc, editables = []) {
+    if (typeof window.gemMarkEmarsysDraftDirty === 'function') {
+      window.gemMarkEmarsysDraftDirty(doc, editables);
+      return;
+    }
     try {
       editables.forEach((el) => {
         try {
@@ -1796,59 +3648,13 @@ function initializeSnippetsTab() {
           el.dispatchEvent(new Event('change', { bubbles: true }));
         } catch (_) {}
       });
-
-      // Nudge common rich-text systems (TinyMCE) if present
-      const win = doc.defaultView || window;
-      const tinymce = win && win.tinymce;
-      if (tinymce && tinymce.activeEditor) {
-        try {
-          tinymce.activeEditor.undoManager && tinymce.activeEditor.undoManager.add && tinymce.activeEditor.undoManager.add();
-        } catch (_) {}
-        try {
-          tinymce.activeEditor.setDirty && tinymce.activeEditor.setDirty(true);
-        } catch (_) {}
-        try {
-          tinymce.activeEditor.fire && tinymce.activeEditor.fire('change');
-        } catch (_) {}
-      }
     } catch (_) {}
   }
 
   function nudgeEmarsysDirtyDetectionViaFocus(doc, editables = []) {
-    if (!editables || editables.length === 0) return;
-    const el = editables[0];
-    try {
-      el.scrollIntoView && el.scrollIntoView({ block: 'nearest' });
-    } catch (_) {}
-
-    try {
-      // focus in
-      el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
-      el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-      el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-      el.focus && el.focus();
-
-      // place caret (best-effort)
-      try {
-        const sel = doc.getSelection && doc.getSelection();
-        if (sel && typeof sel.removeAllRanges === 'function' && typeof sel.addRange === 'function') {
-          const range = doc.createRange();
-          range.selectNodeContents(el);
-          range.collapse(false);
-          sel.removeAllRanges();
-          sel.addRange(range);
-        }
-      } catch (_) {}
-
-      // blur out (Emarsys detects dirty after focus + unfocus)
-      setTimeout(() => {
-        try {
-          el.blur && el.blur();
-          el.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
-          el.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
-        } catch (_) {}
-      }, 0);
-    } catch (_) {}
+    if (typeof window.gemNudgeEmarsysDirtyDetectionViaFocus === 'function') {
+      window.gemNudgeEmarsysDirtyDetectionViaFocus(doc, editables);
+    }
   }
 
   function runSwapForSnippetId(snippetId) {
@@ -3405,105 +5211,6 @@ function initializeSnippetsTab() {
     }
   }
 
-  // Global counters for tracking events
-let dropEventCounter = 0;
-let insertionCounter = 0;
-
-// Function to insert snippet HTML at the current caret position
-  function insertSnippetAtCaret(element, snippetHTML, doc, dropId = null, dropEvent = null) {
-    insertionCounter++;
-    const insertionId = `insert-${insertionCounter}-${Date.now()}`;
-
-    console.log(`[Gem] INSERT #${insertionCounter} (${insertionId}): insertSnippetAtCaret called for element ${element.id || 'unknown'}`);
-    console.log(`[Gem] INSERT #${insertionCounter}: From drop: ${dropId || 'unknown'}`);
-    try {
-      // Ensure doc.getSelection is available
-      if (!doc || typeof doc.getSelection !== 'function') {
-        console.warn('[Gem] INSERT #' + insertionCounter + ': Document getSelection not available, using fallback');
-        // Continue with fallback insertion logic
-      }
-
-      const selection = doc.getSelection();
-      let range = null;
-
-      // Ensure selection is valid
-      if (!selection) {
-        console.warn('[Gem] INSERT #' + insertionCounter + ': No selection available, using fallback');
-        // Continue with fallback insertion logic
-      }
-
-      // Prefer a range derived from the drop coordinates (more accurate than current selection)
-      if (dropEvent && typeof dropEvent.clientX === 'number' && typeof dropEvent.clientY === 'number') {
-        if (typeof doc.caretRangeFromPoint === 'function') {
-          range = doc.caretRangeFromPoint(dropEvent.clientX, dropEvent.clientY);
-        } else if (typeof doc.caretPositionFromPoint === 'function') {
-          const pos = doc.caretPositionFromPoint(dropEvent.clientX, dropEvent.clientY);
-          if (pos && pos.offsetNode) {
-            range = doc.createRange();
-            range.setStart(pos.offsetNode, pos.offset);
-            range.collapse(true);
-          }
-        }
-      }
-
-      // Fall back to the current selection if it exists and is inside the target element
-      if (!range && selection && typeof selection.rangeCount === 'number' && selection.rangeCount > 0) {
-        try {
-          const candidate = selection.getRangeAt(0);
-          const container = candidate.commonAncestorContainer;
-          const containerEl = container.nodeType === Node.ELEMENT_NODE ? container : container.parentElement;
-          if (containerEl && element.contains(containerEl)) {
-            range = candidate;
-          }
-        } catch (e) {
-          console.warn('[Gem] Error accessing selection range:', e);
-        }
-      }
-
-      // Final fallback: insert at the end of the target contenteditable
-      if (!range) {
-        range = doc.createRange();
-        range.selectNodeContents(element);
-        range.collapse(false);
-      }
-
-      // Create a temporary element to hold the HTML
-      const tempDiv = doc.createElement('div');
-      tempDiv.innerHTML = snippetHTML;
-
-      // Insert the content, but filter out meta tags that browsers add automatically
-      const fragment = doc.createDocumentFragment();
-      const nodes = Array.from(tempDiv.childNodes).filter((n) => {
-        return !(n.nodeType === Node.ELEMENT_NODE && n.tagName === 'META');
-      });
-      nodes.forEach((n) => fragment.appendChild(n));
-      const lastInserted = fragment.lastChild;
-
-      // Delete any selected content
-      range.deleteContents();
-
-      // Insert the snippet
-      range.insertNode(fragment);
-
-      // Move cursor after the inserted content
-      if (selection) {
-        if (lastInserted && lastInserted.parentNode) {
-          range.setStartAfter(lastInserted);
-          range.setEndAfter(lastInserted);
-        } else {
-          // If we can't reliably place after the inserted node, collapse to end of element
-          range.selectNodeContents(element);
-          range.collapse(false);
-        }
-        selection.removeAllRanges();
-        selection.addRange(range);
-      }
-
-    } catch (error) {
-      console.log(`[Gem] INSERT #${insertionCounter} (${insertionId}): Error inserting snippet:`, error?.message || error);
-    }
-  }
-
   // Function to set up iframe drop zone observer
   function setupIframeObserver() {
     if (window._gemSnippetIframeObserver) return;
@@ -3526,48 +5233,52 @@ let insertionCounter = 0;
 
   // Function to wait for and initialize the vertical nav
   function waitForVerticalNav() {
+    const tryAddSnippetsTab = () => {
+      if (addSnippetsTab()) {
+        setupIframeObserver();
+        return true;
+      }
+      return false;
+    };
+
     const verticalNav = document.querySelector('e-verticalnav-menu');
-    if (verticalNav) {
-      console.log("[Gem] Vertical nav found, adding snippets tab");
-      addSnippetsTab();
-      setupIframeObserver();
+    if (verticalNav && tryAddSnippetsTab()) {
+      console.log("[Gem] Vertical nav found, snippets tab added after Personalization");
       return;
     }
 
-    console.log("[Gem] Vertical nav not found, waiting...");
+    console.log("[Gem] Vertical nav or Personalization tab not found, waiting...");
 
-    const onVerticalNavReady = () => {
-      console.log("[Gem] Vertical nav found, adding snippets tab");
-      addSnippetsTab();
-      setupIframeObserver();
+    const onReady = () => {
+      if (tryAddSnippetsTab()) {
+        console.log("[Gem] Snippets tab added after Personalization tab");
+      }
     };
 
     if (typeof gemDomWatchWaitFor === 'function') {
-      gemDomWatchWaitFor('e-verticalnav-menu', onVerticalNavReady);
+      gemDomWatchWaitFor('e-verticalnav-menu', () => {
+        if (!tryAddSnippetsTab()) {
+          gemDomWatchWaitFor('#customTab_personaliztation', onReady);
+        }
+      });
       return;
     }
 
     const observer = new MutationObserver((mutations) => {
       mutations.forEach((mutation) => {
         mutation.addedNodes.forEach((node) => {
-          if (node.nodeType === Node.ELEMENT_NODE) {
-            // Check if this node is the vertical nav
-            if (node.matches && node.matches('e-verticalnav-menu')) {
-              console.log("[Gem] Vertical nav added to DOM");
-              observer.disconnect();
-              addSnippetsTab();
-              setupIframeObserver();
-              return;
-            }
+          if (node.nodeType !== Node.ELEMENT_NODE) return;
 
-            // Check if vertical nav is in descendants
-            const verticalNav = node.querySelector && node.querySelector('e-verticalnav-menu');
-            if (verticalNav) {
-              console.log("[Gem] Vertical nav found in added node");
+          const menu =
+            (node.matches && node.matches('e-verticalnav-menu') && node) ||
+            (node.querySelector && node.querySelector('e-verticalnav-menu'));
+          const personalization =
+            (node.matches && node.id === 'customTab_personaliztation' && node) ||
+            (node.querySelector && node.querySelector('#customTab_personaliztation'));
+
+          if (menu || personalization) {
+            if (tryAddSnippetsTab()) {
               observer.disconnect();
-              addSnippetsTab();
-              setupIframeObserver();
-              return;
             }
           }
         });
@@ -3582,6 +5293,12 @@ let insertionCounter = 0;
 
   // Start the initialization
   waitForVerticalNav();
+
+  document.addEventListener('gem-snippets-changed', () => {
+    try {
+      refreshSnippetsDisplay();
+    } catch (_) {}
+  });
 }
 
 // Add a global debugging function
@@ -3613,8 +5330,18 @@ window.debugSnippets = function() {
   console.log("[Gem] DEBUG: Counters reset to 0");
 };
 
-// Expose getSnippets globally for use by other modules
+// Expose snippet helpers globally for use by other modules
 window.getSnippets = getSnippets;
+window.gemGenerateSnippetHTML = generateSnippetHTML;
+window.gemBuildGemmaCodeMirrorToken = buildGemmaCodeMirrorToken;
+window.gemParsePersTokensInHtml = parsePersTokensInHtml;
+window.gemFindPersTokenAtIndex = findPersTokenAtIndex;
+window.gemFindPersTokenByRange = findPersTokenByRange;
+window.gemReplacePersonalizableCodeMirrorTokenRange = replacePersonalizableCodeMirrorTokenRange;
+window.gemResolveCodeMirrorInstance = resolveCodeMirrorInstance;
+window.gemDebugPersonalizableCodeMirrorInsertState = gemDebugPersonalizableCodeMirrorInsertState;
+window.gemInsertSnippetAtCaret = insertSnippetAtCaret;
+window.gemInsertSnippetIntoTarget = gemInsertSnippetIntoTarget;
 
 // Wait for page to be ready before initializing
 if (document.readyState === 'loading') {

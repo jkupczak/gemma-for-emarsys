@@ -331,8 +331,8 @@ function setupCompactEmailToolsSendTestMenuWatcher() {
   }
 }
 
-function isCompactEmailToolsExpandedViewActive() {
-  return document.body.classList.contains('gem-expanded');
+function isCompactEmailToolsFocusLayoutActive() {
+  return document.body.classList.contains('gem-focus-layout');
 }
 
 function setCompactEmailToolsMenuItemIndicator(item, isOn) {
@@ -373,7 +373,7 @@ function syncCompactEmailToolsFeatureMenuItems() {
 
   const standardEditorItem = menu.querySelector('[data-gem-standard-editor-toggle]');
   const focusEditorItem = menu.querySelector('[data-gem-focus-editor-toggle]');
-  const isFocusEditorActive = isCompactEmailToolsExpandedViewActive();
+  const isFocusEditorActive = isCompactEmailToolsFocusLayoutActive();
   if (standardEditorItem) {
     standardEditorItem.classList.toggle(
       'gem-recent-campaign-row-menu-item--preview-active',
@@ -418,11 +418,11 @@ function syncCompactEmailToolsFeatureMenuItems() {
   syncCompactEmailToolsNavMenuItems();
 }
 
-function setCompactEmailToolsExpandedView(enabled) {
+function setCompactEmailToolsFocusLayout(enabled) {
   const next = !!enabled;
-  const isNowExpanded = document.body.classList.contains('gem-expanded');
-  if (isNowExpanded === next) return;
-  document.body.classList.toggle('gem-expanded', next);
+  const isFocusLayout = document.body.classList.contains('gem-focus-layout');
+  if (isFocusLayout === next) return;
+  document.body.classList.toggle('gem-focus-layout', next);
   if (typeof window.updateNavToggleIcons === 'function') {
     window.updateNavToggleIcons();
   }
@@ -827,7 +827,7 @@ function positionCompactEmailToolsMenu(wrap, menu) {
   }
   if (wrap.classList.contains('gem-compact-email-tools-menu-wrap--header')) {
     left = 96;
-  } else if (document.body.classList.contains('gem-expanded')) {
+  } else if (document.body.classList.contains('gem-focus-layout')) {
     left = anchorRect.left;
     left = Math.min(left, window.innerWidth - menuRect.width - 8);
   } else {
@@ -950,9 +950,9 @@ function syncCompactEmailToolsOverflowMenuPlacement() {
 
   closeCompactEmailToolsMenu();
 
-  const isExpanded = document.body.classList.contains('gem-expanded');
+  const isFocusLayout = document.body.classList.contains('gem-focus-layout');
 
-  if (isExpanded) {
+  if (isFocusLayout) {
     wrap.classList.remove('gem-compact-email-tools-menu-wrap--header');
     if (compactEmailToolsDropdownContainer && wrap.parentElement !== compactEmailToolsDropdownContainer) {
       compactEmailToolsDropdownContainer.prepend(wrap);
@@ -1208,12 +1208,12 @@ function setupCompactEmailToolsOverflowMenu(dropdownContainer) {
   );
   standardEditorItem.addEventListener('click', (e) => {
     e.stopPropagation();
-    if (!isCompactEmailToolsExpandedViewActive()) {
+    if (!isCompactEmailToolsFocusLayoutActive()) {
       closeCompactEmailToolsMenu();
       return;
     }
     closeCompactEmailToolsMenu();
-    setCompactEmailToolsExpandedView(false);
+    setCompactEmailToolsFocusLayout(false);
   });
 
   const focusEditorItem = makeCompactEmailToolsToggleMenuItem('Focus Layout', {
@@ -1226,12 +1226,12 @@ function setupCompactEmailToolsOverflowMenu(dropdownContainer) {
   );
   focusEditorItem.addEventListener('click', (e) => {
     e.stopPropagation();
-    if (isCompactEmailToolsExpandedViewActive()) {
+    if (isCompactEmailToolsFocusLayoutActive()) {
       closeCompactEmailToolsMenu();
       return;
     }
     closeCompactEmailToolsMenu();
-    setCompactEmailToolsExpandedView(true);
+    setCompactEmailToolsFocusLayout(true);
   });
 
   const editorModeDivider = document.createElement('div');

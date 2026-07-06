@@ -9,7 +9,7 @@
 
     const state = { enabled: false };
     console.log(
-      'Gemma Regression Harness: Run "node scripts/regression-harness.js" to execute lightweight source-level regression checks. It validates key wiring/invariants (manifest injection order, expanded-mode settings wiring, event-driven waits) and runs "node --check" on edited extension scripts.'
+      'Gemma Regression Harness: Run "node scripts/regression-harness.js" to execute lightweight source-level regression checks. It validates key wiring/invariants (manifest injection order, Focus Layout settings wiring, event-driven waits) and runs "node --check" on edited extension scripts.'
     );
 
     const emitSetRequest = (enabled, persist) => {

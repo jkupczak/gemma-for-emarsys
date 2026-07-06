@@ -26,7 +26,7 @@ const GEM_EMAIL_CAMPAIGN_LIST_OVERFLOW_TOGGLES_DEFAULT = {
   editTranslations: true,
   distribute: true
 };
-const GEM_EXPANDED_MODE_STORAGE_KEY = "fullscreenActive";
+const GEM_FOCUS_LAYOUT_STORAGE_KEY = "fullscreenActive";
 const GEM_PREFLIGHT_TOTAL_IMAGE_WEIGHT_THRESHOLD_VALUE_KEY = 'gemPreflightTotalImageWeightThresholdValue';
 const GEM_PREFLIGHT_TOTAL_IMAGE_WEIGHT_THRESHOLD_UNIT_KEY = 'gemPreflightTotalImageWeightThresholdUnit';
 const GEM_PREFLIGHT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_VALUE_KEY = 'gemPreflightSingularImageWeightThresholdValue';
@@ -49,6 +49,7 @@ const GEM_PREFLIGHT_DEFAULT_IMAGE_WEIGHT_THRESHOLD_UNIT = 'MB';
 const GEM_COMPARE_LANGUAGES_DESKTOP_WIDTH_KEY = 'gemCompareLanguagesDesktopWidth';
 const GEM_COMPARE_LANGUAGES_MOBILE_WIDTH_KEY = 'gemCompareLanguagesMobileWidth';
 const GEM_CAMPAIGN_PREVIEW_TOOLBAR_VISIBLE_KEY = 'gemCampaignPreviewToolbarVisible';
+const GEM_SNIPPET_CONTEXT_MENU_ENABLED_KEY = 'gemSnippetContextMenuEnabled';
 const GEM_COMPARE_LANGUAGES_DEFAULT_DESKTOP_WIDTH = 620;
 const GEM_COMPARE_LANGUAGES_DEFAULT_MOBILE_WIDTH = 414;
 const GEM_FULL_BACKUP_TYPE = 'gemma-full-backup';
@@ -89,11 +90,20 @@ function applyGemThemeMode(mode, opts) {
   }
 }
 
-function applyExpandedMode(enabled) {
+function migrateLegacyFocusLayoutClass(body) {
+  if (!body) return;
+  if (body.classList.contains("gem-expanded")) {
+    body.classList.remove("gem-expanded");
+    body.classList.add("gem-focus-layout");
+  }
+}
+
+function applyFocusLayout(enabled) {
   try {
     const body = document.body;
     if (!body) return;
-    body.classList.toggle("gem-expanded", !!enabled);
+    migrateLegacyFocusLayoutClass(body);
+    body.classList.toggle("gem-focus-layout", !!enabled);
   } catch (_) {
     // ignore
   }
@@ -290,8 +300,8 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
     {
       id: "snippets",
       label: "Snippets",
-      syncKeys: ["gemSnippets", "sm", "s_meta", ...Array.from({ length: GEM_SNIPPET_MAX_CHUNKS }, (_, i) => `s${i}`)],
-      localKeys: []
+      syncKeys: ["gemSnippets", "sm", "s_meta", "gemPinnedPersTokens", ...Array.from({ length: GEM_SNIPPET_MAX_CHUNKS }, (_, i) => `s${i}`)],
+      localKeys: ["gemSnippetContextRecent", "gemPersTokenRecentCache"]
     },
     {
       id: "savedSearches",
@@ -800,7 +810,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
         </div>
 
         <div class="gem-setting-section">
-          <h3>Campaign Preview</h3>
+          <h3>Layout</h3>
           <div class="gem-setting gem-setting-condensed">
             <div class="gem-e-switch-wrapper">
               <label for="opt-campaign-preview-toolbar-visible">Show Campaign Preview Toolbar</label>
@@ -813,20 +823,16 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
               The vertical toolbar beside your email preview includes undo/redo, highlight editables, and Gemma preview tools. Turn it off for a cleaner preview area.
             </p>
           </div>
-        </div>
-
-        <div class="gem-setting-section">
-          <h3>Layout</h3>
           <div class="gem-setting">
             <div class="gem-e-switch-wrapper">
-              <label for="opt-enable-expanded-mode">Focus Editor</label>
+              <label for="opt-enable-focus-layout">Focus Layout</label>
               <div class="gem-e-switch--fat e-switch">
-                <input type="checkbox" class="e-switch__input" id="opt-enable-expanded-mode">
-                <label class="e-switch__toggle" for="opt-enable-expanded-mode"></label>
+                <input type="checkbox" class="e-switch__input" id="opt-enable-focus-layout">
+                <label class="e-switch__toggle" for="opt-enable-focus-layout"></label>
               </div>
             </div>
             <p class="sub-label">
-              Focus Editor increases the total viewable area of your email by over 40%. Turn it on here, choose it from the email tools menu, via the <span class="gem-e-icon">&#61658;</span> icon next to your email, or use the keyboard shortcut CMD+SHIFT+F or CTRL+SHIFT+F at any time. Turn it off to return to Standard Editor.
+              Focus Layout increases the total viewable area of your email by over 40%. Turn it on here, choose it from the email tools menu, via the <span class="gem-e-icon">&#61658;</span> icon next to your email, or use the keyboard shortcut CMD+SHIFT+F or CTRL+SHIFT+F at any time. Turn it off to return to Standard Layout.
             </p>
           </div>
           <div class="gem-setting">
@@ -854,6 +860,19 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
                 </select>
               </div>
             </div>
+          </div>
+
+          <div class="gem-setting">
+            <div class="gem-e-switch-wrapper">
+              <label for="opt-snippet-context-menu-enabled">Snippet right-click menu</label>
+              <div class="gem-e-switch--fat e-switch">
+                <input type="checkbox" class="e-switch__input" id="opt-snippet-context-menu-enabled" checked>
+                <label class="e-switch__toggle" for="opt-snippet-context-menu-enabled"></label>
+              </div>
+            </div>
+            <p class="sub-label">
+              Right-click in editable fields to insert snippets from a Gemma menu. Use CMD/CTRL + right-click for the browser menu. Works in the email preview, subject line, preheader, and other text fields on the campaign editor.
+            </p>
           </div>
 
         </div>
@@ -1592,12 +1611,13 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
         [GEM_RECENTLY_SEEN_IMAGES_MAX_KEY]: 300,
         [GEM_EMAIL_CAMPAIGN_LIST_LOAD_ALL_KEY]: false,
         [GEM_EMAIL_CAMPAIGN_LIST_OVERFLOW_TOGGLES_KEY]: GEM_EMAIL_CAMPAIGN_LIST_OVERFLOW_TOGGLES_DEFAULT,
-        [GEM_EXPANDED_MODE_STORAGE_KEY]: false,
+        [GEM_FOCUS_LAYOUT_STORAGE_KEY]: false,
         gemAltTextPreviewEnabled: true,
         gemAltTextVisibility: "always-show",
         gemBlockTargetingPreviewEnabled: true,
         gemBlockTargetingVisibility: "always-show",
         [GEM_CAMPAIGN_PREVIEW_TOOLBAR_VISIBLE_KEY]: true,
+        [GEM_SNIPPET_CONTEXT_MENU_ENABLED_KEY]: true,
         [GEM_PREFLIGHT_TOTAL_IMAGE_WEIGHT_THRESHOLD_VALUE_KEY]: GEM_PREFLIGHT_DEFAULT_TOTAL_IMAGE_WEIGHT_THRESHOLD_VALUE,
         [GEM_PREFLIGHT_TOTAL_IMAGE_WEIGHT_THRESHOLD_UNIT_KEY]: GEM_PREFLIGHT_DEFAULT_IMAGE_WEIGHT_THRESHOLD_UNIT,
         [GEM_PREFLIGHT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_VALUE_KEY]: GEM_PREFLIGHT_DEFAULT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_VALUE,
@@ -1657,12 +1677,12 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
             ? settings.mobileViewVisible
             : settings.enableMobilePreview;
 
-        const expandedModeToggle = document.getElementById("opt-enable-expanded-mode");
-        if (expandedModeToggle) {
-          expandedModeToggle.checked = settings[GEM_EXPANDED_MODE_STORAGE_KEY] === true;
+        const focusLayoutToggle = document.getElementById("opt-enable-focus-layout");
+        if (focusLayoutToggle) {
+          focusLayoutToggle.checked = settings[GEM_FOCUS_LAYOUT_STORAGE_KEY] === true;
         }
 
-        applyExpandedMode(settings[GEM_EXPANDED_MODE_STORAGE_KEY] === true);
+        applyFocusLayout(settings[GEM_FOCUS_LAYOUT_STORAGE_KEY] === true);
 
         const altTextEnabledEl = document.getElementById("opt-alt-text-preview-enabled");
         if (altTextEnabledEl) altTextEnabledEl.checked = settings.gemAltTextPreviewEnabled !== false;
@@ -1679,6 +1699,11 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
         const campaignPreviewToolbarEl = document.getElementById("opt-campaign-preview-toolbar-visible");
         if (campaignPreviewToolbarEl) {
           campaignPreviewToolbarEl.checked = settings[GEM_CAMPAIGN_PREVIEW_TOOLBAR_VISIBLE_KEY] !== false;
+        }
+
+        const snippetContextMenuEl = document.getElementById("opt-snippet-context-menu-enabled");
+        if (snippetContextMenuEl) {
+          snippetContextMenuEl.checked = settings[GEM_SNIPPET_CONTEXT_MENU_ENABLED_KEY] !== false;
         }
 
         const preflightTotalValueEl = document.getElementById("opt-preflight-total-image-weight-threshold-value");
@@ -1783,8 +1808,8 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
 
           const mobileVisible =
             document.getElementById("opt-enable-mobile-preview")?.checked ?? true;
-          const expandedModeEnabled =
-            document.getElementById("opt-enable-expanded-mode")?.checked ?? false;
+          const focusLayoutEnabled =
+            document.getElementById("opt-enable-focus-layout")?.checked ?? false;
 
           const settingsToSave = {
             [GEM_THEME_MODE_STORAGE_KEY]:
@@ -1830,7 +1855,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
             [GEM_EMAIL_CAMPAIGN_LIST_LOAD_ALL_KEY]:
               document.getElementById("opt-email-campaign-list-load-all")?.checked ?? false,
             [GEM_EMAIL_CAMPAIGN_LIST_OVERFLOW_TOGGLES_KEY]: readEmailCampaignListOverflowTogglesFromUI(),
-            [GEM_EXPANDED_MODE_STORAGE_KEY]: expandedModeEnabled,
+            [GEM_FOCUS_LAYOUT_STORAGE_KEY]: focusLayoutEnabled,
             mobilePreviewWidth: safeWidth,
             mobilePreviewScale: safeScale,
             gemAltTextPreviewEnabled:
@@ -1843,6 +1868,8 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
               document.getElementById("opt-block-targeting-visibility")?.value ?? "always-show",
             [GEM_CAMPAIGN_PREVIEW_TOOLBAR_VISIBLE_KEY]:
               document.getElementById("opt-campaign-preview-toolbar-visible")?.checked ?? true,
+            [GEM_SNIPPET_CONTEXT_MENU_ENABLED_KEY]:
+              document.getElementById("opt-snippet-context-menu-enabled")?.checked ?? true,
             [GEM_PREFLIGHT_TOTAL_IMAGE_WEIGHT_THRESHOLD_VALUE_KEY]:
               Math.max(0.1, parseFloat(document.getElementById("opt-preflight-total-image-weight-threshold-value")?.value || String(GEM_PREFLIGHT_DEFAULT_TOTAL_IMAGE_WEIGHT_THRESHOLD_VALUE)) || GEM_PREFLIGHT_DEFAULT_TOTAL_IMAGE_WEIGHT_THRESHOLD_VALUE),
             [GEM_PREFLIGHT_TOTAL_IMAGE_WEIGHT_THRESHOLD_UNIT_KEY]:
@@ -1862,7 +1889,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
 
           // Apply immediately + cache synchronously for next page load
           applyGemThemeMode(settingsToSave[GEM_THEME_MODE_STORAGE_KEY], { persistLocal: true });
-          applyExpandedMode(settingsToSave[GEM_EXPANDED_MODE_STORAGE_KEY]);
+          applyFocusLayout(settingsToSave[GEM_FOCUS_LAYOUT_STORAGE_KEY]);
           const toolbarVisible = settingsToSave[GEM_CAMPAIGN_PREVIEW_TOOLBAR_VISIBLE_KEY] !== false;
           if (typeof window.gemApplyCampaignPreviewToolbarVisibility === 'function') {
             window.gemApplyCampaignPreviewToolbarVisibility(toolbarVisible);
@@ -2006,7 +2033,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
       "opt-convert-esl-to-tokens",
       "opt-swap-keywords",
       "opt-enable-highlighting",
-      "opt-enable-expanded-mode",
+      "opt-enable-focus-layout",
       "opt-enable-mobile-preview",
       "opt-email-campaign-list-load-all",
       "opt-email-campaign-list-overflow-edit-translations",
@@ -2029,6 +2056,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
       "opt-block-targeting-preview-enabled",
       "opt-block-targeting-visibility",
       "opt-campaign-preview-toolbar-visible",
+      "opt-snippet-context-menu-enabled",
       "opt-preflight-total-image-weight-threshold-value",
       "opt-preflight-total-image-weight-threshold-unit",
       "opt-preflight-singular-image-weight-threshold-value",
