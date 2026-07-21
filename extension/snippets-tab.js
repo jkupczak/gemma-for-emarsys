@@ -607,6 +607,61 @@ function restoreContentEditableInsertContext(doc, element, savedRange) {
 
 const GEM_SNIPPET_MSG_EXT = 'gem-snippet-extension';
 const GEM_SNIPPET_MSG_BRIDGE = 'gem-snippet-iframe-bridge';
+const GEM_CARET_MARKER_ATTR = 'data-gem-caret-marker';
+
+function appendContentEditableCaretMarker(html) {
+  return `${String(html ?? '')}<span ${GEM_CARET_MARKER_ATTR}="1">\u200b</span>`;
+}
+
+function placeContentEditableCaretAfterMarker(doc, editor, element) {
+  if (!doc) return false;
+
+  const marker = doc.querySelector(`[${GEM_CARET_MARKER_ATTR}]`);
+  if (!marker) return false;
+
+  try {
+    const range = doc.createRange();
+    range.setStartAfter(marker);
+    range.collapse(true);
+    marker.remove();
+
+    if (editor && editor.selection) {
+      try {
+        editor.focus();
+      } catch (_) {}
+      if (typeof editor.selection.setRng === 'function') {
+        editor.selection.setRng(range);
+        if (typeof editor.nodeChanged === 'function') {
+          editor.nodeChanged();
+        }
+        return true;
+      }
+    }
+
+    if (element) {
+      try {
+        element.focus({ preventScroll: true });
+      } catch (_) {
+        try {
+          element.focus();
+        } catch (_) {}
+      }
+    }
+
+    const sel = doc.getSelection && doc.getSelection();
+    if (sel) {
+      sel.removeAllRanges();
+      sel.addRange(range);
+      return true;
+    }
+  } catch (_) {
+    try {
+      marker.remove();
+    } catch (_) {}
+  }
+
+  return false;
+}
 
 function postMessageToSnippetBridge(contentWindow, type, payload = {}, timeoutMs = 600) {
   return new Promise((resolve) => {
@@ -727,11 +782,13 @@ async function insertHtmlIntoContentEditable(ctx, html, options = {}) {
   if (!doc || !element) return false;
 
   const bridgeTimeoutMs = options.bridgeTimeoutMs || 2500;
+  const placeCaretAfter = options.placeCaretAfter === true;
+  const insertHtml = placeCaretAfter ? appendContentEditableCaretMarker(html) : html;
   const isIframeDoc = doc.defaultView && doc.defaultView !== window;
   let insertedViaTinyMCE = false;
 
   if (isIframeDoc) {
-    insertedViaTinyMCE = await tryInsertViaIframeBridge(ctx, html, bridgeTimeoutMs);
+    insertedViaTinyMCE = await tryInsertViaIframeBridge(ctx, insertHtml, bridgeTimeoutMs);
   }
 
   if (!insertedViaTinyMCE) {
@@ -741,14 +798,28 @@ async function insertHtmlIntoContentEditable(ctx, html, options = {}) {
     }
     if (!range) return false;
 
-    insertedViaTinyMCE = tryInsertContentEditableViaTinyMCE(doc, element, html, ctx);
+    insertedViaTinyMCE = tryInsertContentEditableViaTinyMCE(doc, element, insertHtml, ctx);
     if (!insertedViaTinyMCE) {
-      insertSnippetAtCaret(element, html, doc, null, null, range);
+      insertSnippetAtCaret(element, insertHtml, doc, null, null, range);
     }
   }
 
+  if (placeCaretAfter) {
+    const editor = findTinyMCEEditorForCtx(ctx);
+    placeContentEditableCaretAfterMarker(doc, editor, element);
+    requestAnimationFrame(() => {
+      placeContentEditableCaretAfterMarker(doc, editor, element);
+    });
+  }
+
   if (!insertedViaTinyMCE) {
-    notifyEmarsysAfterContentEditableInsert(doc, element, { nudgeFocus: true });
+    notifyEmarsysAfterContentEditableInsert(doc, element, {
+      nudgeFocus: !placeCaretAfter,
+    });
+    if (placeCaretAfter) {
+      const editor = findTinyMCEEditorForCtx(ctx);
+      placeContentEditableCaretAfterMarker(doc, editor, element);
+    }
   }
   return true;
 }
@@ -788,6 +859,7 @@ function tryInsertContentEditableViaTinyMCE(doc, element, html, ctx) {
     }
     if (typeof editor.setDirty === 'function') editor.setDirty(true);
     if (typeof editor.fire === 'function') editor.fire('change');
+    placeContentEditableCaretAfterMarker(doc, editor, element);
     return true;
   } catch (e) {
     console.warn('[Gem] TinyMCE insert failed, falling back to DOM insert:', e);
@@ -870,6 +942,22 @@ function insertSnippetAtCaret(element, snippetHTML, doc, dropId = null, dropEven
 
     range.deleteContents();
     range.insertNode(fragment);
+
+    const marker = doc.querySelector(`[${GEM_CARET_MARKER_ATTR}]`);
+    if (marker && selection) {
+      try {
+        range.setStartAfter(marker);
+        range.collapse(true);
+        marker.remove();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        return;
+      } catch (_) {
+        try {
+          marker.remove();
+        } catch (_) {}
+      }
+    }
 
     if (selection) {
       if (lastInserted && lastInserted.parentNode) {
@@ -980,18 +1068,36 @@ function restoreCodeMirrorInsertContext(ctx) {
   }
 }
 
+function setTextControlValue(el, value) {
+  if (!el) return;
+  const next = String(value ?? '');
+  try {
+    const proto =
+      el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    const descriptor = Object.getOwnPropertyDescriptor(proto, 'value');
+    if (descriptor && typeof descriptor.set === 'function') {
+      descriptor.set.call(el, next);
+      return;
+    }
+  } catch (_) {}
+  el.value = next;
+}
+
 function insertIntoTextControl(el, text, selectionStart, selectionEnd) {
   if (!el) return false;
   const start = typeof selectionStart === 'number' ? selectionStart : el.selectionStart;
   const end = typeof selectionEnd === 'number' ? selectionEnd : el.selectionEnd;
+  // Always notify after insert: execCommand updates the DOM, but Emarsys only
+  // commits per-language field values after its dirty/focus-out path runs.
   if (tryInsertIntoTextControlViaExecCommand(el, text, start, end)) {
+    notifyEmarsysAfterTextControlInsert(el, { nudgeFocus: true });
     return true;
   }
 
   const value = String(el.value ?? '');
   const insert = String(text ?? '');
   restoreTextControlInsertContext(el, start, end);
-  el.value = value.slice(0, start) + insert + value.slice(end);
+  setTextControlValue(el, value.slice(0, start) + insert + value.slice(end));
   const pos = start + insert.length;
   try {
     el.selectionStart = pos;
@@ -1014,6 +1120,281 @@ function syncCodeMirrorHostAttributes(cmEl, text) {
       htmlEditor.setAttribute('html', text);
     } catch (_) {}
   }
+}
+
+function extractPersonalizableCodeMirrorTokenPreview(tokenPayload) {
+  const payload = String(tokenPayload ?? '');
+  const metaEnd = payload.indexOf('#}');
+  if (metaEnd < 0) return '';
+  const tailStart = payload.indexOf('{#', metaEnd + 2);
+  const preview = tailStart >= 0 ? payload.slice(metaEnd + 2, tailStart) : payload.slice(metaEnd + 2);
+  return preview.trim();
+}
+
+function extractPersonalizableCodeMirrorTokenName(tokenPayload) {
+  const match = String(tokenPayload ?? '').match(/\{# pers-token:1 ([^#]+?) #\}/);
+  if (!match) return '';
+  const meta = decodePersTokenMetaB64(match[1].trim());
+  return meta?.tokenName || meta?.name || '';
+}
+
+function countCodeMirrorWidgets(cmEl) {
+  if (!cmEl) return 0;
+  return cmEl.querySelectorAll('.CodeMirror-widget').length;
+}
+
+function buildPersonalizableCodeMirrorCaretHints(tokenPayload, ctx, cmEl) {
+  const payload = String(tokenPayload ?? '');
+  return {
+    tokenPayload: payload,
+    preview: extractPersonalizableCodeMirrorTokenPreview(payload),
+    tokenName: extractPersonalizableCodeMirrorTokenName(payload),
+    trailingText: ctx?.cmTrailingText || '',
+    widgetCountBefore: countCodeMirrorWidgets(cmEl),
+  };
+}
+
+function resolveInsertedCodeMirrorWidget(cmEl, caretHints) {
+  const widgets = cmEl ? Array.from(cmEl.querySelectorAll('.CodeMirror-widget')) : [];
+  if (!widgets.length) return null;
+
+  const tokenName = caretHints?.tokenName;
+  if (tokenName) {
+    const labeled = widgets.filter((node) => String(node.textContent || '').trim() === tokenName);
+    if (labeled.length === 1) return labeled[0];
+    if (labeled.length > 1) return labeled[labeled.length - 1];
+  }
+
+  const before = typeof caretHints?.widgetCountBefore === 'number' ? caretHints.widgetCountBefore : 0;
+  if (widgets.length > before) {
+    return widgets[before];
+  }
+
+  return widgets[widgets.length - 1];
+}
+
+function resolveDocIndexAfterCodeMirrorWidget(cmInstance, widget, html, cmValue, caretHints) {
+  if (!cmInstance || !widget) return null;
+
+  const htmlStr = String(html ?? '');
+  const docStr = String(cmValue ?? '');
+  if (!htmlStr || !docStr) return null;
+
+  const cmRoot = widget.closest?.('.CodeMirror');
+  const widgets = cmRoot ? Array.from(cmRoot.querySelectorAll('.CodeMirror-widget')) : [];
+  const widgetIndex = widgets.indexOf(widget);
+
+  const tokens = parsePersTokensInHtml(htmlStr);
+  if (widgetIndex >= 0 && widgetIndex < tokens.length) {
+    const htmlAfterToken = tokens[widgetIndex].end;
+    if (htmlStr === docStr) {
+      return htmlAfterToken;
+    }
+    try {
+      return createDocHtmlIndexMapper(htmlStr, docStr).htmlToDoc(htmlAfterToken);
+    } catch (_) {}
+  }
+
+  if (typeof cmInstance.posAtDOM !== 'function') return null;
+
+  try {
+    const pos = cmInstance.posAtDOM(widget, 0, widget);
+    if (!pos || typeof cmInstance.indexFromPos !== 'function') return null;
+
+    const startIndex = cmInstance.indexFromPos(pos);
+    if (htmlStr === docStr) {
+      return Math.max(0, Math.min(startIndex + 1, docStr.length));
+    }
+
+    const mapper = createDocHtmlIndexMapper(htmlStr, docStr);
+    const tokenName = caretHints?.tokenName;
+    if (tokenName) {
+      for (const token of tokens) {
+        if (token.meta?.tokenName === tokenName || token.meta?.name === tokenName) {
+          return mapper.htmlToDoc(token.end);
+        }
+      }
+    }
+
+    return Math.max(0, Math.min(startIndex + (mapper.tokenDocLen || 1), docStr.length));
+  } catch (_) {
+    return null;
+  }
+}
+
+function resolveDocCaretAfterTokenInsert(cmEl, cmInstance, newHtml, caretAfterHtml, caretHints = {}) {
+  let cmValue = '';
+  try {
+    cmValue = typeof cmInstance?.getValue === 'function' ? cmInstance.getValue() : '';
+  } catch (_) {}
+  if (!cmValue) return null;
+
+  const html = String(newHtml ?? '');
+  const widget = resolveInsertedCodeMirrorWidget(cmEl, caretHints);
+  if (widget) {
+    const afterWidget = resolveDocIndexAfterCodeMirrorWidget(
+      cmInstance,
+      widget,
+      html,
+      cmValue,
+      caretHints
+    );
+    if (typeof afterWidget === 'number' && !(afterWidget === 0 && caretAfterHtml > 5)) {
+      return afterWidget;
+    }
+  }
+
+  const trailing = caretHints.trailingText;
+  if (trailing) {
+    const idx = cmValue.indexOf(trailing);
+    if (idx > 0) return idx;
+    if (cmValue.endsWith(trailing)) {
+      return cmValue.length - trailing.length;
+    }
+  }
+
+  const preview =
+    caretHints.preview ||
+    extractPersonalizableCodeMirrorTokenPreview(caretHints.tokenPayload);
+  if (preview) {
+    const previewIndex = cmValue.indexOf(preview);
+    if (previewIndex >= 0) return previewIndex + preview.length;
+  }
+
+  if (typeof caretAfterHtml === 'number' && html) {
+    if (html === cmValue) {
+      const docCaret = Math.max(0, Math.min(caretAfterHtml, cmValue.length));
+      if (docCaret > 0 || caretAfterHtml === 0) return docCaret;
+    } else {
+      try {
+        const docCaret = createDocHtmlIndexMapper(html, cmValue).htmlToDoc(caretAfterHtml);
+        if (typeof docCaret === 'number' && !(docCaret === 0 && caretAfterHtml > 5)) {
+          return Math.max(0, Math.min(docCaret, cmValue.length));
+        }
+      } catch (_) {}
+    }
+  }
+
+  return null;
+}
+
+function setCodeMirrorDocCaret(cmEl, cmInstance, docCaret) {
+  const freshCm = (cmEl && cmEl.CodeMirror) || cmInstance;
+  if (!freshCm || typeof docCaret !== 'number') return false;
+
+  try {
+    if (typeof freshCm.posFromIndex === 'function' && typeof freshCm.setSelection === 'function') {
+      const pos = freshCm.posFromIndex(Math.max(0, docCaret));
+      freshCm.setSelection(pos, pos);
+    }
+    if (typeof freshCm.focus === 'function') {
+      freshCm.focus();
+    }
+    if (typeof freshCm.save === 'function') {
+      freshCm.save();
+    }
+    const inputField = typeof freshCm.getInputField === 'function' ? freshCm.getInputField() : null;
+    if (inputField?.setSelectionRange) {
+      let taIndex = docCaret;
+      try {
+        if (typeof freshCm.getCursor === 'function' && typeof freshCm.indexFromPos === 'function') {
+          taIndex = freshCm.indexFromPos(freshCm.getCursor('from'));
+        }
+      } catch (_) {}
+      inputField.setSelectionRange(taIndex, taIndex);
+    }
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+function applyCodeMirrorCaretAfterInsert(cmEl, cmInstance, newHtml, caretAfterHtml, caretHints = {}) {
+  const docCaret = resolveDocCaretAfterTokenInsert(
+    cmEl,
+    cmInstance,
+    newHtml,
+    caretAfterHtml,
+    caretHints
+  );
+  if (docCaret == null) return false;
+  return setCodeMirrorDocCaret(cmEl, cmInstance, docCaret);
+}
+
+function personalizableCodeMirrorContentReady(cmEl, cmInstance, newHtml, cmValue, caretHints) {
+  const html = String(newHtml ?? '');
+  if (!html) return true;
+
+  const vceCm = cmEl?.closest?.('vce-codemirror');
+  const attrHtml = vceCm?.getAttribute?.('html') ?? '';
+  if (!cmValue || attrHtml !== html) return false;
+
+  const widgetCount = countCodeMirrorWidgets(cmEl);
+  const before = typeof caretHints?.widgetCountBefore === 'number' ? caretHints.widgetCountBefore : 0;
+  if (html.includes('pers-token:1')) {
+    if (widgetCount > before) return true;
+    const preview =
+      caretHints?.preview ||
+      extractPersonalizableCodeMirrorTokenPreview(caretHints?.tokenPayload);
+    if (preview && cmValue.includes(preview)) return true;
+    return false;
+  }
+
+  return true;
+}
+
+function finishCodeMirrorCaretPlacement(cmEl, cmInstance, newHtml, caretAfterHtml, caretHints = {}) {
+  if (typeof caretAfterHtml !== 'number' && !caretHints.preview && !caretHints.tokenPayload) {
+    return;
+  }
+
+  let attempts = 0;
+  const maxAttempts = 40;
+
+  const apply = () =>
+    applyCodeMirrorCaretAfterInsert(cmEl, cmInstance, newHtml, caretAfterHtml, caretHints);
+
+  const tick = () => {
+    const freshCm = (cmEl && cmEl.CodeMirror) || cmInstance;
+    if (!freshCm) return;
+
+    let cmValue = '';
+    try {
+      cmValue = typeof freshCm.getValue === 'function' ? freshCm.getValue() : '';
+    } catch (_) {}
+
+    if (!personalizableCodeMirrorContentReady(cmEl, freshCm, newHtml, cmValue, caretHints)) {
+      if (attempts < maxAttempts) {
+        attempts += 1;
+        requestAnimationFrame(tick);
+      }
+      return;
+    }
+
+    const applied = apply();
+    if (applied) {
+      apply();
+      setTimeout(apply, 50);
+      setTimeout(apply, 150);
+      setTimeout(() => {
+        apply();
+        const inputField =
+          typeof freshCm.getInputField === 'function' ? freshCm.getInputField() : null;
+        if (inputField) {
+          notifyEmarsysAfterTextControlInsert(inputField, { nudgeFocus: false });
+        }
+        apply();
+      }, 250);
+      return;
+    }
+
+    if (attempts < maxAttempts) {
+      attempts += 1;
+      requestAnimationFrame(tick);
+    }
+  };
+
+  requestAnimationFrame(tick);
 }
 
 function getCodeMirrorHtmlValue(vceCm, cmInstance) {
@@ -1122,10 +1503,99 @@ function normalizeCodeMirrorPos(pos) {
   return { line: pos.line, ch: pos.ch };
 }
 
+function syncCodeMirrorContextSelection(ctx, cmInstance, cmEl) {
+  if (!ctx || !cmEl) return ctx;
+
+  const instance =
+    cmInstance ||
+    resolveCodeMirrorInstance(cmEl, cmEl.closest?.('vce-codemirror'), ctx) ||
+    ctx.cmInstance;
+  if (!instance) return ctx;
+
+  try {
+    if (typeof instance.save === 'function') instance.save();
+  } catch (_) {}
+
+  try {
+    ctx.cmFrom = normalizeCodeMirrorPos(instance.getCursor('from'));
+    ctx.cmTo = normalizeCodeMirrorPos(instance.getCursor('to')) || ctx.cmFrom;
+    if (typeof instance.getSelection === 'function') {
+      const selected = instance.getSelection();
+      if (selected) ctx.cmSelectedText = selected;
+    }
+    if (ctx.cmFrom && typeof instance.indexFromPos === 'function') {
+      ctx.selectionStart = instance.indexFromPos(ctx.cmFrom);
+      ctx.selectionEnd = instance.indexFromPos(ctx.cmTo || ctx.cmFrom);
+    }
+    if (typeof ctx.selectionEnd === 'number') {
+      try {
+        const value = typeof instance.getValue === 'function' ? instance.getValue() : '';
+        if (value) {
+          ctx.cmTrailingText = value.slice(ctx.selectionEnd, ctx.selectionEnd + 24);
+        }
+      } catch (_) {}
+    }
+  } catch (_) {}
+
+  const textarea = cmEl.querySelector('textarea');
+  if (
+    textarea &&
+    typeof textarea.selectionStart === 'number' &&
+    typeof textarea.selectionEnd === 'number' &&
+    textarea.selectionStart !== textarea.selectionEnd &&
+    typeof instance.posFromIndex === 'function'
+  ) {
+    const taStart = textarea.selectionStart;
+    const taEnd = textarea.selectionEnd;
+    if (ctx.selectionStart !== taStart || ctx.selectionEnd !== taEnd) {
+      ctx.selectionStart = taStart;
+      ctx.selectionEnd = taEnd;
+      try {
+        ctx.cmFrom = normalizeCodeMirrorPos(instance.posFromIndex(taStart));
+        ctx.cmTo = normalizeCodeMirrorPos(instance.posFromIndex(taEnd));
+      } catch (_) {}
+      try {
+        if (typeof instance.getSelection === 'function') {
+          const selected = instance.getSelection();
+          if (selected) ctx.cmSelectedText = selected;
+        }
+      } catch (_) {}
+    }
+  }
+
+  return ctx;
+}
+
+function codeMirrorContextHasSelectionSpan(ctx, cmInstance) {
+  if (typeof ctx?.selectionStart === 'number' && typeof ctx?.selectionEnd === 'number') {
+    if (ctx.selectionStart !== ctx.selectionEnd) return true;
+  }
+  const from = normalizeCodeMirrorPos(ctx?.cmFrom);
+  const to = normalizeCodeMirrorPos(ctx?.cmTo) || from;
+  if (from && to && (from.line !== to.line || from.ch !== to.ch)) return true;
+  if (ctx?.cmSelectedText) return true;
+  if (cmInstance && typeof cmInstance.somethingSelected === 'function') {
+    try {
+      return cmInstance.somethingSelected();
+    } catch (_) {}
+  }
+  return false;
+}
+
 function resolveCodeMirrorCaretPositions(cmInstance, cmEl, ctx) {
+  if (cmInstance) {
+    try {
+      const from = normalizeCodeMirrorPos(cmInstance.getCursor('from'));
+      const to = normalizeCodeMirrorPos(cmInstance.getCursor('to')) || from;
+      if (from && to) {
+        return { from, to };
+      }
+    } catch (_) {}
+  }
+
   const fromCtx = normalizeCodeMirrorPos(ctx?.cmFrom);
   const toCtx = normalizeCodeMirrorPos(ctx?.cmTo) || fromCtx;
-  if (cmInstance && fromCtx && toCtx) {
+  if (fromCtx && toCtx) {
     return { from: fromCtx, to: toCtx };
   }
 
@@ -1139,15 +1609,6 @@ function resolveCodeMirrorCaretPositions(cmInstance, cmEl, ctx) {
     } catch (_) {}
   }
 
-  if (cmInstance) {
-    try {
-      return {
-        from: cmInstance.getCursor('from'),
-        to: cmInstance.getCursor('to'),
-      };
-    } catch (_) {}
-  }
-
   return null;
 }
 
@@ -1155,13 +1616,23 @@ function resolveCodeMirrorTextInsertOffsets(ctx, cmInstance, cmEl, sourceText) {
   const max = String(sourceText ?? '').length;
   const clamp = (index) => Math.max(0, Math.min(typeof index === 'number' ? index : max, max));
 
+  if (cmInstance && ctx) {
+    restoreCodeMirrorSelectionOnInstance(cmInstance, ctx);
+  }
+
   const caret = resolveCodeMirrorCaretPositions(cmInstance, cmEl, ctx);
   if (caret && cmInstance && typeof cmInstance.indexFromPos === 'function') {
     try {
-      return {
-        start: clamp(cmInstance.indexFromPos(caret.from)),
-        end: clamp(cmInstance.indexFromPos(caret.to)),
-      };
+      const start = clamp(cmInstance.indexFromPos(caret.from));
+      const end = clamp(cmInstance.indexFromPos(caret.to));
+      const hasStoredSpan =
+        typeof ctx?.selectionStart === 'number' &&
+        typeof ctx?.selectionEnd === 'number' &&
+        ctx.selectionStart !== ctx.selectionEnd;
+      const liveCollapsed = start === end;
+      if (!hasStoredSpan || !liveCollapsed || (start === ctx.selectionStart && end === ctx.selectionEnd)) {
+        return { start, end };
+      }
     } catch (_) {}
   }
 
@@ -1205,8 +1676,52 @@ function restoreCodeMirrorSelectionOnInstance(cmInstance, ctx) {
     cmInstance.focus && cmInstance.focus();
   } catch (_) {}
 
-  const from = normalizeCodeMirrorPos(ctx?.cmFrom);
-  const to = normalizeCodeMirrorPos(ctx?.cmTo) || from;
+  const textarea = ctx?.cmEl?.querySelector?.('textarea');
+  if (
+    textarea &&
+    typeof textarea.selectionStart === 'number' &&
+    typeof textarea.selectionEnd === 'number' &&
+    textarea.selectionStart !== textarea.selectionEnd &&
+    typeof cmInstance.posFromIndex === 'function'
+  ) {
+    const taStart = textarea.selectionStart;
+    const taEnd = textarea.selectionEnd;
+    if (ctx.selectionStart !== taStart || ctx.selectionEnd !== taEnd) {
+      ctx.selectionStart = taStart;
+      ctx.selectionEnd = taEnd;
+      try {
+        ctx.cmFrom = normalizeCodeMirrorPos(cmInstance.posFromIndex(taStart));
+        ctx.cmTo = normalizeCodeMirrorPos(cmInstance.posFromIndex(taEnd));
+      } catch (_) {}
+    }
+  }
+
+  let from = normalizeCodeMirrorPos(ctx?.cmFrom);
+  let to = normalizeCodeMirrorPos(ctx?.cmTo) || from;
+
+  if (
+    typeof ctx?.selectionStart === 'number' &&
+    typeof ctx?.selectionEnd === 'number' &&
+    ctx.selectionStart !== ctx.selectionEnd &&
+    typeof cmInstance.posFromIndex === 'function' &&
+    typeof cmInstance.indexFromPos === 'function'
+  ) {
+    try {
+      const fromIndex = from ? cmInstance.indexFromPos(from) : null;
+      const toIndex = to ? cmInstance.indexFromPos(to) : null;
+      const indicesMatch =
+        fromIndex === ctx.selectionStart && toIndex === ctx.selectionEnd;
+      if (!indicesMatch) {
+        from = normalizeCodeMirrorPos(cmInstance.posFromIndex(ctx.selectionStart));
+        to = normalizeCodeMirrorPos(cmInstance.posFromIndex(ctx.selectionEnd));
+        if (ctx) {
+          ctx.cmFrom = from;
+          ctx.cmTo = to;
+        }
+      }
+    } catch (_) {}
+  }
+
   if (from && to && typeof cmInstance.setSelection === 'function') {
     try {
       cmInstance.setSelection(from, to);
@@ -1245,6 +1760,7 @@ function resolveCodeMirrorCaretForInsert(cmInstance, ctx) {
 }
 
 function canUseDirectPersonalizableAttrHtmlInsert(ctx, cmInstance) {
+  if (codeMirrorContextHasSelectionSpan(ctx, cmInstance)) return false;
   if (ctx?.cmFrom) return true;
   if (cmInstance && ctx?.cmClickPoint && typeof cmInstance.coordsChar === 'function') {
     return true;
@@ -1270,13 +1786,28 @@ function tryDirectPersonalizableAttrHtmlInsert(ctx, cmEl, vceCm, cmInstance, ins
   if (attrHtml == null) return null;
   if (!canUseDirectPersonalizableAttrHtmlInsert(ctx, cmInstance)) return null;
 
-  const resolved = resolveCodeMirrorTextInsertOffsets(ctx, cmInstance, cmEl, attrHtml);
-  const newHtml = attrHtml.slice(0, resolved.start) + insert + attrHtml.slice(resolved.end);
+  let cmValue = '';
+  try {
+    cmValue = typeof cmInstance?.getValue === 'function' ? cmInstance.getValue() : '';
+  } catch (_) {}
+  if (!cmValue) cmValue = attrHtml;
+
+  const resolved = resolveCodeMirrorTextInsertOffsets(ctx, cmInstance, cmEl, cmValue);
+  let htmlStart = resolved.start;
+  let htmlEnd = resolved.end;
+
+  if (attrHtml !== cmValue) {
+    const mapper = createDocHtmlIndexMapper(attrHtml, cmValue);
+    htmlStart = mapper.docToHtml(resolved.start);
+    htmlEnd = mapper.docToHtml(resolved.end);
+  }
+
+  const newHtml = attrHtml.slice(0, htmlStart) + insert + attrHtml.slice(htmlEnd);
   return {
     newHtml,
-    insertIndex: resolved.start,
-    insertEnd: resolved.end,
-    caretAfter: resolved.start + insert.length,
+    insertIndex: htmlStart,
+    insertEnd: htmlEnd,
+    caretAfter: htmlStart + insert.length,
     path: 'direct-attrHtml',
   };
 }
@@ -1336,33 +1867,7 @@ function readPersonalizableCodeMirrorSourceText(vceCm, cmEl, cmInstance) {
 function focusCodeMirrorForMarkerInsert(ctx, cmEl, vceCm, cmInstance) {
   const instance = cmInstance || resolveCodeMirrorInstance(cmEl, vceCm, ctx) || ctx?.cmInstance;
   if (instance) {
-    try {
-      instance.focus?.();
-    } catch (_) {}
-    const from = normalizeCodeMirrorPos(ctx?.cmFrom);
-    const to = normalizeCodeMirrorPos(ctx?.cmTo) || from;
-    if (from && to && typeof instance.setSelection === 'function') {
-      try {
-        instance.setSelection(from, to);
-        return instance;
-      } catch (_) {}
-    }
-    const point = ctx?.cmClickPoint;
-    if (
-      point &&
-      typeof point.clientX === 'number' &&
-      typeof point.clientY === 'number' &&
-      typeof instance.coordsChar === 'function'
-    ) {
-      try {
-        const pos = normalizeCodeMirrorPos(
-          instance.coordsChar({ left: point.clientX, top: point.clientY })
-        );
-        if (pos && typeof instance.setSelection === 'function') {
-          instance.setSelection(pos, pos);
-        }
-      } catch (_) {}
-    }
+    restoreCodeMirrorSelectionOnInstance(instance, ctx);
     return instance;
   }
 
@@ -1373,6 +1878,16 @@ function focusCodeMirrorForMarkerInsert(ctx, cmEl, vceCm, cmInstance) {
     } catch (_) {
       try {
         textarea.focus();
+      } catch (_) {}
+    }
+    if (
+      typeof ctx?.selectionStart === 'number' &&
+      typeof ctx?.selectionEnd === 'number' &&
+      ctx.selectionStart !== ctx.selectionEnd &&
+      textarea.setSelectionRange
+    ) {
+      try {
+        textarea.setSelectionRange(ctx.selectionStart, ctx.selectionEnd);
       } catch (_) {}
     }
   }
@@ -1391,7 +1906,7 @@ function tryInsertMarkerViaReplaceSelection(cmInstance, marker) {
   return false;
 }
 
-function tryInsertMarkerViaTextareaExecCommand(cmEl, marker) {
+function tryInsertMarkerViaTextareaExecCommand(cmEl, marker, ctx) {
   const textarea = cmEl?.querySelector?.('textarea');
   if (!textarea) return false;
 
@@ -1401,6 +1916,17 @@ function tryInsertMarkerViaTextareaExecCommand(cmEl, marker) {
   } catch (_) {
     try {
       textarea.focus();
+    } catch (_) {}
+  }
+
+  if (
+    ctx &&
+    typeof ctx.selectionStart === 'number' &&
+    typeof ctx.selectionEnd === 'number' &&
+    typeof textarea.setSelectionRange === 'function'
+  ) {
+    try {
+      textarea.setSelectionRange(ctx.selectionStart, ctx.selectionEnd);
     } catch (_) {}
   }
 
@@ -1415,15 +1941,20 @@ function insertTokenViaExecCommandMarker(ctx, cmEl, vceCm, cmInstance, insert) {
   const attrHtmlBefore = getCodeMirrorHtmlValue(vceCm, cmInstance);
   const marker = `§GEM§${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}§GEM§`;
   const resolvedInstance = focusCodeMirrorForMarkerInsert(ctx, cmEl, vceCm, cmInstance);
+  const preferTextareaInsert = codeMirrorContextHasSelectionSpan(ctx, cmInstance);
 
   let inserted = false;
   let insertMethod = null;
-  if (resolvedInstance) {
+  if (preferTextareaInsert) {
+    inserted = tryInsertMarkerViaTextareaExecCommand(cmEl, marker, ctx);
+    if (inserted) insertMethod = 'execCommand';
+  }
+  if (!inserted && resolvedInstance) {
     inserted = tryInsertMarkerViaReplaceSelection(resolvedInstance, marker);
     if (inserted) insertMethod = 'replaceSelection';
   }
   if (!inserted) {
-    inserted = tryInsertMarkerViaTextareaExecCommand(cmEl, marker);
+    inserted = tryInsertMarkerViaTextareaExecCommand(cmEl, marker, ctx);
     if (inserted) insertMethod = 'execCommand';
   }
   if (!inserted) {
@@ -1616,7 +2147,44 @@ function insertPersonalizationTokenIntoPersonalizableCodeMirror(ctx, tokenPayloa
   const cmInstance =
     resolveCodeMirrorInstance(cmEl, vceCm, ctx) || (ctx && ctx.cmInstance) || null;
 
+  syncCodeMirrorContextSelection(ctx, cmInstance, cmEl);
+
   logPersonalizableCodeMirrorInsertDebug('start', ctx, cmEl, vceCm, cmInstance, null);
+
+  const caretHints = buildPersonalizableCodeMirrorCaretHints(insert, ctx, cmEl);
+  const hasSelectionSpan = codeMirrorContextHasSelectionSpan(ctx, cmInstance);
+
+  if (hasSelectionSpan) {
+    const execResult = insertTokenViaExecCommandMarker(ctx, cmEl, vceCm, cmInstance, insert);
+    if (execResult) {
+      logPersonalizableCodeMirrorInsertDebug('complete', ctx, cmEl, vceCm, cmInstance, {
+        path: 'execCommand-marker',
+        insertMethod: execResult.insertMethod,
+        insertIndex: execResult.insertIndex,
+        htmlStart: execResult.insertIndex,
+        caretAfter: execResult.caretAfter,
+        newValueLength: execResult.newValue.length,
+        markerLength: execResult.markerLength,
+      });
+      return refreshPersonalizableCodeMirrorFromHtml(
+        vceCm,
+        cmEl,
+        cmInstance,
+        execResult.newValue,
+        execResult.caretAfter,
+        caretHints
+      );
+    }
+
+    logPersonalizableCodeMirrorInsertDebug(
+      'execCommand-marker-missed-with-selection',
+      ctx,
+      cmEl,
+      vceCm,
+      cmInstance,
+      null
+    );
+  }
 
   const directResult = tryDirectPersonalizableAttrHtmlInsert(ctx, cmEl, vceCm, cmInstance, insert);
   if (directResult) {
@@ -1633,7 +2201,8 @@ function insertPersonalizationTokenIntoPersonalizableCodeMirror(ctx, tokenPayloa
       cmEl,
       cmInstance,
       directResult.newHtml,
-      directResult.caretAfter
+      directResult.caretAfter,
+      caretHints
     );
   }
 
@@ -1653,7 +2222,8 @@ function insertPersonalizationTokenIntoPersonalizableCodeMirror(ctx, tokenPayloa
       cmEl,
       cmInstance,
       execResult.newValue,
-      execResult.caretAfter
+      execResult.caretAfter,
+      caretHints
     );
   }
 
@@ -1678,7 +2248,14 @@ function insertPersonalizationTokenIntoPersonalizableCodeMirror(ctx, tokenPayloa
         newValueLength: newValue.length,
         markerLength,
       });
-      return refreshPersonalizableCodeMirrorFromHtml(vceCm, cmEl, cmInstance, newValue, caretAfter);
+      return refreshPersonalizableCodeMirrorFromHtml(
+        vceCm,
+        cmEl,
+        cmInstance,
+        newValue,
+        caretAfter,
+        caretHints
+      );
     }
 
     logPersonalizableCodeMirrorInsertDebug('marker-missed', ctx, cmEl, vceCm, cmInstance, { caret });
@@ -1702,7 +2279,14 @@ function insertPersonalizationTokenIntoPersonalizableCodeMirror(ctx, tokenPayloa
           caretAfter,
           newValueLength: newValue.length,
         });
-        return refreshPersonalizableCodeMirrorFromHtml(vceCm, cmEl, cmInstance, newValue, caretAfter);
+        return refreshPersonalizableCodeMirrorFromHtml(
+        vceCm,
+        cmEl,
+        cmInstance,
+        newValue,
+        caretAfter,
+        caretHints
+      );
       } catch (err) {
         logPersonalizableCodeMirrorInsertDebug('indexFromPos-error', ctx, cmEl, vceCm, cmInstance, {
           caret,
@@ -1722,13 +2306,11 @@ function insertPersonalizationTokenIntoPersonalizableCodeMirror(ctx, tokenPayloa
   const resolved = resolveCodeMirrorTextInsertOffsets(ctx, cmInstance, cmEl, cmValue);
   let htmlStart = resolved.start;
   let htmlEnd = resolved.end;
-  let docCaretAfter = resolved.start + insert.length;
 
   if (attrHtml !== cmValue) {
     const mapper = createDocHtmlIndexMapper(attrHtml, cmValue);
     htmlStart = mapper.docToHtml(resolved.start);
     htmlEnd = mapper.docToHtml(resolved.end);
-    docCaretAfter = mapper.htmlToDoc(htmlStart + insert.length);
   }
 
   const newHtml = attrHtml.slice(0, htmlStart) + insert + attrHtml.slice(htmlEnd);
@@ -1737,25 +2319,21 @@ function insertPersonalizationTokenIntoPersonalizableCodeMirror(ctx, tokenPayloa
     htmlStart,
     htmlEnd,
     insertIndex: htmlStart,
-    docCaretAfter,
+    caretAfter: htmlStart + insert.length,
     attrHtmlLength: attrHtml.length,
     cmValueLength: cmValue.length,
     resolvedStart: resolved.start,
     resolvedEnd: resolved.end,
     newHtmlLength: newHtml.length,
   });
-  return refreshPersonalizableCodeMirrorFromHtml(vceCm, cmEl, cmInstance, newHtml, docCaretAfter);
-}
-
-function restoreCodeMirrorCaretByIndex(cmInstance, index) {
-  if (!cmInstance || typeof cmInstance.posFromIndex !== 'function') return;
-  try {
-    const pos = cmInstance.posFromIndex(Math.max(0, index));
-    if (typeof cmInstance.setSelection === 'function') {
-      cmInstance.setSelection(pos, pos);
-    }
-    cmInstance.focus && cmInstance.focus();
-  } catch (_) {}
+  return refreshPersonalizableCodeMirrorFromHtml(
+    vceCm,
+    cmEl,
+    cmInstance,
+    newHtml,
+    htmlStart + insert.length,
+    caretHints
+  );
 }
 
 function tryInvokeAngularCodeMirrorRefresh(vceCm, newHtml) {
@@ -1802,26 +2380,21 @@ function tryInvokeAngularCodeMirrorRefresh(vceCm, newHtml) {
   return false;
 }
 
-function refreshPersonalizableCodeMirrorFromHtml(vceCm, cmEl, cmInstance, newHtml, caretAfter) {
+function refreshPersonalizableCodeMirrorFromHtml(
+  vceCm,
+  cmEl,
+  cmInstance,
+  newHtml,
+  caretAfterHtml,
+  caretHints = {}
+) {
   syncCodeMirrorHostAttributes(cmEl, newHtml);
 
   const finish = () => {
-    const freshCm = (cmEl && cmEl.CodeMirror) || cmInstance;
-    if (freshCm) {
-      restoreCodeMirrorCaretByIndex(freshCm, caretAfter);
-      const inputField = typeof freshCm.getInputField === 'function' ? freshCm.getInputField() : null;
-      if (inputField) {
-        notifyEmarsysAfterTextControlInsert(inputField, { nudgeFocus: true });
-      }
-    }
+    finishCodeMirrorCaretPlacement(cmEl, cmInstance, newHtml, caretAfterHtml, caretHints);
   };
 
-  if (tryInvokeAngularCodeMirrorRefresh(vceCm, newHtml)) {
-    requestAnimationFrame(finish);
-    return true;
-  }
-
-  // Force Emarsys vce-codemirror to rebuild from html so token widgets render.
+  // Always use the attr rebuild path so Emarsys renders token widgets reliably.
   let hadAutoRefresh = null;
   try {
     hadAutoRefresh = vceCm.getAttribute('auto-refresh');
@@ -1846,7 +2419,9 @@ function refreshPersonalizableCodeMirrorFromHtml(vceCm, cmEl, cmInstance, newHtm
       vceCm.dispatchEvent(new Event('change', { bubbles: true }));
     } catch (_) {}
 
-    requestAnimationFrame(finish);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(finish);
+    });
   });
 
   return true;
@@ -1872,6 +2447,7 @@ function insertIntoCodeMirror(ctx, text) {
         } catch (_) {}
         const val = typeof cmInstance.getValue === 'function' ? cmInstance.getValue() : inputField.value;
         syncCodeMirrorHostAttributes(cmEl, val);
+        notifyEmarsysAfterTextControlInsert(inputField, { nudgeFocus: true });
         return true;
       }
     }
@@ -1927,7 +2503,10 @@ async function gemInsertSnippetIntoTarget(ctx, snippet, options = {}) {
           ? window.gemGeneratePersonalizationTokenHTML(token)
           : null;
       if (!html) return false;
-      return insertHtmlIntoContentEditable(ctx, html, { bridgeTimeoutMs: 3000 });
+      return insertHtmlIntoContentEditable(ctx, html, {
+        bridgeTimeoutMs: 3000,
+        placeCaretAfter: true,
+      });
     }
 
     const plainContent = preview;
@@ -1978,7 +2557,7 @@ async function gemInsertSnippetIntoTarget(ctx, snippet, options = {}) {
 
     if (mode === 'token') {
       const html = generateSnippetHTML(snippet.name, content);
-      return insertHtmlIntoContentEditable(ctx, html);
+      return insertHtmlIntoContentEditable(ctx, html, { placeCaretAfter: true });
     }
 
     const escaped = String(content ?? '')
@@ -5339,6 +5918,7 @@ window.gemFindPersTokenAtIndex = findPersTokenAtIndex;
 window.gemFindPersTokenByRange = findPersTokenByRange;
 window.gemReplacePersonalizableCodeMirrorTokenRange = replacePersonalizableCodeMirrorTokenRange;
 window.gemResolveCodeMirrorInstance = resolveCodeMirrorInstance;
+window.gemSyncCodeMirrorContextSelection = syncCodeMirrorContextSelection;
 window.gemDebugPersonalizableCodeMirrorInsertState = gemDebugPersonalizableCodeMirrorInsertState;
 window.gemInsertSnippetAtCaret = insertSnippetAtCaret;
 window.gemInsertSnippetIntoTarget = gemInsertSnippetIntoTarget;

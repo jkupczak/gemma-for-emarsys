@@ -23,6 +23,7 @@
       "#gem-keyboard-shortcuts-modal",
       "#gem-welcome-modal",
       "#gem-compare-modal",
+      "#gem-command-palette",
       "#gem-snippet-context-menu",
       "[data-gem-layer-z]"
     ];
@@ -56,7 +57,7 @@
       }
 
       if (el.dataset && el.dataset.gemLayerRaised === "1") return true;
-      if (id === "gem-keyboard-shortcuts-modal" || id === "gem-welcome-modal" || id === "gem-compare-modal") return true;
+      if (id === "gem-keyboard-shortcuts-modal" || id === "gem-welcome-modal" || id === "gem-compare-modal" || id === "gem-command-palette") return true;
       if (id === "gem-snippet-context-menu") {
         return cls && cls.contains("gem-snippet-context-menu--open");
       }
@@ -148,9 +149,15 @@
         try {
           if (typeof window.gemIsGemStrippedEmbedIframe === 'function' && window.gemIsGemStrippedEmbedIframe(iframe)) return;
           var iframeDoc = iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document);
-          if (!iframeDoc || iframeDoc._gemLayerEscapeHandler) return;
+          if (!iframeDoc) return;
+          var stack = iframeDoc._gemLayerEscapeHandlers;
+          if (!Array.isArray(stack)) {
+            stack = [];
+            iframeDoc._gemLayerEscapeHandlers = stack;
+          }
+          if (stack.indexOf(handler) !== -1) return;
           iframeDoc.addEventListener("keydown", handler, true);
-          iframeDoc._gemLayerEscapeHandler = handler;
+          stack.push(handler);
         } catch (_) {}
       }
 
@@ -165,13 +172,24 @@
           document.querySelectorAll("iframe").forEach(function (iframe) {
             try {
               var iframeDoc = iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document);
-              if (iframeDoc && iframeDoc._gemLayerEscapeHandler === handler) {
-                iframeDoc.removeEventListener("keydown", handler, true);
+              if (!iframeDoc) return;
+              var stack = iframeDoc._gemLayerEscapeHandlers;
+              if (Array.isArray(stack)) {
+                var idx = stack.indexOf(handler);
+                if (idx !== -1) stack.splice(idx, 1);
+                if (!stack.length) delete iframeDoc._gemLayerEscapeHandlers;
+              }
+              iframeDoc.removeEventListener("keydown", handler, true);
+              // Legacy single-slot cleanup
+              if (iframeDoc._gemLayerEscapeHandler === handler) {
                 delete iframeDoc._gemLayerEscapeHandler;
               }
             } catch (_) {}
           });
         } catch (_) {}
+
+        var unsubIdx = gemLayerEscapeUnsubs.indexOf(unsub);
+        if (unsubIdx !== -1) gemLayerEscapeUnsubs.splice(unsubIdx, 1);
       };
 
       gemLayerEscapeUnsubs.push(unsub);

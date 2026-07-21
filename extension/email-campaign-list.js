@@ -920,7 +920,7 @@
 
   function appendCampaignListRowMenuDivider(menu) {
     const divider = document.createElement("div");
-    divider.className = "gem-recent-campaign-row-menu-divider";
+    divider.className = "gem-overflow-menu-divider";
     divider.setAttribute("role", "separator");
     menu.appendChild(divider);
   }
@@ -937,8 +937,8 @@
     if (!openCampaignListRowMenu) return;
     const { wrap, trigger, menu } = openCampaignListRowMenu;
     menu.classList.remove(
-      "gem-recent-campaign-row-menu--open",
-      "gem-recent-campaign-row-menu--floating"
+      "gem-overflow-menu--open",
+      "gem-overflow-menu--floating"
     );
     menu.style.removeProperty("top");
     menu.style.removeProperty("left");
@@ -952,7 +952,7 @@
   }
 
   function positionCampaignListRowMenu(trigger, menu) {
-    menu.classList.add("gem-recent-campaign-row-menu--floating");
+    menu.classList.add("gem-overflow-menu--floating");
     menu.style.visibility = "hidden";
     const triggerRect = trigger.getBoundingClientRect();
     const menuRect = menu.getBoundingClientRect();
@@ -971,12 +971,12 @@
 
   function openCampaignListRowMenuAt(wrap) {
     closeCampaignListRowMenu();
-    const trigger = wrap.querySelector(".gem-recent-campaign-row-menu-trigger");
-    const menu = wrap.querySelector(".gem-recent-campaign-row-menu");
+    const trigger = wrap.querySelector(".gem-overflow-menu-trigger");
+    const menu = wrap.querySelector(".gem-overflow-menu");
     if (!trigger || !menu) return;
     // Teleport menu to body to escape table stacking contexts
     document.body.appendChild(menu);
-    menu.classList.add("gem-recent-campaign-row-menu--open");
+    menu.classList.add("gem-overflow-menu--open");
     trigger.setAttribute("aria-expanded", "true");
     positionCampaignListRowMenu(trigger, menu);
     openCampaignListRowMenu = { wrap, trigger, menu };
@@ -1052,19 +1052,19 @@
 
     const trigger = document.createElement("button");
     trigger.type = "button";
-    trigger.className = "gem-recent-campaign-row-menu-trigger";
+    trigger.className = "gem-overflow-menu-trigger";
     trigger.setAttribute("aria-haspopup", "menu");
     trigger.setAttribute("aria-expanded", "false");
     trigger.setAttribute("aria-label", `Options for campaign ${campaignId}`);
 
     const menu = document.createElement("div");
-    menu.className = "gem-recent-campaign-row-menu";
+    menu.className = "gem-overflow-menu";
     menu.setAttribute("role", "menu");
 
     function makeMenuItem(label) {
       const btn = document.createElement("button");
       btn.type = "button";
-      btn.className = "gem-recent-campaign-row-menu-item";
+      btn.className = "gem-overflow-menu-item";
       btn.setAttribute("role", "menuitem");
       btn.textContent = label;
       return btn;
@@ -1119,7 +1119,7 @@
     }
 
     const switchItem = makeMenuItem("Switch to tab");
-    switchItem.classList.add("gem-recent-campaign-row-menu-item--hidden");
+    switchItem.classList.add("gem-overflow-menu-item--hidden");
     switchItem.addEventListener("click", (e) => {
       e.stopPropagation();
       closeCampaignListRowMenu();
@@ -1161,7 +1161,7 @@
 
     const duplicateItem = document.createElement("button");
     duplicateItem.type = "button";
-    duplicateItem.className = "gem-recent-campaign-row-menu-item";
+    duplicateItem.className = "gem-overflow-menu-item";
     duplicateItem.setAttribute("role", "menuitem");
 
     const dupLabel = document.createElement("span");
@@ -1233,11 +1233,11 @@
           { action: "isCampaignTabOpen", campaignId: String(campaignId) },
           (res) => {
             if (chrome.runtime.lastError) {
-              switchItem.classList.add("gem-recent-campaign-row-menu-item--hidden");
+              switchItem.classList.add("gem-overflow-menu-item--hidden");
             } else if (res && res.ok && res.open) {
-              switchItem.classList.remove("gem-recent-campaign-row-menu-item--hidden");
+              switchItem.classList.remove("gem-overflow-menu-item--hidden");
             } else {
-              switchItem.classList.add("gem-recent-campaign-row-menu-item--hidden");
+              switchItem.classList.add("gem-overflow-menu-item--hidden");
             }
             openCampaignListRowMenuAt(wrap);
           }
@@ -2329,7 +2329,7 @@
 
   function shouldIgnorePreviewRowClick(target) {
     if (!target || target.nodeType !== Node.ELEMENT_NODE) return true;
-    if (target.closest(`.${GEM_LIST_ROW_MENU_CLASS}, .gem-recent-campaign-row-menu`)) return true;
+    if (target.closest(`.${GEM_LIST_ROW_MENU_CLASS}, .gem-overflow-menu`)) return true;
     if (target.closest("button, a")) return true;
     return false;
   }

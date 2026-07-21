@@ -17,6 +17,8 @@
     (document.documentElement || document.head || document.body).appendChild(s);
   }
 
+  injectPageScript();
+
   function pruneOldEntries() {
     chrome.storage.local.get(null, (all) => {
       const now = Date.now();
@@ -51,8 +53,6 @@
       }
     });
   }
-
-  injectPageScript();
 
   window.addEventListener('message', (e) => {
     if (!e.data || e.data.type !== 'gem-draft-saved') return;

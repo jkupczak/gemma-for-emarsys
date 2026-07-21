@@ -1,0 +1,320 @@
+gem-find-replace .gem-find-replace-label {
+  color: var(--token-font-muted, #667085);
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+gem-find-replace .gem-find-replace-field {
+  display: flex;
+  flex-direction: column;
+}
+
+gem-find-replace .gem-settings-input-wrap {
+  position: relative;
+  display: flex;
+  width: 100%;
+}
+
+gem-find-replace .gem-settings-input-wrap .e-input {
+  box-sizing: border-box;
+  width: 100%;
+}
+
+gem-find-replace .gem-find-replace-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+  align-items: stretch;
+  align-content: start;
+  justify-items: stretch;
+}
+
+gem-find-replace .gem-find-replace-option-toggle {
+  flex-grow: 1;
+  justify-content: center;
+  align-items: center;
+  background: none;
+  border: 1px solid var(--token-box-default-border);
+  border-radius: 4px;
+  color: var(--token-font-muted, #667085);
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  gap: 6px;
+  line-height: 1.2;
+  opacity: 0.85;
+  padding: 5px 8px;
+  transition: opacity 0.15s ease, color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+gem-find-replace .gem-find-replace-option-icon {
+  font-family: monospace;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+gem-find-replace .gem-find-replace-option-label {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+gem-find-replace .gem-find-replace-option-toggle:hover:not(:disabled) {
+  color: var(--token-font-default);
+  opacity: 1;
+}
+
+gem-find-replace .gem-find-replace-option-toggle--active {
+  background: var(--token-button-highlight-background, #667eea);
+  border-color: var(--token-button-highlight-background, #667eea);
+  color: #fff;
+  opacity: 1;
+}
+
+gem-find-replace .gem-find-replace-option-toggle--active:hover {
+  background: var(--token-button-highlight-backgroundHover, #5a67d8);
+  border-color: var(--token-button-highlight-backgroundHover, #5a67d8);
+}
+
+gem-find-replace .gem-find-replace-option-toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+gem-find-replace .gem-find-replace-scopes {
+  border: 0;
+  display: grid;
+  gap: 8px 10px;
+  grid-template-columns: 1fr 1fr;
+  margin: 0;
+  padding: 0;
+}
+
+gem-find-replace .gem-find-replace-scopes legend {
+  grid-column: 1 / -1;
+  padding: 0;
+}
+
+gem-find-replace .gem-find-replace-scope {
+  align-items: center;
+  display: flex;
+  font-size: 13px;
+  gap: 8px;
+  margin-bottom: 0;
+}
+
+gem-find-replace .gem-find-replace-find-matches,
+gem-find-replace .gem-find-replace-apply {
+  width: 100%;
+}
+
+gem-find-replace .gem-find-replace-actions {
+  display: flex;
+  gap: 10px;
+}
+
+gem-find-replace .gem-find-replace-actions .e-btn {
+  flex: 1;
+}
+
+gem-find-replace .gem-find-replace-saved-title {
+  margin-bottom: 8px;
+}
+
+gem-find-replace .gem-find-replace-saved-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+gem-find-replace .gem-find-replace-saved-empty {
+  color: var(--token-font-muted, #667085);
+  font-size: 13px;
+}
+
+gem-find-replace .gem-find-replace-saved-row {
+  align-items: stretch;
+  display: flex;
+  gap: 4px;
+}
+
+gem-find-replace .gem-find-replace-saved-item {
+  background: var(--token-box-default-background);
+  border: 1px solid var(--token-box-default-border);
+  border-radius: 6px;
+  color: inherit;
+  cursor: pointer;
+  flex: 1;
+  font: inherit;
+  font-size: 13px;
+  min-width: 0;
+  padding: 8px 10px;
+  text-align: left;
+}
+
+gem-find-replace .gem-find-replace-saved-item:hover,
+gem-find-replace .gem-find-replace-saved-item:focus-visible {
+  background: var(--token-highlight-default);
+  outline: none;
+}
+
+gem-find-replace .gem-find-replace-saved-item--active {
+  border-color: var(--token-button-highlight-border, var(--token-button-highlight-background, #667eea));
+}
+
+gem-find-replace .gem-find-replace-saved-item-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+gem-find-replace .gem-find-replace-saved-delete {
+  background: var(--token-box-default-background);
+  border: 1px solid var(--token-box-default-border);
+  border-radius: 6px;
+  color: var(--token-font-muted, #667085);
+  cursor: pointer;
+  flex: 0 0 32px;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0;
+}
+
+gem-find-replace .gem-find-replace-saved-delete:hover,
+gem-find-replace .gem-find-replace-saved-delete:focus-visible {
+  background: var(--token-highlight-default);
+  color: var(--token-font-default);
+  outline: none;
+}
+
+gem-find-replace .gem-find-replace-saved-regex {
+  color: var(--token-font-muted, #667085);
+  font-family: monospace;
+  margin-left: 6px;
+}
+
+gem-find-replace .gem-find-replace-find-matches:disabled,
+gem-find-replace .gem-find-replace-apply:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+gem-find-replace .gem-find-replace-match-results {
+  color: var(--token-font-default);
+  font-size: 13px;
+  line-height: 1.45;
+  margin-bottom: 8px;
+  margin-top: 14px;
+}
+
+gem-find-replace .gem-find-replace-match-results-scope,
+gem-find-replace .gem-find-replace-match-results-unavailable {
+  color: var(--token-font-muted, #667085);
+  margin-top: 4px;
+}
+
+gem-find-replace .gem-find-replace-match-results-unavailable {
+  color: var(--token-warning-text, #b45309);
+}
+
+gem-find-replace .gem-find-replace-match-locations {
+  border-top: 1px solid var(--token-box-default-border);
+  margin-top: 10px;
+  padding-top: 10px;
+}
+
+gem-find-replace .gem-find-replace-match-location {
+  margin-bottom: 10px;
+}
+
+gem-find-replace .gem-find-replace-match-location:last-child {
+  margin-bottom: 0;
+}
+
+gem-find-replace .gem-find-replace-match-location-context {
+  color: var(--token-font-muted, #667085);
+  font-size: 11px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+
+gem-find-replace .gem-find-replace-match-location-snippet {
+  font-family: var(--token-font-monospace, monospace);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+gem-find-replace .gem-find-replace-highlight {
+  background: rgba(102, 126, 234, 0.25);
+  border-radius: 2px;
+  color: inherit;
+  font-weight: 600;
+  padding: 0 1px;
+}
+
+gem-find-replace .gem-find-replace-match-location-more {
+  color: var(--token-font-muted, #667085);
+  font-size: 12px;
+  margin-top: 6px;
+}
+
+gem-find-replace .gem-find-replace-replace-preview {
+  border: 1px solid var(--token-box-default-border);
+  border-radius: 8px;
+  margin-top: 10px;
+  padding: 10px;
+}
+
+gem-find-replace .gem-find-replace-replace-preview-title {
+  margin-bottom: 8px;
+}
+
+gem-find-replace .gem-find-replace-replace-preview-summary {
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+gem-find-replace .gem-find-replace-replace-preview-list {
+  max-height: 240px;
+  overflow: auto;
+}
+
+gem-find-replace .gem-find-replace-replace-preview-item {
+  border-top: 1px solid var(--token-box-default-border);
+  font-size: 12px;
+  line-height: 1.4;
+  margin-top: 8px;
+  padding-top: 8px;
+}
+
+gem-find-replace .gem-find-replace-replace-preview-before,
+gem-find-replace .gem-find-replace-replace-preview-after {
+  font-family: var(--token-font-monospace, monospace);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+gem-find-replace .gem-find-replace-replace-preview-before {
+  color: var(--token-font-muted, #667085);
+}
+
+gem-find-replace .gem-find-replace-replace-preview-arrow {
+  color: var(--token-font-muted, #667085);
+  margin: 2px 0;
+}
+
+gem-find-replace .gem-find-replace-replace-preview-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+gem-find-replace .gem-find-replace-replace-preview-actions .e-btn {
+  flex: 1;
+}

@@ -1,0 +1,158 @@
+#gem-command-palette {
+  align-items: center;
+  justify-content: center;
+}
+
+#gem-command-palette .gem-command-palette__panel {
+  display: flex;
+  flex-direction: column;
+  height: 90vh;
+  max-height: 90vh;
+  width: 640px;
+  max-width: calc(100vw - 32px);
+  overflow: hidden;
+}
+
+.gem-command-palette__search-wrap {
+  flex-shrink: 0;
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid var(--token-box-default-border);
+}
+
+.gem-command-palette__search {
+  background: var(--token-box-default-background);
+  border: 1px solid var(--token-box-default-border);
+  border-radius: 6px;
+  box-sizing: border-box;
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+  outline: none;
+  padding: 8px 10px;
+  width: 100%;
+}
+
+.gem-command-palette__search:focus {
+  border-color: var(--token-button-highlight-border);
+}
+
+.gem-command-palette__list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px 0 10px;
+}
+
+.gem-command-palette__section {
+  margin-bottom: 4px;
+}
+
+.gem-command-palette__section-header {
+  color: var(--token-font-muted, #667085);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 4px 14px 4px;
+  text-transform: uppercase;
+  user-select: none;
+}
+
+.gem-command-palette__section-header-label {
+  display: block;
+  border-top: 1px solid rgba(255 255 255 / 0.1);
+  width: 100%;
+  padding-top: 10px;
+}
+
+.gem-command-palette__section:first-child .gem-command-palette__section-header-label {
+  border-top: none;
+}
+
+.gem-command-palette__row {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  position: relative;
+}
+
+.gem-command-palette__row-btn {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  flex: 1;
+  font: inherit;
+  font-size: 14px;
+  gap: 8px;
+  margin: 0 6px;
+  min-width: 0;
+  padding: 7px 8px;
+  text-align: left;
+}
+
+.gem-command-palette__row-btn:hover,
+.gem-command-palette__row-btn:focus-visible {
+  background: var(--token-highlight-default);
+  color: var(--token-button-highlight-text);
+  outline: none;
+}
+
+.gem-command-palette__row-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.gem-command-palette__row-label-prefix {
+  opacity: 0.65;
+  text-transform: none;
+}
+
+.gem-command-palette__pin {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  display: flex;
+  flex-shrink: 0;
+  justify-content: center;
+  margin-right: 10px;
+  opacity: 0;
+  padding: 4px;
+  pointer-events: none;
+}
+
+.gem-command-palette__row:hover .gem-command-palette__pin:not(.gem-command-palette__pin--active),
+.gem-command-palette__pin--active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.gem-command-palette__pin:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.gem-command-palette__pin svg {
+  display: block;
+  height: 18px;
+  width: 18px;
+}
+
+.gem-command-palette__pin--active svg path {
+  fill: var(--token-label-highlight-background);
+}
+
+.gem-command-palette__pin svg path {
+  fill: var(--token-box-default-text);
+}
+
+.gem-command-palette__empty {
+  color: var(--token-font-muted, #667085);
+  font-size: 13px;
+  padding: 16px 14px;
+}

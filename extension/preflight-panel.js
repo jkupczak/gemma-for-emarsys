@@ -4080,11 +4080,12 @@ function initializePreflightPanel() {
   }
 
   function addPreflightTab() {
-    const snippetsTab = document.querySelector('#gem-snippets-tab');
-    if (!snippetsTab) return false;
+    const findReplaceTab = document.querySelector('#gem-find-replace-tab');
+    const anchor = findReplaceTab || document.querySelector('#gem-snippets-tab');
+    if (!anchor) return false;
     if (document.querySelector(`#${PRELIGHT_TAB_ID}`)) return true;
 
-    snippetsTab.insertAdjacentHTML('afterend', createPreflightTabHTML());
+    anchor.insertAdjacentHTML('afterend', createPreflightTabHTML());
     const preflightTab = document.querySelector(`#${PRELIGHT_TAB_ID}`);
     if (!preflightTab) return false;
 

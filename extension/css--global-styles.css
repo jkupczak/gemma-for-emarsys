@@ -61,6 +61,12 @@ html.FLIPPER-theme-eveningHorizon {
     & .e-mediadb .e-mediadb-section .e-mediadb-section__content {
       scrollbar-color: var(--token-border-default) var(--token-background-dark);
     }
+
+    /* override of the above in case we want the scrollbar to be transparent */
+    & .e-verticalnav__content .e-section__content,
+    & .e-verticalnav__content cdk-virtual-scroll-viewport {
+        scrollbar-color: var(--token-border-default) transparent !important;
+    }
   
     & .e-section__content::-webkit-scrollbar-thumb,
     & .e-dialog__container .e-dialog__content::-webkit-scrollbar-thumb,
@@ -1295,7 +1301,7 @@ color-mix(in srgb, var(--token-gray-100, #dbeafe) 25%, transparent);
     padding: 18px 18px 9px 18px;
 }
 
-.gem-recent-campaign-row-menu-wrap {
+.gem-overflow-menu-wrap {
     position: absolute;
     top: 0;
     right: 0;
@@ -1303,7 +1309,7 @@ color-mix(in srgb, var(--token-gray-100, #dbeafe) 25%, transparent);
     flex-shrink: 0;
 }
 
-.gem-recent-campaign-row-menu-wrap:has(.gem-recent-campaign-row-menu--open) {
+.gem-overflow-menu-wrap:has(.gem-overflow-menu--open) {
     z-index: 9999;
 }
 
@@ -1316,7 +1322,7 @@ color-mix(in srgb, var(--token-gray-100, #dbeafe) 25%, transparent);
     padding-right: 4px;
 }
 
-.gem-recent-campaign-row-menu-trigger {
+.gem-overflow-menu-trigger {
     border: 1px solid var(--token-box-default-border, rgba(0, 0, 0, 0.16));
     background: var(--token-box-default-background, #fff);
     cursor: pointer;
@@ -1331,12 +1337,12 @@ color-mix(in srgb, var(--token-gray-100, #dbeafe) 25%, transparent);
     transition: opacity 0.12s ease;
 }
 
-.gem-recent-campaign-row-menu-trigger:hover {
+.gem-overflow-menu-trigger:hover {
     background: var(--token-box-default-background, #fff);
     border-color: var(--token-box-default-border, rgba(0, 0, 0, 0.16));
 }
 
-.gem-recent-campaign-row-menu-trigger::before {
+.gem-overflow-menu-trigger::before {
     content: "\F135";
     font-family: var(--token-icon-default-fontFamily, inherit);
     font-size: var(--token-icon-default-sizeSmall, 14px);
@@ -1345,7 +1351,7 @@ color-mix(in srgb, var(--token-gray-100, #dbeafe) 25%, transparent);
     display: inline-block;
 }
 
-.gem-recent-campaign-row-menu {
+.gem-overflow-menu {
     display: none;
     position: absolute;
     right: 0;
@@ -1365,7 +1371,7 @@ color-mix(in srgb, var(--token-gray-100, #dbeafe) 25%, transparent);
     gap: 4px;
 }
 
-.gem-recent-campaign-row-menu--floating {
+.gem-overflow-menu--floating {
     position: fixed;
     right: auto;
     top: 0;
@@ -1373,12 +1379,12 @@ color-mix(in srgb, var(--token-gray-100, #dbeafe) 25%, transparent);
     z-index: 2147483647;
 }
 
-.gem-recent-campaign-row-menu--open {
+.gem-overflow-menu--open {
     display: flex;
     flex-direction: column;
 }
 
-.gem-recent-campaign-row-menu-item {
+.gem-overflow-menu-item {
     border: 0;
     background: transparent;
     text-align: left;
@@ -1389,34 +1395,34 @@ color-mix(in srgb, var(--token-gray-100, #dbeafe) 25%, transparent);
     color: var(--token-font-default);
 }
 
-.gem-recent-campaign-row-menu-item:hover {
+.gem-overflow-menu-item:hover {
     background: var(--token-background-strong, rgba(0, 0, 0, 0.05));
 }
 
-.gem-recent-campaign-row-menu-item--hidden {
+.gem-overflow-menu-item--hidden {
     display: none !important;
 }
 
-.gem-recent-campaign-row-menu-divider {
+.gem-overflow-menu-divider {
     height: 1px;
     background: var(--token-box-default-border, rgba(0, 0, 0, 0.1));
     margin: 4px 0;
 }
 
-.gem-recent-campaign-row-menu-item {
+.gem-overflow-menu-item {
     display: inline-flex;
     align-items: center;
     gap: 6px;
 }
 
-.gem-recent-campaign-row-menu-item[disabled],
-.gem-recent-campaign-row-menu-item--duplicating {
+.gem-overflow-menu-item[disabled],
+.gem-overflow-menu-item--duplicating {
     cursor: default;
     pointer-events: none;
     opacity: 0.6;
 }
 
-.gem-recent-campaign-row-menu-item--duplicating:hover {
+.gem-overflow-menu-item--duplicating:hover {
     background: transparent;
 }
 
@@ -1436,22 +1442,22 @@ color-mix(in srgb, var(--token-gray-100, #dbeafe) 25%, transparent);
     to { transform: rotate(360deg); }
 }
 
-#gem-nav-recent-campaigns-item .gem-recent-campaign-row-menu-wrap--hover-only,
-.gem-recent-campaigns-panel .gem-recent-campaign-row-menu-wrap--hover-only {
+#gem-nav-recent-campaigns-item .gem-overflow-menu-wrap--hover-only,
+.gem-recent-campaigns-panel .gem-overflow-menu-wrap--hover-only {
     opacity: 0;
     pointer-events: none;
 }
 
-#gem-nav-recent-campaigns-item .gem-recent-campaign-row-menu-wrap--hover-only:has(.gem-recent-campaign-row-menu--open),
-.gem-recent-campaigns-panel .gem-recent-campaign-row-menu-wrap--hover-only:has(.gem-recent-campaign-row-menu--open) {
+#gem-nav-recent-campaigns-item .gem-overflow-menu-wrap--hover-only:has(.gem-overflow-menu--open),
+.gem-recent-campaigns-panel .gem-overflow-menu-wrap--hover-only:has(.gem-overflow-menu--open) {
     opacity: 1;
     pointer-events: auto;
 }
 
-#gem-nav-recent-campaigns-item .gem-recent-campaign-row:hover .gem-recent-campaign-row-menu-wrap--hover-only,
-#gem-nav-recent-campaigns-item .gem-recent-campaign-row:focus-within .gem-recent-campaign-row-menu-wrap--hover-only,
-.gem-recent-campaigns-panel .gem-recent-campaign-row:hover .gem-recent-campaign-row-menu-wrap--hover-only,
-.gem-recent-campaigns-panel .gem-recent-campaign-row:focus-within .gem-recent-campaign-row-menu-wrap--hover-only {
+#gem-nav-recent-campaigns-item .gem-recent-campaign-row:hover .gem-overflow-menu-wrap--hover-only,
+#gem-nav-recent-campaigns-item .gem-recent-campaign-row:focus-within .gem-overflow-menu-wrap--hover-only,
+.gem-recent-campaigns-panel .gem-recent-campaign-row:hover .gem-overflow-menu-wrap--hover-only,
+.gem-recent-campaigns-panel .gem-recent-campaign-row:focus-within .gem-overflow-menu-wrap--hover-only {
     opacity: 1;
     pointer-events: auto;
 }
@@ -1459,8 +1465,8 @@ color-mix(in srgb, var(--token-gray-100, #dbeafe) 25%, transparent);
 .gem-recent-campaigns-panel :is(
   .gem-recent-campaign-title-link,
   .gem-recent-campaign-filter-chip,
-  .gem-recent-campaign-row-menu-trigger,
-  .gem-recent-campaign-row-menu-item,
+  .gem-overflow-menu-trigger,
+  .gem-overflow-menu-item,
   button.gem-recent-campaign-thumb--open,
   .gem-recent-campaigns-close,
   .gem-recent-campaigns-search,
@@ -1604,4 +1610,8 @@ color-mix(in srgb, var(--token-gray-100, #dbeafe) 25%, transparent);
 
 .e-layout {
     min-width: unset !important;
+}
+
+.gem-i-ai:before {
+    content: var(--token-glyphs-ai) !important;
 }

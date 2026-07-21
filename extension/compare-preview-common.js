@@ -1,16 +1,24 @@
 // compare-preview-common.js — shared settings, modal shell, column layout, and menus
 (function () {
+  if (window.__gemComparePreviewCommonInstalled) return;
+  window.__gemComparePreviewCommonInstalled = true;
   const COMPARE_MODAL_ID = 'gem-compare-modal';
   const GEM_COMPARE_DESKTOP_WIDTH_KEY = 'gemCompareLanguagesDesktopWidth';
   const GEM_COMPARE_MOBILE_WIDTH_KEY = 'gemCompareLanguagesMobileWidth';
   const GEM_COMPARE_ZOOM_KEY = 'gemCompareLanguagesZoom';
   const GEM_COMPARE_PREVIEW_SORT_KEY = 'gemComparePreviewSortOrder';
   const GEM_COMPARE_PIN_ACTIVE_KEY = 'gemComparePinActivePreview';
+  const GEM_COMPARE_CONTENT_VIEW_KEY = 'gemCompareContentView';
+  const GEM_COMPARE_SHOW_SUBJECT_PREVIEW_KEY = 'gemCompareShowSubjectPreview';
+  const GEM_COMPARE_MODE_KEY = 'gemCompareLastMode';
   const DEFAULT_DESKTOP_WIDTH = 620;
   const DEFAULT_MOBILE_WIDTH = 414;
   const DEFAULT_ZOOM = '50';
   const DEFAULT_PREVIEW_SORT = 'asc';
   const DEFAULT_PIN_ACTIVE_EMAIL = true;
+  const DEFAULT_CONTENT_VIEW = 'previews';
+  const DEFAULT_SHOW_SUBJECT_PREVIEW = false;
+  const DEFAULT_COMPARE_MODE = 'languages';
   const COMPARE_WIDTH_LIMITS = {
     desktop: { min: 200, max: 1200, fallback: DEFAULT_DESKTOP_WIDTH },
     mobile: { min: 200, max: 800, fallback: DEFAULT_MOBILE_WIDTH },
@@ -18,6 +26,7 @@
   const PIN_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" class="gem-compare-languages-column__pin-icon" aria-hidden="true"><path d="m685-527 85 84v137H548v248L480 9l-68-67v-248H190v-137l85-84v-253h-41v-136h492v136h-41v253Zm-304 85h198l-30-29v-309H411v309l-30 29Zm99 0Z"/></svg>';
 
   let compareDeviceMode = 'desktop';
+  let compareContentView = 'previews';
   let compareZoomLevel = DEFAULT_ZOOM;
   let compareWidthSettings = {
     desktop: DEFAULT_DESKTOP_WIDTH,
@@ -25,11 +34,14 @@
   };
   let comparePreviewSortOrder = DEFAULT_PREVIEW_SORT;
   let compareSyncPinActiveEmail = DEFAULT_PIN_ACTIVE_EMAIL;
+  let compareShowSubjectPreview = DEFAULT_SHOW_SUBJECT_PREVIEW;
+  let lastCompareMode = DEFAULT_COMPARE_MODE;
   let sessionPinnedEntryKey = null;
   let sessionPinnedMode = null;
   let compareSettingsListenerBound = false;
   let compareModalEscapeUnsub = null;
   const layoutRefreshHandlers = [];
+  const subjectPreviewToggleHandlers = [];
   const compareModeHandlers = {
     languages: null,
     versions: null,
@@ -40,6 +52,115 @@
 
   function getCompareModal() {
     return document.getElementById(COMPARE_MODAL_ID);
+  }
+
+  function normalizeCompareMode(value) {
+    return value === 'versions' ? 'versions' : 'languages';
+  }
+
+  function hasCompareModePreviewColumns(modal, mode) {
+    const panel = getCompareModePanel(modal, mode);
+    return !!(
+      panel
+      && panel.querySelector('.gem-compare-languages-modal__columns-wrap .gem-compare-languages-column')
+    );
+  }
+
+  function ensureComparePreviewsLoaded(modal) {
+    if (!modal) return;
+    const mode = String(modal.dataset.gemCompareMode || '').trim();
+    if (hasCompareModePreviewColumns(modal, mode)) return;
+
+    if (mode === 'languages' && typeof window.gemEnsureCompareLanguagesPreviews === 'function') {
+      window.gemEnsureCompareLanguagesPreviews(modal);
+    } else if (mode === 'versions' && typeof window.gemEnsureCompareVersionsPreviews === 'function') {
+      window.gemEnsureCompareVersionsPreviews(modal);
+    }
+  }
+
+  function ensureCompareEslUsageLoaded(modal) {
+    if (!modal) return;
+    const mode = String(modal.dataset.gemCompareMode || '').trim();
+
+    if (mode === 'languages' && typeof window.gemEnsureCompareLanguagesEslUsage === 'function') {
+      window.gemEnsureCompareLanguagesEslUsage(modal);
+    } else if (mode === 'versions' && typeof window.gemEnsureCompareVersionsEslUsage === 'function') {
+      window.gemEnsureCompareVersionsEslUsage(modal);
+    }
+  }
+
+  function canCompareLanguages() {
+    return typeof window.gemCanCompareLanguages === 'function' && window.gemCanCompareLanguages();
+  }
+
+  function canCompareVersions() {
+    return typeof window.gemCanCompareVersions === 'function' && window.gemCanCompareVersions();
+  }
+
+  function canComparePreviews() {
+    return canCompareLanguages() || canCompareVersions();
+  }
+
+  function resolveCompareMode(options = {}) {
+    if (options.preferPreviewsDefault === true) {
+      if (canCompareLanguages()) return 'languages';
+      if (canCompareVersions()) return 'versions';
+      return 'languages';
+    }
+
+    const remembered = normalizeCompareMode(lastCompareMode);
+    if (remembered === 'languages' && canCompareLanguages()) return 'languages';
+    if (remembered === 'versions' && canCompareVersions()) return 'versions';
+    if (canCompareLanguages()) return 'languages';
+    if (canCompareVersions()) return 'versions';
+    return 'languages';
+  }
+
+  function persistCompareMode(mode) {
+    const next = normalizeCompareMode(mode);
+    lastCompareMode = next;
+    if (!chrome || !chrome.storage || !chrome.storage.sync) return;
+    chrome.storage.sync.set({ [GEM_COMPARE_MODE_KEY]: next });
+  }
+
+  function openCompareModalWithResolvedMode(options = {}) {
+    const mode = resolveCompareMode(options);
+    const opts = { ...options };
+    delete opts.preferPreviewsDefault;
+
+    if (mode === 'languages' && typeof window.gemOpenCompareLanguagesModal === 'function') {
+      return window.gemOpenCompareLanguagesModal(opts);
+    }
+    if (mode === 'versions' && typeof window.gemOpenCompareVersionsModal === 'function') {
+      return window.gemOpenCompareVersionsModal(opts);
+    }
+    if (typeof window.gemOpenCompareLanguagesModal === 'function') {
+      return window.gemOpenCompareLanguagesModal(opts);
+    }
+    if (typeof window.gemOpenCompareVersionsModal === 'function') {
+      return window.gemOpenCompareVersionsModal(opts);
+    }
+    return false;
+  }
+
+  function openComparePreviewsModal() {
+    if (!canComparePreviews()) {
+      if (window.gemShowToast) {
+        window.gemShowToast('Compare Previews requires at least two languages or versions.', { type: 'error' });
+      }
+      return false;
+    }
+    return openCompareModalWithResolvedMode({
+      contentView: 'previews',
+      preferPreviewsDefault: true,
+    });
+  }
+
+  function syncComparePreviewsOverflowMenuItem() {
+    syncCompareOverflowMenuItem({
+      menuSelector: '[data-gem-compare-previews-menu]',
+      canShow: canComparePreviews,
+    });
   }
 
   function getCompareModePanel(modal, mode) {
@@ -130,6 +251,262 @@
     return DEFAULT_PIN_ACTIVE_EMAIL;
   }
 
+  function normalizeCompareContentView(value) {
+    if (value === 'esl-usage') return 'esl-usage';
+    if (value === 'links') return 'links';
+    if (value === 'previews') {
+      return canComparePreviews() ? 'previews' : 'esl-usage';
+    }
+    return canComparePreviews() ? DEFAULT_CONTENT_VIEW : 'esl-usage';
+  }
+
+  function ensureValidCompareContentView(modal) {
+    if (canComparePreviews() || compareContentView !== 'previews') return;
+
+    compareContentView = 'esl-usage';
+    persistCompareContentView('esl-usage');
+    ensureCompareEslUsageLoaded(modal);
+    if (typeof window.gemRefreshCompareEslUsageTable === 'function') {
+      window.gemRefreshCompareEslUsageTable(modal);
+    }
+  }
+
+  function normalizeCompareShowSubjectPreview(value) {
+    if (value === true || value === 'true' || value === 1 || value === '1') return true;
+    return DEFAULT_SHOW_SUBJECT_PREVIEW;
+  }
+
+  function compareHtmlToPlainText(html) {
+    const raw = String(html || '').trim();
+    if (!raw) return '';
+    try {
+      const doc = new DOMParser().parseFromString(raw, 'text/html');
+      return String(doc.body.textContent || '').replace(/\s+/g, ' ').trim();
+    } catch (_) {
+      return raw.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    }
+  }
+
+  function compareSubjectSegmentToPlainText(html) {
+    const raw = String(html ?? '');
+    if (!raw) return '';
+    if (!raw.includes('<')) return raw;
+    try {
+      const doc = new DOMParser().parseFromString(raw, 'text/html');
+      return String(doc.body.textContent || '');
+    } catch (_) {
+      return raw.replace(/<[^>]+>/g, '');
+    }
+  }
+
+  function isGemmaPersTokenMeta(meta) {
+    if (!meta || typeof meta !== 'object') return false;
+    if (meta.type === 'cust_esl') return true;
+    if (meta.token && meta.token.type === 'cust_esl') return true;
+    return false;
+  }
+
+  function escapeCompareSubjectHtml(text) {
+    return String(text || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function getCompareSubjectTokenLabel(token) {
+    if (!token) return '';
+
+    const meta = token.meta;
+    if (isGemmaPersTokenMeta(meta)) {
+      return String(meta.tokenName || meta.token?.name || '').trim();
+    }
+
+    const tokenObj = meta?.token;
+    return String(
+      tokenObj?.displayName
+      || tokenObj?.name
+      || meta?.tokenName
+      || meta?.name
+      || ''
+    ).trim();
+  }
+
+  function buildCompareSubjectTokenChipHtml(token) {
+    const label = getCompareSubjectTokenLabel(token);
+    if (!label) return '';
+
+    return (
+      `<span class="e-label e-label-primary" title="${escapeCompareSubjectHtml(label)}">` +
+      `${escapeCompareSubjectHtml(label)}` +
+      '</span>'
+    );
+  }
+
+  function buildCompareSubjectDisplayHtml(html) {
+    const source = String(html || '').trim();
+    if (!source) return '';
+
+    if (!source.includes('pers-token:1')) {
+      return escapeCompareSubjectHtml(compareHtmlToPlainText(source));
+    }
+
+    if (typeof window.gemParsePersTokensInHtml !== 'function') {
+      return escapeCompareSubjectHtml(compareHtmlToPlainText(source));
+    }
+
+    const tokens = window.gemParsePersTokensInHtml(source);
+    if (!tokens.length) {
+      return escapeCompareSubjectHtml(compareHtmlToPlainText(source));
+    }
+
+    const parts = [];
+    let last = 0;
+
+    tokens.forEach((token) => {
+      if (token.start > last) {
+        const segmentText = compareSubjectSegmentToPlainText(source.slice(last, token.start));
+        if (segmentText) parts.push(escapeCompareSubjectHtml(segmentText));
+      }
+
+      const tokenHtml = buildCompareSubjectTokenChipHtml(token);
+      if (tokenHtml) parts.push(tokenHtml);
+
+      last = token.end;
+    });
+
+    if (last < source.length) {
+      const tailText = compareSubjectSegmentToPlainText(source.slice(last));
+      if (tailText) parts.push(escapeCompareSubjectHtml(tailText));
+    }
+
+    return parts.join('');
+  }
+
+  function compareSubjectHtmlToDisplayText(html) {
+    const displayHtml = buildCompareSubjectDisplayHtml(html);
+    if (!displayHtml) return '';
+    return displayHtml
+      .replace(/<[^>]+>/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function createCompareColumnMetaRow() {
+    const meta = document.createElement('div');
+    meta.className = 'gem-compare-languages-column__meta';
+    meta.hidden = true;
+
+    const subject = document.createElement('div');
+    subject.className = 'gem-compare-languages-column__meta-subject';
+
+    const preview = document.createElement('div');
+    preview.className = 'gem-compare-languages-column__meta-preview';
+
+    meta.appendChild(subject);
+    meta.appendChild(preview);
+    return meta;
+  }
+
+  function ensureCompareColumnMetaRow(columnEl, { subjectHtml, preheaderText } = {}) {
+    if (!columnEl) return;
+    let meta = columnEl.querySelector('.gem-compare-languages-column__meta');
+    if (!meta) {
+      meta = createCompareColumnMetaRow();
+      const frameWrap = columnEl.querySelector('.gem-compare-languages-column__frame-wrap');
+      if (frameWrap) columnEl.insertBefore(meta, frameWrap);
+      else columnEl.appendChild(meta);
+    }
+    updateCompareColumnMetaRow(columnEl, { subjectHtml, preheaderText });
+  }
+
+  function updateCompareColumnMetaRow(columnEl, { subjectHtml, preheaderText } = {}) {
+    if (!columnEl) return;
+    const meta = columnEl.querySelector('.gem-compare-languages-column__meta');
+    if (!meta) return;
+
+    const subjectEl = meta.querySelector('.gem-compare-languages-column__meta-subject');
+    const previewEl = meta.querySelector('.gem-compare-languages-column__meta-preview');
+    const subjectDisplayHtml = buildCompareSubjectDisplayHtml(subjectHtml);
+    const subjectText = compareSubjectHtmlToDisplayText(subjectHtml);
+    const previewText = String(preheaderText || '').trim();
+
+    if (subjectEl) {
+      if (subjectDisplayHtml.includes('e-label e-label-primary')) {
+        subjectEl.innerHTML = subjectDisplayHtml || '\u00a0';
+      } else {
+        subjectEl.textContent = subjectText || '\u00a0';
+      }
+      subjectEl.hidden = false;
+      subjectEl.dataset.gemEmpty = subjectText ? 'false' : 'true';
+    }
+    if (previewEl) {
+      previewEl.textContent = previewText || '\u00a0';
+      previewEl.hidden = false;
+      previewEl.dataset.gemEmpty = previewText ? 'false' : 'true';
+    }
+  }
+
+  function syncCompareSubjectPreviewUi(modal) {
+    const target = modal || getCompareModal();
+    if (!target) return;
+
+    const show = compareShowSubjectPreview && compareContentView === 'previews';
+    target.dataset.gemCompareSubjectPreview = show ? 'on' : 'off';
+
+    const toggleBtn = target.querySelector('[data-gem-compare-subject-preview-toggle]');
+    if (toggleBtn) {
+      toggleBtn.classList.toggle('gem-compare-languages-modal__subject-preview-btn--active', compareShowSubjectPreview);
+      toggleBtn.setAttribute('aria-pressed', compareShowSubjectPreview ? 'true' : 'false');
+    }
+
+    target.querySelectorAll('.gem-compare-languages-column__meta').forEach((metaEl) => {
+      metaEl.hidden = !show;
+    });
+  }
+
+  function setCompareShowSubjectPreview(modal, enabled, { persist = true } = {}) {
+    const next = !!enabled;
+    if (compareShowSubjectPreview === next && !persist) {
+      syncCompareSubjectPreviewUi(modal);
+      return;
+    }
+    compareShowSubjectPreview = next;
+    syncCompareSubjectPreviewUi(modal);
+    notifySubjectPreviewToggleHandlers(modal);
+    if (persist && chrome?.storage?.local) {
+      chrome.storage.local.set({ [GEM_COMPARE_SHOW_SUBJECT_PREVIEW_KEY]: next });
+    }
+  }
+
+  function loadCompareLocalSettings(callback) {
+    if (!chrome?.storage?.local) {
+      compareShowSubjectPreview = DEFAULT_SHOW_SUBJECT_PREVIEW;
+      if (callback) callback();
+      return;
+    }
+
+    chrome.storage.local.get({
+      [GEM_COMPARE_SHOW_SUBJECT_PREVIEW_KEY]: DEFAULT_SHOW_SUBJECT_PREVIEW,
+    }, (res) => {
+      compareShowSubjectPreview = normalizeCompareShowSubjectPreview(
+        res[GEM_COMPARE_SHOW_SUBJECT_PREVIEW_KEY]
+      );
+      if (callback) callback();
+    });
+  }
+
+  function bindCompareSubjectPreviewToggle(modal) {
+    if (!modal || modal.dataset.gemCompareSubjectPreviewToggleBound === 'true') return;
+    const btn = modal.querySelector('[data-gem-compare-subject-preview-toggle]');
+    if (!btn) return;
+
+    modal.dataset.gemCompareSubjectPreviewToggleBound = 'true';
+    btn.addEventListener('click', () => {
+      setCompareShowSubjectPreview(modal, !compareShowSubjectPreview);
+    });
+  }
+
   function applyComparePreviewSettings(settings) {
     applyCompareWidthSettings(settings);
     compareZoomLevel = normalizeCompareZoom(settings && settings[GEM_COMPARE_ZOOM_KEY]);
@@ -139,12 +516,16 @@
     compareSyncPinActiveEmail = normalizeCompareSyncPinActiveEmail(
       settings && settings[GEM_COMPARE_PIN_ACTIVE_KEY]
     );
+    compareContentView = normalizeCompareContentView(
+      settings && settings[GEM_COMPARE_CONTENT_VIEW_KEY]
+    );
+    lastCompareMode = normalizeCompareMode(settings && settings[GEM_COMPARE_MODE_KEY]);
   }
 
   function loadComparePreviewSettings(callback) {
     if (!chrome || !chrome.storage || !chrome.storage.sync) {
       applyComparePreviewSettings(null);
-      if (callback) callback();
+      loadCompareLocalSettings(callback);
       return;
     }
 
@@ -154,9 +535,11 @@
       [GEM_COMPARE_ZOOM_KEY]: DEFAULT_ZOOM,
       [GEM_COMPARE_PREVIEW_SORT_KEY]: DEFAULT_PREVIEW_SORT,
       [GEM_COMPARE_PIN_ACTIVE_KEY]: DEFAULT_PIN_ACTIVE_EMAIL,
+      [GEM_COMPARE_CONTENT_VIEW_KEY]: DEFAULT_CONTENT_VIEW,
+      [GEM_COMPARE_MODE_KEY]: DEFAULT_COMPARE_MODE,
     }, (res) => {
       applyComparePreviewSettings(res || {});
-      if (callback) callback();
+      loadCompareLocalSettings(callback);
     });
   }
 
@@ -179,6 +562,13 @@
     compareZoomLevel = next;
     if (!chrome || !chrome.storage || !chrome.storage.sync) return;
     chrome.storage.sync.set({ [GEM_COMPARE_ZOOM_KEY]: next });
+  }
+
+  function persistCompareContentView(view) {
+    const next = normalizeCompareContentView(view);
+    compareContentView = next;
+    if (!chrome || !chrome.storage || !chrome.storage.sync) return;
+    chrome.storage.sync.set({ [GEM_COMPARE_CONTENT_VIEW_KEY]: next });
   }
 
   function getActiveCompareColumnWidth() {
@@ -228,6 +618,18 @@
     if (typeof handler === 'function') layoutRefreshHandlers.push(handler);
   }
 
+  function registerSubjectPreviewToggleHandler(handler) {
+    if (typeof handler === 'function') subjectPreviewToggleHandlers.push(handler);
+  }
+
+  function notifySubjectPreviewToggleHandlers(modal) {
+    subjectPreviewToggleHandlers.forEach((handler) => {
+      try {
+        handler(modal);
+      } catch (_) {}
+    });
+  }
+
   function notifyLayoutRefresh() {
     const modal = getCompareModal();
     layoutRefreshHandlers.forEach((handler) => {
@@ -247,13 +649,23 @@
     compareSettingsListenerBound = true;
 
     chrome.storage.onChanged.addListener((changes, areaName) => {
+      if (areaName === 'local' && changes[GEM_COMPARE_SHOW_SUBJECT_PREVIEW_KEY]) {
+        compareShowSubjectPreview = normalizeCompareShowSubjectPreview(
+          changes[GEM_COMPARE_SHOW_SUBJECT_PREVIEW_KEY].newValue
+        );
+        syncOpenCompareModalsUi();
+        return;
+      }
+
       if (areaName !== 'sync') return;
       const desktopChange = changes[GEM_COMPARE_DESKTOP_WIDTH_KEY];
       const mobileChange = changes[GEM_COMPARE_MOBILE_WIDTH_KEY];
       const zoomChange = changes[GEM_COMPARE_ZOOM_KEY];
       const sortChange = changes[GEM_COMPARE_PREVIEW_SORT_KEY];
       const pinChange = changes[GEM_COMPARE_PIN_ACTIVE_KEY];
-      if (!desktopChange && !mobileChange && !zoomChange && !sortChange && !pinChange) return;
+      const contentViewChange = changes[GEM_COMPARE_CONTENT_VIEW_KEY];
+      const modeChange = changes[GEM_COMPARE_MODE_KEY];
+      if (!desktopChange && !mobileChange && !zoomChange && !sortChange && !pinChange && !contentViewChange && !modeChange) return;
 
       applyComparePreviewSettings({
         [GEM_COMPARE_DESKTOP_WIDTH_KEY]: desktopChange
@@ -269,10 +681,25 @@
         [GEM_COMPARE_PIN_ACTIVE_KEY]: pinChange
           ? pinChange.newValue
           : compareSyncPinActiveEmail,
+        [GEM_COMPARE_CONTENT_VIEW_KEY]: contentViewChange
+          ? contentViewChange.newValue
+          : compareContentView,
+        [GEM_COMPARE_MODE_KEY]: modeChange
+          ? modeChange.newValue
+          : lastCompareMode,
       });
 
       syncOpenCompareModalsUi();
       if (sortChange || pinChange) notifyLayoutRefresh();
+      if (contentViewChange) {
+        const modal = getCompareModal();
+        if (modal && compareContentView === 'esl-usage' && typeof window.gemRefreshCompareEslUsageTable === 'function') {
+          window.gemRefreshCompareEslUsageTable(modal);
+        }
+        if (modal && compareContentView === 'links' && typeof window.gemRefreshCompareReviewLinksTable === 'function') {
+          window.gemRefreshCompareReviewLinksTable(modal);
+        }
+      }
     });
   }
 
@@ -318,11 +745,132 @@
     syncCompareDeviceWidthInput(modal);
   }
 
+  function syncCompareContentViewUi(modal) {
+    if (!modal) return;
+    ensureValidCompareContentView(modal);
+    modal.dataset.gemCompareContentView = compareContentView;
+
+    const toggle = modal.querySelector('.gem-compare-languages-modal__content-view-toggle');
+    const showPreviewsTab = canComparePreviews();
+    const previewsBtn = toggle?.querySelector('[data-gem-compare-content-view="previews"]');
+    if (previewsBtn) {
+      previewsBtn.hidden = !showPreviewsTab;
+      previewsBtn.style.display = showPreviewsTab ? '' : 'none';
+    }
+
+    toggle?.querySelectorAll('[data-gem-compare-content-view]').forEach((btn) => {
+      const active = btn.getAttribute('data-gem-compare-content-view') === compareContentView;
+      btn.classList.toggle('gem-compare-languages-modal__content-view-btn--active', active);
+      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+
+    const isEslUsage = compareContentView === 'esl-usage';
+    const isLinksView = compareContentView === 'links';
+    const hidePreviewControls = isEslUsage || isLinksView;
+    modal.querySelectorAll(
+      '.gem-compare-languages-modal__header-control-group--device, .gem-compare-languages-modal__header-control-group--zoom, .gem-compare-languages-modal__header-control-group--subject-preview'
+    ).forEach((group) => {
+      group.hidden = hidePreviewControls;
+      group.style.display = hidePreviewControls ? 'none' : '';
+    });
+
+    const editabilityGroup = modal.querySelector(
+      '.gem-compare-languages-modal__header-control-group--esl-editability'
+    );
+    if (editabilityGroup) {
+      editabilityGroup.hidden = !isEslUsage;
+      editabilityGroup.style.display = isEslUsage ? '' : 'none';
+    }
+
+    const groupingGroup = modal.querySelector(
+      '.gem-compare-languages-modal__header-control-group--esl-grouping'
+    );
+    if (groupingGroup) {
+      groupingGroup.hidden = !isEslUsage;
+      groupingGroup.style.display = isEslUsage ? '' : 'none';
+    }
+
+    const linksToolbar = modal.querySelector('.gem-compare-languages-modal__links-toolbar');
+    if (linksToolbar) {
+      linksToolbar.hidden = !isLinksView;
+      linksToolbar.style.display = isLinksView ? '' : 'none';
+    }
+    if (isLinksView && typeof window.gemEnsureReviewLinksToolbar === 'function') {
+      window.gemEnsureReviewLinksToolbar(modal);
+    }
+
+    syncPanelContentView(modal);
+    syncCompareSubjectPreviewUi(modal);
+  }
+
+  function syncPanelContentView(modal) {
+    if (!modal) return;
+    const isEslUsage = compareContentView === 'esl-usage';
+    const isLinksView = compareContentView === 'links';
+    const mode = String(modal.dataset.gemCompareMode || '').trim();
+
+    modal.querySelectorAll('[data-gem-compare-mode-panel]').forEach((panel) => {
+      const isActivePanel = panel.dataset.gemCompareModePanel === mode;
+      const columnsWrap = panel.querySelector('.gem-compare-languages-modal__columns-wrap');
+      const eslTable = panel.querySelector('.gem-compare-esl-usage');
+      const linksWrap = panel.querySelector('.gem-review-links');
+
+      if (!isActivePanel) return;
+
+      if (columnsWrap) {
+        columnsWrap.hidden = isEslUsage || isLinksView;
+        columnsWrap.style.display = (isEslUsage || isLinksView) ? 'none' : '';
+      }
+      if (eslTable) {
+        eslTable.hidden = !isEslUsage;
+        eslTable.style.display = isEslUsage ? '' : 'none';
+      }
+      if (linksWrap) {
+        linksWrap.hidden = !isLinksView;
+        linksWrap.style.display = isLinksView ? '' : 'none';
+      }
+    });
+  }
+
+  function setCompareContentView(modal, view) {
+    const next = normalizeCompareContentView(view);
+    if (compareContentView === next) {
+      syncCompareContentViewUi(modal);
+      if (next === 'previews') ensureComparePreviewsLoaded(modal);
+      if (next === 'esl-usage') ensureCompareEslUsageLoaded(modal);
+      if (next === 'links' && typeof window.gemRefreshCompareReviewLinksTable === 'function') {
+        window.gemRefreshCompareReviewLinksTable(modal);
+      }
+      return;
+    }
+    compareContentView = next;
+    persistCompareContentView(next);
+    syncCompareContentViewUi(modal);
+    if (next === 'esl-usage') {
+      ensureCompareEslUsageLoaded(modal);
+      if (typeof window.gemRefreshCompareEslUsageTable === 'function') {
+        window.gemRefreshCompareEslUsageTable(modal);
+      }
+    }
+    if (next === 'links' && typeof window.gemRefreshCompareReviewLinksTable === 'function') {
+      window.gemRefreshCompareReviewLinksTable(modal);
+    }
+    if (next === 'previews') {
+      ensureComparePreviewsLoaded(modal);
+    }
+  }
+
+  function getCompareContentView() {
+    return compareContentView;
+  }
+
   function syncCompareModalUi(modal) {
     syncCompareLayoutControlsUi(modal);
     syncCompareDeviceToggleUi(modal);
     syncCompareZoomUi(modal);
     syncCompareModeToggleUi(modal);
+    syncCompareContentViewUi(modal);
+    syncCompareSubjectPreviewUi(modal);
   }
 
   function canShowCompareModeToggle() {
@@ -367,6 +915,27 @@
     if (handler && typeof handler.onActivate === 'function') {
       handler.onActivate(modal);
     }
+
+    if (compareContentView === 'esl-usage' && typeof window.gemRefreshCompareEslUsageTable === 'function') {
+      window.gemRefreshCompareEslUsageTable(modal);
+    }
+    if (compareContentView === 'links' && typeof window.gemRefreshCompareReviewLinksTable === 'function') {
+      window.gemRefreshCompareReviewLinksTable(modal);
+    }
+  }
+
+  function bindCompareContentViewToggle(modal) {
+    if (!modal || modal.dataset.gemCompareContentViewToggleBound === 'true') return;
+    modal.dataset.gemCompareContentViewToggleBound = 'true';
+
+    const toggle = modal.querySelector('.gem-compare-languages-modal__content-view-toggle');
+    if (!toggle) return;
+
+    toggle.addEventListener('click', (event) => {
+      const btn = event.target && event.target.closest('[data-gem-compare-content-view]');
+      if (!btn || !toggle.contains(btn)) return;
+      setCompareContentView(modal, btn.getAttribute('data-gem-compare-content-view'));
+    });
   }
 
   function bindCompareModeToggle(modal) {
@@ -383,10 +952,14 @@
       const currentMode = String(modal.dataset.gemCompareMode || '').trim();
       if (!targetMode || targetMode === currentMode) return;
 
+      const modeSwitchOptions = typeof getCompareContentView === 'function'
+        ? { contentView: getCompareContentView() }
+        : {};
+
       if (targetMode === 'languages' && typeof window.gemOpenCompareLanguagesModal === 'function') {
-        window.gemOpenCompareLanguagesModal();
+        window.gemOpenCompareLanguagesModal(modeSwitchOptions);
       } else if (targetMode === 'versions' && typeof window.gemOpenCompareVersionsModal === 'function') {
-        window.gemOpenCompareVersionsModal();
+        window.gemOpenCompareVersionsModal(modeSwitchOptions);
       }
     });
   }
@@ -498,6 +1071,8 @@
     bindCompareWidthInput(modal);
     bindCompareZoomToggle(modal);
     bindCompareModeToggle(modal);
+    bindCompareContentViewToggle(modal);
+    bindCompareSubjectPreviewToggle(modal);
     syncCompareModalUi(modal);
   }
 
@@ -512,6 +1087,27 @@
                 <button type="button" class="e-btn gem-compare-languages-modal__mode-btn" data-gem-compare-mode="versions" aria-pressed="false">Versions</button>
               </div>
             </div>
+            <div class="gem-compare-languages-modal__header-control-group gem-compare-languages-modal__header-control-group--content-view">
+              <div class="e-buttongroup gem-compare-languages-modal__content-view-toggle" role="group" aria-label="Compare content view">
+                <button type="button" class="e-btn gem-compare-languages-modal__content-view-btn gem-compare-languages-modal__content-view-btn--active" data-gem-compare-content-view="previews" aria-pressed="true">Previews</button>
+                <button type="button" class="e-btn gem-compare-languages-modal__content-view-btn" data-gem-compare-content-view="esl-usage" aria-pressed="false">Scripts</button>
+                <button type="button" class="e-btn gem-compare-languages-modal__content-view-btn" data-gem-compare-content-view="links" aria-pressed="false">Links</button>
+              </div>
+            </div>
+            <div class="gem-compare-languages-modal__header-control-group gem-compare-languages-modal__header-control-group--esl-grouping" hidden>
+              <div class="e-buttongroup gem-compare-languages-modal__esl-grouping-toggle" role="group" aria-label="Group scripts by location">
+                <button type="button" class="e-btn gem-compare-languages-modal__esl-grouping-btn" data-gem-compare-esl-grouping="none" aria-pressed="false">No grouping</button>
+                <button type="button" class="e-btn gem-compare-languages-modal__esl-grouping-btn gem-compare-languages-modal__esl-grouping-btn--active" data-gem-compare-esl-grouping="by-location" aria-pressed="true">By location</button>
+                <button type="button" class="e-btn gem-compare-languages-modal__esl-grouping-btn" data-gem-compare-esl-grouping="cell-breakdown" aria-pressed="false">In cells</button>
+              </div>
+            </div>
+            <div class="gem-compare-languages-modal__header-control-group gem-compare-languages-modal__header-control-group--esl-editability" hidden>
+              <div class="e-buttongroup gem-compare-languages-modal__esl-editability-toggle" role="group" aria-label="Filter scripts by editability">
+                <button type="button" class="e-btn gem-compare-languages-modal__esl-editability-btn" data-gem-compare-esl-editability="all" aria-pressed="false">All</button>
+                <button type="button" class="e-btn gem-compare-languages-modal__esl-editability-btn gem-compare-languages-modal__esl-editability-btn--active" data-gem-compare-esl-editability="editable" aria-pressed="true">Editable</button>
+                <button type="button" class="e-btn gem-compare-languages-modal__esl-editability-btn" data-gem-compare-esl-editability="non-editable" aria-pressed="false">Non-editable</button>
+              </div>
+            </div>
           </div>
           <div class="gem-compare-languages-modal__header-actions">
             <div class="gem-compare-languages-modal__header-control-group gem-compare-languages-modal__header-control-group--layout">
@@ -522,6 +1118,9 @@
                   <option value="desc">Z → A</option>
                 </select>
               </label>
+            </div>
+            <div class="gem-compare-languages-modal__header-control-group gem-compare-languages-modal__header-control-group--subject-preview">
+              <button type="button" class="e-btn gem-compare-languages-modal__subject-preview-btn" data-gem-compare-subject-preview-toggle aria-pressed="false">Subject &amp; Preview</button>
             </div>
             <div class="gem-compare-languages-modal__header-control-group gem-compare-languages-modal__header-control-group--device">
               <div class="e-buttongroup gem-compare-languages-modal__device-toggle" role="group" aria-label="Preview device">
@@ -551,6 +1150,7 @@
             </div>
           </div>
         </div>
+        <div class="gem-compare-languages-modal__links-toolbar" hidden></div>
         <div class="gem-compare-languages-modal__body">
           <div class="gem-compare-modal__mode-panel" data-gem-compare-mode-panel="languages" hidden></div>
           <div class="gem-compare-modal__mode-panel" data-gem-compare-mode-panel="versions" hidden></div>
@@ -627,8 +1227,16 @@
     }
 
     if (modal) {
-      clearCompareModePanel(modal, 'languages');
+      const mode = String(modal.dataset.gemCompareMode || '').trim();
+      if (mode === 'languages' || mode === 'versions') {
+        persistCompareMode(mode);
+      }
+
+      clearCompareModePanel(modal, 'languages', { blankIframes: true });
       clearCompareModePanel(modal, 'versions', { blankIframes: true });
+      if (typeof window.gemClearCompareReviewLinksState === 'function') {
+        window.gemClearCompareReviewLinksState();
+      }
       if (typeof window.gemLayerRelease === 'function') window.gemLayerRelease(modal);
       modal.remove();
     }
@@ -966,7 +1574,7 @@
   function closeCompareColumnMenu() {
     if (!openCompareColumnMenu) return;
     const { wrap, trigger, menu } = openCompareColumnMenu;
-    menu.classList.remove('gem-recent-campaign-row-menu--open', 'gem-recent-campaign-row-menu--floating');
+    menu.classList.remove('gem-overflow-menu--open', 'gem-overflow-menu--floating');
     menu.style.removeProperty('top');
     menu.style.removeProperty('left');
     menu.style.removeProperty('visibility');
@@ -980,7 +1588,7 @@
   }
 
   function positionCompareColumnMenu(trigger, menu) {
-    menu.classList.add('gem-recent-campaign-row-menu--floating');
+    menu.classList.add('gem-overflow-menu--floating');
     menu.style.visibility = 'hidden';
     const triggerRect = trigger.getBoundingClientRect();
     const menuRect = menu.getBoundingClientRect();
@@ -999,11 +1607,11 @@
 
   function openCompareColumnMenuAt(wrap) {
     closeCompareColumnMenu();
-    const trigger = wrap.querySelector('.gem-recent-campaign-row-menu-trigger');
-    const menu = wrap.querySelector('.gem-recent-campaign-row-menu');
+    const trigger = wrap.querySelector('.gem-overflow-menu-trigger');
+    const menu = wrap.querySelector('.gem-overflow-menu');
     if (!trigger || !menu) return;
     document.body.appendChild(menu);
-    menu.classList.add('gem-recent-campaign-row-menu--open');
+    menu.classList.add('gem-overflow-menu--open');
     trigger.setAttribute('aria-expanded', 'true');
     positionCompareColumnMenu(trigger, menu);
     openCompareColumnMenu = { wrap, trigger, menu };
@@ -1030,7 +1638,7 @@
   function makeCompareColumnMenuItem(label, { disabled } = {}) {
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'gem-recent-campaign-row-menu-item';
+    btn.className = 'gem-overflow-menu-item';
     btn.setAttribute('role', 'menuitem');
     btn.textContent = label;
     if (disabled) {
@@ -1040,19 +1648,19 @@
     return btn;
   }
 
-  function createCompareColumnOverflowMenu(entryLabel, menuItems) {
+  function createCompareColumnOverflowMenu(entryLabel, menuItems, { wrapClassName } = {}) {
     const wrap = document.createElement('div');
-    wrap.className = 'gem-recent-campaign-row-menu-wrap gem-compare-languages-column__menu-wrap';
+    wrap.className = wrapClassName || 'gem-overflow-menu-wrap gem-compare-languages-column__menu-wrap';
 
     const trigger = document.createElement('button');
     trigger.type = 'button';
-    trigger.className = 'gem-recent-campaign-row-menu-trigger';
+    trigger.className = 'gem-overflow-menu-trigger';
     trigger.setAttribute('aria-haspopup', 'menu');
     trigger.setAttribute('aria-expanded', 'false');
     trigger.setAttribute('aria-label', `Options for ${entryLabel}`);
 
     const menu = document.createElement('div');
-    menu.className = 'gem-recent-campaign-row-menu';
+    menu.className = 'gem-overflow-menu';
     menu.setAttribute('role', 'menu');
 
     (menuItems || []).forEach((item) => {
@@ -1139,6 +1747,7 @@
     loadSettings: loadComparePreviewSettings,
     ensureSettingsListener: ensureComparePreviewSettingsListener,
     registerLayoutRefreshHandler,
+    registerSubjectPreviewToggleHandler,
     registerCompareModeHandler,
     syncModalUi: syncCompareModalUi,
     ensureCompareModal,
@@ -1164,8 +1773,28 @@
     setColumnLoading: setColumnFrameLoading,
     closeColumnMenu: closeCompareColumnMenu,
     createColumnOverflowMenu: createCompareColumnOverflowMenu,
+    createCompareColumnMetaRow,
+    ensureCompareColumnMetaRow,
+    updateCompareColumnMetaRow,
     ensureTabToolbar: ensureCompareTabToolbar,
     syncOverflowMenuItem: syncCompareOverflowMenuItem,
     resetDeviceMode: resetCompareDeviceMode,
+    getContentView: getCompareContentView,
+    setContentView: setCompareContentView,
+    syncPanelContentView,
+    syncCompareSubjectPreviewUi,
+    hasCompareModePreviewColumns,
+    ensureComparePreviewsLoaded,
+    ensureCompareEslUsageLoaded,
+    resolveCompareMode,
+    openCompareModalWithResolvedMode,
+    openComparePreviewsModal,
+    syncComparePreviewsOverflowMenuItem,
+    canComparePreviews,
   };
+
+  window.gemCanComparePreviews = canComparePreviews;
+  window.gemOpenComparePreviewsModal = openComparePreviewsModal;
+  window.gemOpenCompareModal = openCompareModalWithResolvedMode;
+  window.gemSyncComparePreviewsOverflowMenuItem = syncComparePreviewsOverflowMenuItem;
 })();

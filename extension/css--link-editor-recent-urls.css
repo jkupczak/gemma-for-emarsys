@@ -1,0 +1,98 @@
+.gem-link-editor-recent-urls {
+  margin-top: 10px;
+}
+
+.gem-link-editor-recent-urls-title {
+  color: var(--token-font-muted, #667085);
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.gem-link-editor-recent-urls-empty {
+  color: var(--token-font-muted, #667085);
+  font-size: 12px;
+}
+
+.gem-link-editor-recent-urls-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.gem-link-editor-recent-urls-item {
+  align-items: flex-start;
+  display: flex;
+  gap: 6px;
+}
+
+.gem-link-editor-recent-urls-insert {
+  background: var(--token-box-default-background, #fff);
+  border: 1px solid var(--token-box-default-border, #d0d5dd);
+  border-radius: 4px;
+  color: inherit;
+  cursor: pointer;
+  flex: 1;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.35;
+  min-width: 0;
+  padding: 6px 8px;
+  text-align: left;
+  word-break: break-all;
+}
+
+.gem-link-editor-recent-urls-insert:hover,
+.gem-link-editor-recent-urls-insert:focus-visible {
+  background: var(--token-highlight-default, #f3f4f6);
+  outline: none;
+}
+
+.gem-link-editor-recent-urls-open,
+.gem-link-editor-recent-urls-open-spacer {
+  align-items: center;
+  display: inline-flex !important;
+  flex: 0 0 24px;
+  height: 24px;
+  justify-content: center;
+  margin-top: 5px;
+  opacity: 1 !important;
+  visibility: visible !important;
+  width: 24px;
+}
+
+.gem-link-editor-recent-urls-open {
+  background: none;
+  border: 0;
+  color: #1f1f1f !important;
+  cursor: pointer;
+  padding: 0;
+  position: relative;
+  text-decoration: none;
+  z-index: 1;
+}
+
+.gem-link-editor-recent-urls-open:hover,
+.gem-link-editor-recent-urls-open:focus-visible {
+  color: var(--token-font-default, #1f1f1f) !important;
+  opacity: 1 !important;
+  outline: none;
+  visibility: visible !important;
+}
+
+.gem-link-editor-recent-urls-open svg {
+  display: block !important;
+  height: 18px;
+  opacity: 1 !important;
+  visibility: visible !important;
+  width: 18px;
+}
+
+cb-personalizable-input-with-context.link-editor-url .gem-link-editor-recent-urls-open,
+cb-personalizable-input-with-context.link-editor-url .gem-link-editor-recent-urls-open svg {
+  opacity: 1 !important;
+  visibility: visible !important;
+}

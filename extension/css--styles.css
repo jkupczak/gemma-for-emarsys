@@ -204,7 +204,7 @@ e-float-container .gem-enhanced-image-properties-dialog {
         display: none !important;
     }
     & header.e-dialog__header {
-        padding:0;
+        padding:0 !important;
         margin: 0;
         height: 36% !important;
     }
@@ -900,22 +900,6 @@ td:has(input.gem-export-snippet-checkbox) ~ td .gem-snippet-row-actions {
     accent-color: var(--token-primary-600);
 }
 
-
-.gem-nav-icons e-tooltip {
-    width: 100%;
-    justify-content: center;
-}
-
-.gem-mobile-nav-toggle--disabled {
-    opacity: 0.5;
-    cursor: default;
-    pointer-events: none;
-}
-
-.gem-mobile-nav-toggle--disabled:hover {
-    background: transparent;
-}
-
 /* Adjusting input widths of the image properties dialog to make them thinner. */
 .gem-enhanced-image-properties-dialog .e-accordion__content .e-field .e-grid .e-cell.e-cell-small .e-input-small {
     flex-grow: 1;
@@ -991,6 +975,7 @@ td:has(input.gem-export-snippet-checkbox) ~ td .gem-snippet-row-actions {
 main {
     & section.e-contentblocks-navigation_section:has(.e-verticalnav__content cb-campaign-variables),
     & section.e-contentblocks-navigation_section:has(.e-verticalnav__content gem-snippets),
+    & section.e-contentblocks-navigation_section:has(.e-verticalnav__content gem-find-replace),
     & section.e-contentblocks-navigation_section:has(.e-verticalnav__content gem-preflight),
     & section.e-contentblocks-navigation_section:has(.e-verticalnav__content cb-email-basics-tab),
     & section.e-contentblocks-navigation_section:has(.e-verticalnav__content cb-versions),
@@ -2779,7 +2764,7 @@ input.gem-input, select.gem-select {
 }
 
 .gem-picker-cat-section--collapsible {
-    background: rgba(0 0 0 / 0.1);
+    background: rgba(0 0 0 / 0.05);
     border-radius: 9px;
     padding: 0 8px 8px;
     margin: 8px 0;
@@ -2836,12 +2821,12 @@ cb-header.e-layout__header .gem-compact-email-tools-menu-wrap--header {
   vertical-align: middle;
 }
 
-cb-header.e-layout__header .gem-compact-email-tools-menu-wrap--header .gem-recent-campaign-row-menu-trigger {
+cb-header.e-layout__header .gem-compact-email-tools-menu-wrap--header .gem-campaign-menu-trigger {
   width: 36px;
   height: 36px;
 }
 
-cb-header.e-layout__header .gem-compact-email-tools-menu-wrap--header .gem-recent-campaign-row-menu-trigger::before {
+cb-header.e-layout__header .gem-compact-email-tools-menu-wrap--header .gem-campaign-menu-trigger::before {
   font-size: var(--token-icon-default-size);
 }
 
@@ -2849,4 +2834,33 @@ cb-header.e-layout__header .gem-compact-email-tools-menu-wrap--header .gem-recen
 e-float-container .e-dialog-iframe .e-dialog__content {
     -webkit-user-select: unset;
     user-select: unset;
+}
+
+e-verticalnav-menu {
+    gap: 6px !important;
+    display: flex !important;
+    flex-direction: column !important;
+}
+
+
+vce-languages-list .e-datagrid__item_actions_wrapper {
+    vertical-align: top;
+    border-bottom: 1px solid var(--token-tableCell-default-border);
+    padding: 12px 8px 12px 12px;
+}
+
+vce-languages-list .e-datagrid__item_actions {
+    background-color: unset;
+    border: unset;
+    box-shadow: unset;
+    opacity: 1;
+    border-radius: unset;
+}
+
+vce-languages-list [data-e-version="2"].e-table td { 
+    padding: 12px 16px 12px 12px !important;
+}
+
+vce-languages-list .e-btn-onlyicon {
+    width: unset;
 }

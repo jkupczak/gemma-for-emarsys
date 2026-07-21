@@ -30,7 +30,40 @@
     shortcutsModalEscapeUnsub = null;
   }
 
-  function showKeyboardShortcutsModal() {
+  const SNIPPET_CONTEXT_MENU_TRIGGER_KEY = 'gemSnippetContextMenuTrigger';
+  const SNIPPET_CONTEXT_MENU_REQUIRE_MOD_KEY = 'gemSnippetContextMenuRequireMod';
+
+  function resolveSnippetContextMenuRequireMod(res) {
+    const trigger = res?.[SNIPPET_CONTEXT_MENU_TRIGGER_KEY];
+    if (trigger === 'mod-right-click') return true;
+    if (trigger === 'right-click') return false;
+    return res?.[SNIPPET_CONTEXT_MENU_REQUIRE_MOD_KEY] === true;
+  }
+
+  function getSnippetContextMenuShortcutRows(mod, requireMod) {
+    const quickInsert = window.GEM_IS_MAC
+      ? `${mod}+Option+1/2/3`
+      : `${mod}+Shift+1/2/3`;
+    const shared = [
+      [`${mod}+Shift+M`, 'Open token menu at the caret (campaign editor; when focused in an insertable field)'],
+      [quickInsert, 'Insert 1st/2nd/3rd most recently used token at the caret'],
+      ['1 / 2 / 3', 'While token menu is open — insert that recent token (not while typing in search)'],
+    ];
+    if (requireMod) {
+      return [
+        [`${mod} + right-click`, 'Open snippet menu in editable fields (campaign editor)'],
+        ['Right-click', 'Open the browser context menu instead of the snippet menu'],
+        ...shared,
+      ];
+    }
+    return [
+      ['Right-click', 'Open snippet menu in editable fields (campaign editor)'],
+      [`${mod} + right-click`, 'Open the browser context menu instead of the snippet menu'],
+      ...shared,
+    ];
+  }
+
+  function renderKeyboardShortcutsModal(requireMod) {
     const existing = document.getElementById('gem-keyboard-shortcuts-modal');
     if (existing) existing.remove();
     unbindShortcutsModalEscape();
@@ -57,6 +90,8 @@
           [`${mod}+G`, 'Open or close Gemma Settings'],
           [`${mod}+/`, 'Open or close Recent Campaigns'],
           [`${mod}+;`, 'Open or close Notes'],
+          [`${mod}+P`, 'Open or close Command Palette'],
+          [`${mod}+Shift+P`, 'Open or close Command Palette'],
           [`${mod}+Shift+F`, 'Toggle between Standard Layout and Focus Layout'],
           [`${mod}+Shift+M`, 'Toggle Mobile Sidepanel'],
           [`${mod}+Shift+,`, 'Previous language version (when language selector is available)'],
@@ -67,14 +102,13 @@
         ${section('Email Editor', [
           [`${mod}+S`, 'Save the current email'],
           [`${mod}+Shift+V`, 'Paste plain text (bypass Rich Paste formatting)'],
-          ['Right-click', 'Open snippet menu in editable fields (campaign editor)'],
-          [`${mod} + right-click`, 'Open the browser context menu instead of the snippet menu']
+          ...getSnippetContextMenuShortcutRows(mod, requireMod)
         ])}
 
         ${section('Image Properties Dialog', [
           ['Enter', 'Accept changes (clicks OK)'],
           [`${mod}+D`, 'Toggle Desktop and Mobile tabs'],
-          ['Hold Space', 'Temporarily hide the dialog to peek at the editor behind it'],
+          [`Hold ${window.GEM_IS_MAC ? 'Option' : 'Alt'}`, 'Temporarily hide the dialog to peek at the editor behind it'],
           [`${mod}+Click`, 'On an inactive Image Picker search pill — activate it exclusively and clear the search input'],
           ['Double-click', 'An editable image in the email preview to open Image Properties']
         ])}
@@ -142,6 +176,20 @@
       } catch (_) {
         try { modal.focus(); } catch (_) {}
       }
+    });
+  }
+
+  function showKeyboardShortcutsModal() {
+    const finish = (requireMod) => renderKeyboardShortcutsModal(!!requireMod);
+    if (!chrome?.storage?.sync) {
+      finish(false);
+      return;
+    }
+    chrome.storage.sync.get({
+      [SNIPPET_CONTEXT_MENU_TRIGGER_KEY]: 'right-click',
+      [SNIPPET_CONTEXT_MENU_REQUIRE_MOD_KEY]: false,
+    }, (res) => {
+      finish(resolveSnippetContextMenuRequireMod(res));
     });
   }
 

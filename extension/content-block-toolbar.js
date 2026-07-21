@@ -1151,8 +1151,11 @@ function setupEditableImageDoubleClickHandler() {
 
             try {
               const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
-              iframeDoc.addEventListener('dblclick', handleImageDoubleClick, true);
-              console.log("[gem] Double-click handler attached to iframe");
+              if (iframeDoc && !iframeDoc._gemImageDblClickAttached) {
+                iframeDoc._gemImageDblClickAttached = true;
+                iframeDoc.addEventListener('dblclick', handleImageDoubleClick, true);
+                console.log("[gem] Double-click handler attached to iframe");
+              }
             } catch (error) {
               console.warn("[gem] Could not attach handler to iframe:", error);
             }
@@ -1170,7 +1173,10 @@ function setupEditableImageDoubleClickHandler() {
       const iframeDoc = existingIframe.contentDocument || existingIframe.contentWindow.document;
 
       // Add the double-click event listener to the iframe's document
-      iframeDoc.addEventListener('dblclick', handleImageDoubleClick, true);
+      if (iframeDoc && !iframeDoc._gemImageDblClickAttached) {
+        iframeDoc._gemImageDblClickAttached = true;
+        iframeDoc.addEventListener('dblclick', handleImageDoubleClick, true);
+      }
 
       console.log("[gem] Double-click handler attached to existing iframe");
     } catch (error) {

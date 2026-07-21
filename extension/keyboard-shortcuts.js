@@ -17,20 +17,8 @@ function initializeKeyboardShortcuts() {
     return false;
   }
 
-  /** True when Space should behave normally instead of modal peek (typing, dropdowns, editors). */
-  function spacebarBlocksModalPeek(el) {
-    if (!el || el === document.body || el === document.documentElement) return false;
-    const target = el.nodeType === Node.ELEMENT_NODE ? el : el.parentElement;
-    if (!target || !target.matches) return false;
-    if (isTypingTarget(target)) return true;
-    if (target.closest && (
-      target.closest('.CodeMirror-focused') ||
-      target.closest('vce-codemirror') ||
-      target.closest('.e-select')
-    )) {
-      return true;
-    }
-    return false;
+  function isAltPeekKey(event) {
+    return event.key === 'Alt' || event.code === 'AltLeft' || event.code === 'AltRight';
   }
 
   let gemModalPeekActive = false;
@@ -79,14 +67,11 @@ function initializeKeyboardShortcuts() {
   }
 
   function handleModalPeekKeyDown(event) {
-    const isSpaceKey = event.key === ' ' || event.code === 'Space';
-    if (!isSpaceKey || event.metaKey || event.ctrlKey || event.altKey) return;
+    // Hold Alt/Option to peek — avoids typing Space into focused inputs.
+    if (!isAltPeekKey(event) || event.metaKey || event.ctrlKey || event.shiftKey) return;
 
     gemClearModalPeekIfStale();
     if (!gemGetModalPeekTarget()) return;
-
-    const ae = gemGetActiveElementForKeyboardEvent(event);
-    if (spacebarBlocksModalPeek(ae)) return;
 
     if (event.repeat) {
       if (gemModalPeekActive) {
@@ -102,8 +87,7 @@ function initializeKeyboardShortcuts() {
   }
 
   function handleModalPeekKeyUp(event) {
-    const isSpaceKey = event.key === ' ' || event.code === 'Space';
-    if (!isSpaceKey) return;
+    if (!isAltPeekKey(event)) return;
     if (!gemModalPeekActive) return;
     gemSetModalPeek(false);
     event.preventDefault();

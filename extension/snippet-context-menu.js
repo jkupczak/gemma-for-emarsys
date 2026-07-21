@@ -6,7 +6,9 @@ console.log('[Gem] snippet-context-menu.js loaded');
   const CAMPAIGN_ROUTE = 'contentBlocks/campaign';
   const MENU_ID = 'gem-snippet-context-menu';
   const RECENT_STORAGE_KEY = 'gemSnippetContextRecent';
-  const SETTING_KEY = 'gemSnippetContextMenuEnabled';
+  const TRIGGER_SETTING_KEY = 'gemSnippetContextMenuTrigger';
+  const LEGACY_ENABLED_SETTING_KEY = 'gemSnippetContextMenuEnabled';
+  const LEGACY_REQUIRE_MOD_SETTING_KEY = 'gemSnippetContextMenuRequireMod';
   const PREVIEW_IFRAME_SELECTOR = 'iframe.e-contentblocks-preview__iframe-desktop';
   const MAX_RECENT = 10;
   const MAX_SEARCH_RESULTS = 20;
@@ -34,7 +36,7 @@ console.log('[Gem] snippet-context-menu.js loaded');
   let menuTokens = [];
   let persTokensLoading = false;
   let recentIds = [];
-  let menuEnabled = true;
+  let menuRequireMod = false;
   let escapeUnsub = null;
   let outsideDismissHandler = null;
   let outsideDismissDocs = [];
@@ -57,16 +59,29 @@ console.log('[Gem] snippet-context-menu.js loaded');
     }
   }
 
+  function resolveMenuRequireModFromStorage(res) {
+    const trigger = res?.[TRIGGER_SETTING_KEY];
+    if (trigger === 'mod-right-click') return true;
+    if (trigger === 'right-click') return false;
+    return res?.[LEGACY_REQUIRE_MOD_SETTING_KEY] === true;
+  }
+
   function loadSetting(callback) {
     if (!chrome?.storage?.sync) {
-      menuEnabled = true;
-      callback(menuEnabled);
+      menuRequireMod = false;
+      if (callback) callback(true);
       return;
     }
-    chrome.storage.sync.get({ [SETTING_KEY]: true }, (res) => {
-      menuEnabled = res[SETTING_KEY] !== false;
-      callback(menuEnabled);
-    });
+    chrome.storage.sync.get(
+      {
+        [TRIGGER_SETTING_KEY]: 'right-click',
+        [LEGACY_REQUIRE_MOD_SETTING_KEY]: false,
+      },
+      (res) => {
+        menuRequireMod = resolveMenuRequireModFromStorage(res);
+        if (callback) callback(true);
+      }
+    );
   }
 
   function loadRecentIds(callback) {
@@ -237,6 +252,11 @@ console.log('[Gem] snippet-context-menu.js loaded');
     return { line: pos.line, ch: pos.ch };
   }
 
+  function codeMirrorSelectionIsCollapsed(ctx) {
+    if (!ctx?.cmFrom || !ctx?.cmTo) return true;
+    return ctx.cmFrom.line === ctx.cmTo.line && ctx.cmFrom.ch === ctx.cmTo.ch;
+  }
+
   function captureCodeMirrorContext(cmEl, cmInstance, point) {
     const vceCm = cmEl?.closest?.('vce-codemirror') || null;
     const resolvedInstance =
@@ -258,9 +278,17 @@ console.log('[Gem] snippet-context-menu.js loaded');
       ctx.cmClickPoint = { clientX: point.clientX, clientY: point.clientY };
     }
 
+    if (resolvedInstance) {
+      try {
+        ctx.cmFrom = normalizeCodeMirrorPos(resolvedInstance.getCursor('from'));
+        ctx.cmTo = normalizeCodeMirrorPos(resolvedInstance.getCursor('to')) || ctx.cmFrom;
+      } catch (_) {}
+    }
+
     if (
       resolvedInstance &&
       point &&
+      codeMirrorSelectionIsCollapsed(ctx) &&
       typeof point.clientX === 'number' &&
       typeof point.clientY === 'number'
     ) {
@@ -277,13 +305,6 @@ console.log('[Gem] snippet-context-menu.js loaded');
       } catch (_) {}
     }
 
-    if (resolvedInstance && !ctx.cmFrom) {
-      try {
-        ctx.cmFrom = normalizeCodeMirrorPos(resolvedInstance.getCursor('from'));
-        ctx.cmTo = normalizeCodeMirrorPos(resolvedInstance.getCursor('to')) || ctx.cmFrom;
-      } catch (_) {}
-    }
-
     if (resolvedInstance && ctx.cmFrom && typeof resolvedInstance.indexFromPos === 'function') {
       try {
         ctx.selectionStart = resolvedInstance.indexFromPos(ctx.cmFrom);
@@ -291,11 +312,19 @@ console.log('[Gem] snippet-context-menu.js loaded');
       } catch (_) {}
     }
 
-    if (typeof ctx.selectionStart !== 'number' || typeof ctx.selectionEnd !== 'number') {
-      const textarea = cmEl.querySelector('textarea');
-      if (textarea) {
-        ctx.selectionStart = textarea.selectionStart;
-        ctx.selectionEnd = textarea.selectionEnd;
+    if (typeof window.gemSyncCodeMirrorContextSelection === 'function') {
+      window.gemSyncCodeMirrorContextSelection(ctx, resolvedInstance, cmEl);
+    } else {
+      const hasCmSelectionPositions = !!(resolvedInstance && ctx.cmFrom && ctx.cmTo);
+      if (
+        !hasCmSelectionPositions &&
+        (typeof ctx.selectionStart !== 'number' || typeof ctx.selectionEnd !== 'number')
+      ) {
+        const textarea = cmEl.querySelector('textarea');
+        if (textarea) {
+          ctx.selectionStart = textarea.selectionStart;
+          ctx.selectionEnd = textarea.selectionEnd;
+        }
       }
     }
 
@@ -401,6 +430,11 @@ console.log('[Gem] snippet-context-menu.js loaded');
     if (!state.savedRange && !state.tinymceBookmark) return;
 
     caretByEditorId.set(editor.id, state);
+    // Cap growth across TinyMCE rebuilds with new editor IDs.
+    while (caretByEditorId.size > 40) {
+      const oldest = caretByEditorId.keys().next().value;
+      caretByEditorId.delete(oldest);
+    }
     rememberCaretState(body, state);
   }
 
@@ -413,6 +447,10 @@ console.log('[Gem] snippet-context-menu.js loaded');
       if (!body) return;
 
       patchedEditorIds.add(editor.id);
+      while (patchedEditorIds.size > 80) {
+        const oldest = patchedEditorIds.values().next().value;
+        patchedEditorIds.delete(oldest);
+      }
       const save = () => saveCaretFromEditor(editor);
 
       body.addEventListener('keyup', save, false);
@@ -675,15 +713,62 @@ console.log('[Gem] snippet-context-menu.js loaded');
         (typeof window.gemResolveCodeMirrorInstance === 'function'
           ? window.gemResolveCodeMirrorInstance(ctx.cmEl, vceCm, ctx)
           : ctx.cmInstance) || ctx.cmInstance;
+      const textarea = ctx.cmEl.querySelector('textarea');
+
+      if (
+        textarea &&
+        cmInstance &&
+        typeof textarea.selectionStart === 'number' &&
+        typeof textarea.selectionEnd === 'number' &&
+        textarea.selectionStart !== textarea.selectionEnd &&
+        typeof cmInstance.posFromIndex === 'function'
+      ) {
+        const taStart = textarea.selectionStart;
+        const taEnd = textarea.selectionEnd;
+        if (ctx.selectionStart !== taStart || ctx.selectionEnd !== taEnd) {
+          ctx.selectionStart = taStart;
+          ctx.selectionEnd = taEnd;
+          try {
+            ctx.cmFrom = normalizeCodeMirrorPos(cmInstance.posFromIndex(taStart));
+            ctx.cmTo = normalizeCodeMirrorPos(cmInstance.posFromIndex(taEnd));
+          } catch (_) {}
+        }
+      }
+
       try {
         cmInstance?.focus?.();
-        if (cmInstance && ctx.cmFrom && ctx.cmTo) {
-          const from = normalizeCodeMirrorPos(ctx.cmFrom);
-          const to = normalizeCodeMirrorPos(ctx.cmTo) || from;
-          if (from && to) cmInstance.setSelection(from, to);
+        let from = normalizeCodeMirrorPos(ctx.cmFrom);
+        let to = normalizeCodeMirrorPos(ctx.cmTo) || from;
+
+        if (
+          cmInstance &&
+          typeof ctx.selectionStart === 'number' &&
+          typeof ctx.selectionEnd === 'number' &&
+          ctx.selectionStart !== ctx.selectionEnd &&
+          typeof cmInstance.posFromIndex === 'function' &&
+          typeof cmInstance.indexFromPos === 'function'
+        ) {
+          try {
+            const fromIndex = from ? cmInstance.indexFromPos(from) : null;
+            const toIndex = to ? cmInstance.indexFromPos(to) : null;
+            const indicesMatch =
+              fromIndex === ctx.selectionStart && toIndex === ctx.selectionEnd;
+            if (!indicesMatch) {
+              from = normalizeCodeMirrorPos(cmInstance.posFromIndex(ctx.selectionStart));
+              to = normalizeCodeMirrorPos(cmInstance.posFromIndex(ctx.selectionEnd));
+              ctx.cmFrom = from;
+              ctx.cmTo = to;
+            }
+          } catch (_) {}
+        }
+
+        if (cmInstance && from && to && typeof cmInstance.setSelection === 'function') {
+          cmInstance.setSelection(from, to);
+        }
+        if (cmInstance && typeof cmInstance.save === 'function') {
+          cmInstance.save();
         }
       } catch (_) {}
-      const textarea = ctx.cmEl.querySelector('textarea');
       if (textarea) {
         try {
           textarea.focus({ preventScroll: true });
@@ -752,15 +837,39 @@ console.log('[Gem] snippet-context-menu.js loaded');
   }
 
   function replaceTextControlSelection(el, text, start, end) {
+    if (!el) return;
+    if (typeof window.gemInsertSnippetIntoTarget === 'function') {
+      // Prefer the shared insert path so Emarsys dirty/focus-out wiring runs.
+      window.gemInsertSnippetIntoTarget(
+        {
+          type: el.tagName.toLowerCase() === 'textarea' ? 'textarea' : 'input',
+          element: el,
+          doc: el.ownerDocument || document,
+          selectionStart: typeof start === 'number' ? start : el.selectionStart,
+          selectionEnd: typeof end === 'number' ? end : el.selectionEnd,
+        },
+        { content: String(text ?? ''), name: String(text ?? '') },
+        { mode: 'plain' }
+      );
+      return;
+    }
     const s = typeof start === 'number' ? start : el.selectionStart;
     const e = typeof end === 'number' ? end : el.selectionEnd;
     const val = String(el.value ?? '');
-    el.value = val.slice(0, s) + String(text ?? '') + val.slice(e);
-    const pos = s + String(text ?? '').length;
+    const insert = String(text ?? '');
+    el.value = val.slice(0, s) + insert + val.slice(e);
+    const pos = s + insert.length;
     el.selectionStart = pos;
     el.selectionEnd = pos;
-    el.dispatchEvent(new Event('input', { bubbles: true }));
-    el.dispatchEvent(new Event('change', { bubbles: true }));
+    if (typeof window.gemMarkEmarsysTextControlDirty === 'function') {
+      window.gemMarkEmarsysTextControlDirty(el);
+    } else {
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    if (typeof window.gemNudgeEmarsysDirtyDetectionViaFocus === 'function') {
+      window.gemNudgeEmarsysDirtyDetectionViaFocus(el.ownerDocument || document, [el]);
+    }
   }
 
   function ensureMenu() {
@@ -771,12 +880,11 @@ console.log('[Gem] snippet-context-menu.js loaded');
     menuEl.setAttribute('role', 'menu');
     menuEl.innerHTML = `
       <div class="gem-snippet-ctx-section gem-snippet-ctx-clipboard"></div>
-      <div class="gem-snippet-ctx-section">
+      <div class="gem-snippet-ctx-list gem-scrollable">
         <div class="gem-snippet-ctx-search-wrap">
           <input type="search" class="gem-snippet-ctx-search" placeholder="Search tokens" aria-label="Search tokens" />
         </div>
       </div>
-      <div class="gem-snippet-ctx-list gem-scrollable"></div>
       <div class="gem-snippet-ctx-section gem-snippet-ctx-insert-as-wrap" hidden>
         <div class="gem-snippet-ctx-insert-as">
           <span class="gem-snippet-ctx-insert-as-label">Insert as:</span>
@@ -990,11 +1098,33 @@ console.log('[Gem] snippet-context-menu.js loaded');
     });
   }
 
+  function getQuickShortcutEntries() {
+    const entries = [];
+    const seen = new Set();
+    for (const id of recentIds) {
+      if (entries.length >= 3) break;
+      const item = resolveRecentToken(id);
+      if (!item) continue;
+      const key = getTokenRowKey(item);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      entries.push({ slot: entries.length + 1, item, key });
+    }
+    return entries;
+  }
+
+  function getQuickShortcutNumberByKey(rowKey) {
+    const hit = getQuickShortcutEntries().find((entry) => entry.key === rowKey);
+    return hit ? hit.slot : 0;
+  }
+
   function renderTokenRow(item, options = {}) {
     const rowKey = getTokenRowKey(item);
     const isPinned = isTokenPinned(item);
     const pinLabel = isPinned ? 'Unpin token' : 'Pin token';
     const rowClass = options.searchResult ? ' gem-snippet-ctx-row--search' : '';
+    const shortcutNumber =
+      options.shortcutNumber || getQuickShortcutNumberByKey(rowKey) || 0;
     const typeIcon =
       item.kind === 'personalization'
         ? item.persOrigin === 'predefined'
@@ -1002,12 +1132,16 @@ console.log('[Gem] snippet-context-menu.js loaded');
           : CUSTOM_PERS_TYPE_SVG
         : GEMMA_TYPE_SVG;
     const kind = item.kind === 'personalization' ? 'personalization' : 'gemma';
+    const shortcutHtml = shortcutNumber
+      ? `<span class="gem-snippet-ctx-row-shortcut">${shortcutNumber}</span>`
+      : '';
     return `
       <div class="gem-snippet-ctx-row${rowClass}" data-token-key="${escapeHtml(rowKey)}" data-token-kind="${kind}">
         <button type="button" class="gem-snippet-ctx-item" data-action="insert">
           <span class="gem-snippet-ctx-row-name">
             <span class="gem-snippet-ctx-type-icon">${typeIcon}</span>
             <span class="gem-snippet-ctx-row-label">${escapeHtml(item.name || 'Untitled')}</span>
+            ${shortcutHtml}
           </span>
         </button>
         <button type="button" class="gem-snippet-ctx-pin${isPinned ? ' gem-snippet-ctx-pin--active' : ''}" data-action="pin" aria-label="${pinLabel}" title="${pinLabel}">
@@ -1066,6 +1200,14 @@ console.log('[Gem] snippet-context-menu.js loaded');
     const q = (menuEl.querySelector('.gem-snippet-ctx-search').value || '').trim().toLowerCase();
     rebuildMenuTokens();
 
+    const shortcutByKey = new Map(
+      getQuickShortcutEntries().map((entry) => [entry.key, entry.slot])
+    );
+    const rowOpts = (item, extra = {}) => ({
+      ...extra,
+      shortcutNumber: shortcutByKey.get(getTokenRowKey(item)) || 0,
+    });
+
     let html = '';
 
     if (persTokensLoading && !q) {
@@ -1079,7 +1221,7 @@ console.log('[Gem] snippet-context-menu.js loaded');
         html += `<div class="gem-snippet-ctx-empty">No tokens match your search.</div>`;
       } else {
         html += `<div class="gem-snippet-ctx-section-title">Results</div>`;
-        html += capped.map((item) => renderTokenRow(item, { searchResult: true })).join('');
+        html += capped.map((item) => renderTokenRow(item, rowOpts(item, { searchResult: true }))).join('');
         if (matches.length > MAX_SEARCH_RESULTS) {
           html += `<div class="gem-snippet-ctx-empty">Showing ${MAX_SEARCH_RESULTS} of ${matches.length} matches. Refine your search.</div>`;
         }
@@ -1104,18 +1246,24 @@ console.log('[Gem] snippet-context-menu.js loaded');
 
       if (pinned.length) {
         html += `<div class="gem-snippet-ctx-section-title">Pinned Tokens</div>`;
-        html += pinned.map((item) => renderTokenRow(item)).join('');
+        html += pinned.map((item) => renderTokenRow(item, rowOpts(item))).join('');
       }
       if (recent.length) {
         html += `<div class="gem-snippet-ctx-section-title">Recent Tokens</div>`;
-        html += recent.map((item) => renderTokenRow(item)).join('');
+        html += recent.map((item) => renderTokenRow(item, rowOpts(item))).join('');
       }
       if (!pinned.length && !recent.length && !persTokensLoading) {
         html += `<div class="gem-snippet-ctx-empty">Pin tokens or search to insert.</div>`;
       }
     }
 
-    listEl.innerHTML = html;
+    const searchWrap = listEl.querySelector('.gem-snippet-ctx-search-wrap');
+    Array.from(listEl.children).forEach((child) => {
+      if (child !== searchWrap) child.remove();
+    });
+    if (html) {
+      listEl.insertAdjacentHTML('beforeend', html);
+    }
 
     listEl.querySelectorAll('.gem-snippet-ctx-row').forEach((row) => {
       const rowKey = row.getAttribute('data-token-key');
@@ -1191,6 +1339,7 @@ console.log('[Gem] snippet-context-menu.js loaded');
         };
       }
     }
+    closeMenu();
     let ok = false;
     if (typeof window.gemInsertSnippetIntoTarget === 'function') {
       ok = await window.gemInsertSnippetIntoTarget(ctx, insertItem, { mode });
@@ -1207,7 +1356,6 @@ console.log('[Gem] snippet-context-menu.js loaded');
           : 'Could not insert snippet.';
       window.gemShowToast(msg, { type: 'warn', durationMs: 2200 });
     }
-    closeMenu();
   }
 
   function loadMenuData(callback) {
@@ -1284,8 +1432,15 @@ console.log('[Gem] snippet-context-menu.js loaded');
     });
   }
 
-  function openMenu(x, y, ctx) {
+  function openMenu(x, y, ctx, options = {}) {
     ensureMenu();
+    if (
+      ctx?.type === 'codemirror' &&
+      ctx.cmEl &&
+      typeof window.gemSyncCodeMirrorContextSelection === 'function'
+    ) {
+      window.gemSyncCodeMirrorContextSelection(ctx, ctx.cmInstance, ctx.cmEl);
+    }
     activeCtx = ctx;
     insertMode = 'token';
     menuAnchor = { x, y };
@@ -1300,7 +1455,16 @@ console.log('[Gem] snippet-context-menu.js loaded');
     });
     menuEl.querySelector('.gem-snippet-ctx-search').value = '';
 
-    renderClipboardSection();
+    const clipboardSection = menuEl.querySelector('.gem-snippet-ctx-clipboard');
+    if (clipboardSection) {
+      if (options.hideClipboard) {
+        clipboardSection.innerHTML = '';
+        clipboardSection.hidden = true;
+      } else {
+        clipboardSection.hidden = false;
+        renderClipboardSection();
+      }
+    }
 
     loadMenuData(() => {
       renderMenuLists();
@@ -1316,11 +1480,6 @@ console.log('[Gem] snippet-context-menu.js loaded');
     attachMenuResizeObserver();
     scheduleMenuPosition({ resetPlacement: true });
 
-    requestAnimationFrame(() => {
-      const search = menuEl.querySelector('.gem-snippet-ctx-search');
-      if (search) search.focus();
-    });
-
     if (typeof window.gemLayerBindEscape === 'function') {
       escapeUnsub = window.gemLayerBindEscape(closeMenu, {
         whileConnected: () => menuOpen,
@@ -1330,10 +1489,253 @@ console.log('[Gem] snippet-context-menu.js loaded');
     attachOutsideDismiss();
   }
 
+  function getDigitFromEvent(event) {
+    const codeMatch = /^(?:Digit|Numpad)([1-3])$/.exec(event.code || '');
+    if (codeMatch) return Number(codeMatch[1]);
+    if (event.key === '1' || event.key === '2' || event.key === '3') {
+      return Number(event.key);
+    }
+    return 0;
+  }
+
+  function isOpenMenuShortcut(event) {
+    if (!(event.metaKey || event.ctrlKey) || !event.shiftKey || event.altKey) return false;
+    return event.key === 'M' || event.key === 'm' || event.code === 'KeyM';
+  }
+
+  function isDirectInsertChord(event) {
+    const digit = getDigitFromEvent(event);
+    if (!digit) return false;
+    if (window.GEM_IS_MAC) {
+      return !!(event.metaKey && event.altKey && !event.ctrlKey && !event.shiftKey);
+    }
+    return !!(event.ctrlKey && event.shiftKey && !event.metaKey && !event.altKey);
+  }
+
+  function isSearchInputTarget(target) {
+    if (!target) return false;
+    const el = target.nodeType === Node.ELEMENT_NODE ? target : target.parentElement;
+    if (!el) return false;
+    if (el.classList && el.classList.contains('gem-snippet-ctx-search')) return true;
+    return !!(el.closest && el.closest('.gem-snippet-ctx-search'));
+  }
+
+  function getFocusedEditableRoot() {
+    let doc = document;
+    let active = document.activeElement;
+
+    while (active && (active.tagName || '').toUpperCase() === 'IFRAME') {
+      try {
+        const iframeDoc = active.contentDocument || active.contentWindow?.document;
+        if (!iframeDoc) break;
+        doc = iframeDoc;
+        active = iframeDoc.activeElement;
+      } catch (_) {
+        break;
+      }
+    }
+
+    const preview = getDesktopPreviewIframe();
+    if (preview && document.activeElement === preview) {
+      try {
+        const iframeDoc = preview.contentDocument || preview.contentWindow?.document;
+        if (iframeDoc && iframeDoc.activeElement) {
+          doc = iframeDoc;
+          active = iframeDoc.activeElement;
+        }
+      } catch (_) {}
+    }
+
+    return { doc, active };
+  }
+
+  function getActiveEditableContext() {
+    const { doc, active } = getFocusedEditableRoot();
+    if (!active) return null;
+
+    if (doc !== document) {
+      syncTinyMCEEditors(doc);
+      const editable =
+        active.closest && active.closest('[contenteditable="true"]');
+      if (editable) saveCaretForElement(editable, doc);
+    }
+
+    return resolveEditableTarget(active, doc);
+  }
+
+  function getCaretClientRectInDoc(ctx) {
+    if (!ctx) return null;
+
+    if (ctx.type === 'contenteditable' && ctx.savedRange) {
+      try {
+        const rects = ctx.savedRange.getClientRects();
+        if (rects && rects.length) {
+          const r = rects[rects.length - 1];
+          return { left: r.left, top: r.top, bottom: r.bottom, right: r.right };
+        }
+        const rect = ctx.savedRange.getBoundingClientRect();
+        if (rect && (rect.width || rect.height || rect.top || rect.left)) {
+          return { left: rect.left, top: rect.top, bottom: rect.bottom, right: rect.right };
+        }
+      } catch (_) {}
+    }
+
+    if (ctx.type === 'codemirror' && ctx.cmInstance) {
+      try {
+        const coords = ctx.cmInstance.cursorCoords(true, 'window');
+        if (coords) {
+          return {
+            left: coords.left,
+            top: coords.top,
+            bottom: coords.bottom,
+            right: coords.right != null ? coords.right : coords.left,
+          };
+        }
+      } catch (_) {}
+    }
+
+    const el = ctx.element || ctx.cmEl;
+    if (el && el.getBoundingClientRect) {
+      const rect = el.getBoundingClientRect();
+      return {
+        left: rect.left + 8,
+        top: rect.top + 8,
+        bottom: rect.top + Math.min(28, Math.max(16, rect.height / 2)),
+        right: rect.left + 8,
+      };
+    }
+
+    return null;
+  }
+
+  function getMenuAnchorForContext(ctx) {
+    const rect = getCaretClientRectInDoc(ctx);
+    let x = rect ? rect.left : 0;
+    let y = rect ? rect.bottom : 0;
+    const point = rect
+      ? { clientX: rect.left, clientY: rect.top }
+      : null;
+
+    const doc = ctx.doc || document;
+    if (doc !== document) {
+      const iframe = getDesktopPreviewIframe();
+      if (iframe) {
+        const iframeRect = iframe.getBoundingClientRect();
+        x += iframeRect.left;
+        y += iframeRect.top;
+      }
+    }
+
+    return { x, y, point };
+  }
+
+  function openMenuFromKeyboard(ctx, options = {}) {
+    const editableCtx = ctx || getActiveEditableContext();
+    if (!editableCtx) return;
+
+    if (menuOpen) closeMenu();
+
+    const anchor = getMenuAnchorForContext(editableCtx);
+    let menuCtx = editableCtx;
+
+    if (
+      editableCtx.type !== 'codemirror' ||
+      codeMirrorSelectionIsCollapsed(editableCtx)
+    ) {
+      const targetEl =
+        editableCtx.element ||
+        editableCtx.cmEl ||
+        (editableCtx.doc && editableCtx.doc.activeElement);
+      menuCtx =
+        (targetEl &&
+          resolveEditableTarget(targetEl, editableCtx.doc || document, anchor.point)) ||
+        editableCtx;
+    } else if (anchor.point) {
+      menuCtx = {
+        ...editableCtx,
+        cmClickPoint: {
+          clientX: anchor.point.clientX,
+          clientY: anchor.point.clientY,
+        },
+      };
+    }
+
+    openMenu(anchor.x, anchor.y, menuCtx, options);
+  }
+
+  function insertRecentTokenBySlot(slot, options = {}) {
+    const slotNum = Number(slot);
+    if (slotNum < 1 || slotNum > 3) return;
+
+    const ctx =
+      (options.useActiveCtx && activeCtx) ||
+      options.ctx ||
+      getActiveEditableContext();
+    if (!ctx) return;
+
+    loadMenuData(() => {
+      const hit = getQuickShortcutEntries().find((entry) => entry.slot === slotNum);
+      if (!hit) return;
+      if (
+        ctx?.type === 'codemirror' &&
+        ctx.cmEl &&
+        typeof window.gemSyncCodeMirrorContextSelection === 'function'
+      ) {
+        window.gemSyncCodeMirrorContextSelection(ctx, ctx.cmInstance, ctx.cmEl);
+      }
+      activeCtx = ctx;
+      if (options.forceTokenMode) insertMode = 'token';
+      insertMenuToken(hit.item);
+    });
+  }
+
+  function onSnippetCtxKeyDown(event) {
+    if (!isCampaignPage()) return;
+
+    const digit = getDigitFromEvent(event);
+
+    if (digit && isDirectInsertChord(event)) {
+      const ctx = getActiveEditableContext();
+      if (!ctx) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (typeof event.stopImmediatePropagation === 'function') {
+        event.stopImmediatePropagation();
+      }
+      insertRecentTokenBySlot(digit, { ctx, forceTokenMode: true });
+      return;
+    }
+
+    if (isOpenMenuShortcut(event)) {
+      const ctx = getActiveEditableContext();
+      if (!ctx) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (typeof event.stopImmediatePropagation === 'function') {
+        event.stopImmediatePropagation();
+      }
+      openMenuFromKeyboard(ctx);
+      return;
+    }
+
+    if (!menuOpen || !digit) return;
+    if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+    if (isSearchInputTarget(event.target)) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    if (typeof event.stopImmediatePropagation === 'function') {
+      event.stopImmediatePropagation();
+    }
+    insertRecentTokenBySlot(digit, { useActiveCtx: true, forceTokenMode: true });
+  }
+
   function onContextMenu(event) {
     if (!isCampaignPage()) return;
-    if (event.metaKey || event.ctrlKey) return;
-    if (!menuEnabled) return;
+    const hasMod = !!(event.metaKey || event.ctrlKey);
+    // Default: plain right-click opens token menu; mod+right-click keeps browser menu.
+    // When require-mod is on, those shortcuts are swapped.
+    if (menuRequireMod ? !hasMod : hasMod) return;
     if (menuOpen && menuEl && menuEl.contains(event.target)) return;
 
     const eventDoc = event.target && event.target.ownerDocument ? event.target.ownerDocument : document;
@@ -1375,6 +1777,7 @@ console.log('[Gem] snippet-context-menu.js loaded');
   function bindContextMenuToDoc(doc) {
     if (!doc || boundDocs.has(doc)) return;
     doc.addEventListener('contextmenu', onContextMenu, true);
+    doc.addEventListener('keydown', onSnippetCtxKeyDown, true);
     setupCaretTracking(doc);
     if (isIframeDocument(doc)) {
       injectIframeBridge(doc);
@@ -1413,25 +1816,179 @@ console.log('[Gem] snippet-context-menu.js loaded');
     });
   }
 
-  function init() {
+  function findActivePreviewEditable(doc) {
+    if (!doc) return null;
+
+    let el = doc.querySelector('[contenteditable="true"].mce-edit-focus');
+    if (el) return el;
+
+    el = doc.querySelector('.mce-edit-focus[contenteditable="true"]');
+    if (el) return el;
+
+    try {
+      const tm = doc.defaultView && (doc.defaultView.tinymce || doc.defaultView.tinyMCE);
+      const activeEditor = tm && tm.activeEditor;
+      const body = activeEditor && typeof activeEditor.getBody === 'function' ? activeEditor.getBody() : null;
+      if (body && body.getAttribute('contenteditable') === 'true') {
+        return body;
+      }
+    } catch (_) {}
+
+    const editables = doc.querySelectorAll('[contenteditable="true"]');
+    let best = null;
+    let bestAt = 0;
+    editables.forEach((editable) => {
+      const tracked = caretTrackByElement.get(editable);
+      const at = tracked && Number.isFinite(tracked.at) ? tracked.at : 0;
+      if (at >= bestAt) {
+        bestAt = at;
+        best = editable;
+      }
+    });
+    if (best) return best;
+
+    return editables.length ? editables[0] : null;
+  }
+
+  function openMenuFromTrackedPreviewCaret() {
     if (!isCampaignPage()) return;
 
-    loadSetting((enabled) => {
-      menuEnabled = enabled;
+    const iframe = getDesktopPreviewIframe();
+    if (!iframe) return;
+
+    let doc = null;
+    try {
+      doc = iframe.contentDocument || iframe.contentWindow?.document;
+    } catch (_) {
+      return;
+    }
+    if (!doc) return;
+
+    syncTinyMCEEditors(doc);
+    injectIframeBridge(doc);
+
+    const editable = findActivePreviewEditable(doc);
+    if (!editable) return;
+
+    const ctx = captureContentEditableContext(editable, doc, null);
+    if (!ctx) return;
+
+    openMenuFromKeyboard(ctx, { hideClipboard: true });
+  }
+
+  const MCE_ESL_WIDGET_SELECTOR = '[aria-label="Insert Emarsys Scripting Language snippet"]';
+  const GEM_MCE_INSERT_TOKENS_ID = 'gem-mce-insert-tokens';
+
+  function injectMceInsertTokensButton() {
+    const eslWidget = document.querySelector(MCE_ESL_WIDGET_SELECTOR)?.closest?.('.mce-widget.mce-btn');
+    if (!eslWidget || !eslWidget.parentElement) return false;
+
+    let btn = document.getElementById(GEM_MCE_INSERT_TOKENS_ID);
+    if (btn) {
+      if (btn.previousElementSibling !== eslWidget) {
+        eslWidget.insertAdjacentElement('afterend', btn);
+      }
+      return true;
+    }
+
+    btn = document.createElement('div');
+    btn.id = GEM_MCE_INSERT_TOKENS_ID;
+    btn.className = 'mce-widget mce-btn gem-mce-insert-tokens-btn';
+    btn.setAttribute('tabindex', '-1');
+    btn.setAttribute('role', 'button');
+    btn.setAttribute('aria-label', 'Insert Tokens');
+    btn.innerHTML =
+      '<button role="presentation" type="button" tabindex="-1"><i class="mce-ico gem-i-ai"></i></button>';
+
+    btn.addEventListener('mousedown', (event) => {
+      event.preventDefault();
+    });
+    btn.querySelector('button')?.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      openMenuFromTrackedPreviewCaret();
     });
 
-    bindContextMenuToDoc(document);
-    setupIframeWatcher();
+    eslWidget.insertAdjacentElement('afterend', btn);
+    return true;
+  }
 
-    if (chrome?.storage?.onChanged) {
-      chrome.storage.onChanged.addListener((changes, area) => {
-        if (area === 'sync' && changes[SETTING_KEY]) {
-          menuEnabled = changes[SETTING_KEY].newValue !== false;
-          if (!menuEnabled) closeMenu();
+  function setupMceToolbarInsertTokensButton() {
+    let scheduled = false;
+    const scheduleInject = () => {
+      if (scheduled) return;
+      scheduled = true;
+      requestAnimationFrame(() => {
+        scheduled = false;
+        if (!isCampaignPage()) return;
+        injectMceInsertTokensButton();
+      });
+    };
+
+    scheduleInject();
+
+    if (typeof gemDomWatchSubscribe === 'function') {
+      gemDomWatchSubscribe((mutations) => {
+        if (
+          mutations.some((mutation) => {
+            const target = mutation.target;
+            if (target instanceof Element) {
+              if (target.id === 'tiny-mce-toolbar-container' || target.closest('#tiny-mce-toolbar-container')) {
+                return true;
+              }
+            }
+            for (const node of mutation.addedNodes) {
+              if (!(node instanceof Element)) continue;
+              if (
+                node.id === 'tiny-mce-toolbar-container' ||
+                node.querySelector?.('#tiny-mce-toolbar-container') ||
+                node.matches?.(MCE_ESL_WIDGET_SELECTOR) ||
+                node.querySelector?.(MCE_ESL_WIDGET_SELECTOR)
+              ) {
+                return true;
+              }
+            }
+            return false;
+          })
+        ) {
+          scheduleInject();
         }
       });
     }
   }
+
+  function init() {
+    if (!isCampaignPage()) return;
+
+    loadSetting();
+    loadRecentIds(() => {});
+
+    bindContextMenuToDoc(document);
+    setupIframeWatcher();
+    setupMceToolbarInsertTokensButton();
+
+    if (chrome?.storage?.onChanged) {
+      chrome.storage.onChanged.addListener((changes, area) => {
+        if (area === 'local' && changes[RECENT_STORAGE_KEY]) {
+          const raw = changes[RECENT_STORAGE_KEY].newValue;
+          recentIds = Array.isArray(raw)
+            ? raw.map((id) => String(id || '').trim()).filter(Boolean).slice(0, MAX_RECENT)
+            : [];
+          if (menuOpen) renderMenuLists();
+          return;
+        }
+        if (area !== 'sync') return;
+        if (changes[TRIGGER_SETTING_KEY]) {
+          menuRequireMod = changes[TRIGGER_SETTING_KEY].newValue === 'mod-right-click';
+        }
+        if (changes[LEGACY_REQUIRE_MOD_SETTING_KEY]) {
+          menuRequireMod = changes[LEGACY_REQUIRE_MOD_SETTING_KEY].newValue === true;
+        }
+      });
+    }
+  }
+
+  window.gemOpenSnippetContextMenuAtCaret = openMenuFromTrackedPreviewCaret;
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);

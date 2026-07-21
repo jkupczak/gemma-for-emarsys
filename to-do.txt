@@ -8,30 +8,90 @@
 |                                                                                |
  --------------------------------------------------------------------------------
 
-- only apply the box-shadow to a compare iframe when its pinned. not when its simply the active email
+-----------------------------------------
+-----------------------------------------
+-----------------------------------------
 
-- Let users toggle an overlay grid when using compare lang/ver to better visualize differences
-- CMD+SHIFT+P to open a command pallete like Parcel
+I want to diagnose possible memory footprint issues that my extension might be casusing on Emarsys. I am not sure if Emarsys is the issue or Gemma is the issue. What tests can we run to diagnose possible issues and their causes?
 
-- The languages tab doesn't let you clicka  language to edit that email. fix it.
+-----------------------------------------
+-----------------------------------------
+-----------------------------------------
+
+
+https://email-campaign-list.gservice.emarsys.net/api/client/campaigns?filterValues=%7B%22createdAt%22%3A%7B%22type%22%3A%22daterange%22%2C%22value%22%3A%7B%22start%22%3A%7B%22date%22%3A%222026-05-01%22%7D%2C%22end%22%3A%7B%22date%22%3A%222026-07-31%22%7D%7D%7D%7D&filterMetadata=%7B%22timeZone%22%3A%22America%2FNew_York%22%7D&search=&deleted=false&pageSize=100&offset=0&sortingKey=changedAt&sortingOrder=desc&requestCount=1
+
+
+	filterValues={
+		"createdAt": { 
+			"type": "daterange",
+			"value": {
+				"start": { 
+					"date": "2026-05-01" 
+				},
+				"end": { 
+					"date": "2026-07-31"
+				}
+			}
+		}
+	}
+	&filterMetadata={
+		"timeZone": "America/New_York"
+	}
+	&search=
+	&deleted=false
+	&pageSize=100
+	&offset=0
+	&sortingKey=changedAt
+	&sortingOrder=desc
+	&requestCount=1
+
+
+
+fetch("https://email-campaign-list.gservice.emarsys.net/api/client/campaigns?filterValues=%7B%22createdAt%22%3A%7B%22type%22%3A%22daterange%22%2C%22value%22%3A%7B%22start%22%3A%7B%22date%22%3A%222026-05-01%22%7D%2C%22end%22%3A%7B%22date%22%3A%222026-07-31%22%7D%7D%7D%7D&filterMetadata=%7B%22timeZone%22%3A%22America%2FNew_York%22%7D&search=&deleted=false&pageSize=100&offset=0&sortingKey=changedAt&sortingOrder=desc&requestCount=1", {
+  "headers": {
+    "accept": "*/*",
+    "accept-language": "en-US,en;q=0.9,es-US;q=0.8,es;q=0.7",
+    "authorization": "Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE3ODQwMzc0ODYsImN1c3RvbWVySWQiOjc1ODMzNjAyNSwiYWRtaW5JZCI6ODQyLCJzc29JZCI6ImprdXBjemFrX2V4dCIsImxhbmd1YWdlIjoiZW4iLCJlbnZpcm9ubWVudCI6InN1aXRlOC5lbWFyc3lzLm5ldCIsIm1zaWQiOiJzdWl0ZThfNmE1NTk1NWJiNmM4MDIuMzMyODgwMjciLCJhdWRpdENvbnRleHQiOnsic291cmNlX3R5cGUiOiJhcGkiLCJzb3VyY2VfaWQiOiIyNjEiLCJ0cmFja2luZ19pZCI6InN1aXRlOF82YTU1OTU1YmI2YzgwMi4zMzI4ODAyNyJ9LCJpc3MiOiJwbGF0Zm9ybSIsImVudmlyb25tZW50SG9zdCI6bnVsbCwibGFuZ3VhZ2VMb2NhbGVDb2RlIjoiZW5fR0IiLCJzYXBHbG9iYWxVc2VySWQiOm51bGwsInNlc3Npb25EYXRhVG9rZW4iOiI4WnRBd3JqUmQ4d2JUd2lpTWNOQkowR3FqcEhMM0Q5cExHb3hiR0ZIIn0.Epji4BSWRB-mD30a2H7HL9IXE2aK6YgJSM-O0JTfSFg",
+    "content-type": "application/json",
+    "priority": "u=1, i",
+    "sec-ch-ua": "\"Not;A=Brand\";v=\"8\", \"Chromium\";v=\"150\", \"Google Chrome\";v=\"150\"",
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": "\"macOS\"",
+    "sec-fetch-dest": "empty",
+    "sec-fetch-mode": "cors",
+    "sec-fetch-site": "same-site",
+    "strict-transport-security": "max-age=15724800; includeSubDomains"
+  },
+  "body": null,
+  "method": "GET",
+  "mode": "cors",
+  "credentials": "include"
+});
+
+-----------------------------------------
+-----------------------------------------
+-----------------------------------------
+
+Add a new function to the "Editor" column in the campaign overflow menu called "Highlight Blocks". Place it below "Highlight Targeting". When clicked, modify the desktop and mobile email previews using CSS that will show the boundaries for elements in a non-destructive way so that the user can visualize where elements start and stop. Please ask me questions to clarify how this should work.
+
+
+------------------------------------------------------------
+------------------------------------------------------------
+------------------------------------------------------------
+------------------------------------------------------------
+------------------------------------------------------------
+------------------------------------------------------------
+------------------------------------------------------------
+------------------------------------------------------------
+------------------------------------------------------------
+------------------------------------------------------------
+------------------------------------------------------------
+------------------------------------------------------------
 
 - CMD+S should save on the General Settings page.
 
-- Generate a screenshot of the email
-
-- Find and Replace: in the snippets panel(?), allow the user to pick an existing snippet or enter a text string. Then let them enter what to replace it with. Then replace it across all editable sections, alt text, subject line, and preview text.
-
-- Compare links across languages. Compare links across versions. Also compare subject lines and preview text. Work this into the existing compare dialog with toggles. Subject line and preview text could be a toggle that shows them above each frame. Links can be a toggle that replaces the frames entirely with a table of links.
-
-- A quick access shortcut to pull up a snippet dialog? Found myself having to switch between the subject line panel and the snippets panel a lot. What if a shortcut just brought up all of my snippets? Or just the most recently used ones?
-
-- Figure out if I can use the API to grab the HTML to avoid the Finish Editing issue.
-
 - When the mediadb is open, hitting the back button or CMD+<- should navigate back to the previous folder if the user clicked on any folders. It should keep going back through folders as long as there are any.
-
-- Is it possible to get snippet tokens into the subject line? Personalization tokes work there.
-
-- Add a grid toggle that outlines each block
 
 - Make duplicate harder to click.
 

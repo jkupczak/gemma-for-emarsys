@@ -2,6 +2,9 @@ console.log("[Gem-Keyword-Swap] keyword-swap.js loaded");
 
 // Keyword swap functionality for both content block toolbar and preheader textarea
 function initializeKeywordSwap() {
+  if (window.__gemKeywordSwapInitialized) return;
+  window.__gemKeywordSwapInitialized = true;
+
   console.log("[Gem-Keyword-Swap] Initializing keyword swap functionality - function called!");
 
   // ------------------------------------------------------------

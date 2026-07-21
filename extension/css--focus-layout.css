@@ -29,7 +29,7 @@
     flex-shrink: 0;
 }
 
-.gem-compact-email-tools-menu-wrap:has(.gem-recent-campaign-row-menu--open) {
+.gem-compact-email-tools-menu-wrap:has(.gem-campaign-menu--open) {
     z-index: 9999;
 }
 
@@ -73,7 +73,7 @@
     display: none;
 }
 
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-trigger {
+.gem-compact-email-tools-menu-wrap .gem-campaign-menu-trigger {
     border: 0;
     background: transparent;
     cursor: pointer;
@@ -89,22 +89,22 @@
     flex-shrink: 0;
 }
 
-.gem-compact-email-tools-menu-wrap--header .gem-recent-campaign-row-menu-trigger {
+.gem-compact-email-tools-menu-wrap--header .gem-campaign-menu-trigger {
     border: 1px solid var(--token-box-default-border, rgba(0, 0, 0, 0.16));
     background: var(--token-box-default-background, #fff);
     border-radius: 6px;
 }
 
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-trigger:hover {
+.gem-compact-email-tools-menu-wrap .gem-campaign-menu-trigger:hover {
     background: transparent;
 }
 
-.gem-compact-email-tools-menu-wrap--header .gem-recent-campaign-row-menu-trigger:hover {
+.gem-compact-email-tools-menu-wrap--header .gem-campaign-menu-trigger:hover {
     background: var(--token-box-default-background, #fff);
     border-color: var(--token-box-default-border, rgba(0, 0, 0, 0.16));
 }
 
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-trigger::before {
+.gem-compact-email-tools-menu-wrap .gem-campaign-menu-trigger::before {
     content: "\F135";
     font-family: var(--token-icon-default-fontFamily, inherit);
     font-size: var(--token-icon-default-size);
@@ -113,7 +113,7 @@
     display: inline-block;
 }
 
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu {
+.gem-compact-email-tools-menu-wrap .gem-campaign-menu {
     display: none;
     position: absolute;
     right: 0;
@@ -129,7 +129,7 @@
     gap: 4px;
 }
 
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu--floating {
+.gem-compact-email-tools-menu-wrap .gem-campaign-menu--floating {
     position: fixed;
     right: auto;
     top: 0;
@@ -137,7 +137,7 @@
     z-index: 2147483647;
 }
 
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu--open {
+.gem-compact-email-tools-menu-wrap .gem-campaign-menu--open {
     display: flex;
     flex-direction: row;
 }
@@ -155,11 +155,11 @@
     padding-left: 8px;
 }
 
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--with-nav-number {
+.gem-compact-email-tools-menu-wrap .gem-campaign-menu-item--with-nav-number {
     padding-left: 4px;
 }
 
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item-number {
+.gem-compact-email-tools-menu-wrap .gem-campaign-menu-item-number {
     flex-shrink: 0;
     display: inline-flex;
     align-items: center;
@@ -177,7 +177,7 @@
     margin-left:2px;
 }
 
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item {
+.gem-compact-email-tools-menu-wrap .gem-campaign-menu-item {
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -192,21 +192,21 @@
     white-space: nowrap;
 }
 
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item {
+.gem-compact-email-tools-menu-wrap .gem-campaign-menu-item {
     padding-left: 28px;
 }
 
-.gem-recent-campaign-row-menu .gem-inline-icon {
+.gem-campaign-menu .gem-inline-icon {
     width: 24px !important;
 }
 
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--with-inline-icon,
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--with-nav-number,
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--with-left-indicator {
+.gem-compact-email-tools-menu-wrap .gem-campaign-menu-item--with-inline-icon,
+.gem-compact-email-tools-menu-wrap .gem-campaign-menu-item--with-nav-number,
+.gem-compact-email-tools-menu-wrap .gem-campaign-menu-item--with-left-indicator {
     padding-left: 4px;
 }
 
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--with-inline-icon .gem-inline-icon {
+.gem-compact-email-tools-menu-wrap .gem-campaign-menu-item--with-inline-icon .gem-inline-icon {
     flex-shrink: 0;
     display: inline-flex;
     align-items: center;
@@ -214,26 +214,26 @@
     width: 24px;
 }
 
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--with-inline-icon .gem-inline-icon .e-icon {
+.gem-compact-email-tools-menu-wrap .gem-campaign-menu-item--with-inline-icon .gem-inline-icon .e-icon {
     font-size: 14px;
     line-height: 1;
 }
 
-.gem-compact-email-tools-menu-wrap .gem-compact-email-tools-menu-column--features .gem-recent-campaign-row-menu-item--with-inline-icon .gem-inline-icon {
+.gem-compact-email-tools-menu-wrap .gem-compact-email-tools-menu-column--features .gem-campaign-menu-item--with-inline-icon .gem-inline-icon {
     color: var(--token-button-default-text);
 }
 
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--with-inline-icon .gem-inline-icon svg {
+.gem-compact-email-tools-menu-wrap .gem-campaign-menu-item--with-inline-icon .gem-inline-icon svg {
     display: block;
     width: 16px;
     height: 16px;
 }
 
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item:hover {
+.gem-compact-email-tools-menu-wrap .gem-campaign-menu-item:hover {
     background: var(--token-background-strong, rgba(0, 0, 0, 0.05));
 }
 
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--has-indicator {
+.gem-compact-email-tools-menu-wrap .gem-campaign-menu-item--has-indicator {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -241,13 +241,13 @@
     gap: 0;
 }
 
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item-label {
+.gem-compact-email-tools-menu-wrap .gem-campaign-menu-item-label {
     flex: 1;
     min-width: 0;
     white-space: nowrap;
 }
 
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item-indicator {
+.gem-compact-email-tools-menu-wrap .gem-campaign-menu-item-indicator {
     flex-shrink: 0;
     width: 8px;
     height: 8px;
@@ -258,79 +258,79 @@
     transition: background 0.12s ease, box-shadow 0.12s ease;
 }
 
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--with-left-indicator .gem-recent-campaign-row-menu-item-indicator {
+.gem-compact-email-tools-menu-wrap .gem-campaign-menu-item--with-left-indicator .gem-campaign-menu-item-indicator {
     margin: 8px;
     padding: 0px;
     box-sizing: content-box;
 }
 
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--active .gem-recent-campaign-row-menu-item-indicator {
+.gem-compact-email-tools-menu-wrap .gem-campaign-menu-item--active .gem-campaign-menu-item-indicator {
     background: var(--token-primary-600);
     box-shadow: 0 0 6px 1px color-mix(in srgb, var(--token-primary-600) 55%, transparent);
 }
 
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-divider {
+.gem-compact-email-tools-menu-wrap .gem-campaign-menu-divider {
     height: 1px;
     background: var(--token-box-default-border, rgba(0, 0, 0, 0.1));
     margin: 4px 0;
 }
 
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item[disabled],
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--duplicating {
+.gem-compact-email-tools-menu-wrap .gem-campaign-menu-item[disabled],
+.gem-compact-email-tools-menu-wrap .gem-campaign-menu-item--duplicating {
     cursor: default;
     pointer-events: none;
     opacity: 0.6;
 }
 
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--preview-active {
+.gem-compact-email-tools-menu-wrap .gem-campaign-menu-item--preview-active {
     cursor: default;
     pointer-events: none;
     opacity: 1;
     background: var(--token-primary-200);
 }
 
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--preview-active:hover {
+.gem-compact-email-tools-menu-wrap .gem-campaign-menu-item--preview-active:hover {
     background: var(--token-primary-200);
 }
 
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--dim-when-idle.gem-recent-campaign-row-menu-item--menu-idle .gem-recent-campaign-row-menu-item-label,
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--dim-when-idle.gem-recent-campaign-row-menu-item--menu-idle .gem-inline-icon,
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--dim-when-idle.gem-recent-campaign-row-menu-item--menu-idle .gem-recent-campaign-row-menu-item-number,
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--dim-when-idle.gem-recent-campaign-row-menu-item--menu-idle .gem-recent-campaign-row-menu-item-indicator {
+.gem-compact-email-tools-menu-wrap .gem-campaign-menu-item--dim-when-idle.gem-campaign-menu-item--menu-idle .gem-campaign-menu-item-label,
+.gem-compact-email-tools-menu-wrap .gem-campaign-menu-item--dim-when-idle.gem-campaign-menu-item--menu-idle .gem-inline-icon,
+.gem-compact-email-tools-menu-wrap .gem-campaign-menu-item--dim-when-idle.gem-campaign-menu-item--menu-idle .gem-campaign-menu-item-number,
+.gem-compact-email-tools-menu-wrap .gem-campaign-menu-item--dim-when-idle.gem-campaign-menu-item--menu-idle .gem-campaign-menu-item-indicator {
     opacity: 0.5;
     transition: opacity 0.12s ease;
 }
 
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--dim-when-idle.gem-recent-campaign-row-menu-item--menu-idle:hover .gem-recent-campaign-row-menu-item-label,
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--dim-when-idle.gem-recent-campaign-row-menu-item--menu-idle:hover .gem-inline-icon,
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--dim-when-idle.gem-recent-campaign-row-menu-item--menu-idle:hover .gem-recent-campaign-row-menu-item-number,
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--dim-when-idle.gem-recent-campaign-row-menu-item--menu-idle:hover .gem-recent-campaign-row-menu-item-indicator {
+.gem-compact-email-tools-menu-wrap .gem-campaign-menu-item--dim-when-idle.gem-campaign-menu-item--menu-idle:hover .gem-campaign-menu-item-label,
+.gem-compact-email-tools-menu-wrap .gem-campaign-menu-item--dim-when-idle.gem-campaign-menu-item--menu-idle:hover .gem-inline-icon,
+.gem-compact-email-tools-menu-wrap .gem-campaign-menu-item--dim-when-idle.gem-campaign-menu-item--menu-idle:hover .gem-campaign-menu-item-number,
+.gem-compact-email-tools-menu-wrap .gem-campaign-menu-item--dim-when-idle.gem-campaign-menu-item--menu-idle:hover .gem-campaign-menu-item-indicator {
     opacity: 1;
 }
 
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--dim-when-idle.gem-recent-campaign-row-menu-item--menu-idle[data-gem-live-preview-toggle] .gem-inline-icon,
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--dim-when-idle.gem-recent-campaign-row-menu-item--menu-idle[data-gem-inbox-preview-toggle] .gem-inline-icon,
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--dim-when-idle.gem-recent-campaign-row-menu-item--menu-idle[data-gem-standard-editor-toggle] .gem-inline-icon,
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--dim-when-idle.gem-recent-campaign-row-menu-item--menu-idle[data-gem-focus-editor-toggle] .gem-inline-icon {
+.gem-compact-email-tools-menu-wrap .gem-campaign-menu-item--dim-when-idle.gem-campaign-menu-item--menu-idle[data-gem-live-preview-toggle] .gem-inline-icon,
+.gem-compact-email-tools-menu-wrap .gem-campaign-menu-item--dim-when-idle.gem-campaign-menu-item--menu-idle[data-gem-inbox-preview-toggle] .gem-inline-icon,
+.gem-compact-email-tools-menu-wrap .gem-campaign-menu-item--dim-when-idle.gem-campaign-menu-item--menu-idle[data-gem-standard-editor-toggle] .gem-inline-icon,
+.gem-compact-email-tools-menu-wrap .gem-campaign-menu-item--dim-when-idle.gem-campaign-menu-item--menu-idle[data-gem-focus-editor-toggle] .gem-inline-icon {
     color: var(--token-font-default);
 }
 
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--dim-when-idle.gem-recent-campaign-row-menu-item--menu-idle[data-gem-live-preview-toggle] .gem-inline-icon .e-icon,
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--dim-when-idle.gem-recent-campaign-row-menu-item--menu-idle[data-gem-inbox-preview-toggle] .gem-inline-icon .e-icon {
+.gem-compact-email-tools-menu-wrap .gem-campaign-menu-item--dim-when-idle.gem-campaign-menu-item--menu-idle[data-gem-live-preview-toggle] .gem-inline-icon .e-icon,
+.gem-compact-email-tools-menu-wrap .gem-campaign-menu-item--dim-when-idle.gem-campaign-menu-item--menu-idle[data-gem-inbox-preview-toggle] .gem-inline-icon .e-icon {
     color: var(--token-font-default);
 }
 
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--inbox-blocked {
+.gem-compact-email-tools-menu-wrap .gem-campaign-menu-item--inbox-blocked {
     cursor: default;
     pointer-events: none;
     opacity: 0.5;
 }
 
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--inbox-blocked:hover {
+.gem-compact-email-tools-menu-wrap .gem-campaign-menu-item--inbox-blocked:hover {
     background: transparent;
 }
 
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu-item--duplicating:hover {
+.gem-compact-email-tools-menu-wrap .gem-campaign-menu-item--duplicating:hover {
     background: transparent;
 }
 
@@ -436,12 +436,6 @@
     & e-verticalnav-item e-tooltip {
         padding-right: 8px;
     }
-}
-
-.gem-focus-layout .gem-nav-icons {
-    padding-right: 0 !important;
-    left: 8px;
-    width: 77px !important;
 }
 
 .gem-focus-layout main cb-block-level-variable .e-section__header,
@@ -706,6 +700,7 @@
 .gem-focus-layout main {
     & section.e-contentblocks-navigation_section:has(.e-verticalnav__content cb-campaign-variables),
     & section.e-contentblocks-navigation_section:has(.e-verticalnav__content gem-snippets),
+    & section.e-contentblocks-navigation_section:has(.e-verticalnav__content gem-find-replace),
     & section.e-contentblocks-navigation_section:has(.e-verticalnav__content cb-email-basics-tab),
     & section.e-contentblocks-navigation_section:has(.e-verticalnav__content cb-versions),
     & section.e-contentblocks-navigation_section:has(.e-verticalnav__content cb-locales-tab),
@@ -740,7 +735,7 @@
     content: "COLLABORATE";
 }
 
-.gem-compact-email-tools-menu-wrap .gem-recent-campaign-row-menu {
+.gem-compact-email-tools-menu-wrap .gem-campaign-menu {
 
     & > :nth-child(1) {
         margin: 10px 5px 10px 10px;

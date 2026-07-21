@@ -7,11 +7,11 @@
     display: none !important;
 }
 
-#email-campaign-list .gem-recent-campaign-row-menu-item--danger {
+#email-campaign-list .gem-overflow-menu-item--danger {
     color: var(--token-red-600, #dc2626);
 }
 
-#email-campaign-list .gem-recent-campaign-row-menu-item--danger:hover {
+#email-campaign-list .gem-overflow-menu-item--danger:hover {
     color: var(--token-red-600, #dc2626);
 }
 
@@ -227,7 +227,7 @@ html, body {
 }
 
 e-datagrid-wrapper .e-table-datagrid_overview {
-    padding-left: 12px;
+    padding: 0;
 }
 
 .gem-email-campaign-list-preview-open e-shellbar.e-shellbar {

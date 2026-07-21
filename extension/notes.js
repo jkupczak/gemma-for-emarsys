@@ -243,6 +243,10 @@ function showNotesPanel() {
     notesBackdrop.style.opacity = "1";
     notesBackdrop.style.pointerEvents = "auto";
     notesPanel.style.transform = "translateX(0)";
+    if (typeof window.gemLayerRaise === "function") {
+      window.gemLayerRaise(notesBackdrop, { tier: "modal" });
+      window.gemLayerRaise(notesPanel, { tier: "modal" });
+    }
     if (textarea) textarea.focus();
   });
 
@@ -255,6 +259,10 @@ function hideNotesPanel() {
   notesPanel.style.transform = "translateX(-100%)";
   notesBackdrop.style.opacity = "0";
   notesBackdrop.style.pointerEvents = "none";
+  if (typeof window.gemLayerRelease === "function") {
+    window.gemLayerRelease(notesBackdrop);
+    window.gemLayerRelease(notesPanel);
+  }
   document.removeEventListener("keydown", onNotesEsc);
   try {
     const ae = document.activeElement;
@@ -269,6 +277,8 @@ function toggleNotesPanel() {
     hideNotesPanel();
   }
 }
+
+window.gemToggleNotesPanel = toggleNotesPanel;
 
 function onNotesEsc(e) {
   if (e.key === "Escape") hideNotesPanel();

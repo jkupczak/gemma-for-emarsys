@@ -1,5 +1,5 @@
 // gem-dom-watch.js
-// Single shared MutationObserver for document-tree changes. Subscribers run once per rAF.
+// Single shared MutationObserver for document-tree changes. Subscribers run once per frame.
 (function () {
   try {
     if (window.__gemDomWatchInstalled) return;
@@ -10,25 +10,54 @@
     let nextId = 1;
     /** @type {MutationObserver | null} */
     let rootObserver = null;
-    let rafScheduled = false;
+    let flushScheduled = false;
+    let rafId = 0;
+    let timeoutId = 0;
     /** @type {MutationRecord[]} */
     let pendingMutations = [];
 
-    function scheduleFlush() {
-      if (rafScheduled) return;
-      rafScheduled = true;
-      requestAnimationFrame(function () {
-        rafScheduled = false;
-        const batch = pendingMutations;
-        pendingMutations = [];
-        if (!batch.length) return;
-        subscribers.forEach(function (entry) {
-          try {
-            const slice = entry.filter ? entry.filter(batch) : batch;
-            if (slice.length) entry.fn(slice, batch);
-          } catch (_) {}
-        });
+    function clearFlushTimers() {
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+        rafId = 0;
+      }
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = 0;
+      }
+    }
+
+    function flushPending() {
+      flushScheduled = false;
+      clearFlushTimers();
+      const batch = pendingMutations;
+      pendingMutations = [];
+      if (!batch.length) return;
+      subscribers.forEach(function (entry) {
+        try {
+          const slice = entry.filter ? entry.filter(batch) : batch;
+          if (slice.length) entry.fn(slice, batch);
+        } catch (_) {}
       });
+    }
+
+    function scheduleFlush() {
+      if (flushScheduled) return;
+      flushScheduled = true;
+      // rAF is paused (and may never run) while the tab is in the background.
+      // Pair it with setTimeout so mutations still deliver on background page loads.
+      if (typeof document !== "undefined" && document.hidden) {
+        timeoutId = setTimeout(flushPending, 0);
+        return;
+      }
+      let completed = false;
+      const run = function () {
+        if (completed) return;
+        completed = true;
+        flushPending();
+      };
+      rafId = requestAnimationFrame(run);
+      timeoutId = setTimeout(run, 16);
     }
 
     function ensureRootObserver() {
@@ -50,7 +79,25 @@
       rootObserver.disconnect();
       rootObserver = null;
       pendingMutations = [];
-      rafScheduled = false;
+      flushScheduled = false;
+      clearFlushTimers();
+    }
+
+    if (typeof document !== "undefined" && document.addEventListener) {
+      document.addEventListener("visibilitychange", function () {
+        if (document.hidden) {
+          // Tab went background with a pending rAF — ensure a timeout path exists.
+          if (flushScheduled && pendingMutations.length && !timeoutId) {
+            if (rafId) {
+              cancelAnimationFrame(rafId);
+              rafId = 0;
+            }
+            timeoutId = setTimeout(flushPending, 0);
+          }
+          return;
+        }
+        if (pendingMutations.length || flushScheduled) flushPending();
+      });
     }
 
     /**

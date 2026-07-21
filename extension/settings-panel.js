@@ -49,7 +49,34 @@ const GEM_PREFLIGHT_DEFAULT_IMAGE_WEIGHT_THRESHOLD_UNIT = 'MB';
 const GEM_COMPARE_LANGUAGES_DESKTOP_WIDTH_KEY = 'gemCompareLanguagesDesktopWidth';
 const GEM_COMPARE_LANGUAGES_MOBILE_WIDTH_KEY = 'gemCompareLanguagesMobileWidth';
 const GEM_CAMPAIGN_PREVIEW_TOOLBAR_VISIBLE_KEY = 'gemCampaignPreviewToolbarVisible';
+const GEM_SNIPPET_CONTEXT_MENU_TRIGGER_KEY = 'gemSnippetContextMenuTrigger';
+const GEM_SNIPPET_CONTEXT_MENU_TRIGGER_DEFAULT = 'right-click';
 const GEM_SNIPPET_CONTEXT_MENU_ENABLED_KEY = 'gemSnippetContextMenuEnabled';
+const GEM_SNIPPET_CONTEXT_MENU_REQUIRE_MOD_KEY = 'gemSnippetContextMenuRequireMod';
+
+function resolveSnippetContextMenuTrigger(settings) {
+  const trigger = settings?.[GEM_SNIPPET_CONTEXT_MENU_TRIGGER_KEY];
+  if (trigger === 'mod-right-click' || trigger === 'right-click') return trigger;
+  if (settings?.[GEM_SNIPPET_CONTEXT_MENU_REQUIRE_MOD_KEY] === true) return 'mod-right-click';
+  return GEM_SNIPPET_CONTEXT_MENU_TRIGGER_DEFAULT;
+}
+
+function syncGemmaTokenMenuTriggerUi(trigger) {
+  const modOpt = document.getElementById('opt-gemma-token-menu-mod-option');
+  if (modOpt) {
+    const mod = window.GEM_MOD_KEY || 'CTRL';
+    modOpt.textContent = `${mod}+right-click`;
+  }
+
+  const desc = document.getElementById('opt-gemma-token-menu-description');
+  if (desc) {
+    const mod = window.GEM_MOD_KEY || 'CTRL';
+    const tokenShortcut = trigger === 'mod-right-click' ? `${mod}+right-click` : 'Right-click';
+    const browserShortcut = trigger === 'mod-right-click' ? 'Right-click' : `${mod}+right-click`;
+    desc.textContent =
+      `Opens Gemma's token menu in editable campaign fields (email preview, subject line, preheader, and other text fields) with ${tokenShortcut}. The browser's normal right-click menu is available with ${browserShortcut}.`;
+  }
+}
 const GEM_COMPARE_LANGUAGES_DEFAULT_DESKTOP_WIDTH = 620;
 const GEM_COMPARE_LANGUAGES_DEFAULT_MOBILE_WIDTH = 414;
 const GEM_FULL_BACKUP_TYPE = 'gemma-full-backup';
@@ -863,15 +890,15 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
           </div>
 
           <div class="gem-setting">
-            <div class="gem-e-switch-wrapper">
-              <label for="opt-snippet-context-menu-enabled">Snippet right-click menu</label>
-              <div class="gem-e-switch--fat e-switch">
-                <input type="checkbox" class="e-switch__input" id="opt-snippet-context-menu-enabled" checked>
-                <label class="e-switch__toggle" for="opt-snippet-context-menu-enabled"></label>
-              </div>
+            <div class="gem-setting-condensed" style="display: flex; gap: 12px; align-items: center;">
+              <label for="opt-gemma-token-menu-trigger" style="flex: 1;">Gemma Token Menu</label>
+              <select id="opt-gemma-token-menu-trigger" style="width: 150px;">
+                <option value="right-click">Right-click</option>
+                <option value="mod-right-click" id="opt-gemma-token-menu-mod-option">⌘+right-click</option>
+              </select>
             </div>
-            <p class="sub-label">
-              Right-click in editable fields to insert snippets from a Gemma menu. Use CMD/CTRL + right-click for the browser menu. Works in the email preview, subject line, preheader, and other text fields on the campaign editor.
+            <p class="sub-label" id="opt-gemma-token-menu-description">
+              Opens Gemma's token menu in editable campaign fields with Right-click. The browser's normal right-click menu is available with ⌘+right-click.
             </p>
           </div>
 
@@ -1617,7 +1644,9 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
         gemBlockTargetingPreviewEnabled: true,
         gemBlockTargetingVisibility: "always-show",
         [GEM_CAMPAIGN_PREVIEW_TOOLBAR_VISIBLE_KEY]: true,
+        [GEM_SNIPPET_CONTEXT_MENU_TRIGGER_KEY]: GEM_SNIPPET_CONTEXT_MENU_TRIGGER_DEFAULT,
         [GEM_SNIPPET_CONTEXT_MENU_ENABLED_KEY]: true,
+        [GEM_SNIPPET_CONTEXT_MENU_REQUIRE_MOD_KEY]: false,
         [GEM_PREFLIGHT_TOTAL_IMAGE_WEIGHT_THRESHOLD_VALUE_KEY]: GEM_PREFLIGHT_DEFAULT_TOTAL_IMAGE_WEIGHT_THRESHOLD_VALUE,
         [GEM_PREFLIGHT_TOTAL_IMAGE_WEIGHT_THRESHOLD_UNIT_KEY]: GEM_PREFLIGHT_DEFAULT_IMAGE_WEIGHT_THRESHOLD_UNIT,
         [GEM_PREFLIGHT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_VALUE_KEY]: GEM_PREFLIGHT_DEFAULT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_VALUE,
@@ -1701,9 +1730,11 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
           campaignPreviewToolbarEl.checked = settings[GEM_CAMPAIGN_PREVIEW_TOOLBAR_VISIBLE_KEY] !== false;
         }
 
-        const snippetContextMenuEl = document.getElementById("opt-snippet-context-menu-enabled");
-        if (snippetContextMenuEl) {
-          snippetContextMenuEl.checked = settings[GEM_SNIPPET_CONTEXT_MENU_ENABLED_KEY] !== false;
+        const gemmaTokenMenuTriggerEl = document.getElementById("opt-gemma-token-menu-trigger");
+        if (gemmaTokenMenuTriggerEl) {
+          const trigger = resolveSnippetContextMenuTrigger(settings);
+          gemmaTokenMenuTriggerEl.value = trigger;
+          syncGemmaTokenMenuTriggerUi(trigger);
         }
 
         const preflightTotalValueEl = document.getElementById("opt-preflight-total-image-weight-threshold-value");
@@ -1868,8 +1899,13 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
               document.getElementById("opt-block-targeting-visibility")?.value ?? "always-show",
             [GEM_CAMPAIGN_PREVIEW_TOOLBAR_VISIBLE_KEY]:
               document.getElementById("opt-campaign-preview-toolbar-visible")?.checked ?? true,
-            [GEM_SNIPPET_CONTEXT_MENU_ENABLED_KEY]:
-              document.getElementById("opt-snippet-context-menu-enabled")?.checked ?? true,
+            [GEM_SNIPPET_CONTEXT_MENU_TRIGGER_KEY]:
+              document.getElementById("opt-gemma-token-menu-trigger")?.value === 'mod-right-click'
+                ? 'mod-right-click'
+                : 'right-click',
+            [GEM_SNIPPET_CONTEXT_MENU_ENABLED_KEY]: true,
+            [GEM_SNIPPET_CONTEXT_MENU_REQUIRE_MOD_KEY]:
+              document.getElementById("opt-gemma-token-menu-trigger")?.value === 'mod-right-click',
             [GEM_PREFLIGHT_TOTAL_IMAGE_WEIGHT_THRESHOLD_VALUE_KEY]:
               Math.max(0.1, parseFloat(document.getElementById("opt-preflight-total-image-weight-threshold-value")?.value || String(GEM_PREFLIGHT_DEFAULT_TOTAL_IMAGE_WEIGHT_THRESHOLD_VALUE)) || GEM_PREFLIGHT_DEFAULT_TOTAL_IMAGE_WEIGHT_THRESHOLD_VALUE),
             [GEM_PREFLIGHT_TOTAL_IMAGE_WEIGHT_THRESHOLD_UNIT_KEY]:
@@ -2056,7 +2092,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
       "opt-block-targeting-preview-enabled",
       "opt-block-targeting-visibility",
       "opt-campaign-preview-toolbar-visible",
-      "opt-snippet-context-menu-enabled",
+      "opt-gemma-token-menu-trigger",
       "opt-preflight-total-image-weight-threshold-value",
       "opt-preflight-total-image-weight-threshold-unit",
       "opt-preflight-singular-image-weight-threshold-value",
@@ -2077,6 +2113,13 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
       if (!el) return;
       el.addEventListener("change", handlers.saveSettingsHandler);
     });
+
+    const gemmaTokenMenuTriggerEl = document.getElementById("opt-gemma-token-menu-trigger");
+    if (gemmaTokenMenuTriggerEl) {
+      gemmaTokenMenuTriggerEl.addEventListener("change", () => {
+        syncGemmaTokenMenuTriggerUi(gemmaTokenMenuTriggerEl.value);
+      });
+    }
 
     const themeSwatches = document.getElementById("gem-theme-swatches");
     if (themeSwatches) {

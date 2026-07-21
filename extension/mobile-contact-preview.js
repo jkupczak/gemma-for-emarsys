@@ -565,11 +565,12 @@ console.log("[Gem] mobile-contact-preview.js LOADED");
 
     // Set up event listeners
     const doc = getIframeDoc();
+    let resizeObserver = null;
     if (doc) {
       doc.addEventListener('scroll', handleIframeScroll, { passive: true });
 
       // Update scrollbar when content changes
-      const resizeObserver = new ResizeObserver(() => {
+      resizeObserver = new ResizeObserver(() => {
         setTimeout(updateScrollbar, 100); // Debounce for performance
       });
       resizeObserver.observe(doc.documentElement);
@@ -606,10 +607,15 @@ console.log("[Gem] mobile-contact-preview.js LOADED");
     iframe._gemScrollbar = {
       vContainer: vScrollbarContainer,
       hContainer: hScrollbarContainer,
+      resizeObserver,
       destroy: function() {
         if (doc) {
           doc.removeEventListener('scroll', handleIframeScroll);
         }
+        try {
+          if (this.resizeObserver) this.resizeObserver.disconnect();
+        } catch (_) {}
+        this.resizeObserver = null;
         vScrollbarContainer.remove();
         hScrollbarContainer.remove();
       }

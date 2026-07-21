@@ -7,6 +7,9 @@
 
   let activeComparisonVersions = [];
   const versionsTabToolbarRef = { current: null };
+  const versionEslCaptureInFlight = new Set();
+  let versionEslCaptureGeneration = 0;
+  let versionEslSnapshotInFlight = false;
 
   function getModalEl() {
     return common.getCompareModal();
@@ -112,6 +115,8 @@
       pinnedEntryKey,
     });
     refreshVersionsColumnPinUi(modal);
+    refreshCompareEslUsageIfActive(modal);
+    refreshCompareReviewLinksIfActive(modal);
   }
 
   function renderVersionColumnError(frameWrap, entry, modal) {
@@ -138,6 +143,343 @@
     frameWrap.appendChild(err);
   }
 
+  const VERSION_ESL_CAPTURE_TIMEOUT_MS = 20000;
+  const VERSION_ESL_CAPTURE_POLL_MS = 250;
+  const VERSION_ESL_PREVIEW_IFRAME_SELECTOR =
+    'iframe.e-contentblocks-preview__iframe-desktop, iframe.e-contentblocks-preview__iframe';
+
+  function extractBodyHtmlFromDoc(doc) {
+    if (!doc) return '';
+
+    const container = doc.querySelector('vce-iframes-container');
+    const fromAttr = container ? String(container.getAttribute('content') || '').trim() : '';
+    if (fromAttr) return fromAttr;
+
+    const previewIframe = doc.querySelector(VERSION_ESL_PREVIEW_IFRAME_SELECTOR);
+    if (!previewIframe) return '';
+
+    try {
+      const previewDoc = previewIframe.contentDocument;
+      if (previewDoc && previewDoc.documentElement) {
+        return String(previewDoc.documentElement.outerHTML || '').trim();
+      }
+    } catch (_) {}
+
+    return '';
+  }
+
+  function extractEslSourcesFromDoc(doc) {
+    if (!doc) {
+      return { bodyHtml: '', subjectHtml: '', preheaderText: '' };
+    }
+
+    const bodyHtml = extractBodyHtmlFromDoc(doc);
+    const emailBasics = window.gemCompareEmailBasicsCapture;
+    if (emailBasics && typeof emailBasics.captureEditorFieldSourcesFromDoc === 'function') {
+      const { subjectHtml, preheaderText } = emailBasics.captureEditorFieldSourcesFromDoc(doc);
+      return { bodyHtml, subjectHtml, preheaderText };
+    }
+
+    const subjectCm = doc.querySelector('#subject-line-input vce-codemirror');
+    const subjectHtml = subjectCm ? String(subjectCm.getAttribute('html') || '') : '';
+    const preheaderEl = doc.querySelector('cb-preheader textarea');
+    const preheaderText = preheaderEl ? String(preheaderEl.value || '') : '';
+
+    return { bodyHtml, subjectHtml, preheaderText };
+  }
+
+  function isVersionBodyReady(doc) {
+    if (!doc) return false;
+
+    const container = doc.querySelector('vce-iframes-container');
+    const containerContent = container ? String(container.getAttribute('content') || '').trim() : '';
+    if (containerContent.length > 0) return true;
+
+    const previewIframe = doc.querySelector(VERSION_ESL_PREVIEW_IFRAME_SELECTOR);
+    if (!previewIframe) return false;
+
+    try {
+      const previewDoc = previewIframe.contentDocument;
+      return !!(previewDoc && previewDoc.body && String(previewDoc.body.innerHTML || '').trim().length > 0);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function isEslSourceCaptureReady(doc) {
+    if (!doc) return false;
+    if (isVersionBodyReady(doc)) return true;
+
+    const emailBasics = window.gemCompareEmailBasicsCapture;
+    if (emailBasics && typeof emailBasics.hasEmailBasicsFields === 'function' && emailBasics.hasEmailBasicsFields(doc)) {
+      return true;
+    }
+
+    const subjectCm = doc.querySelector('#subject-line-input vce-codemirror');
+    const subjectHtml = subjectCm ? String(subjectCm.getAttribute('html') || '').trim() : '';
+    if (subjectHtml) return true;
+
+    const preheaderEl = doc.querySelector('cb-preheader textarea');
+    const preheaderText = preheaderEl ? String(preheaderEl.value || '').trim() : '';
+    if (preheaderText) return true;
+
+    return false;
+  }
+
+  function waitForVersionBodyReady(doc) {
+    return new Promise((resolve) => {
+      const startedAt = Date.now();
+
+      function attempt() {
+        if (isVersionBodyReady(doc) || Date.now() - startedAt >= VERSION_ESL_CAPTURE_TIMEOUT_MS) {
+          resolve();
+          return;
+        }
+        setTimeout(attempt, VERSION_ESL_CAPTURE_POLL_MS);
+      }
+
+      attempt();
+    });
+  }
+
+  async function captureVersionEmailBasicsFields(doc, campaignId, bodyHtml) {
+    const emailBasics = window.gemCompareEmailBasicsCapture;
+    const id = String(campaignId || '').trim();
+    let subjectHtml = '';
+    let preheaderText = '';
+
+    if (doc) {
+      try {
+        const win = doc.defaultView;
+        const captureApi = win && win.gemCompareEmailBasicsCapture
+          ? win.gemCompareEmailBasicsCapture
+          : emailBasics;
+        if (captureApi && typeof captureApi.captureEmailBasicsFields === 'function') {
+          const fields = await captureApi.captureEmailBasicsFields(doc, {
+            stripped: true,
+            restoreTab: false,
+            timeoutMs: 6000,
+          });
+          subjectHtml = fields.subjectHtml;
+          preheaderText = fields.preheaderText;
+        }
+      } catch (_) {}
+    }
+
+    if ((!subjectHtml && !preheaderText) && emailBasics && id
+      && typeof emailBasics.captureEmailBasicsFieldsForCampaign === 'function') {
+      try {
+        const fields = await emailBasics.captureEmailBasicsFieldsForCampaign(id, {
+          timeoutMs: 15000,
+          fieldTimeoutMs: 8000,
+        });
+        subjectHtml = fields.subjectHtml || subjectHtml;
+        preheaderText = fields.preheaderText || preheaderText;
+      } catch (_) {}
+    }
+
+    if (!preheaderText && emailBasics && typeof emailBasics.extractPreheaderFromBodyHtml === 'function') {
+      preheaderText = emailBasics.extractPreheaderFromBodyHtml(bodyHtml);
+    }
+
+    return { subjectHtml, preheaderText };
+  }
+
+  async function waitForVersionEslSources(doc, campaignId) {
+    if (!doc) {
+      return { bodyHtml: '', subjectHtml: '', preheaderText: '' };
+    }
+
+    await waitForVersionBodyReady(doc);
+
+    const bodyHtml = extractBodyHtmlFromDoc(doc);
+    const { subjectHtml, preheaderText } = await captureVersionEmailBasicsFields(doc, campaignId, bodyHtml);
+    return { bodyHtml, subjectHtml, preheaderText };
+  }
+
+  function getVersionColumnIframe(modal, versionId) {
+    const id = String(versionId || '').trim();
+    if (!modal || !id) return null;
+    const col = modal.querySelector(`.gem-compare-languages-column[data-gem-compare-version="${id}"]`);
+    return col ? col.querySelector('iframe.gem-compare-languages-column__iframe') : null;
+  }
+
+  function syncVersionEntryEslSources(modal, entry) {
+    const base = { ...entry };
+    const iframe = getVersionColumnIframe(modal, base.id);
+
+    if (!iframe) {
+      return {
+        ...base,
+        eslSources: base.eslSources || null,
+        eslPending: !base.eslSources,
+      };
+    }
+
+    try {
+      const doc = iframe.contentDocument;
+      if (!doc) {
+        return {
+          ...base,
+          eslSources: base.eslSources || null,
+          eslPending: true,
+        };
+      }
+
+      if (isEslSourceCaptureReady(doc)) {
+        return {
+          ...base,
+          eslSources: extractEslSourcesFromDoc(doc),
+          eslPending: false,
+        };
+      }
+    } catch (_) {}
+
+    return {
+      ...base,
+      eslSources: base.eslSources || null,
+      eslPending: !base.eslSources,
+    };
+  }
+
+  function hasEslSourceData(sources) {
+    if (!sources) return false;
+    return Boolean(
+      String(sources.bodyHtml || '').trim()
+      || String(sources.subjectHtml || '').trim()
+      || String(sources.preheaderText || '').trim()
+    );
+  }
+
+  function needsVersionEslCapture(modal, entry) {
+    if (!entry || versionEslCaptureInFlight.has(entry.id)) return false;
+
+    const iframe = getVersionColumnIframe(modal, entry.id);
+    if (!iframe) return false;
+
+    if (entry.eslPending) return true;
+
+    const sources = entry.eslSources || {};
+    const hasBody = Boolean(String(sources.bodyHtml || '').trim());
+    const hasSubjectPreview = Boolean(
+      String(sources.subjectHtml || '').trim()
+      || String(sources.preheaderText || '').trim()
+    );
+
+    if (hasBody && hasSubjectPreview) return false;
+
+    try {
+      const doc = iframe.contentDocument;
+      if (!doc) return !hasBody;
+      if (hasBody && !hasSubjectPreview) return true;
+      return !hasEslSourceData(sources) && isEslSourceCaptureReady(doc);
+    } catch (_) {
+      return !hasBody;
+    }
+  }
+
+  function ensureVersionEslSourcesCaptured(modal) {
+    if (!modal || !activeComparisonVersions.length) return;
+
+    activeComparisonVersions.forEach((entry) => {
+      if (!needsVersionEslCapture(modal, entry)) return;
+      const iframe = getVersionColumnIframe(modal, entry.id);
+      if (iframe) captureVersionEslSourcesFromIframe(iframe, entry, modal);
+    });
+  }
+
+  function refreshCompareEslUsageIfActive(modal) {
+    if (!modal) return;
+    if (typeof common.getContentView === 'function' && common.getContentView() !== 'esl-usage') return;
+    ensureVersionEslSourcesCaptured(modal);
+    if (typeof window.gemRefreshCompareEslUsageTable === 'function') {
+      window.gemRefreshCompareEslUsageTable(modal);
+    }
+  }
+
+  function refreshCompareReviewLinksIfActive(modal) {
+    if (!modal) return;
+    if (typeof common.getContentView === 'function' && common.getContentView() !== 'links') return;
+    if (typeof window.gemRefreshCompareReviewLinksTable === 'function') {
+      window.gemRefreshCompareReviewLinksTable(modal);
+    }
+  }
+
+  function updateVersionEslSources(versionId, eslSources, { pending = false } = {}) {
+    const id = String(versionId || '').trim();
+    if (!id) return;
+    activeComparisonVersions = activeComparisonVersions.map((entry) => (
+      entry.id === id
+        ? { ...entry, eslSources, eslPending: pending }
+        : entry
+    ));
+
+    const modal = getModalEl();
+    const entry = activeComparisonVersions.find((item) => item.id === id);
+    if (modal && entry) {
+      refreshVersionColumnMeta(modal, entry);
+    }
+  }
+
+  function refreshVersionColumnMeta(modal, entry) {
+    const col = modal.querySelector(`.gem-compare-languages-column[data-gem-compare-version="${entry.id}"]`);
+    if (!col) return;
+    const sources = entry.eslSources || {};
+    common.ensureCompareColumnMetaRow(col, {
+      subjectHtml: sources.subjectHtml,
+      preheaderText: sources.preheaderText,
+    });
+  }
+
+  function refreshAllVersionColumnMeta(modal) {
+    activeComparisonVersions.forEach((entry) => refreshVersionColumnMeta(modal, entry));
+    common.syncCompareSubjectPreviewUi(modal);
+  }
+
+  function captureVersionEslSourcesFromIframe(iframe, entry, modal) {
+    if (!iframe || !entry) return;
+
+    const versionId = String(entry.id || '').trim();
+    if (!versionId || versionEslCaptureInFlight.has(versionId)) return;
+    versionEslCaptureInFlight.add(versionId);
+    const generation = versionEslCaptureGeneration;
+
+    updateVersionEslSources(versionId, entry.eslSources || {
+      bodyHtml: '',
+      subjectHtml: '',
+      preheaderText: '',
+    }, { pending: true });
+
+    void (async () => {
+      try {
+        const doc = iframe.contentDocument;
+        if (!doc) {
+          if (generation !== versionEslCaptureGeneration) return;
+          updateVersionEslSources(versionId, {
+            bodyHtml: '',
+            subjectHtml: '',
+            preheaderText: '',
+          });
+          return;
+        }
+        const eslSources = await waitForVersionEslSources(doc, versionId);
+        if (generation !== versionEslCaptureGeneration) return;
+        updateVersionEslSources(versionId, eslSources);
+      } catch (_) {
+        if (generation !== versionEslCaptureGeneration) return;
+        try {
+          const eslSources = extractEslSourcesFromDoc(iframe.contentDocument);
+          updateVersionEslSources(versionId, eslSources);
+        } catch (_) {}
+      } finally {
+        versionEslCaptureInFlight.delete(versionId);
+        if (generation === versionEslCaptureGeneration && typeof window.gemRefreshCompareEslUsageTable === 'function') {
+          window.gemRefreshCompareEslUsageTable(modal);
+        }
+      }
+    })();
+  }
+
   function renderVersionColumnFrame(frameWrap, entry, modal) {
     if (!frameWrap) return;
 
@@ -151,6 +493,7 @@
     if (existingIframe && existingIframe.getAttribute('src') === previewUrl) {
       const loading = frameWrap.querySelector('.gem-compare-languages-column__loading');
       if (loading) loading.remove();
+      captureVersionEslSourcesFromIframe(existingIframe, entry, modal);
       return;
     }
 
@@ -163,6 +506,7 @@
       if (iframe.dataset.gemLoadFailed === 'true') return;
       const loading = frameWrap.querySelector('.gem-compare-languages-column__loading');
       if (loading) loading.remove();
+      captureVersionEslSourcesFromIframe(iframe, entry, modal);
     });
     iframe.addEventListener('error', () => {
       iframe.dataset.gemLoadFailed = 'true';
@@ -214,7 +558,7 @@
     const entry = activeComparisonVersions.find((item) => item.id === entryKey);
     if (!entry) {
       const empty = document.createElement('div');
-      empty.className = 'gem-recent-campaign-row-menu-wrap gem-compare-languages-column__menu-wrap';
+      empty.className = 'gem-overflow-menu-wrap gem-compare-languages-column__menu-wrap';
       return empty;
     }
     const activeVersionId = getCurrentCampaignId();
@@ -233,8 +577,30 @@
     });
   }
 
+  function resolveCompareVersionEntries(options = {}) {
+    const allowSingle = options.allowSingle === true;
+    const versions = getCampaignVersions();
+    if (versions.length || !allowSingle) return versions;
+
+    const id = getCurrentCampaignId();
+    if (!id) return [];
+    return [{
+      id,
+      letter: '',
+      label: 'Current version',
+      urlBase: urlBaseFromCampaignId(id),
+    }];
+  }
+
   function removeComparisonVersionColumn(modal, versionId) {
     const id = String(versionId || '').trim();
+    const inReviewScripts = typeof common.getContentView === 'function'
+      && common.getContentView() === 'esl-usage';
+
+    if (inReviewScripts && activeComparisonVersions.length <= 1) {
+      return;
+    }
+
     const activeVersionId = getCurrentCampaignId();
     const pinnedKey = common.resolvePinnedEntryKey(COMPARE_MODE, activeVersionId);
     if (pinnedKey === id) {
@@ -261,6 +627,113 @@
 
   function resetVersionsCompareState() {
     activeComparisonVersions = [];
+    versionEslCaptureInFlight.clear();
+    versionEslSnapshotInFlight = false;
+    versionEslCaptureGeneration += 1;
+  }
+
+  function extractEslSourcesFromSnapshotPayload(snapshotPayload) {
+    const linksData = window.gemCampaignLinksData;
+    if (!linksData || typeof linksData.extractEslSourcesForLanguage !== 'function') {
+      return { bodyHtml: '', subjectHtml: '', preheaderText: '' };
+    }
+    return linksData.extractEslSourcesForLanguage(snapshotPayload, 'current');
+  }
+
+  async function captureVersionEslSourcesFromSnapshots(modal) {
+    if (!modal || versionEslSnapshotInFlight) return;
+    if (typeof window.gemFetchContentBlocksSnapshot !== 'function') {
+      renderComparisonResults(modal, activeComparisonVersions);
+      return;
+    }
+
+    versionEslSnapshotInFlight = true;
+    const generation = versionEslCaptureGeneration;
+
+    if (!activeComparisonVersions.length) {
+      activeComparisonVersions = sortComparisonVersions(
+        resolveCompareVersionEntries({ allowSingle: true })
+      );
+    }
+
+    activeComparisonVersions = activeComparisonVersions.map((entry) => ({
+      ...entry,
+      eslPending: true,
+    }));
+    refreshCompareEslUsageIfActive(modal);
+
+    try {
+      if (typeof window.gemPrepareFreshCampaignSnapshot === 'function') {
+        await window.gemPrepareFreshCampaignSnapshot();
+      }
+      if (generation !== versionEslCaptureGeneration) return;
+
+      const sessionId = getCurrentSessionId();
+      if (!sessionId) {
+        activeComparisonVersions = activeComparisonVersions.map((entry) => ({
+          ...entry,
+          eslSources: { bodyHtml: '', subjectHtml: '', preheaderText: '' },
+          eslPending: false,
+        }));
+        return;
+      }
+
+      const results = await Promise.all(
+        activeComparisonVersions.map(async (entry) => {
+          const versionId = String(entry.id || '').trim();
+          if (!versionId) {
+            return {
+              id: versionId,
+              eslSources: { bodyHtml: '', subjectHtml: '', preheaderText: '' },
+            };
+          }
+
+          try {
+            const snapshotResult = await window.gemFetchContentBlocksSnapshot(
+              versionId,
+              sessionId,
+              ['current'],
+              { forceRefresh: true }
+            );
+
+            if (!snapshotResult.ok || !snapshotResult.campaign) {
+              return {
+                id: versionId,
+                eslSources: { bodyHtml: '', subjectHtml: '', preheaderText: '' },
+              };
+            }
+
+            const eslSources = extractEslSourcesFromSnapshotPayload(snapshotResult.campaign);
+            return { id: versionId, eslSources };
+          } catch (_) {
+            return {
+              id: versionId,
+              eslSources: { bodyHtml: '', subjectHtml: '', preheaderText: '' },
+            };
+          }
+        })
+      );
+
+      if (generation !== versionEslCaptureGeneration) return;
+
+      const sourcesById = new Map(results.map((item) => [item.id, item.eslSources]));
+      activeComparisonVersions = activeComparisonVersions.map((entry) => ({
+        ...entry,
+        eslSources: sourcesById.get(entry.id) || {
+          bodyHtml: '',
+          subjectHtml: '',
+          preheaderText: '',
+        },
+        eslPending: false,
+      }));
+
+      common.setCompareModePanelLoaded(modal, COMPARE_MODE, true);
+    } finally {
+      versionEslSnapshotInFlight = false;
+      if (generation === versionEslCaptureGeneration) {
+        refreshCompareEslUsageIfActive(modal);
+      }
+    }
   }
 
   function closeCompareVersionsModal() {
@@ -271,13 +744,20 @@
     const panel = getVersionsPanel(modal);
     if (!panel) return;
 
-    if (common.isCompareModePanelLoaded(modal, COMPARE_MODE)) {
+    if (
+      common.isCompareModePanelLoaded(modal, COMPARE_MODE)
+      && common.hasCompareModePreviewColumns(modal, COMPARE_MODE)
+    ) {
       ensureCompareVersionsVisible(modal);
       return;
     }
 
     common.closeColumnMenu();
-    activeComparisonVersions = sortComparisonVersions(versions);
+    activeComparisonVersions = sortComparisonVersions(versions).map((entry) => ({
+      ...entry,
+      eslSources: entry.eslSources || null,
+      eslPending: !entry.eslSources,
+    }));
     const activeVersionId = getCurrentCampaignId();
     const pinnedEntryKey = common.resolvePinnedEntryKey(COMPARE_MODE, activeVersionId);
     const columnsByKey = new Map();
@@ -322,11 +802,18 @@
         pinnedKey: pinnedEntryKey,
       }));
 
+      const metaRow = common.createCompareColumnMetaRow();
+      common.updateCompareColumnMetaRow(col, {
+        subjectHtml: entry.eslSources?.subjectHtml,
+        preheaderText: entry.eslSources?.preheaderText,
+      });
+
       const frameWrap = document.createElement('div');
       frameWrap.className = 'gem-compare-languages-column__frame-wrap';
       renderVersionColumnFrame(frameWrap, entry, modal);
 
       col.appendChild(header);
+      col.appendChild(metaRow);
       col.appendChild(frameWrap);
       columnsByKey.set(entry.id, col);
     });
@@ -341,6 +828,10 @@
     common.setCompareModePanelLoaded(modal, COMPARE_MODE, true);
     common.syncModalUi(modal);
     refreshVersionsColumnPinUi(modal);
+    common.syncCompareSubjectPreviewUi(modal);
+    ensureVersionEslSourcesCaptured(modal);
+    refreshCompareEslUsageIfActive(modal);
+    refreshCompareReviewLinksIfActive(modal);
   }
 
   function restoreVersionsStateFromPanel(modal) {
@@ -355,8 +846,15 @@
 
     const versionsById = new Map(getCampaignVersions().map((entry) => [entry.id, entry]));
     activeComparisonVersions = ids
-      .map((id) => versionsById.get(id))
+      .map((id) => {
+        const base = versionsById.get(id);
+        if (!base) return null;
+        const existing = activeComparisonVersions.find((entry) => entry.id === id);
+        return syncVersionEntryEslSources(modal, { ...base, ...(existing || {}) });
+      })
       .filter(Boolean);
+
+    ensureVersionEslSourcesCaptured(modal);
   }
 
   function ensureCompareVersionsVisible(modal) {
@@ -366,18 +864,72 @@
     restoreVersionsStateFromPanel(modal);
     if (activeComparisonVersions.length) {
       applyCompareColumnOrder(modal);
+      refreshAllVersionColumnMeta(modal);
     } else {
       common.syncModalUi(modal);
     }
+
+    if (typeof common.getContentView === 'function' && common.getContentView() === 'esl-usage') {
+      ensureCompareVersionsEslUsage(modal);
+      return;
+    }
+
+    ensureVersionEslSourcesCaptured(modal);
+    refreshCompareEslUsageIfActive(modal);
+    refreshCompareReviewLinksIfActive(modal);
   }
 
-  function openCompareVersionsModal() {
-    const versions = getCampaignVersions();
-    if (versions.length < 2) {
-      if (window.gemShowToast) {
+  function ensureCompareVersionsEslUsage(modal) {
+    if (!modal) return;
+    if (typeof common.getContentView === 'function' && common.getContentView() !== 'esl-usage') return;
+
+    if (!activeComparisonVersions.length) {
+      activeComparisonVersions = sortComparisonVersions(
+        resolveCompareVersionEntries({ allowSingle: true })
+      );
+    }
+
+    const needsCapture = activeComparisonVersions.some((entry) => (
+      entry.eslPending
+      || !hasEslSourceData(entry.eslSources)
+    ));
+
+    if (needsCapture) {
+      void captureVersionEslSourcesFromSnapshots(modal);
+      return;
+    }
+
+    refreshCompareEslUsageIfActive(modal);
+  }
+
+  function ensureCompareVersionsPreviews(modal) {
+    if (!modal) return;
+    if (common.hasCompareModePreviewColumns(modal, COMPARE_MODE)) return;
+
+    if (!activeComparisonVersions.length) {
+      activeComparisonVersions = sortComparisonVersions(
+        resolveCompareVersionEntries({ allowSingle: true })
+      );
+    }
+
+    renderComparisonResults(modal, activeComparisonVersions);
+  }
+
+  function openCompareVersionsModal(options = {}) {
+    const allowSingle = options.allowSingle === true;
+    const contentView = options.contentView !== undefined
+      ? options.contentView
+      : (typeof common.getContentView === 'function' ? common.getContentView() : 'previews');
+    const isLinksView = contentView === 'links';
+    const isEslUsageView = contentView === 'esl-usage';
+    const versions = resolveCompareVersionEntries({ allowSingle });
+    const minCount = allowSingle ? 1 : 2;
+
+    if (versions.length < minCount) {
+      if (!allowSingle && window.gemShowToast) {
         window.gemShowToast('Compare Versions requires at least two campaign versions.', { type: 'error' });
       }
-      return;
+      return false;
     }
 
     common.loadSettings(() => {
@@ -385,22 +937,40 @@
         compareMode: COMPARE_MODE,
       });
       common.switchCompareMode(modal, COMPARE_MODE);
+      if (contentView && typeof common.setContentView === 'function') {
+        common.setContentView(modal, contentView);
+      }
 
       if (common.isCompareModePanelLoaded(modal, COMPARE_MODE)) {
         ensureCompareVersionsVisible(modal);
+        if (isEslUsageView) ensureCompareVersionsEslUsage(modal);
         return;
       }
 
       common.syncModalUi(modal);
+
+      activeComparisonVersions = sortComparisonVersions(versions);
+
+      if (isEslUsageView) {
+        ensureCompareVersionsEslUsage(modal);
+        return;
+      }
+
+      if (isLinksView) {
+        common.setCompareModePanelLoaded(modal, COMPARE_MODE, true);
+        refreshCompareReviewLinksIfActive(modal);
+        return;
+      }
+
       renderComparisonResults(modal, versions);
     });
+    return true;
   }
 
-  function syncCompareVersionsOverflowMenuItem() {
-    common.syncOverflowMenuItem({
-      menuSelector: '[data-gem-compare-versions-menu]',
-      canShow: gemCanCompareVersions,
-    });
+  function syncComparePreviewsOverflowMenuItem() {
+    if (typeof common.syncComparePreviewsOverflowMenuItem === 'function') {
+      common.syncComparePreviewsOverflowMenuItem();
+    }
   }
 
   function ensureVersionsTabToolbar() {
@@ -415,6 +985,9 @@
   }
 
   function initCompareVersions() {
+    if (window.__gemCompareVersionsInitialized) return;
+    window.__gemCompareVersionsInitialized = true;
+
     common.ensureSettingsListener();
     common.registerCompareModeHandler(COMPARE_MODE, {
       onActivate: ensureCompareVersionsVisible,
@@ -426,23 +999,45 @@
       if (!activeComparisonVersions.length) return;
       applyCompareColumnOrder(modal);
     });
+    common.registerSubjectPreviewToggleHandler((modal) => {
+      if (!modal || modal.dataset.gemCompareMode !== COMPARE_MODE) return;
+      ensureVersionEslSourcesCaptured(modal);
+      refreshAllVersionColumnMeta(modal);
+    });
     common.loadSettings();
 
     if (typeof window.gemDomWatchSubscribe === 'function') {
       window.gemDomWatchSubscribe(() => {
-        syncCompareVersionsOverflowMenuItem();
+        syncComparePreviewsOverflowMenuItem();
         ensureVersionsTabToolbar();
       });
     }
 
-    syncCompareVersionsOverflowMenuItem();
+    syncComparePreviewsOverflowMenuItem();
     ensureVersionsTabToolbar();
+  }
+
+  function gemSwitchCampaignVersion(targetCampaignId) {
+    const id = String(targetCampaignId || '').trim();
+    if (!id) return false;
+    const select = document.querySelector('cb-version-selector select');
+    if (!select) return false;
+    const option = [...select.options].find((opt) => String(opt.value || '').trim() === id);
+    if (!option) return false;
+    select.value = id;
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
   }
 
   window.gemOpenCompareVersionsModal = openCompareVersionsModal;
   window.gemCloseCompareVersionsModal = closeCompareVersionsModal;
   window.gemCanCompareVersions = gemCanCompareVersions;
-  window.gemSyncCompareVersionsOverflowMenuItem = syncCompareVersionsOverflowMenuItem;
+  window.gemEnsureCompareVersionsPreviews = ensureCompareVersionsPreviews;
+  window.gemEnsureCompareVersionsEslUsage = ensureCompareVersionsEslUsage;
+  window.gemSyncComparePreviewsOverflowMenuItem = syncComparePreviewsOverflowMenuItem;
+  window.gemGetCompareVersionEntries = () => activeComparisonVersions.slice();
+  window.gemGetCampaignVersions = getCampaignVersions;
+  window.gemSwitchCampaignVersion = gemSwitchCampaignVersion;
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initCompareVersions);

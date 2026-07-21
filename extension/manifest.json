@@ -1,6 +1,6 @@
 {
   "name": "Gemma for Emarsys",
-  "version": "13.5.0",
+  "version": "14.0.0",
   "manifest_version": 3,
   "description": "Enhances the Emarsys email editor with a settings panel and more!",
   "permissions": ["storage", "tabs", "webNavigation"],
@@ -21,7 +21,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["img/*", "css--theme.css", "css--global-styles.css", "css--media-database.css", "custom-paste.js", "debug-logging-page-bridge.js", "campaign-draft-data.js", "gem-snippet-iframe-bridge.js"],
+      "resources": ["img/*", "css--theme.css", "css--global-styles.css", "css--media-database.css", "custom-paste.js", "debug-logging-page-bridge.js", "campaign-draft-data.js", "campaign-links-data.js", "content-blocks-fetch-bridge.js", "gem-snippet-iframe-bridge.js"],
       "matches": ["https://*.emarsys.net/*"]
     }
   ],
@@ -29,8 +29,8 @@
     {
       "matches": ["https://*.emarsys.net/*"],
       "exclude_matches": ["https://*.emarsys.net/*gemStripped=true*"],
-      "css": ["css--theme.css", "css--global-styles.css", "css--settings-panel.css"],
-      "js": ["debug-logging-gate.js", "gem-dom-watch.js", "emarsys-auth.js", "page-localstorage-guard.js", "platform.js", "gem-layer-stack.js", "highlight-terms-settings.js", "keyboard-shortcuts-modal.js", "theme-applier.js", "gem-toast.js", "settings-panel.js", "nav-menu-inject.js", "notes.js", "recent-campaigns.js", "recent-segments.js", "storage-measurement.js", "welcome-modal.js"],
+      "css": ["css--theme.css", "css--global-styles.css", "css--settings-panel.css", "css--command-palette.css"],
+      "js": ["debug-logging-gate.js", "gem-dom-watch.js", "emarsys-auth.js", "page-localstorage-guard.js", "platform.js", "gem-layer-stack.js", "command-palette.js", "highlight-terms-settings.js", "keyboard-shortcuts-modal.js", "theme-applier.js", "gem-toast.js", "settings-panel.js", "nav-menu-inject.js", "notes.js", "recent-campaigns.js", "recent-segments.js", "storage-measurement.js", "welcome-modal.js"],
       "run_at": "document_start"
     },
     {
@@ -94,7 +94,7 @@
         "https://*.emarsys.net//bootstrap.php?*gemStripped=true*r=contentBlocks%2Fcampaign*"
       ],
       "css": ["css--campaign-stripped.css"],
-      "js": ["campaign-stripped-readonly.js"],
+      "js": ["campaign-stripped-readonly.js", "compare-email-basics-capture.js"],
       "all_frames": true,
       "run_at": "document_start"
     },
@@ -137,8 +137,8 @@
         "https://*.emarsys.net//bootstrap.php?*r=contentBlocks%2Fcampaign*gemStripped=true*",
         "https://*.emarsys.net//bootstrap.php?*gemStripped=true*r=contentBlocks%2Fcampaign*"
       ],
-      "js": ["debug-logging-gate.js", "platform.js", "gem-dom-watch.js", "gem-layer-stack.js", "alt-text-preview.js", "verticalnav-enhancer.js", "mobile-view.js", "textarea-expand.js", "text-highlighting.js", "color-swatch-manager.js", "keyboard-shortcuts.js", "language-load-overlay.js", "page-title-updater.js", "draft-save-indicator.js", "condensed-blocks-panel.js", "mobile-contact-preview.js", "lz-string.min.js", "snippet-storage.js", "favorite-image-storage.js", "gem-toast.js", "content-block-toolbar.js", "header-copy-icon.js", "block-pinning.js", "sortable.min.js", "html2canvas.min.js", "share-screenshot.js", "contact-preview-screenshot.js", "overlay-panel-controls.js", "focus-layout.js", "snippets-tab.js", "subject-line-gemma-token-edit.js", "personalization-tokens.js", "snippet-context-menu.js", "preflight-panel.js", "keyword-swap.js", "custom-paste-loader.js", "campaign-draft-data-loader.js", "campaign-block-targeting.js", "compare-preview-common.js", "compare-languages.js", "compare-versions.js"],
-      "css": ["css--styles.css", "css--e-panels.css", "css--focus-layout.css", "css--compare-languages.css", "css--share-screenshot.css", "css--snippet-context-menu.css"]
+      "js": ["debug-logging-gate.js", "platform.js", "gem-dom-watch.js", "gem-layer-stack.js", "alt-text-preview.js", "verticalnav-enhancer.js", "mobile-view.js", "textarea-expand.js", "text-highlighting.js", "color-swatch-manager.js", "keyboard-shortcuts.js", "language-load-overlay.js", "page-title-updater.js", "draft-save-indicator.js", "condensed-blocks-panel.js", "mobile-contact-preview.js", "lz-string.min.js", "snippet-storage.js", "favorite-image-storage.js", "gem-toast.js", "content-block-toolbar.js", "header-copy-icon.js", "block-pinning.js", "sortable.min.js", "html2canvas.min.js", "share-screenshot.js", "contact-preview-screenshot.js", "overlay-panel-controls.js", "link-editor-recent-urls.js", "focus-layout.js", "snippets-tab.js", "find-replace-dom-utils.js", "find-replace-panel.js", "subject-line-gemma-token-edit.js", "personalization-tokens.js", "snippet-context-menu.js", "preflight-panel.js", "keyword-swap.js", "custom-paste-loader.js", "campaign-draft-data-loader.js", "campaign-block-targeting.js", "esl-token-extractor.js", "compare-email-basics-capture.js", "compare-preview-common.js", "compare-languages.js", "compare-versions.js", "compare-esl-usage.js", "campaign-links-data.js", "review-links.js"],
+      "css": ["css--styles.css", "css--e-panels.css", "css--focus-layout.css", "css--compare-languages.css", "css--share-screenshot.css", "css--snippet-context-menu.css", "css--find-replace-panel.css", "css--link-editor-recent-urls.css"]
     }
   ]
 }

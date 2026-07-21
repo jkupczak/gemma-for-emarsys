@@ -415,13 +415,89 @@ console.log('[Gem] personalization-tokens.js loaded');
     return preview;
   }
 
+  function slimPersTokenContent(source, content) {
+    const src = String(source || '').toLowerCase();
+    const raw = content && typeof content === 'object' ? content : {};
+
+    if (src === 'contact') {
+      const field = raw.field ?? raw.field_id ?? raw.fieldId;
+      return field != null && field !== '' ? { field } : {};
+    }
+
+    if (src === 'event') {
+      const variable = raw.variable;
+      return variable ? { variable } : {};
+    }
+
+    if (src === 'rds') {
+      const slim = {};
+      if (raw.preset_id != null && String(raw.preset_id).trim()) {
+        slim.preset_id = raw.preset_id;
+      }
+      if (raw.field_name != null && String(raw.field_name).trim()) {
+        slim.field_name = String(raw.field_name).trim();
+      }
+      if (raw.preset_data && typeof raw.preset_data === 'object') {
+        slim.preset_data = raw.preset_data;
+      }
+      return slim;
+    }
+
+    return Object.keys(raw).reduce((slim, key) => {
+      const value = raw[key];
+      if (value == null || value === '') return slim;
+      slim[key] = value;
+      return slim;
+    }, {});
+  }
+
+  function slimPersTokenFilters(filters) {
+    if (!filters || typeof filters !== 'object') return {};
+
+    const slim = {};
+    if (filters.fallback != null && String(filters.fallback).trim()) {
+      slim.fallback = String(filters.fallback);
+    }
+    if (filters.modifier != null && String(filters.modifier).trim()) {
+      slim.modifier = String(filters.modifier);
+    }
+    if (filters.required === true) {
+      slim.required = true;
+    }
+    if (filters.index != null && filters.index !== 0) {
+      slim.index = filters.index;
+    }
+    return slim;
+  }
+
+  function buildEmarsysPersTokenPayload(token) {
+    const normalized = enrichTokenWithRdsPresets(token, getSessionRdsPresetMap());
+    if (!normalized) return null;
+
+    const payload = {
+      name: normalized.name,
+      source: normalized.source || '',
+      content: slimPersTokenContent(normalized.source, normalized.content),
+      filters: slimPersTokenFilters(normalized.filters),
+    };
+
+    const code = normalized.code != null ? String(normalized.code).trim() : '';
+    if (code) {
+      payload.code = code;
+    }
+
+    return payload;
+  }
+
   function buildTokenMeta(token, preview) {
     const normalized = enrichTokenWithRdsPresets(token, getSessionRdsPresetMap());
     if (!normalized) return null;
+    const slimToken = buildEmarsysPersTokenPayload(normalized);
+    if (!slimToken) return null;
     return {
       tokenName: normalized.name,
       type: 'personalization',
-      token: normalized,
+      token: slimToken,
       preview: preview || '',
     };
   }

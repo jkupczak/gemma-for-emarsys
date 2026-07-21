@@ -3,6 +3,7 @@
 
   const MSG_SOURCE_EXT = 'gem-snippet-extension';
   const MSG_SOURCE_BRIDGE = 'gem-snippet-iframe-bridge';
+  const GEM_CARET_MARKER_ATTR = 'data-gem-caret-marker';
   const patchedEditorIds = new Set();
   const caretByEditorId = new Map();
 
@@ -258,6 +259,33 @@
     });
   }
 
+  function placeCaretAfterMarker(editor) {
+    const editorDoc = (editor && editor.getDoc && editor.getDoc()) || document;
+    const marker = editorDoc.querySelector(`[${GEM_CARET_MARKER_ATTR}]`);
+    if (!marker || !editor || !editor.selection) return false;
+
+    try {
+      const range = editorDoc.createRange();
+      range.setStartAfter(marker);
+      range.collapse(true);
+      marker.remove();
+      editor.focus();
+      if (typeof editor.selection.setRng === 'function') {
+        editor.selection.setRng(range);
+      }
+      if (typeof editor.nodeChanged === 'function') {
+        editor.nodeChanged();
+      }
+      return true;
+    } catch (_) {
+      try {
+        marker.remove();
+      } catch (_) {}
+    }
+
+    return false;
+  }
+
   function handleInsert(event, data) {
     let ok = false;
     let error = null;
@@ -295,6 +323,10 @@
 
       if (typeof editor.setDirty === 'function') editor.setDirty(true);
       if (typeof editor.fire === 'function') editor.fire('change');
+      placeCaretAfterMarker(editor);
+      requestAnimationFrame(() => {
+        placeCaretAfterMarker(editor);
+      });
       ok = true;
     } catch (e) {
       error = e && e.message ? e.message : String(e);
