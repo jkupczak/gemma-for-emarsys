@@ -35,6 +35,130 @@ console.log('[Gem] find-replace-panel.js loaded');
   let globalTabHandlerBound = false;
   let panelHandlersBound = false;
 
+  // Note: prefix intentionally does NOT match debug-logging-gate.js
+  // suppression regex (^\[Gem[\]\-\s]) so these diagnostics always print.
+  const FR_LOG = '[GemFindReplace]';
+
+  function frLog(...args) {
+    try {
+      console.log(FR_LOG, ...args);
+    } catch (_) {}
+  }
+
+  function frWarn(...args) {
+    try {
+      console.warn(FR_LOG, ...args);
+    } catch (_) {}
+  }
+
+  function frSnippet(value, max = 120) {
+    const text = String(value ?? '').replace(/\s+/g, ' ').trim();
+    if (text.length <= max) return text;
+    return `${text.slice(0, max)}…`;
+  }
+
+  function frHash(value) {
+    const text = String(value ?? '');
+    let hash = 0;
+    for (let i = 0; i < text.length; i += 1) {
+      hash = (hash * 31 + text.charCodeAt(i)) | 0;
+    }
+    return `${text.length}:${(hash >>> 0).toString(16)}`;
+  }
+
+  function frDescribeNode(node) {
+    if (!node) return 'null';
+    try {
+      const tag = (node.tagName || node.nodeName || '?').toLowerCase();
+      const id = node.id ? `#${node.id}` : '';
+      const editable = node.getAttribute?.('contenteditable') === 'true' ? '[contenteditable]' : '';
+      const eEditable = node.hasAttribute?.('e-editable')
+        ? `[e-editable=${node.getAttribute('e-editable') || ''}]`
+        : '';
+      return `<${tag}${id}${editable}${eEditable}>`;
+    } catch (e) {
+      return `describe-error: ${e.message}`;
+    }
+  }
+
+  function captureFindReplaceSnapshot(label) {
+    const subjectInput = document.querySelector(
+      'cb-personalizable-input-with-context#subject-line-input'
+    );
+    const previewTextarea = document.querySelector('cb-preheader textarea');
+    const previewDoc = getPreviewDocument();
+    const container = document.querySelector('vce-iframes-container');
+    const selectedLang =
+      typeof window.gemGetSelectedLanguageValue === 'function'
+        ? window.gemGetSelectedLanguageValue()
+        : null;
+
+    let subjectText = '';
+    let previewText = '';
+    let bodyText = '';
+    let bodyHtmlLen = 0;
+    let editableCount = 0;
+    let containerContent = '';
+
+    try {
+      subjectText = subjectInput ? getSubjectLineText(subjectInput) : '';
+    } catch (_) {}
+    try {
+      previewText = previewTextarea ? String(previewTextarea.value || '') : '';
+    } catch (_) {}
+    try {
+      if (previewDoc) {
+        bodyText = String(previewDoc.body?.textContent || '');
+        bodyHtmlLen = String(previewDoc.body?.innerHTML || '').length;
+        editableCount = previewDoc.querySelectorAll(
+          '[contenteditable="true"], [e-editable]'
+        ).length;
+      }
+    } catch (_) {}
+    try {
+      containerContent = container ? String(container.getAttribute('content') || '') : '';
+    } catch (_) {}
+
+    const snapshot = {
+      label,
+      selectedLang,
+      subject: {
+        present: !!subjectInput,
+        hash: frHash(subjectText),
+        snippet: frSnippet(subjectText),
+      },
+      preview: {
+        present: !!previewTextarea,
+        hash: frHash(previewText),
+        snippet: frSnippet(previewText),
+      },
+      body: {
+        previewDocPresent: !!previewDoc,
+        editableCount,
+        textHash: frHash(bodyText),
+        htmlLen: bodyHtmlLen,
+        textSnippet: frSnippet(bodyText),
+      },
+      containerContent: {
+        present: !!container,
+        hash: frHash(containerContent),
+        len: containerContent.length,
+        snippet: frSnippet(containerContent),
+      },
+      dirtyHelpers: {
+        markTextControl: typeof window.gemMarkEmarsysTextControlDirty === 'function',
+        markDraftDirty: typeof window.gemMarkEmarsysDraftDirty === 'function',
+        nudgeFocus: typeof window.gemNudgeEmarsysDirtyDetectionViaFocus === 'function',
+        markEmailBodyDirty: typeof dom()?.markEmailBodyDirty === 'function',
+        syncPreviewContainer:
+          typeof dom()?.syncPreviewContainerContentFromIframeDoc === 'function',
+      },
+    };
+
+    frLog('snapshot:', snapshot);
+    return snapshot;
+  }
+
   function escapeHtml(str) {
     return String(str ?? '')
       .replace(/&/g, '&amp;')
@@ -593,7 +717,7 @@ console.log('[Gem] find-replace-panel.js loaded');
     return false;
   }
 
-  function scanCampaign(state, matcher, options = {}) {
+  async function scanCampaign(state, matcher, options = {}) {
     const { mode = 'find' } = options;
     const isPreview = mode === 'preview';
     const isApply = mode === 'apply';
@@ -614,6 +738,18 @@ console.log('[Gem] find-replace-panel.js loaded');
     const maxLocations = MAX_DISPLAY_LOCATIONS;
     const utils = dom();
 
+    if (isApply) {
+      frLog('scanCampaign(apply): start', {
+        find: state.find,
+        replace: state.replace,
+        isRegex: state.isRegex,
+        matchCase: state.matchCase,
+        wholeWord: state.wholeWord,
+        scopes: state.scopes,
+      });
+      captureFindReplaceSnapshot('apply-before');
+    }
+
     if (state.scopes.subject) {
       availability.subject = 'missing';
       const subjectInput = document.querySelector('cb-personalizable-input-with-context#subject-line-input');
@@ -631,13 +767,34 @@ console.log('[Gem] find-replace-panel.js loaded');
         locations.push(...result.locations);
         if (collectChanges) changes.push(...result.changes);
         if (isApply && result.count > 0) {
-          setSubjectLineContent(subjectInput, result.text);
+          frLog('apply subject: writing', {
+            matchCount: result.count,
+            beforeHash: frHash(current),
+            afterHash: frHash(result.text),
+            beforeSnippet: frSnippet(current),
+            afterSnippet: frSnippet(result.text),
+          });
+          const setOk = setSubjectLineContent(subjectInput, result.text);
           const cmEl = subjectInput.querySelector('vce-codemirror .CodeMirror');
+          let dirtyPath = 'none';
           if (typeof window.gemMarkEmarsysTextControlDirty === 'function') {
             const textarea = cmEl?.querySelector('textarea');
-            if (textarea) window.gemMarkEmarsysTextControlDirty(textarea);
+            if (textarea) {
+              window.gemMarkEmarsysTextControlDirty(textarea);
+              dirtyPath = 'gemMarkEmarsysTextControlDirty';
+            }
           }
+          const verify = getSubjectLineText(subjectInput);
+          frLog('apply subject: after write', {
+            setOk,
+            dirtyPath,
+            verifyHash: frHash(verify),
+            verifyMatchesWrite: verify === result.text,
+            verifySnippet: frSnippet(verify),
+          });
         }
+      } else if (isApply) {
+        frWarn('apply subject: field not found');
       }
     }
 
@@ -646,7 +803,8 @@ console.log('[Gem] find-replace-panel.js loaded');
       const textarea = document.querySelector('cb-preheader textarea');
       if (textarea) {
         availability.preview = 'ok';
-        const result = utils.processHtmlOrTextContent(textarea.value, matcher, {
+        const before = textarea.value;
+        const result = utils.processHtmlOrTextContent(before, matcher, {
           replacement,
           maxLocations: maxLocations - locations.length,
           context: 'Preview text',
@@ -657,14 +815,32 @@ console.log('[Gem] find-replace-panel.js loaded');
         locations.push(...result.locations);
         if (collectChanges) changes.push(...result.changes);
         if (isApply && result.count > 0) {
+          frLog('apply preview: writing', {
+            matchCount: result.count,
+            beforeHash: frHash(before),
+            afterHash: frHash(result.text),
+            beforeSnippet: frSnippet(before),
+            afterSnippet: frSnippet(result.text),
+          });
           textarea.value = result.text;
+          let dirtyPath = 'none';
           if (typeof window.gemMarkEmarsysTextControlDirty === 'function') {
             window.gemMarkEmarsysTextControlDirty(textarea);
+            dirtyPath = 'gemMarkEmarsysTextControlDirty';
           } else {
             textarea.dispatchEvent(new Event('input', { bubbles: true }));
             textarea.dispatchEvent(new Event('change', { bubbles: true }));
+            dirtyPath = 'native-input-change';
           }
+          frLog('apply preview: after write', {
+            dirtyPath,
+            verifyHash: frHash(textarea.value),
+            verifyMatchesWrite: textarea.value === result.text,
+            verifySnippet: frSnippet(textarea.value),
+          });
         }
+      } else if (isApply) {
+        frWarn('apply preview: field not found');
       }
     }
 
@@ -672,6 +848,39 @@ console.log('[Gem] find-replace-panel.js loaded');
     if (state.scopes.body) {
       availability.body = previewDoc ? 'ok' : 'unavailable';
       if (previewDoc) {
+        if (isApply) {
+          frLog('apply body: before scanEmailBody', {
+            previewDocURL: (() => {
+              try {
+                return previewDoc.defaultView?.location?.href || null;
+              } catch (_) {
+                return 'inaccessible';
+              }
+            })(),
+            hasMarkEmailBodyDirty: typeof utils.markEmailBodyDirty === 'function',
+            hasSync:
+              typeof utils.syncPreviewContainerContentFromIframeDoc === 'function',
+            hasPrime: typeof utils.primeEmarsysEditablesInDoc === 'function',
+          });
+
+          // Wake lazy TinyMCE on dormant [e-editable] fields before mutating.
+          // Prime broadly (any non-empty dormant field), same approach as Magic Fill —
+          // a match-only filter was skipping candidates and leaving edits non-durable.
+          if (typeof utils.primeEmarsysEditablesInDoc === 'function') {
+            try {
+              const primeResult = await utils.primeEmarsysEditablesInDoc(previewDoc, {
+                filter: (el) => String(el.textContent || '').trim().length > 0,
+                release: false,
+              });
+              frLog('apply body: primed editables', primeResult);
+            } catch (e) {
+              frWarn(
+                'apply body: prime editables failed',
+                e && e.message ? e.message : e
+              );
+            }
+          }
+        }
         const result = utils.scanEmailBody(previewDoc, matcher, {
           replacement,
           maxLocations: maxLocations - locations.length,
@@ -682,8 +891,35 @@ console.log('[Gem] find-replace-panel.js loaded');
         locations.push(...result.locations);
         if (collectChanges) changes.push(...result.changes);
         if (isApply && result.count > 0) {
+          frLog('apply body: matches found, marking dirty', {
+            matchCount: result.count,
+            touchedCount: (result.touched || []).length,
+            touched: (result.touched || []).map(frDescribeNode),
+          });
           utils.markEmailBodyDirty(previewDoc, result.touched);
+
+          try {
+            const findEditor =
+              typeof window.gemFindTinyMCEEditorForElement === 'function'
+                ? window.gemFindTinyMCEEditorForElement
+                : null;
+            const editor = findEditor
+              ? findEditor(previewDoc, (result.touched || [])[0])
+              : null;
+            frLog('apply body: TinyMCE probe after dirty', {
+              found: !!editor,
+              editorId: editor?.id || null,
+              isDirty:
+                typeof editor?.isDirty === 'function' ? editor.isDirty() : editor?.isDirty,
+            });
+          } catch (e) {
+            frWarn('apply body: TinyMCE probe failed', e && e.message ? e.message : e);
+          }
+        } else if (isApply) {
+          frLog('apply body: no matches');
         }
+      } else if (isApply) {
+        frWarn('apply body: previewDoc unavailable');
       }
     }
 
@@ -700,6 +936,10 @@ console.log('[Gem] find-replace-panel.js loaded');
         locations.push(...result.locations);
         if (collectChanges) changes.push(...result.changes);
         if (isApply && result.count > 0) {
+          frLog('apply alt: marking dirty', {
+            matchCount: result.count,
+            touchedCount: (result.touched || []).length,
+          });
           utils.markImageAltsDirty(result.touched);
         }
       }
@@ -715,7 +955,7 @@ console.log('[Gem] find-replace-panel.js loaded');
       hiddenLocationCount = Math.max(0, allLocationCount - totalLocations);
     }
 
-    return {
+    const resultPayload = {
       counts,
       availability,
       locations: locations.slice(0, MAX_DISPLAY_LOCATIONS),
@@ -728,9 +968,22 @@ console.log('[Gem] find-replace-panel.js loaded');
         (state.scopes.alt ? counts.alt : 0),
       scopes: normalizeScopes(state.scopes),
     };
+
+    if (isApply) {
+      const afterSnap = captureFindReplaceSnapshot('apply-after');
+      frLog('scanCampaign(apply): complete', {
+        counts: resultPayload.counts,
+        total: resultPayload.total,
+        availability: resultPayload.availability,
+        afterBodyHash: afterSnap.body.textHash,
+        afterContainerHash: afterSnap.containerContent.hash,
+      });
+    }
+
+    return resultPayload;
   }
 
-  function findMatches() {
+  async function findMatches() {
     hideReplacePreview();
     const state = readFormState();
     if (!state) return;
@@ -744,7 +997,7 @@ console.log('[Gem] find-replace-panel.js loaded');
       return;
     }
 
-    const result = scanCampaign(state, matcher);
+    const result = await scanCampaign(state, matcher);
     renderMatchResults(result);
     persistPanelState();
   }
@@ -797,7 +1050,7 @@ console.log('[Gem] find-replace-panel.js loaded');
     }
   }
 
-  function prepareFindReplace() {
+  async function prepareFindReplace() {
     clearMatchResults();
     hideReplacePreview();
 
@@ -813,22 +1066,61 @@ console.log('[Gem] find-replace-panel.js loaded');
       return;
     }
 
-    const plan = scanCampaign(state, matcher, { mode: 'preview' });
+    frLog('prepareFindReplace: building preview plan', {
+      find: findTrimmed,
+      replace: state.replace,
+      scopes: state.scopes,
+    });
+    const plan = await scanCampaign(state, matcher, { mode: 'preview' });
+    frLog('prepareFindReplace: plan ready', {
+      total: plan.total,
+      counts: plan.counts,
+      availability: plan.availability,
+    });
 
     showReplacePreview(plan);
   }
 
-  function confirmFindReplace() {
-    if (!pendingReplacePlan) return;
+  async function confirmFindReplace() {
+    if (!pendingReplacePlan) {
+      frWarn('confirmFindReplace: no pendingReplacePlan');
+      return;
+    }
 
     const state = readFormState();
     if (!state) return;
 
     const matcher = buildMatcherFromState(state);
-    if (matcher?.error) return;
+    if (matcher?.error) {
+      frWarn('confirmFindReplace: matcher error', matcher.error);
+      return;
+    }
 
-    const applied = scanCampaign(state, matcher, { mode: 'apply' });
+    frLog('confirmFindReplace: applying now', {
+      plannedTotal: pendingReplacePlan.total,
+      find: state.find,
+      replace: state.replace,
+      scopes: state.scopes,
+    });
+
+    const beforeSnap = captureFindReplaceSnapshot('confirm-before');
+    const applied = await scanCampaign(state, matcher, { mode: 'apply' });
     const total = applied.total || 0;
+    const afterSnap = captureFindReplaceSnapshot('confirm-after');
+
+    frLog('confirmFindReplace: applied', {
+      total,
+      counts: applied.counts,
+      bodyChanged: beforeSnap.body.textHash !== afterSnap.body.textHash,
+      containerChanged: beforeSnap.containerContent.hash !== afterSnap.containerContent.hash,
+      subjectChanged: beforeSnap.subject.hash !== afterSnap.subject.hash,
+      previewChanged: beforeSnap.preview.hash !== afterSnap.preview.hash,
+      beforeContainerHash: beforeSnap.containerContent.hash,
+      afterContainerHash: afterSnap.containerContent.hash,
+      beforeBodyHash: beforeSnap.body.textHash,
+      afterBodyHash: afterSnap.body.textHash,
+    });
+
     hideReplacePreview();
     clearMatchResults();
 
@@ -1008,6 +1300,10 @@ console.log('[Gem] find-replace-panel.js loaded');
     const navItem = document.querySelector(`#${TAB_ID} e-verticalnav-item`);
     if (!navContent || !navItem) return;
 
+    if (typeof window.gemDeactivateMagicFillPanel === 'function' && window.gemIsMagicFillActive?.()) {
+      window.gemDeactivateMagicFillPanel();
+    }
+
     navItem.setAttribute('status', 'active');
     const navItemDiv = navItem.querySelector('.e-verticalnavitem');
     if (navItemDiv) navItemDiv.classList.add('e-verticalnavitem-active');
@@ -1130,6 +1426,13 @@ console.log('[Gem] find-replace-panel.js loaded');
   window.gemDeactivateFindReplacePanel = deactivateFindReplacePanel;
   window.gemActivateFindReplacePanel = activateFindReplacePanel;
   window.gemIsFindReplaceActive = isFindReplaceActive;
+  // Shared with magic-fill-panel.js so it doesn't need to re-implement the
+  // CodeMirror-aware subject-line read/write logic.
+  window.gemFindReplaceSubjectField = {
+    getSubjectLineInput: () => document.querySelector('cb-personalizable-input-with-context#subject-line-input'),
+    getText: getSubjectLineText,
+    setText: setSubjectLineContent,
+  };
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initFindReplacePanel);

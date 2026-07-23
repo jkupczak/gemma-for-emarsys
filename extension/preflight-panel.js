@@ -3855,6 +3855,13 @@ function initializePreflightPanel() {
     const navItem = document.querySelector(`#${PRELIGHT_TAB_ID} e-verticalnav-item`);
     if (!navContent || !navItem) return;
 
+    if (typeof window.gemDeactivateFindReplacePanel === 'function' && window.gemIsFindReplaceActive?.()) {
+      window.gemDeactivateFindReplacePanel();
+    }
+    if (typeof window.gemDeactivateMagicFillPanel === 'function' && window.gemIsMagicFillActive?.()) {
+      window.gemDeactivateMagicFillPanel();
+    }
+
     navItem.setAttribute('status', 'active');
     const navItemDiv = navItem.querySelector('.e-verticalnavitem');
     if (navItemDiv) navItemDiv.classList.add('e-verticalnavitem-active');
@@ -4080,8 +4087,9 @@ function initializePreflightPanel() {
   }
 
   function addPreflightTab() {
+    const magicFillTab = document.querySelector('#gem-magic-fill-tab');
     const findReplaceTab = document.querySelector('#gem-find-replace-tab');
-    const anchor = findReplaceTab || document.querySelector('#gem-snippets-tab');
+    const anchor = magicFillTab || findReplaceTab || document.querySelector('#gem-snippets-tab');
     if (!anchor) return false;
     if (document.querySelector(`#${PRELIGHT_TAB_ID}`)) return true;
 

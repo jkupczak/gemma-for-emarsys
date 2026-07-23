@@ -1,7 +1,7 @@
 #gem-snippet-context-menu {
   background: color-mix(
     in srgb,
-    var(--token-box-default-background) 92%,
+    var(--token-box-default-background) 85%,
     transparent
   );
   backdrop-filter: blur(12px);
@@ -138,67 +138,37 @@
 }
 
 .gem-snippet-ctx-row-shortcut {
-  opacity: 0.5;
   border-radius: 4px;
-  box-shadow: inset 0 0 0 1px rgba(100 100 100 / 1);
+  box-shadow: rgb(100, 100, 100) 0px 0px 0px 1px inset;
   display: inline-block;
-  line-height: 20px;
-  width: 20px;
-  min-width: 20px;
+
+  font-size: 10px;
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  line-height: 16px;
+
   text-align: center;
   flex-shrink: 0;
+
+  opacity: 0.5;
+  font-weight: normal;
+
 }
 
-.gem-snippet-ctx-pin {
-  align-items: center;
-  background: transparent;
-  border: 0;
-  cursor: pointer;
-  display: flex;
+
+.gem-snippet-ctx-row-menu-trigger {
   flex-shrink: 0;
-  justify-content: center;
-  margin-right: 6px;
+  margin-right: 2px;
   opacity: 0;
-  padding: 4px;
   transition: opacity 0.15s;
 }
 
-.gem-snippet-ctx-pin--active {
+.gem-snippet-ctx-row:hover .gem-snippet-ctx-row-menu-trigger,
+.gem-snippet-ctx-row-menu-trigger:hover,
+.gem-snippet-ctx-row-menu-trigger:focus-visible,
+.gem-snippet-ctx-row-menu-trigger[aria-expanded="true"] {
   opacity: 1;
-}
-
-.gem-snippet-ctx-row:hover .gem-snippet-ctx-pin,
-.gem-snippet-ctx-pin:hover,
-.gem-snippet-ctx-pin:focus-visible {
-  opacity: 1;
-}
-
-.gem-snippet-ctx-pin svg {
-  display: block;
-  height: 18px;
-  width: 18px;
-}
-
-.gem-snippet-ctx-pin--active svg path {
-  fill: var(--token-label-highlight-background);
-}
-
-.gem-snippet-ctx-row--search .gem-snippet-ctx-pin {
-  opacity: 0;
-}
-
-.gem-snippet-ctx-row--search .gem-snippet-ctx-pin--active {
-  opacity: 1;
-}
-
-.gem-snippet-ctx-row--search:hover .gem-snippet-ctx-pin,
-.gem-snippet-ctx-row--search .gem-snippet-ctx-pin:hover,
-.gem-snippet-ctx-row--search .gem-snippet-ctx-pin:focus-visible {
-  opacity: 1;
-}
-
-.gem-snippet-ctx-row .gem-snippet-ctx-pin svg path {
-  fill: var(--token-box-default-text);
 }
 
 .gem-snippet-ctx-empty {
@@ -243,4 +213,93 @@
   background-color: var(--token-button-highlight-background);
   border: 1px solid var(--token-button-highlight-border);
   color: var(--token-button-highlight-text);
+}
+
+.gem-shortcut-picker {
+  background: var(--token-box-default-background);
+  border: 1px solid var(--token-box-default-border);
+  border-radius: 8px;
+  box-shadow: var(--token-shadow-medium), 0 0 0 1px #272727;
+  color: var(--token-text-default);
+  font-size: 13px;
+  padding: 6px;
+  position: fixed;
+  width: 240px;
+}
+
+.gem-shortcut-picker-title {
+  color: var(--token-font-muted, #667085);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 4px 8px 6px;
+  text-transform: uppercase;
+}
+
+.gem-shortcut-picker-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.gem-shortcut-picker-row {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  font: inherit;
+  gap: 10px;
+  padding: 6px 8px;
+  text-align: left;
+  width: 100%;
+}
+
+.gem-shortcut-picker-row:hover,
+.gem-shortcut-picker-row:focus-visible {
+  background: var(--token-highlight-default);
+  color: var(--token-button-highlight-text);
+}
+
+.gem-shortcut-picker-row--current {
+  font-weight: 600;
+}
+
+.gem-shortcut-picker-num {
+  align-items: center;
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 1px rgba(100 100 100 / 1);
+  display: flex;
+  flex-shrink: 0;
+  height: 20px;
+  justify-content: center;
+  width: 20px;
+}
+
+.gem-shortcut-picker-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gem-shortcut-picker-clear {
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--token-box-default-border);
+  color: var(--token-red-600, #dc2626);
+  cursor: pointer;
+  font: inherit;
+  margin-top: 4px;
+  padding: 8px 8px 4px;
+  text-align: left;
+  width: 100%;
+}
+
+.gem-shortcut-picker-clear:hover {
+  text-decoration: underline;
 }

@@ -23,6 +23,7 @@ console.log('[Gem] command-palette.js loaded');
     { tabId: 'customTab_personaliztation', label: 'Personalization' },
     { tabId: 'gem-snippets-tab', label: 'Gemma Snippets' },
     { tabId: 'gem-find-replace-tab', label: 'Find and Replace' },
+    { tabId: 'gem-magic-fill-tab', label: 'Magic Fill' },
     { tabId: 'gem-preflight-tab', label: 'Gemma Preflight' },
   ];
 

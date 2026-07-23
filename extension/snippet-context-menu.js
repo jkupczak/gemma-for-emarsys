@@ -13,9 +13,6 @@ console.log('[Gem] snippet-context-menu.js loaded');
   const MAX_RECENT = 10;
   const MAX_SEARCH_RESULTS = 20;
 
-  const PIN_SVG =
-    '<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#1f1f1f" aria-hidden="true"><path d="m640-480 80 80v80H520v240l-40 40-40-40v-240H240v-80l80-80v-280h-40v-80h400v80h-40v280Zm-286 80h252l-46-46v-314H400v314l-46 46Zm126 0Z"/></svg>';
-
   const GEMMA_TYPE_SVG =
     '<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#1f1f1f" aria-hidden="true"><path d="M480-80 120-436l200-244h320l200 244L480-80ZM183-680l-85-85 57-56 85 85-57 56Zm257-80v-120h80v120h-80Zm335 80-57-57 85-85 57 57-85 85ZM480-192l210-208H270l210 208ZM358-600l-99 120h442l-99-120H358Z"/></svg>';
 
@@ -36,6 +33,12 @@ console.log('[Gem] snippet-context-menu.js loaded');
   let menuTokens = [];
   let persTokensLoading = false;
   let recentIds = [];
+  let manualShortcutMap = {};
+  let shortcutPickerEl = null;
+  let shortcutPickerOutsideDismiss = null;
+  let rowOverflowMenuEl = null;
+  let rowOverflowMenuOutsideDismiss = null;
+
   let menuRequireMod = false;
   let escapeUnsub = null;
   let outsideDismissHandler = null;
@@ -96,6 +99,18 @@ console.log('[Gem] snippet-context-menu.js loaded');
         ? raw.map((id) => String(id || '').trim()).filter(Boolean).slice(0, MAX_RECENT)
         : [];
       callback(recentIds);
+    });
+  }
+
+  function loadManualShortcutMap(callback) {
+    if (typeof window.gemLoadShortcutSlots !== 'function') {
+      manualShortcutMap = {};
+      if (callback) callback(manualShortcutMap);
+      return;
+    }
+    window.gemLoadShortcutSlots((map) => {
+      manualShortcutMap = map || {};
+      if (callback) callback(manualShortcutMap);
     });
   }
 
@@ -218,7 +233,7 @@ console.log('[Gem] snippet-context-menu.js loaded');
         return null;
       }
       if (iframeDoc !== eventDoc) return null;
-      return captureContentEditableContext(editable, iframeDoc, point);
+      return captureContentEditableContext(editable, iframeDoc, point, target);
     }
 
     return null;
@@ -583,7 +598,128 @@ console.log('[Gem] snippet-context-menu.js loaded');
     }
   }
 
-  function captureContentEditableContext(element, doc, point = null) {
+  // Note: prefix intentionally does NOT match the debug-logging-gate.js
+  // suppression regex (^\[Gem[\]\-\s]) so these diagnostics always print.
+  const GEM_TR_LOG = '[GemTokenReplace]';
+
+  function gemTrDescribeNode(node) {
+    if (!node) return 'null';
+    try {
+      if (node.nodeType === Node.TEXT_NODE) {
+        return `#text("${(node.textContent || '').slice(0, 40)}")`;
+      }
+      const attrs = [];
+      if (node.getAttribute?.('e-token')) attrs.push(`e-token=${node.getAttribute('e-token')}`);
+      if (node.hasAttribute?.('data-mce-selected')) attrs.push('data-mce-selected');
+      if (node.hasAttribute?.('data-mce-bogus')) attrs.push('data-mce-bogus');
+      return `<${(node.nodeName || '?').toLowerCase()}${attrs.length ? ' ' + attrs.join(' ') : ''}> text="${(node.textContent || '').slice(0, 40)}" connected=${node.isConnected}`;
+    } catch (e) {
+      return `describe-error: ${e.message}`;
+    }
+  }
+
+  function gemTrDescribeRange(range) {
+    if (!range) return 'null';
+    try {
+      return `collapsed=${range.collapsed} | start=${gemTrDescribeNode(range.startContainer)} @${range.startOffset} | end=${gemTrDescribeNode(range.endContainer)} @${range.endOffset}`;
+    } catch (e) {
+      return `describe-error: ${e.message}`;
+    }
+  }
+
+  // When TinyMCE selects an atomic token it sets data-mce-selected="1". The native
+  // selection is often a collapsed caret beside the node, so we detect the flagged
+  // token explicitly and build a selectNode range for replacement via mceInsertContent.
+  function getSingleElementBracketedByRange(range, element) {
+    if (!range || !element) return null;
+    try {
+      if (range.collapsed) return null;
+      const { startContainer, startOffset, endContainer, endOffset } = range;
+      if (startContainer !== endContainer || endOffset !== startOffset + 1) return null;
+      const node = startContainer.childNodes && startContainer.childNodes[startOffset];
+      if (
+        node &&
+        node.nodeType === Node.ELEMENT_NODE &&
+        node.hasAttribute('e-token') &&
+        element.contains(node)
+      ) {
+        return node;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  function findSelectedEmarsysTokenNode(element, doc) {
+    if (!element) return null;
+    try {
+      const flagged = element.querySelector('[data-mce-selected="1"][e-token]');
+      if (flagged) return flagged;
+    } catch (_) {}
+    if (doc) {
+      try {
+        const sel = doc.getSelection && doc.getSelection();
+        if (sel && sel.rangeCount > 0) {
+          const bracketed = getSingleElementBracketedByRange(sel.getRangeAt(0), element);
+          if (bracketed) return bracketed;
+        }
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  function findClickedEmarsysTokenNode(eventTarget, element) {
+    if (!eventTarget || !eventTarget.closest || !element) return null;
+    try {
+      const node = eventTarget.closest('[e-token]');
+      return node && element.contains(node) ? node : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function isTokenNodeUsable(node, element) {
+    return !!(node && node.isConnected && element && element.contains(node));
+  }
+
+  function applySelectedTokenReplaceRange(ctx, eventTarget) {
+    if (!ctx || ctx.type !== 'contenteditable' || !ctx.element || !ctx.doc) return ctx;
+    // Clicking a menu row blurs the editor, which strips data-mce-selected and
+    // can trigger an Emarsys re-render that swaps every node for a fresh copy.
+    // Fall back to the remembered node, re-locating it by identity if the
+    // reference went stale.
+    const clicked = findClickedEmarsysTokenNode(eventTarget, ctx.element);
+    const flagged = findSelectedEmarsysTokenNode(ctx.element, ctx.doc);
+    let remembered = isTokenNodeUsable(ctx.replaceTokenNode, ctx.element)
+      ? ctx.replaceTokenNode
+      : null;
+    if (!remembered && ctx.replaceTokenDescriptor && typeof window.gemRelocateEmarsysTokenNode === 'function') {
+      remembered = window.gemRelocateEmarsysTokenNode(ctx.replaceTokenDescriptor, ctx.element);
+    }
+    const token = clicked || flagged || remembered;
+    console.log(GEM_TR_LOG, 'applySelectedTokenReplaceRange:', {
+      clicked: gemTrDescribeNode(clicked),
+      flagged: gemTrDescribeNode(flagged),
+      remembered: gemTrDescribeNode(remembered),
+      chosen: clicked ? 'clicked' : flagged ? 'flagged' : remembered ? 'remembered' : 'none',
+      priorSavedRange: gemTrDescribeRange(ctx.savedRange),
+    });
+    if (!token) return ctx;
+    try {
+      const range = ctx.doc.createRange();
+      range.selectNode(token);
+      ctx.savedRange = range.cloneRange();
+      ctx.replaceTokenNode = token;
+      if (typeof window.gemBuildEmarsysTokenDescriptor === 'function') {
+        ctx.replaceTokenDescriptor = window.gemBuildEmarsysTokenDescriptor(token, ctx.element);
+      }
+      console.log(GEM_TR_LOG, 'applySelectedTokenReplaceRange: new savedRange:', gemTrDescribeRange(ctx.savedRange));
+    } catch (e) {
+      console.log(GEM_TR_LOG, 'applySelectedTokenReplaceRange: selectNode failed:', e.message);
+    }
+    return ctx;
+  }
+
+  function captureContentEditableContext(element, doc, point = null, eventTarget = null) {
     syncTinyMCEEditors(doc);
     const editor = findTinyMCEEditor(doc, element);
     const editorCaret = editor && editor.id ? caretByEditorId.get(editor.id) : null;
@@ -593,7 +729,28 @@ console.log('[Gem] snippet-context-menu.js loaded');
     let savedRange = null;
     let tinymceEditorId = editor && editor.id ? editor.id : null;
 
-    const selection = doc.getSelection && doc.getSelection();
+    const clickedToken = findClickedEmarsysTokenNode(eventTarget, element);
+    const flaggedToken = findSelectedEmarsysTokenNode(element, doc);
+    const selectedToken = clickedToken || flaggedToken;
+    console.log(GEM_TR_LOG, 'captureContentEditableContext:', {
+      eventTarget: gemTrDescribeNode(eventTarget),
+      clickedToken: gemTrDescribeNode(clickedToken),
+      flaggedToken: gemTrDescribeNode(flaggedToken),
+      editorId: tinymceEditorId,
+    });
+    if (selectedToken) {
+      try {
+        const nodeRange = doc.createRange();
+        nodeRange.selectNode(selectedToken);
+        savedRange = nodeRange.cloneRange();
+        console.log(GEM_TR_LOG, 'captureContentEditableContext: token savedRange:', gemTrDescribeRange(savedRange));
+      } catch (e) {
+        console.log(GEM_TR_LOG, 'captureContentEditableContext: selectNode failed:', e.message);
+        savedRange = null;
+      }
+    }
+
+    const selection = !savedRange && doc.getSelection && doc.getSelection();
     if (selection && selection.rangeCount > 0) {
       try {
         const selectionRange = selection.getRangeAt(0);
@@ -681,6 +838,11 @@ console.log('[Gem] snippet-context-menu.js loaded');
       element,
       doc,
       savedRange,
+      replaceTokenNode: selectedToken || null,
+      replaceTokenDescriptor:
+        selectedToken && typeof window.gemBuildEmarsysTokenDescriptor === 'function'
+          ? window.gemBuildEmarsysTokenDescriptor(selectedToken, element)
+          : null,
       tinymceBookmark,
       tinymceEditorId,
       caretPoint:
@@ -944,6 +1106,8 @@ console.log('[Gem] snippet-context-menu.js loaded');
     outsideDismissHandler = (e) => {
       if (!menuOpen || !menuEl) return;
       if (menuEl.contains(e.target)) return;
+      if (shortcutPickerEl && shortcutPickerEl.contains(e.target)) return;
+      if (rowOverflowMenuEl && rowOverflowMenuEl.contains(e.target)) return;
       closeMenu();
     };
     outsideDismissDocs = collectDismissDocs();
@@ -958,6 +1122,8 @@ console.log('[Gem] snippet-context-menu.js loaded');
 
   function closeMenu() {
     if (!menuEl) return;
+    closeShortcutPicker();
+    closeRowOverflowMenu();
     menuOpen = false;
     menuEl.classList.remove('gem-snippet-context-menu--open');
     activeCtx = null;
@@ -1098,33 +1264,33 @@ console.log('[Gem] snippet-context-menu.js loaded');
     });
   }
 
-  function getQuickShortcutEntries() {
-    const entries = [];
-    const seen = new Set();
-    for (const id of recentIds) {
-      if (entries.length >= 3) break;
-      const item = resolveRecentToken(id);
-      if (!item) continue;
-      const key = getTokenRowKey(item);
-      if (!key || seen.has(key)) continue;
-      seen.add(key);
-      entries.push({ slot: entries.length + 1, item, key });
+  // Slot 0 is the single most-recently-used token (automatic, not user-assigned).
+  // Slots 1-9 are manually assigned by the user (see shortcut-slots.js). A token
+  // that is both the MRU and manually assigned shows both badges, 0 first.
+  function buildShortcutBadgeMap() {
+    const map = new Map();
+    const mruId = recentIds[0];
+    if (mruId) map.set(mruId, [0]);
+    for (let slot = 1; slot <= 9; slot++) {
+      const entry = manualShortcutMap[String(slot)];
+      if (!entry || !entry.key) continue;
+      const existing = map.get(entry.key);
+      if (existing) existing.push(slot);
+      else map.set(entry.key, [slot]);
     }
-    return entries;
+    return map;
   }
 
-  function getQuickShortcutNumberByKey(rowKey) {
-    const hit = getQuickShortcutEntries().find((entry) => entry.key === rowKey);
-    return hit ? hit.slot : 0;
+  function getManualShortcutSlotForKey(rowKey) {
+    return (typeof window.gemGetShortcutSlotForKey === 'function'
+      ? window.gemGetShortcutSlotForKey(manualShortcutMap, rowKey)
+      : 0) || 0;
   }
 
   function renderTokenRow(item, options = {}) {
     const rowKey = getTokenRowKey(item);
-    const isPinned = isTokenPinned(item);
-    const pinLabel = isPinned ? 'Unpin token' : 'Pin token';
     const rowClass = options.searchResult ? ' gem-snippet-ctx-row--search' : '';
-    const shortcutNumber =
-      options.shortcutNumber || getQuickShortcutNumberByKey(rowKey) || 0;
+    const shortcutNumbers = Array.isArray(options.shortcutNumbers) ? options.shortcutNumbers : [];
     const typeIcon =
       item.kind === 'personalization'
         ? item.persOrigin === 'predefined'
@@ -1132,9 +1298,12 @@ console.log('[Gem] snippet-context-menu.js loaded');
           : CUSTOM_PERS_TYPE_SVG
         : GEMMA_TYPE_SVG;
     const kind = item.kind === 'personalization' ? 'personalization' : 'gemma';
-    const shortcutHtml = shortcutNumber
-      ? `<span class="gem-snippet-ctx-row-shortcut">${shortcutNumber}</span>`
-      : '';
+    const shortcutHtml = shortcutNumbers
+      .map(
+        (n) =>
+          `<span class="gem-snippet-ctx-row-shortcut${n === 0 ? ' gem-snippet-ctx-row-shortcut--auto' : ''}" title="${n === 0 ? 'Most recently used' : `Quick-insert shortcut ${n}`}">${n}</span>`
+      )
+      .join('');
     return `
       <div class="gem-snippet-ctx-row${rowClass}" data-token-key="${escapeHtml(rowKey)}" data-token-kind="${kind}">
         <button type="button" class="gem-snippet-ctx-item" data-action="insert">
@@ -1144,9 +1313,7 @@ console.log('[Gem] snippet-context-menu.js loaded');
             ${shortcutHtml}
           </span>
         </button>
-        <button type="button" class="gem-snippet-ctx-pin${isPinned ? ' gem-snippet-ctx-pin--active' : ''}" data-action="pin" aria-label="${pinLabel}" title="${pinLabel}">
-          ${PIN_SVG}
-        </button>
+        <button type="button" class="gem-overflow-menu-trigger gem-snippet-ctx-row-menu-trigger" data-action="row-menu" aria-haspopup="menu" aria-expanded="false" aria-label="More options for ${escapeHtml(item.name || 'token')}" title="More options"></button>
       </div>
     `;
   }
@@ -1200,13 +1367,14 @@ console.log('[Gem] snippet-context-menu.js loaded');
     const q = (menuEl.querySelector('.gem-snippet-ctx-search').value || '').trim().toLowerCase();
     rebuildMenuTokens();
 
-    const shortcutByKey = new Map(
-      getQuickShortcutEntries().map((entry) => [entry.key, entry.slot])
-    );
-    const rowOpts = (item, extra = {}) => ({
-      ...extra,
-      shortcutNumber: shortcutByKey.get(getTokenRowKey(item)) || 0,
-    });
+    const shortcutByKey = buildShortcutBadgeMap();
+    const rowOpts = (item, extra = {}) => {
+      const badges = shortcutByKey.get(getTokenRowKey(item));
+      return {
+        ...extra,
+        shortcutNumbers: Array.isArray(badges) ? badges : [],
+      };
+    };
 
     let html = '';
 
@@ -1275,10 +1443,13 @@ console.log('[Gem] snippet-context-menu.js loaded');
         insertMenuToken(item);
       });
 
-      row.querySelector('[data-action="pin"]').addEventListener('click', (e) => {
-        e.stopPropagation();
-        toggleTokenPin(item);
-      });
+      const menuBtn = row.querySelector('[data-action="row-menu"]');
+      if (menuBtn) {
+        menuBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openRowOverflowMenu(menuBtn, item, rowKey);
+        });
+      }
     });
 
     scheduleMenuPosition();
@@ -1312,11 +1483,227 @@ console.log('[Gem] snippet-context-menu.js loaded');
     });
   }
 
+  function closeRowOverflowMenu() {
+    if (rowOverflowMenuOutsideDismiss) {
+      document.removeEventListener('mousedown', rowOverflowMenuOutsideDismiss, true);
+      window.removeEventListener('resize', rowOverflowMenuOutsideDismiss, true);
+      rowOverflowMenuOutsideDismiss = null;
+    }
+    if (rowOverflowMenuEl) {
+      const anchor = rowOverflowMenuEl._gemAnchor;
+      if (anchor) anchor.setAttribute('aria-expanded', 'false');
+      rowOverflowMenuEl.remove();
+      rowOverflowMenuEl = null;
+    }
+  }
+
+  function positionFloatingPanel(panel, anchorEl) {
+    const anchorRect = anchorEl.getBoundingClientRect();
+    const panelRect = panel.getBoundingClientRect();
+    const pad = 8;
+    let left = anchorRect.right - panelRect.width;
+    let top = anchorRect.bottom + 4;
+    if (top + panelRect.height > window.innerHeight - pad) {
+      top = anchorRect.top - panelRect.height - 4;
+    }
+    left = Math.min(Math.max(pad, left), window.innerWidth - panelRect.width - pad);
+    top = Math.max(pad, top);
+    panel.style.left = `${Math.round(left)}px`;
+    panel.style.top = `${Math.round(top)}px`;
+  }
+
+  function openRowOverflowMenu(anchorEl, item, rowKey) {
+    if (rowOverflowMenuEl && rowOverflowMenuEl._gemAnchor === anchorEl) {
+      closeRowOverflowMenu();
+      return;
+    }
+    closeShortcutPicker();
+    closeRowOverflowMenu();
+
+    const isPinned = isTokenPinned(item);
+    const currentSlot = getManualShortcutSlotForKey(rowKey);
+    const shortcutLabel = currentSlot ? `Reassign shortcut (${currentSlot})` : 'Assign shortcut';
+
+    const menu = document.createElement('div');
+    menu.className = 'gem-overflow-menu gem-overflow-menu--open gem-overflow-menu--floating';
+    menu.setAttribute('role', 'menu');
+    menu.innerHTML = `
+      <button type="button" class="gem-overflow-menu-item" role="menuitem" data-action="pin">${isPinned ? 'Unpin token' : 'Pin token'}</button>
+      <button type="button" class="gem-overflow-menu-item" role="menuitem" data-action="assign-shortcut">${escapeHtml(shortcutLabel)}</button>
+    `;
+    menu._gemAnchor = anchorEl;
+    document.body.appendChild(menu);
+    rowOverflowMenuEl = menu;
+    anchorEl.setAttribute('aria-expanded', 'true');
+
+    const menuZ = menuEl ? Number(menuEl.style.zIndex) || 0 : 0;
+    menu.style.zIndex = String(Math.max(menuZ + 1, 100001));
+    positionFloatingPanel(menu, anchorEl);
+
+    menu.querySelector('[data-action="pin"]').addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeRowOverflowMenu();
+      toggleTokenPin(item);
+    });
+    menu.querySelector('[data-action="assign-shortcut"]').addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeRowOverflowMenu();
+      openShortcutPicker(anchorEl, item, rowKey);
+    });
+
+    rowOverflowMenuOutsideDismiss = (e) => {
+      if (menu.contains(e.target) || e.target === anchorEl || anchorEl.contains?.(e.target)) return;
+      closeRowOverflowMenu();
+    };
+    setTimeout(() => {
+      if (!rowOverflowMenuOutsideDismiss) return;
+      document.addEventListener('mousedown', rowOverflowMenuOutsideDismiss, true);
+      window.addEventListener('resize', rowOverflowMenuOutsideDismiss, true);
+    }, 0);
+  }
+
+  function closeShortcutPicker() {
+    if (shortcutPickerOutsideDismiss) {
+      document.removeEventListener('mousedown', shortcutPickerOutsideDismiss, true);
+      window.removeEventListener('resize', shortcutPickerOutsideDismiss, true);
+      shortcutPickerOutsideDismiss = null;
+    }
+    if (shortcutPickerEl) {
+      shortcutPickerEl.remove();
+      shortcutPickerEl = null;
+    }
+  }
+
+  function refreshShortcutsAndRerender() {
+    loadManualShortcutMap(() => {
+      if (menuOpen && menuEl) renderMenuLists();
+    });
+  }
+
+  function buildShortcutPickerHtml(rowKey) {
+    const currentSlot = getManualShortcutSlotForKey(rowKey);
+    let rowsHtml = '';
+    for (let slot = 1; slot <= 9; slot++) {
+      const entry = manualShortcutMap[String(slot)];
+      const isCurrent = !!entry && entry.key === rowKey;
+      const occupiedByOther = !!entry && !isCurrent;
+      let statusLabel = 'Available';
+      if (isCurrent) statusLabel = 'Currently assigned here';
+      else if (occupiedByOther) statusLabel = `Reassign from "${escapeHtml(entry.name)}"`;
+      rowsHtml += `
+        <button type="button" class="gem-shortcut-picker-row${isCurrent ? ' gem-shortcut-picker-row--current' : ''}" data-slot="${slot}">
+          <span class="gem-shortcut-picker-num">${slot}</span>
+          <span class="gem-shortcut-picker-label">${statusLabel}</span>
+        </button>
+      `;
+    }
+    return `
+      <div class="gem-shortcut-picker-title">Assign quick-insert shortcut</div>
+      <div class="gem-shortcut-picker-list">${rowsHtml}</div>
+      ${currentSlot ? `<button type="button" class="gem-shortcut-picker-clear" data-action="clear">Remove shortcut ${currentSlot}</button>` : ''}
+    `;
+  }
+
+  function openShortcutPicker(anchorEl, item, rowKey) {
+    if (shortcutPickerEl && shortcutPickerEl._gemAnchor === anchorEl) {
+      closeShortcutPicker();
+      return;
+    }
+    closeRowOverflowMenu();
+    closeShortcutPicker();
+
+    const picker = document.createElement('div');
+    picker.className = 'gem-shortcut-picker';
+    picker.setAttribute('role', 'menu');
+    picker.innerHTML = buildShortcutPickerHtml(rowKey);
+    picker._gemAnchor = anchorEl;
+    document.body.appendChild(picker);
+    shortcutPickerEl = picker;
+
+    const menuZ = menuEl ? Number(menuEl.style.zIndex) || 0 : 0;
+    picker.style.zIndex = String(Math.max(menuZ + 1, 100001));
+    positionFloatingPanel(picker, anchorEl);
+
+    const itemName = item.name || 'Untitled';
+    const kind = item.kind === 'personalization' ? 'personalization' : 'gemma';
+
+    picker.querySelectorAll('[data-slot]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const slot = Number(btn.dataset.slot);
+        if (typeof window.gemAssignShortcutSlot !== 'function') return;
+        window.gemAssignShortcutSlot(slot, { key: rowKey, name: itemName, kind }, (result) => {
+          closeShortcutPicker();
+          if (!result || !result.ok) return;
+          refreshShortcutsAndRerender();
+          if (result.displaced) {
+            window.gemShowToast?.(
+              `Shortcut ${slot} moved from "${result.displaced.name}" to "${itemName}".`,
+              { type: 'info', durationMs: 2800 }
+            );
+          } else if (result.previousSlot) {
+            window.gemShowToast?.(
+              `Moved "${itemName}" from shortcut ${result.previousSlot} to ${slot}.`,
+              { type: 'success', durationMs: 2200 }
+            );
+          } else {
+            window.gemShowToast?.(`Assigned "${itemName}" to shortcut ${slot}.`, {
+              type: 'success',
+              durationMs: 2000,
+            });
+          }
+        });
+      });
+    });
+
+    const clearBtn = picker.querySelector('[data-action="clear"]');
+    if (clearBtn) {
+      clearBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (typeof window.gemUnassignShortcutSlotByKey !== 'function') return;
+        window.gemUnassignShortcutSlotByKey(rowKey, (result) => {
+          closeShortcutPicker();
+          if (!result || !result.ok) return;
+          refreshShortcutsAndRerender();
+          if (result.removedSlot) {
+            window.gemShowToast?.(`Removed "${itemName}" from shortcut ${result.removedSlot}.`, {
+              type: 'success',
+              durationMs: 2000,
+            });
+          }
+        });
+      });
+    }
+
+    shortcutPickerOutsideDismiss = (e) => {
+      if (picker.contains(e.target) || e.target === anchorEl || anchorEl.contains?.(e.target)) return;
+      closeShortcutPicker();
+    };
+    setTimeout(() => {
+      if (!shortcutPickerOutsideDismiss) return;
+      document.addEventListener('mousedown', shortcutPickerOutsideDismiss, true);
+      window.addEventListener('resize', shortcutPickerOutsideDismiss, true);
+    }, 0);
+  }
+
   async function insertMenuToken(item) {
     const ctx = activeCtx;
     if (!ctx || !item) {
       closeMenu();
       return;
+    }
+    if (ctx.type === 'contenteditable') {
+      console.log(GEM_TR_LOG, 'insertMenuToken: ctx before refresh:', {
+        savedRange: gemTrDescribeRange(ctx.savedRange),
+        replaceTokenNode: gemTrDescribeNode(ctx.replaceTokenNode),
+        activeElementInDoc: gemTrDescribeNode(ctx.doc?.activeElement),
+        docHasFocus: (() => { try { return ctx.doc?.hasFocus?.(); } catch (_) { return 'n/a'; } })(),
+      });
+      applySelectedTokenReplaceRange(ctx);
+      console.log(GEM_TR_LOG, 'insertMenuToken: ctx after refresh:', {
+        savedRange: gemTrDescribeRange(ctx.savedRange),
+        replaceTokenNode: gemTrDescribeNode(ctx.replaceTokenNode),
+      });
     }
     restoreSelectionForClipboard(ctx);
     const mode = supportsInsertMode(ctx) ? insertMode : 'plain';
@@ -1393,7 +1780,7 @@ console.log('[Gem] snippet-context-menu.js loaded');
     };
 
     const loadPinnedAndCache = () => {
-      let pending = 2;
+      let pending = 3;
       const done = () => {
         pending -= 1;
         if (pending <= 0) {
@@ -1417,6 +1804,7 @@ console.log('[Gem] snippet-context-menu.js loaded');
       } else {
         done();
       }
+      loadManualShortcutMap(() => done());
     };
 
     loadRecentIds(() => {
@@ -1490,12 +1878,12 @@ console.log('[Gem] snippet-context-menu.js loaded');
   }
 
   function getDigitFromEvent(event) {
-    const codeMatch = /^(?:Digit|Numpad)([1-3])$/.exec(event.code || '');
+    const codeMatch = /^(?:Digit|Numpad)([0-9])$/.exec(event.code || '');
     if (codeMatch) return Number(codeMatch[1]);
-    if (event.key === '1' || event.key === '2' || event.key === '3') {
+    if (/^[0-9]$/.test(event.key || '')) {
       return Number(event.key);
     }
-    return 0;
+    return -1;
   }
 
   function isOpenMenuShortcut(event) {
@@ -1505,7 +1893,7 @@ console.log('[Gem] snippet-context-menu.js loaded');
 
   function isDirectInsertChord(event) {
     const digit = getDigitFromEvent(event);
-    if (!digit) return false;
+    if (digit < 0) return false;
     if (window.GEM_IS_MAC) {
       return !!(event.metaKey && event.altKey && !event.ctrlKey && !event.shiftKey);
     }
@@ -1560,7 +1948,11 @@ console.log('[Gem] snippet-context-menu.js loaded');
       if (editable) saveCaretForElement(editable, doc);
     }
 
-    return resolveEditableTarget(active, doc);
+    const ctx = resolveEditableTarget(active, doc);
+    if (ctx?.type === 'contenteditable') {
+      applySelectedTokenReplaceRange(ctx);
+    }
+    return ctx;
   }
 
   function getCaretClientRectInDoc(ctx) {
@@ -1663,9 +2055,11 @@ console.log('[Gem] snippet-context-menu.js loaded');
     openMenu(anchor.x, anchor.y, menuCtx, options);
   }
 
-  function insertRecentTokenBySlot(slot, options = {}) {
+  // Slot 0 = the single most-recently-used token (automatic). Slots 1-9 = the
+  // user's manually-assigned shortcuts (see shortcut-slots.js).
+  function insertTokenBySlot(slot, options = {}) {
     const slotNum = Number(slot);
-    if (slotNum < 1 || slotNum > 3) return;
+    if (slotNum < 0 || slotNum > 9) return;
 
     const ctx =
       (options.useActiveCtx && activeCtx) ||
@@ -1674,8 +2068,15 @@ console.log('[Gem] snippet-context-menu.js loaded');
     if (!ctx) return;
 
     loadMenuData(() => {
-      const hit = getQuickShortcutEntries().find((entry) => entry.slot === slotNum);
-      if (!hit) return;
+      let item = null;
+      if (slotNum === 0) {
+        const mruId = recentIds[0];
+        item = mruId ? resolveRecentToken(mruId) : null;
+      } else {
+        const entry = manualShortcutMap[String(slotNum)];
+        item = entry ? resolveMenuToken(entry.key) : null;
+      }
+      if (!item) return;
       if (
         ctx?.type === 'codemirror' &&
         ctx.cmEl &&
@@ -1685,7 +2086,7 @@ console.log('[Gem] snippet-context-menu.js loaded');
       }
       activeCtx = ctx;
       if (options.forceTokenMode) insertMode = 'token';
-      insertMenuToken(hit.item);
+      insertMenuToken(item);
     });
   }
 
@@ -1694,7 +2095,7 @@ console.log('[Gem] snippet-context-menu.js loaded');
 
     const digit = getDigitFromEvent(event);
 
-    if (digit && isDirectInsertChord(event)) {
+    if (digit >= 0 && isDirectInsertChord(event)) {
       const ctx = getActiveEditableContext();
       if (!ctx) return;
       event.preventDefault();
@@ -1702,7 +2103,7 @@ console.log('[Gem] snippet-context-menu.js loaded');
       if (typeof event.stopImmediatePropagation === 'function') {
         event.stopImmediatePropagation();
       }
-      insertRecentTokenBySlot(digit, { ctx, forceTokenMode: true });
+      insertTokenBySlot(digit, { ctx, forceTokenMode: true });
       return;
     }
 
@@ -1718,7 +2119,7 @@ console.log('[Gem] snippet-context-menu.js loaded');
       return;
     }
 
-    if (!menuOpen || !digit) return;
+    if (!menuOpen || digit < 0) return;
     if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
     if (isSearchInputTarget(event.target)) return;
 
@@ -1727,7 +2128,7 @@ console.log('[Gem] snippet-context-menu.js loaded');
     if (typeof event.stopImmediatePropagation === 'function') {
       event.stopImmediatePropagation();
     }
-    insertRecentTokenBySlot(digit, { useActiveCtx: true, forceTokenMode: true });
+    insertTokenBySlot(digit, { useActiveCtx: true, forceTokenMode: true });
   }
 
   function onContextMenu(event) {
@@ -1962,6 +2363,7 @@ console.log('[Gem] snippet-context-menu.js loaded');
 
     loadSetting();
     loadRecentIds(() => {});
+    loadManualShortcutMap(() => {});
 
     bindContextMenuToDoc(document);
     setupIframeWatcher();
@@ -1983,6 +2385,11 @@ console.log('[Gem] snippet-context-menu.js loaded');
         }
         if (changes[LEGACY_REQUIRE_MOD_SETTING_KEY]) {
           menuRequireMod = changes[LEGACY_REQUIRE_MOD_SETTING_KEY].newValue === true;
+        }
+        if (window.GEM_SHORTCUT_SLOTS_STORAGE_KEY && changes[window.GEM_SHORTCUT_SLOTS_STORAGE_KEY]) {
+          loadManualShortcutMap(() => {
+            if (menuOpen) renderMenuLists();
+          });
         }
       });
     }

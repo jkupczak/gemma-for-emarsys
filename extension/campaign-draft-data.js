@@ -137,6 +137,26 @@
   }
 
   // --- Patch fetch ---
+  // Important: return the *same* parsed object Emarsys will receive from
+  // response.json(), so later body edits can mutate campaign.contents[...] and
+  // language switches see our values.
+  function attachSharedJson(response, data) {
+    if (!response || !data) return response;
+    try {
+      response.json = async function () {
+        return data;
+      };
+      const originalClone = typeof response.clone === 'function' ? response.clone.bind(response) : null;
+      if (originalClone) {
+        response.clone = function () {
+          const cloned = originalClone();
+          return attachSharedJson(cloned, data);
+        };
+      }
+    } catch (_) {}
+    return response;
+  }
+
   const originalFetch = window.fetch;
   window.fetch = async function (...args) {
     const url = (args[0] instanceof Request) ? args[0].url : String(args[0]);
@@ -150,14 +170,18 @@
 
     const response = await originalFetch.apply(this, args);
     try {
-      if (DRAFT_URL_PATTERN.test(url)) {
-        response.clone().json()
-          .then((data) => handleDraftResponse(url, data))
-          .catch(() => {});
-      } else if (HANDSHAKE_URL_PATTERN.test(url)) {
-        response.clone().json()
-          .then((data) => cacheHandshakeResponse(url, data))
-          .catch(() => {});
+      if (DRAFT_URL_PATTERN.test(url) || HANDSHAKE_URL_PATTERN.test(url)) {
+        try {
+          const data = await response.clone().json();
+          if (DRAFT_URL_PATTERN.test(url)) {
+            handleDraftResponse(url, data);
+          } else {
+            cacheHandshakeResponse(url, data);
+          }
+          return attachSharedJson(response, data);
+        } catch (_) {
+          return response;
+        }
       }
     } catch (_) {}
     return response;

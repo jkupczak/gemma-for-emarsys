@@ -1,0 +1,190 @@
+gem-magic-fill .gem-magic-fill-label {
+  color: var(--token-font-muted, #667085);
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+gem-magic-fill .gem-magic-fill-help {
+  color: var(--token-font-muted, #667085);
+  font-size: 13px;
+  line-height: 1.45;
+  margin: 0 0 12px;
+}
+
+gem-magic-fill .gem-magic-fill-help code {
+  font-family: var(--token-font-monospace, monospace);
+  font-size: 12px;
+}
+
+gem-magic-fill .gem-magic-fill-field {
+  display: flex;
+  flex-direction: column;
+}
+
+gem-magic-fill .gem-magic-fill-json {
+  box-sizing: border-box;
+  font-family: var(--token-font-monospace, monospace);
+  font-size: 12px;
+  line-height: 1.45;
+  min-height: 180px;
+  resize: vertical;
+  white-space: pre;
+  width: 100%;
+}
+
+gem-magic-fill .gem-magic-fill-json-status {
+  align-items: flex-start;
+  display: flex;
+  font-size: 12px;
+  gap: 6px;
+  line-height: 1.35;
+  margin-top: 6px;
+}
+
+gem-magic-fill .gem-magic-fill-json-status-icon {
+  flex: 0 0 auto;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+gem-magic-fill .gem-magic-fill-json-status-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+gem-magic-fill .gem-magic-fill-json-status--valid {
+  color: var(--token-success-text, #15803d);
+}
+
+gem-magic-fill .gem-magic-fill-json-status--invalid {
+  color: var(--token-danger-text, #b91c1c);
+}
+
+gem-magic-fill .gem-magic-fill-progress {
+  background: var(--token-box-default-background);
+  border: 1px solid var(--token-box-default-border);
+  border-radius: 6px;
+  color: var(--token-font-muted, #667085);
+  font-size: 13px;
+  margin-bottom: 10px;
+  padding: 8px 10px;
+}
+
+gem-magic-fill .gem-magic-fill-scan,
+gem-magic-fill .gem-magic-fill-apply {
+  width: 100%;
+}
+
+gem-magic-fill .gem-magic-fill-scan:disabled,
+gem-magic-fill .gem-magic-fill-apply:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+gem-magic-fill .gem-magic-fill-actions {
+  display: flex;
+  gap: 10px;
+}
+
+gem-magic-fill .gem-magic-fill-actions .e-btn {
+  flex: 1;
+}
+
+gem-magic-fill .gem-magic-fill-results {
+  color: var(--token-font-default);
+  font-size: 13px;
+  line-height: 1.45;
+  margin-top: 14px;
+}
+
+gem-magic-fill .gem-magic-fill-meta,
+gem-magic-fill .gem-magic-fill-summary {
+  margin-bottom: 10px;
+}
+
+gem-magic-fill .gem-magic-fill-meta code,
+gem-magic-fill .gem-magic-fill-list code {
+  font-family: var(--token-font-monospace, monospace);
+  font-size: 12px;
+}
+
+gem-magic-fill .gem-magic-fill-warn {
+  color: var(--token-warning-text, #b45309);
+  margin-bottom: 8px;
+}
+
+gem-magic-fill .gem-magic-fill-warn--block {
+  border: 1px solid var(--token-box-default-border);
+  border-radius: 6px;
+  margin-top: 10px;
+  padding: 8px 10px;
+}
+
+gem-magic-fill .gem-magic-fill-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  margin: 12px 0 6px;
+  text-transform: uppercase;
+}
+
+gem-magic-fill .gem-magic-fill-section-title--warn {
+  color: var(--token-warning-text, #b45309);
+}
+
+gem-magic-fill .gem-magic-fill-lang-block {
+  border-top: 1px solid var(--token-box-default-border);
+  margin-top: 12px;
+  padding-top: 4px;
+}
+
+gem-magic-fill .gem-magic-fill-lang-block:first-of-type {
+  border-top: 0;
+  margin-top: 0;
+}
+
+gem-magic-fill .gem-magic-fill-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+gem-magic-fill .gem-magic-fill-list li {
+  border-top: 1px solid var(--token-box-default-border);
+  padding: 6px 0;
+}
+
+gem-magic-fill .gem-magic-fill-list li:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+gem-magic-fill .gem-magic-fill-muted {
+  color: var(--token-font-muted, #667085);
+  font-size: 12px;
+}
+
+gem-magic-fill .gem-magic-fill-confirm {
+  border: 1px solid var(--token-box-default-border);
+  border-radius: 8px;
+  margin-top: 10px;
+  padding: 10px;
+}
+
+gem-magic-fill .gem-magic-fill-confirm-summary {
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+
+gem-magic-fill .gem-magic-fill-confirm-actions {
+  display: flex;
+  gap: 8px;
+}
+
+gem-magic-fill .gem-magic-fill-confirm-actions .e-btn {
+  flex: 1;
+}

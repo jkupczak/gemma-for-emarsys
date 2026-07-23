@@ -551,11 +551,22 @@ function blockHasEditableInPreviewIframe(eBlockId) {
 function getEditableElementsForBlockEl(blockEl) {
   if (!blockEl || blockEl.nodeType !== Node.ELEMENT_NODE) return [];
   const out = [];
+  const seen = new Set();
+  const add = (el) => {
+    if (!el || seen.has(el)) return;
+    if (el.tagName === 'IMG') return;
+    seen.add(el);
+    out.push(el);
+  };
   if (blockEl.matches && blockEl.matches('[contenteditable="true"]')) {
-    out.push(blockEl);
+    add(blockEl);
+  }
+  if (blockEl.matches && blockEl.matches('[e-editable]')) {
+    add(blockEl);
   }
   if (blockEl.querySelectorAll) {
-    out.push(...Array.from(blockEl.querySelectorAll('[contenteditable="true"]')));
+    Array.from(blockEl.querySelectorAll('[contenteditable="true"]')).forEach(add);
+    Array.from(blockEl.querySelectorAll('[e-editable]')).forEach(add);
   }
   return out;
 }
@@ -597,6 +608,7 @@ function applyTextSwapForBlock(eBlockId) {
     // Prefer longer keywords to avoid partial matches eating longer ones
     rules.sort((a, b) => b.keyword.length - a.keyword.length);
 
+    (async () => {
       const iframe = document.querySelector(GEM_TARGET_IFRAME_SELECTOR);
       if (!iframe) return;
 
@@ -610,6 +622,27 @@ function applyTextSwapForBlock(eBlockId) {
 
       const blockEls = Array.from(doc.querySelectorAll(`[e-block-id="${CSS.escape(eBlockId)}"]`));
       if (!blockEls.length) return;
+
+      // Wake lazy TinyMCE inside this block before scanning contenteditable roots.
+      const primeFn = window.gemFindReplaceDom && window.gemFindReplaceDom.primeEmarsysEditablesInDoc;
+      if (typeof primeFn === 'function') {
+        try {
+          for (const blockEl of blockEls) {
+            const primeResult = await primeFn(doc, {
+              root: blockEl,
+              filter: (el) => String(el.textContent || '').trim().length > 0,
+              release: false,
+            });
+            try {
+              console.log('[GemKeywordSwap] toolbar primed', eBlockId, primeResult);
+            } catch (_) {}
+          }
+        } catch (e) {
+          try {
+            console.warn('[GemKeywordSwap] toolbar prime failed', e && e.message ? e.message : e);
+          } catch (_) {}
+        }
+      }
 
       const isInsideExistingToken = (node) => {
         let cur = node;
@@ -727,8 +760,15 @@ function applyTextSwapForBlock(eBlockId) {
       });
 
       if (didChange) {
-        markEmarsysDraftDirty(doc, Array.from(touchedEditables));
-        nudgeEmarsysDirtyDetectionViaFocus(doc, Array.from(touchedEditables));
+        if (
+          window.gemFindReplaceDom &&
+          typeof window.gemFindReplaceDom.markEmailBodyDirty === 'function'
+        ) {
+          window.gemFindReplaceDom.markEmailBodyDirty(doc, Array.from(touchedEditables));
+        } else {
+          markEmarsysDraftDirty(doc, Array.from(touchedEditables));
+          nudgeEmarsysDirtyDetectionViaFocus(doc, Array.from(touchedEditables));
+        }
       }
 
       // Toast feedback (global helper defined in snippets-tab.js; no-op if missing)
@@ -739,6 +779,7 @@ function applyTextSwapForBlock(eBlockId) {
       try {
         window.gemShowToast && window.gemShowToast(msg, { type: swapCount > 0 ? 'success' : 'info' });
       } catch (_) {}
+    })();
   });
 }
 
@@ -944,8 +985,29 @@ function convertEslToTokensForBlock(eBlockId) {
 
 function findTinyMCEEditorForElement(doc, el) {
   try {
-    const win = doc && doc.defaultView;
-    const tm = win && (win.tinymce || win.tinyMCE);
+    const wins = [];
+    try {
+      if (doc && doc.defaultView) wins.push(doc.defaultView);
+    } catch (_) {}
+    try {
+      wins.push(window);
+    } catch (_) {}
+    try {
+      if (doc && doc.defaultView && doc.defaultView.parent) wins.push(doc.defaultView.parent);
+    } catch (_) {}
+    try {
+      if (doc && doc.defaultView && doc.defaultView.top) wins.push(doc.defaultView.top);
+    } catch (_) {}
+
+    let tm = null;
+    for (const win of wins) {
+      try {
+        if (win && (win.tinymce || win.tinyMCE)) {
+          tm = win.tinymce || win.tinyMCE;
+          break;
+        }
+      } catch (_) {}
+    }
     if (!tm) return null;
 
     if (el && Array.isArray(tm.editors)) {
@@ -962,6 +1024,14 @@ function findTinyMCEEditorForElement(doc, el) {
           }
         } catch (_) {}
       }
+      // Fall through: editor may be keyed by element id (mce_0) even if targetElm differs.
+      try {
+        const id = el && el.id;
+        if (id && typeof tm.get === 'function') {
+          const byId = tm.get(id);
+          if (byId) return byId;
+        }
+      } catch (_) {}
       return null;
     }
 

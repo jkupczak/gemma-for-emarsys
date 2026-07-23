@@ -1492,6 +1492,8 @@
   window.gemGetCampaignLanguages = getCampaignLanguages;
   window.gemGetSelectedLanguageValue = getSelectedLanguageValue;
   window.gemSelectLanguageByValue = selectLanguageByValue;
+  window.gemWaitForEditorPreviewReady = waitForEditorPreviewReady;
+  window.gemGetEditorPreviewContent = getPreviewContent;
   window.gemOpenLanguageForEditing = openLanguageForEditing;
 
   if (document.readyState === 'loading') {

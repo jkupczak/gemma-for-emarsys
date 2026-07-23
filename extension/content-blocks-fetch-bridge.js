@@ -381,6 +381,23 @@
     if (window.__gemContentBlocksFetchInterceptorInstalled) return;
     window.__gemContentBlocksFetchInterceptorInstalled = true;
 
+    function attachSharedJson(response, data) {
+      if (!response || !data) return response;
+      try {
+        response.json = async function () {
+          return data;
+        };
+        const originalClone = typeof response.clone === 'function' ? response.clone.bind(response) : null;
+        if (originalClone) {
+          response.clone = function () {
+            const cloned = originalClone();
+            return attachSharedJson(cloned, data);
+          };
+        }
+      } catch (_) {}
+      return response;
+    }
+
     window.fetch = async function (...args) {
       const url = args[0] instanceof Request ? args[0].url : String(args[0]);
 
@@ -396,13 +413,13 @@
       try {
         if (HANDSHAKE_URL_PATTERN.test(url)) {
           const match = url.match(HANDSHAKE_URL_PATTERN);
-          response
-            .clone()
-            .json()
-            .then(function (data) {
-              if (match) cacheSnapshot(match[1], data);
-            })
-            .catch(function () {});
+          try {
+            const data = await response.clone().json();
+            if (match) cacheSnapshot(match[1], data);
+            return attachSharedJson(response, data);
+          } catch (_) {
+            return response;
+          }
         }
       } catch (_) {}
 

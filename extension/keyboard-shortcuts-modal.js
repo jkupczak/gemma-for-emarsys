@@ -42,12 +42,12 @@
 
   function getSnippetContextMenuShortcutRows(mod, requireMod) {
     const quickInsert = window.GEM_IS_MAC
-      ? `${mod}+Option+1/2/3`
-      : `${mod}+Shift+1/2/3`;
+      ? `${mod}+Option+0-9`
+      : `${mod}+Shift+0-9`;
     const shared = [
       [`${mod}+Shift+M`, 'Open token menu at the caret (campaign editor; when focused in an insertable field)'],
-      [quickInsert, 'Insert 1st/2nd/3rd most recently used token at the caret'],
-      ['1 / 2 / 3', 'While token menu is open — insert that recent token (not while typing in search)'],
+      [quickInsert, 'Insert the token in quick-insert shortcut 0-9 at the caret (0 = most recently used; 1-9 = your manual shortcuts)'],
+      ['0-9', 'While token menu is open — insert that shortcut\u2019s token (not while typing in search)'],
     ];
     if (requireMod) {
       return [

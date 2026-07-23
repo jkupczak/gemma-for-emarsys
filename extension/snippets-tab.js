@@ -436,14 +436,126 @@ function isNonCollapsedRange(range) {
   }
 }
 
+// Note: prefix intentionally does NOT match the debug-logging-gate.js
+// suppression regex (^\[Gem[\]\-\s]) so these diagnostics always print.
+const GEM_TR_LOG = '[GemTokenReplace]';
+
+function gemTrDescribeNode(node) {
+  if (!node) return 'null';
+  try {
+    if (node.nodeType === Node.TEXT_NODE) {
+      return `#text("${(node.textContent || '').slice(0, 40)}")`;
+    }
+    const attrs = [];
+    if (node.getAttribute?.('e-token')) attrs.push(`e-token=${node.getAttribute('e-token')}`);
+    if (node.hasAttribute?.('data-mce-selected')) attrs.push('data-mce-selected');
+    if (node.hasAttribute?.('data-mce-bogus')) attrs.push('data-mce-bogus');
+    return `<${(node.nodeName || '?').toLowerCase()}${attrs.length ? ' ' + attrs.join(' ') : ''}> text="${(node.textContent || '').slice(0, 40)}" connected=${node.isConnected}`;
+  } catch (e) {
+    return `describe-error: ${e.message}`;
+  }
+}
+
+function gemTrDescribeRange(range) {
+  if (!range) return 'null';
+  try {
+    return `collapsed=${range.collapsed} | start=${gemTrDescribeNode(range.startContainer)} @${range.startOffset} | end=${gemTrDescribeNode(range.endContainer)} @${range.endOffset}`;
+  } catch (e) {
+    return `describe-error: ${e.message}`;
+  }
+}
+
+// Emarsys re-renders the editable content on blur after our raw DOM insert,
+// replacing every node with a fresh copy. Node references and live ranges die
+// in that swap, so the replace target is described by identity (index among
+// the editable's [e-token] nodes + attribute/text signature) and re-located
+// in the current DOM when the remembered reference is disconnected.
+window.gemBuildEmarsysTokenDescriptor = function (node, element) {
+  if (!node || !element) return null;
+  try {
+    const all = Array.from(element.querySelectorAll('[e-token]'));
+    const index = all.indexOf(node);
+    if (index === -1) return null;
+    return {
+      index,
+      eToken: node.getAttribute('e-token') || '',
+      tokenContent: node.getAttribute('token-content') || '',
+      tokenTemplate: node.getAttribute('token-template') || '',
+      text: node.textContent || '',
+    };
+  } catch (_) {
+    return null;
+  }
+};
+
+window.gemRelocateEmarsysTokenNode = function (descriptor, element) {
+  if (!descriptor || !element) return null;
+  try {
+    const all = Array.from(element.querySelectorAll('[e-token]'));
+    const matches = (n) =>
+      (n.getAttribute('e-token') || '') === descriptor.eToken &&
+      (n.getAttribute('token-content') || '') === descriptor.tokenContent &&
+      (n.getAttribute('token-template') || '') === descriptor.tokenTemplate &&
+      (n.textContent || '') === descriptor.text;
+
+    const atIndex = all[descriptor.index];
+    if (atIndex && matches(atIndex)) {
+      console.log(GEM_TR_LOG, 'gemRelocateEmarsysTokenNode: matched by index', descriptor.index, gemTrDescribeNode(atIndex));
+      return atIndex;
+    }
+    const bySignature = all.filter(matches);
+    if (bySignature.length) {
+      console.log(GEM_TR_LOG, 'gemRelocateEmarsysTokenNode: matched by signature (candidates:', bySignature.length + ')', gemTrDescribeNode(bySignature[0]));
+      return bySignature[0];
+    }
+    console.log(GEM_TR_LOG, 'gemRelocateEmarsysTokenNode: no match for descriptor:', descriptor, 'tokens in element:', all.length);
+    return null;
+  } catch (e) {
+    console.log(GEM_TR_LOG, 'gemRelocateEmarsysTokenNode: error:', e.message);
+    return null;
+  }
+};
+
+// When the user has an Emarsys token selected (data-mce-selected), the context
+// menu stores the token node itself on the ctx. Live ranges captured earlier can
+// be invalidated when TinyMCE blurs (it strips the selected flag and removes its
+// off-screen selection helpers), so rebuild the replace range from the node at
+// the moment of insertion — re-locating a fresh copy if the node was swapped
+// out by a re-render.
+function resolveTokenReplaceRange(ctx) {
+  let node = ctx && ctx.replaceTokenNode;
+  const doc = ctx && ctx.doc;
+  const element = ctx && ctx.element;
+  if (!node || !doc || !element) return null;
+  try {
+    if (!node.isConnected || !element.contains(node)) {
+      const relocated = window.gemRelocateEmarsysTokenNode(ctx.replaceTokenDescriptor, element);
+      if (!relocated) {
+        console.log(GEM_TR_LOG, 'resolveTokenReplaceRange: node unusable and not relocatable:', gemTrDescribeNode(node));
+        return null;
+      }
+      console.log(GEM_TR_LOG, 'resolveTokenReplaceRange: relocated stale node to:', gemTrDescribeNode(relocated));
+      node = relocated;
+      ctx.replaceTokenNode = relocated;
+    }
+    const range = doc.createRange();
+    range.selectNode(node);
+    console.log(GEM_TR_LOG, 'resolveTokenReplaceRange: rebuilt range:', gemTrDescribeRange(range));
+    return range;
+  } catch (e) {
+    console.log(GEM_TR_LOG, 'resolveTokenReplaceRange: failed:', e.message);
+    return null;
+  }
+}
+
 function resolveContentEditableInsertRange(ctx) {
   const doc = ctx.doc;
   const element = ctx.element;
   if (!doc || !element) return null;
 
-  let range = null;
+  let range = resolveTokenReplaceRange(ctx);
 
-  if (ctx.savedRange && isNonCollapsedRange(ctx.savedRange) && isRangeInsideEditable(ctx.savedRange, element)) {
+  if (!range && ctx.savedRange && isNonCollapsedRange(ctx.savedRange) && isRangeInsideEditable(ctx.savedRange, element)) {
     range = ctx.savedRange;
   }
 
@@ -535,9 +647,9 @@ function restoreContentEditableCaret(ctx) {
   if (!doc || !element) return { editor: null, range: null };
 
   const editor = findTinyMCEEditorForCtx(ctx);
-  let range = null;
+  let range = resolveTokenReplaceRange(ctx);
 
-  if (ctx.savedRange && isNonCollapsedRange(ctx.savedRange) && isRangeInsideEditable(ctx.savedRange, element)) {
+  if (!range && ctx.savedRange && isNonCollapsedRange(ctx.savedRange) && isRangeInsideEditable(ctx.savedRange, element)) {
     range = ctx.savedRange;
   }
 
@@ -735,6 +847,8 @@ function serializeRangeForBridge(range, doc) {
   }
 }
 
+const GEM_REPLACE_TARGET_ATTR = 'data-gem-replace-target';
+
 async function tryInsertViaIframeBridge(ctx, html, timeoutMs = 600) {
   const doc = ctx && ctx.doc;
   const element = ctx && ctx.element;
@@ -761,7 +875,28 @@ async function tryInsertViaIframeBridge(ctx, html, timeoutMs = 600) {
     payload.caret = caretResponse.caret;
   }
 
-  if (
+  // Serialized index paths go stale when TinyMCE mutates the DOM between our
+  // postMessage and the bridge's editor.focus() (fake-caret containers,
+  // off-screen selection helpers). For token replacement, tag the node with an
+  // attribute so the bridge can find and select it at the moment of insertion.
+  // resolveTokenReplaceRange re-locates a stale node and updates
+  // ctx.replaceTokenNode, so run it before tagging the node for the bridge.
+  const tokenReplaceRange = resolveTokenReplaceRange(ctx);
+  const tokenNode = tokenReplaceRange ? ctx.replaceTokenNode : null;
+  console.log(GEM_TR_LOG, 'tryInsertViaIframeBridge: replaceTokenNode on ctx:', gemTrDescribeNode(ctx.replaceTokenNode), '-> usable:', !!tokenNode);
+  if (tokenNode) {
+    try {
+      tokenNode.setAttribute(GEM_REPLACE_TARGET_ATTR, '1');
+      payload.replaceTargetAttr = GEM_REPLACE_TARGET_ATTR;
+      console.log(GEM_TR_LOG, 'tryInsertViaIframeBridge: tagged token node:', tokenNode.outerHTML.slice(0, 200));
+    } catch (e) {
+      console.log(GEM_TR_LOG, 'tryInsertViaIframeBridge: tagging failed:', e.message);
+    }
+  }
+
+  if (tokenReplaceRange) {
+    payload.selectionRange = serializeRangeForBridge(tokenReplaceRange, doc);
+  } else if (
     ctx.savedRange &&
     isNonCollapsedRange(ctx.savedRange) &&
     isRangeInsideEditable(ctx.savedRange, element)
@@ -771,7 +906,30 @@ async function tryInsertViaIframeBridge(ctx, html, timeoutMs = 600) {
     payload.point = ctx.caretPoint;
   }
 
-  const response = await postMessageToSnippetBridge(contentWindow, 'insert', payload, timeoutMs);
+  console.log(GEM_TR_LOG, 'tryInsertViaIframeBridge: payload:', {
+    editorId: payload.editorId,
+    elementId: payload.elementId,
+    replaceTargetAttr: payload.replaceTargetAttr || null,
+    selectionRange: payload.selectionRange || null,
+    point: payload.point || null,
+    hasCaret: !!payload.caret,
+  });
+
+  let response = null;
+  try {
+    response = await postMessageToSnippetBridge(contentWindow, 'insert', payload, timeoutMs);
+    console.log(GEM_TR_LOG, 'tryInsertViaIframeBridge: bridge response:', response);
+  } finally {
+    // The bridge strips the marker before inserting; clean up any leftovers
+    // (e.g. bridge missing or insert failed) so it never reaches saved content.
+    if (tokenNode) {
+      try {
+        doc
+          .querySelectorAll(`[${GEM_REPLACE_TARGET_ATTR}]`)
+          .forEach((node) => node.removeAttribute(GEM_REPLACE_TARGET_ATTR));
+      } catch (_) {}
+    }
+  }
 
   return !!(response && response.ok);
 }
@@ -787,15 +945,25 @@ async function insertHtmlIntoContentEditable(ctx, html, options = {}) {
   const isIframeDoc = doc.defaultView && doc.defaultView !== window;
   let insertedViaTinyMCE = false;
 
+  console.log(GEM_TR_LOG, 'insertHtmlIntoContentEditable: start', {
+    isIframeDoc: !!isIframeDoc,
+    placeCaretAfter,
+    savedRange: gemTrDescribeRange(ctx.savedRange),
+    replaceTokenNode: gemTrDescribeNode(ctx.replaceTokenNode),
+  });
+
   if (isIframeDoc) {
     insertedViaTinyMCE = await tryInsertViaIframeBridge(ctx, insertHtml, bridgeTimeoutMs);
+    console.log(GEM_TR_LOG, 'insertHtmlIntoContentEditable: bridge insert ok =', insertedViaTinyMCE);
   }
 
   if (!insertedViaTinyMCE) {
+    console.log(GEM_TR_LOG, 'insertHtmlIntoContentEditable: falling back to direct insert path');
     let { range } = restoreContentEditableCaret(ctx);
     if (!range) {
       range = resolveContentEditableInsertRange(ctx);
     }
+    console.log(GEM_TR_LOG, 'insertHtmlIntoContentEditable: direct insert range:', gemTrDescribeRange(range));
     if (!range) return false;
 
     insertedViaTinyMCE = tryInsertContentEditableViaTinyMCE(doc, element, insertHtml, ctx);
@@ -2632,6 +2800,11 @@ function createSnippetModalHTML(isEditing = false) {
         <label class="e-field__label e-field__label-inline" for="gem-snippet-description-input">Description</label>
         <textarea class="e-input gem-scrollable" id="gem-snippet-description-input" placeholder="Optional description (max 200 characters)" maxlength="200" style="background-color:var(--token-input-default-background); width: 100%; min-height: 100px; resize: vertical; padding: 10px 12px;"></textarea>
       </div>
+      <div class="e-field">
+        <label class="e-field__label e-field__label-inline" for="gem-snippet-shortcut-select">Quick-insert shortcut</label>
+        <select class="e-input" id="gem-snippet-shortcut-select"><option value="0">Not assigned</option></select>
+        <div class="sub-label" style="font-size:12px; opacity:0.75; margin-top:4px;">Lets you insert this snippet from the Gemma Token menu by pressing this number.</div>
+      </div>
       <div style="margin-top: 6px;">
         <div style="display:flex; gap:10px; align-items:flex-end; margin-bottom:4px;">
           <div style="width:100%;">Optional Keyword for Swapping</div>
@@ -4244,7 +4417,7 @@ function initializeSnippetsTab() {
     });
   }
 
-  function applySwapForSingleSnippet(snippet) {
+  async function applySwapForSingleSnippet(snippet) {
     const iframe = getGemSnippetTargetIframe();
     if (!iframe) return;
 
@@ -4262,6 +4435,40 @@ function initializeSnippetsTab() {
       window.gemShowToast && window.gemShowToast('No panel-eligible keyword swaps for this snippet.', { type: 'info' });
       return;
     }
+
+    // Wake lazy TinyMCE on dormant [e-editable] fields before swapping.
+    // Prefer the shared preview doc helper (same iframe Magic Fill / F&R use).
+    const frDom = window.gemFindReplaceDom;
+    const primeFn = frDom && frDom.primeEmarsysEditablesInDoc;
+    const previewDocFromFr =
+      frDom && typeof frDom.getPreviewDocument === 'function'
+        ? frDom.getPreviewDocument()
+        : null;
+    const targetDoc = previewDocFromFr || doc;
+
+    if (typeof primeFn === 'function') {
+      try {
+        const primeResult = await primeFn(targetDoc, {
+          // Broad prime like Magic Fill / F&R so cold-loaded drafts wake TinyMCE.
+          filter: (el) => String(el.textContent || '').trim().length > 0,
+          release: false,
+        });
+        try {
+          console.log('[GemKeywordSwap] primed editables', primeResult);
+        } catch (_) {}
+      } catch (e) {
+        try {
+          console.warn('[GemKeywordSwap] prime failed', e && e.message ? e.message : e);
+        } catch (_) {}
+      }
+    } else {
+      try {
+        console.warn('[GemKeywordSwap] primeEmarsysEditablesInDoc unavailable');
+      } catch (_) {}
+    }
+
+    // Re-resolve doc after prime in case the shared helper pointed at desktop iframe.
+    doc = targetDoc;
 
     const isInsideExistingToken = (node) => {
       let cur = node;
@@ -4281,7 +4488,21 @@ function initializeSnippetsTab() {
     let swapCount = 0;
     const touched = new Set();
 
-    const editables = Array.from(doc.querySelectorAll('[contenteditable="true"]'));
+    // After priming, prefer live contenteditable hosts; also include [e-editable]
+    // that still lack contenteditable (prime timed out) so we don't miss swaps.
+    const editableSet = new Set();
+    Array.from(doc.querySelectorAll('[contenteditable="true"]')).forEach((el) => editableSet.add(el));
+    Array.from(doc.querySelectorAll('[e-editable]')).forEach((el) => {
+      if (el.tagName !== 'IMG') editableSet.add(el);
+    });
+    const editables = Array.from(editableSet);
+    try {
+      console.log('[GemKeywordSwap] scanning editables', {
+        contentEditable: doc.querySelectorAll('[contenteditable="true"]').length,
+        eEditable: doc.querySelectorAll('[e-editable]').length,
+        combined: editables.length,
+      });
+    } catch (_) {}
     editables.forEach((editable) => {
       const walker = doc.createTreeWalker(
         editable,
@@ -4369,8 +4590,12 @@ function initializeSnippetsTab() {
     });
 
     if (didChange) {
-      markEmarsysDraftDirty(doc, Array.from(touched));
-      nudgeEmarsysDirtyDetectionViaFocus(doc, Array.from(touched));
+      if (frDom && typeof frDom.markEmailBodyDirty === 'function') {
+        frDom.markEmailBodyDirty(doc, Array.from(touched));
+      } else {
+        markEmarsysDraftDirty(doc, Array.from(touched));
+        nudgeEmarsysDirtyDetectionViaFocus(doc, Array.from(touched));
+      }
     }
 
     const msg =
@@ -4388,6 +4613,7 @@ function initializeSnippetsTab() {
   const GEM_EMARSYS_ESL_NAME_INPUT_ID = 'cbp-esl-token-dialog-input-name';
   const GEM_EMARSYS_CATEGORY_INPUT_ID = 'gem-esl-category-input';
   const GEM_EMARSYS_DESCRIPTION_INPUT_ID = 'gem-esl-description-input';
+  const GEM_EMARSYS_SHORTCUT_SELECT_ID = 'gem-esl-shortcut-select';
   const GEM_EMARSYS_SWAP_KEYWORDS_ROWS_ID = 'gem-esl-swap-keywords-rows';
   const GEM_EMARSYS_ADD_SWAP_KEYWORD_BTN_ID = 'gem-esl-add-swap-keyword-btn';
 
@@ -4420,6 +4646,9 @@ function initializeSnippetsTab() {
     const opened = tryOpenEmarsysEslModal({
       mode: 'add',
       snippetId: null,
+      pendingId:
+        (window.gemGenerateSnippetId && window.gemGenerateSnippetId()) ||
+        `snippet-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       favorite: false,
       category: '',
       name: '',
@@ -4719,6 +4948,7 @@ function initializeSnippetsTab() {
       const category = (dialogRoot.querySelector(`#${GEM_EMARSYS_CATEGORY_INPUT_ID}`)?.value || '').trim();
       const description = (dialogRoot.querySelector(`#${GEM_EMARSYS_DESCRIPTION_INPUT_ID}`)?.value || '').trim();
       const favorite = dialogRoot.dataset.gemFavorite === 'true';
+      const shortcutSlot = Number(dialogRoot.querySelector(`#${GEM_EMARSYS_SHORTCUT_SELECT_ID}`)?.value || 0);
       const rowsContainer = dialogRoot.querySelector(`#${GEM_EMARSYS_SWAP_KEYWORDS_ROWS_ID}`);
       let swapKeywords = [];
       if (rowsContainer) {
@@ -4740,12 +4970,12 @@ function initializeSnippetsTab() {
           delete gemOk.dataset.gemReading;
           // Respect validation busy state
           gemOk.disabled = gemOk.dataset.gemValidating === 'true';
-          handleSnippetSaveFromValues({ favorite, category, name, code: code.trim(), description, swapKeywords }, context.snippetId, dialogRoot);
+          handleSnippetSaveFromValues({ favorite, category, name, code: code.trim(), description, swapKeywords, shortcutSlot }, context.snippetId, dialogRoot, context.pendingId);
         })
         .catch(() => {
           delete gemOk.dataset.gemReading;
           gemOk.disabled = gemOk.dataset.gemValidating === 'true';
-          handleSnippetSaveFromValues({ favorite, category, name, code: '', description, swapKeywords }, context.snippetId, dialogRoot);
+          handleSnippetSaveFromValues({ favorite, category, name, code: '', description, swapKeywords, shortcutSlot }, context.snippetId, dialogRoot, context.pendingId);
         });
     });
 
@@ -4826,6 +5056,25 @@ function initializeSnippetsTab() {
       }
     }
 
+    // Quick-insert shortcut field (below Description)
+    if (!dialogRoot.querySelector(`#${GEM_EMARSYS_SHORTCUT_SELECT_ID}`)) {
+      const shortcutField = document.createElement('div');
+      shortcutField.className = 'e-field';
+      shortcutField.innerHTML = `
+        <label class="e-field__label e-field__label-inline" for="${GEM_EMARSYS_SHORTCUT_SELECT_ID}">Quick-insert shortcut</label>
+        <select class="e-input" id="${GEM_EMARSYS_SHORTCUT_SELECT_ID}"><option value="0">Not assigned</option></select>
+        <div class="sub-label" style="font-size:12px; opacity:0.75; margin-top:4px;">Lets you insert this snippet from the Gemma Token menu by pressing this number.</div>
+      `.trim();
+
+      const descField = dialogRoot.querySelector(`#${GEM_EMARSYS_DESCRIPTION_INPUT_ID}`)?.closest('.e-field');
+      if (descField && descField.parentElement) {
+        descField.insertAdjacentElement('afterend', shortcutField);
+      } else {
+        const content = dialogRoot.querySelector('.e-dialog__content') || dialogRoot;
+        content.appendChild(shortcutField);
+      }
+    }
+
     // Swap Keywords (multiple per snippet), injected below Description
     let swapSection = dialogRoot.querySelector('#gem-esl-swap-keywords-section');
     if (!swapSection) {
@@ -4844,9 +5093,11 @@ function initializeSnippetsTab() {
         <button class="e-btn" id="${GEM_EMARSYS_ADD_SWAP_KEYWORD_BTN_ID}" type="button" style="width: 100%;">+ Add a Keyword for Swapping</button>
       `.trim();
 
-      const descField = dialogRoot.querySelector(`#${GEM_EMARSYS_DESCRIPTION_INPUT_ID}`)?.closest('.e-field');
-      if (descField && descField.parentElement) {
-        descField.insertAdjacentElement('afterend', swapSection);
+      const anchorField =
+        dialogRoot.querySelector(`#${GEM_EMARSYS_SHORTCUT_SELECT_ID}`)?.closest('.e-field') ||
+        dialogRoot.querySelector(`#${GEM_EMARSYS_DESCRIPTION_INPUT_ID}`)?.closest('.e-field');
+      if (anchorField && anchorField.parentElement) {
+        anchorField.insertAdjacentElement('afterend', swapSection);
       } else {
         const content = dialogRoot.querySelector('.e-dialog__content') || dialogRoot;
         content.appendChild(swapSection);
@@ -4866,6 +5117,15 @@ function initializeSnippetsTab() {
       descInput.value = context.description;
       descInput.dispatchEvent(new Event('input', { bubbles: true }));
       descInput.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    const shortcutSelect = dialogRoot.querySelector(`#${GEM_EMARSYS_SHORTCUT_SELECT_ID}`);
+    if (shortcutSelect) {
+      const shortcutKey = context.snippetId || context.pendingId;
+      populateShortcutSelect(
+        shortcutSelect,
+        window.gemGemmaPrefixedId && shortcutKey ? window.gemGemmaPrefixedId(shortcutKey) : (shortcutKey ? `g:${shortcutKey}` : null)
+      );
     }
 
     const rowsContainer = dialogRoot.querySelector(`#${GEM_EMARSYS_SWAP_KEYWORDS_ROWS_ID}`);
@@ -4998,12 +5258,31 @@ function initializeSnippetsTab() {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   }
 
-  function handleSnippetSaveFromValues(values, editingSnippetId = null, dialogRoot = null) {
+  function applyShortcutSlotFromValues(shortcutSlot, snippetId, snippetName) {
+    if (typeof window.gemAssignShortcutSlot !== 'function' || typeof window.gemUnassignShortcutSlotByKey !== 'function') return;
+    const key = window.gemGemmaPrefixedId ? window.gemGemmaPrefixedId(snippetId) : `g:${snippetId}`;
+    const slot = Number(shortcutSlot || 0);
+    if (!slot) {
+      window.gemUnassignShortcutSlotByKey(key, () => {});
+      return;
+    }
+    window.gemAssignShortcutSlot(slot, { key, name: snippetName, kind: 'gemma' }, (result) => {
+      if (result && result.ok && result.displaced && window.gemShowToast) {
+        window.gemShowToast(
+          `Shortcut ${slot} moved from "${result.displaced.name}" to "${snippetName}".`,
+          { type: 'info', durationMs: 2800 }
+        );
+      }
+    });
+  }
+
+  function handleSnippetSaveFromValues(values, editingSnippetId = null, dialogRoot = null, pendingId = null) {
     const category = (values?.category || '').trim();
     const name = (values?.name || '').trim();
     const code = (values?.code || '').trim();
     const description = (values?.description || '').trim();
     const favorite = !!values?.favorite;
+    const shortcutSlot = Number(values?.shortcutSlot || 0);
     const swapKeywords = Array.isArray(values?.swapKeywords)
       ? values.swapKeywords
           .map((k) => ({
@@ -5051,12 +5330,13 @@ function initializeSnippetsTab() {
           return next;
         });
         saveSnippets(updatedSnippets, () => {
+          applyShortcutSlotFromValues(shortcutSlot, editingSnippetId, name);
           refreshSnippetsDisplay();
           if (dialogRoot) closeEmarsysDialog(dialogRoot);
         });
       } else {
         const newSnippet = {
-          id: (window.gemGenerateSnippetId && window.gemGenerateSnippetId()) || `snippet-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          id: pendingId || (window.gemGenerateSnippetId && window.gemGenerateSnippetId()) || `snippet-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           favorite,
           category,
           name,
@@ -5065,6 +5345,7 @@ function initializeSnippetsTab() {
           swapKeywords
         };
         saveSnippets([...snippets, newSnippet], () => {
+          applyShortcutSlotFromValues(shortcutSlot, newSnippet.id, name);
           refreshSnippetsDisplay();
           if (dialogRoot) closeEmarsysDialog(dialogRoot);
         });
@@ -5079,6 +5360,10 @@ function initializeSnippetsTab() {
     getSnippets((snippets) => {
       const updatedSnippets = snippets.filter(snippet => snippet.id !== snippetId);
       saveSnippets(updatedSnippets, () => {
+        if (typeof window.gemUnassignShortcutSlotByKey === 'function') {
+          const key = window.gemGemmaPrefixedId ? window.gemGemmaPrefixedId(snippetId) : `g:${snippetId}`;
+          window.gemUnassignShortcutSlotByKey(key, () => {});
+        }
         refreshSnippetsDisplay();
         if (dialogRoot) closeEmarsysDialog(dialogRoot);
       });
@@ -5243,13 +5528,63 @@ function initializeSnippetsTab() {
     });
   }
 
+  // ------------------------------------------------------------
+  // Quick-insert shortcut (1-9) field shared between the Gem modal + the
+  // Emarsys-patched ESL dialog. Backed by shortcut-slots.js.
+  // ------------------------------------------------------------
+
+  function populateShortcutSelectOptions(selectEl, currentKey, map) {
+    if (!selectEl) return;
+    let html = '<option value="0">Not assigned</option>';
+    for (let slot = 1; slot <= 9; slot++) {
+      const entry = map[String(slot)];
+      let label = String(slot);
+      if (entry && entry.key && entry.key !== currentKey) {
+        label += ` \u2014 currently: ${escapeHtmlText(entry.name)}`;
+      } else if (entry && entry.key === currentKey) {
+        label += ' (current)';
+      }
+      html += `<option value="${slot}">${label}</option>`;
+    }
+    selectEl.innerHTML = html;
+    const currentSlot = (window.gemGetShortcutSlotForKey && currentKey)
+      ? window.gemGetShortcutSlotForKey(map, currentKey)
+      : 0;
+    selectEl.value = String(currentSlot || 0);
+  }
+
+  function populateShortcutSelect(selectEl, currentKey) {
+    if (!selectEl) return;
+    if (typeof window.gemLoadShortcutSlots !== 'function') {
+      populateShortcutSelectOptions(selectEl, currentKey, {});
+      return;
+    }
+    window.gemLoadShortcutSlots((map) => {
+      populateShortcutSelectOptions(selectEl, currentKey, map || {});
+    });
+  }
+
+  function applyShortcutSelectValue(selectEl, snippetId, snippetName) {
+    if (!selectEl) return;
+    applyShortcutSlotFromValues(selectEl.value, snippetId, snippetName);
+  }
+
   // Function to open the snippet modal
   function openSnippetModal(snippetId = null) {
     // Remove any existing modal
     closeSnippetModal();
 
+    // New snippets get a stable id up front so the quick-insert shortcut picker
+    // has something to assign to before the snippet is actually saved.
+    const pendingId =
+      snippetId ||
+      (window.gemGenerateSnippetId && window.gemGenerateSnippetId()) ||
+      `snippet-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
     // Add modal to page
     document.body.insertAdjacentHTML('beforeend', createSnippetModalHTML(!!snippetId));
+    const rootEl = document.getElementById('gem-snippet-modal');
+    if (rootEl) rootEl.dataset.gemPendingSnippetId = pendingId;
 
     // Set up modal event handlers after a brief delay to ensure DOM is ready
     setTimeout(() => {
@@ -5270,6 +5605,7 @@ function initializeSnippetsTab() {
             const rowsContainer = document.getElementById('gem-swap-keywords-rows');
             const addBtn = document.getElementById('gem-add-swap-keyword-btn');
             const favBtn = document.getElementById('gem-modal-favorite-btn');
+            const shortcutSelect = document.getElementById('gem-snippet-shortcut-select');
 
             if (categoryInput) categoryInput.value = snippet.category || '';
             if (nameInput) {
@@ -5286,6 +5622,12 @@ function initializeSnippetsTab() {
               resetSwapKeywordRowsUI(rowsContainer, normalizeSwapKeywordsFromSnippet(snippet));
             }
             if (favBtn) setGemModalFavoriteState(!!snippet.favorite);
+            if (shortcutSelect) {
+              populateShortcutSelect(
+                shortcutSelect,
+                window.gemGemmaPrefixedId ? window.gemGemmaPrefixedId(snippetId) : `g:${snippetId}`
+              );
+            }
           }, 100);
         }
       });
@@ -5300,6 +5642,13 @@ function initializeSnippetsTab() {
         const modalRoot = document.getElementById('gem-snippet-modal');
         const rowsContainer = document.getElementById('gem-swap-keywords-rows');
         const addBtn = document.getElementById('gem-add-swap-keyword-btn');
+        const shortcutSelect = document.getElementById('gem-snippet-shortcut-select');
+        if (shortcutSelect) {
+          populateShortcutSelect(
+            shortcutSelect,
+            window.gemGemmaPrefixedId ? window.gemGemmaPrefixedId(pendingId) : `g:${pendingId}`
+          );
+        }
         if (modalRoot && rowsContainer) {
           bindSwapKeywordRowsHandlers(modalRoot, rowsContainer, addBtn);
           resetSwapKeywordRowsUI(rowsContainer, []);
@@ -5399,6 +5748,9 @@ function initializeSnippetsTab() {
     const codeInput = document.getElementById('gem-snippet-code-input');
     const descInput = document.getElementById('gem-snippet-description-input');
     const rowsContainer = document.getElementById('gem-swap-keywords-rows');
+    const shortcutSelect = document.getElementById('gem-snippet-shortcut-select');
+    const modalRoot = document.getElementById('gem-snippet-modal');
+    const pendingId = modalRoot?.dataset?.gemPendingSnippetId || null;
 
     if (!nameInput || !codeInput) {
       console.log("[Gem] Modal inputs not found");
@@ -5466,6 +5818,7 @@ function initializeSnippetsTab() {
         // Save to storage
         saveSnippets(updatedSnippets, () => {
           console.log("[Gem] Snippet updated:", editingSnippetId);
+          applyShortcutSelectValue(shortcutSelect, editingSnippetId, name);
 
           // Close modal
           closeSnippetModal();
@@ -5474,9 +5827,10 @@ function initializeSnippetsTab() {
           refreshSnippetsDisplay();
         });
       } else {
-        // Create new snippet
+        // Create new snippet (reuse the pending id so it matches whatever the
+        // quick-insert shortcut select was populated/assigned against).
         const newSnippet = {
-          id: (window.gemGenerateSnippetId && window.gemGenerateSnippetId()) || `snippet-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          id: pendingId || (window.gemGenerateSnippetId && window.gemGenerateSnippetId()) || `snippet-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           favorite,
           category: category,
           name: name,
@@ -5491,6 +5845,7 @@ function initializeSnippetsTab() {
         // Save to storage
         saveSnippets(updatedSnippets, () => {
           console.log("[Gem] New snippet saved:", newSnippet);
+          applyShortcutSelectValue(shortcutSelect, newSnippet.id, name);
 
           // Close modal
           closeSnippetModal();
@@ -5518,6 +5873,10 @@ function initializeSnippetsTab() {
       // Save to storage
       saveSnippets(updatedSnippets, () => {
         console.log("[Gem] Snippet deleted:", snippetId);
+        if (typeof window.gemUnassignShortcutSlotByKey === 'function') {
+          const key = window.gemGemmaPrefixedId ? window.gemGemmaPrefixedId(snippetId) : `g:${snippetId}`;
+          window.gemUnassignShortcutSlotByKey(key, () => {});
+        }
 
         // Close modal
         closeSnippetModal();

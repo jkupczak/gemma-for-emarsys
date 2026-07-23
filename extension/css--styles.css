@@ -2837,7 +2837,7 @@ e-float-container .e-dialog-iframe .e-dialog__content {
 }
 
 e-verticalnav-menu {
-    gap: 6px !important;
+    gap: 0 !important;
     display: flex !important;
     flex-direction: column !important;
 }

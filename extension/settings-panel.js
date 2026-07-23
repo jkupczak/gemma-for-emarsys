@@ -327,7 +327,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
     {
       id: "snippets",
       label: "Snippets",
-      syncKeys: ["gemSnippets", "sm", "s_meta", "gemPinnedPersTokens", ...Array.from({ length: GEM_SNIPPET_MAX_CHUNKS }, (_, i) => `s${i}`)],
+      syncKeys: ["gemSnippets", "sm", "s_meta", "gemPinnedPersTokens", "gemManualShortcutSlots", ...Array.from({ length: GEM_SNIPPET_MAX_CHUNKS }, (_, i) => `s${i}`)],
       localKeys: ["gemSnippetContextRecent", "gemPersTokenRecentCache"]
     },
     {
@@ -902,6 +902,14 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
             </p>
           </div>
 
+        </div>
+
+        <div class="gem-setting-section" id="gem-settings-shortcut-slots">
+          <h3>Quick-Insert Shortcuts</h3>
+          <p class="gem-setting-info">
+            Shortcut 0 always points at your most recently used snippet or token. Shortcuts 1-9 are assigned by you &mdash; from the overflow (&hellip;) menu on a row in the Gemma Token menu, from the "Quick-insert shortcut" field when editing a snippet, or right here.
+          </p>
+          <div id="gem-shortcut-slots-list"></div>
         </div>
 
         <div class="gem-setting-section gem-setting-section-content-block-toolbar">
@@ -1802,6 +1810,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
         // Load saved searches
         loadSavedSearches();
         loadPreflightNeverCheckList();
+        loadShortcutSlotsSection();
 
         chrome.storage.local.get({ [GEM_DEBUG_LOGGING_KEY]: false }, (debugRes) => {
           const debugEl = document.getElementById("opt-debug-logging");
@@ -2266,6 +2275,187 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
     } finally {
       _gemPasteUiSyncing = false;
     }
+  }
+
+  // ------------------------------------------------------------
+  // Quick-Insert Shortcuts (slots 1-9) overview + assignment
+  // ------------------------------------------------------------
+
+  // Gathers every Gemma snippet + personalization token that can be assigned to a
+  // shortcut slot. Both sources are only available while this panel happens to be
+  // open on the campaign content editor page (where snippets-tab.js / personalization-tokens.js
+  // are loaded); elsewhere the lists resolve empty and the UI degrades gracefully.
+  function loadAssignableShortcutItems() {
+    const snippetsPromise = new Promise((resolve) => {
+      if (typeof window.getSnippets !== 'function') {
+        resolve([]);
+        return;
+      }
+      try {
+        window.getSnippets((snippets) => {
+          resolve(
+            Array.isArray(snippets)
+              ? snippets.map((s) => ({
+                  key: window.gemGemmaPrefixedId ? window.gemGemmaPrefixedId(s.id) : `g:${s.id}`,
+                  name: s.name || 'Untitled snippet',
+                  kind: 'gemma',
+                }))
+              : []
+          );
+        });
+      } catch (_) {
+        resolve([]);
+      }
+    });
+
+    const persPromise =
+      typeof window.gemEnsurePersonalizationTokensLoaded === 'function'
+        ? window.gemEnsurePersonalizationTokensLoaded()
+            .then((tokens) =>
+              Array.isArray(tokens)
+                ? tokens.map((t) => ({
+                    key: window.gemPersPrefixedId ? window.gemPersPrefixedId(t._id) : `p:${t._id}`,
+                    name: t.displayName || t.name || t._id,
+                    kind: 'personalization',
+                  }))
+                : []
+            )
+            .catch(() => [])
+        : Promise.resolve([]);
+
+    return Promise.all([snippetsPromise, persPromise]).then(([snippets, persTokens]) => ({
+      snippets,
+      persTokens,
+      hasSource:
+        typeof window.getSnippets === 'function' ||
+        typeof window.gemEnsurePersonalizationTokensLoaded === 'function',
+    }));
+  }
+
+  function buildShortcutSlotOptions(selectEl, entry, snippets, persTokens) {
+    const currentKey = entry ? entry.key : '';
+    const combinedKeys = new Set([...snippets, ...persTokens].map((it) => it.key));
+    selectEl.innerHTML = '';
+
+    const noneOpt = document.createElement('option');
+    noneOpt.value = '';
+    noneOpt.textContent = 'Not assigned';
+    selectEl.appendChild(noneOpt);
+
+    if (entry && !combinedKeys.has(entry.key)) {
+      const currentOpt = document.createElement('option');
+      currentOpt.value = entry.key;
+      currentOpt.textContent = `${entry.name || entry.key} (current)`;
+      selectEl.appendChild(currentOpt);
+    }
+
+    const byName = (a, b) => String(a.name).localeCompare(String(b.name));
+
+    if (snippets.length) {
+      const group = document.createElement('optgroup');
+      group.label = 'Gemma Snippets';
+      snippets
+        .slice()
+        .sort(byName)
+        .forEach((it) => {
+          const opt = document.createElement('option');
+          opt.value = it.key;
+          opt.textContent = it.name;
+          group.appendChild(opt);
+        });
+      selectEl.appendChild(group);
+    }
+
+    if (persTokens.length) {
+      const group = document.createElement('optgroup');
+      group.label = 'Personalization Tokens';
+      persTokens
+        .slice()
+        .sort(byName)
+        .forEach((it) => {
+          const opt = document.createElement('option');
+          opt.value = it.key;
+          opt.textContent = it.name;
+          group.appendChild(opt);
+        });
+      selectEl.appendChild(group);
+    }
+
+    selectEl.value = currentKey;
+  }
+
+  function renderShortcutSlotRow(slot, entry, assignable) {
+    const row = document.createElement('div');
+    row.className = 'color-swatch-item gem-shortcut-slot-item';
+
+    const numberEl = document.createElement('div');
+    numberEl.className = 'color-swatch-number';
+    numberEl.textContent = `Shortcut ${slot}`;
+    row.appendChild(numberEl);
+
+    const select = document.createElement('select');
+    select.className = 'color-swatch-input';
+    select.style.flex = '1';
+    select.style.minWidth = '0';
+    select.setAttribute('aria-label', `Item assigned to quick-insert shortcut ${slot}`);
+    buildShortcutSlotOptions(select, entry, assignable.snippets, assignable.persTokens);
+    row.appendChild(select);
+
+    const combined = [...assignable.snippets, ...assignable.persTokens];
+    select.addEventListener('change', () => {
+      const key = select.value;
+      if (!key) {
+        if (typeof window.gemUnassignShortcutSlot !== 'function') return;
+        window.gemUnassignShortcutSlot(slot, () => {
+          loadShortcutSlotsSection();
+        });
+        return;
+      }
+      const picked = combined.find((it) => it.key === key) || (entry && entry.key === key ? entry : null);
+      if (!picked || typeof window.gemAssignShortcutSlot !== 'function') return;
+      window.gemAssignShortcutSlot(slot, picked, (result) => {
+        loadShortcutSlotsSection();
+        if (!result || !result.ok || !window.gemShowToast) return;
+        if (result.displaced) {
+          window.gemShowToast(
+            `Shortcut ${slot} moved from "${result.displaced.name}" to "${picked.name}".`,
+            { type: 'info', durationMs: 2800 }
+          );
+        } else if (result.previousSlot) {
+          window.gemShowToast(
+            `Moved "${picked.name}" from shortcut ${result.previousSlot} to ${slot}.`,
+            { type: 'success', durationMs: 2200 }
+          );
+        }
+      });
+    });
+
+    return row;
+  }
+
+  function loadShortcutSlotsSection() {
+    const container = document.getElementById('gem-shortcut-slots-list');
+    if (!container) return;
+    if (typeof window.gemLoadShortcutSlots !== 'function') {
+      container.innerHTML = '';
+      return;
+    }
+    window.gemLoadShortcutSlots((map) => {
+      loadAssignableShortcutItems().then((assignable) => {
+        container.innerHTML = '';
+        if (!assignable.hasSource) {
+          const note = document.createElement('p');
+          note.className = 'gem-setting-info';
+          note.style.marginBottom = '10px';
+          note.textContent =
+            'Open this panel while editing a campaign to assign new shortcuts here. Existing assignments can still be reviewed and cleared below.';
+          container.appendChild(note);
+        }
+        for (let slot = 1; slot <= 9; slot++) {
+          container.appendChild(renderShortcutSlotRow(slot, map[String(slot)] || null, assignable));
+        }
+      });
+    });
   }
 
   // ------------------------------------------------------------
@@ -2774,6 +2964,10 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
       if (layoutSelect) {
         layoutSelect.value = changes.blocksPanelLayout.newValue;
       }
+    }
+
+    if (window.GEM_SHORTCUT_SLOTS_STORAGE_KEY && changes[window.GEM_SHORTCUT_SLOTS_STORAGE_KEY]) {
+      loadShortcutSlotsSection();
     }
 
     // Content Block Toolbar settings

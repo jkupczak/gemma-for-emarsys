@@ -21,6 +21,7 @@ console.log("[gem] storage-measurement.js loaded");
         key === "s_meta" ||
         key === "gemSnippets" ||
         key === "gemPinnedPersTokens" ||
+        key === "gemManualShortcutSlots" ||
         /^s\d+$/.test(key),
     },
     {

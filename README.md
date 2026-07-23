@@ -50,6 +50,7 @@ e-panel--links.css / e-panels.css          # Panel styles
 - Messaging: settings panel listens for `{ action: "openSettings" }`; nav menu sends both direct and background-broadcast messages.  
 - Storage: Defaults in `background.js`; persisted in `chrome.storage.sync`.  
 - DOM readiness: Mutation observers ensure late-loading nav and block lists get enhancements.
+- Body edits vs language switch: see [`extension/emarsys-body-persistence.md`](extension/emarsys-body-persistence.md) (why iframe/`content` edits vanish on A→B→A, and the override-hook fix).
 
 ## Regression Harness
 

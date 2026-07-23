@@ -1,0 +1,23 @@
+---
+description: Emarsys body edit persistence across language switches (Find & Replace, Magic Fill, Keyword Swap)
+globs: extension/find-replace-dom-utils.js,extension/gem-snippet-iframe-bridge.js,extension/find-replace-panel.js,extension/magic-fill-panel.js,extension/magic-fill-dom-utils.js,extension/snippets-tab.js,extension/content-block-toolbar.js,extension/campaign-draft-data.js,extension/content-blocks-fetch-bridge.js,extension/emarsys-body-persistence.md
+alwaysApply: false
+---
+
+# Emarsys body persistence
+
+Before changing how body text is applied, dirtied, or synced after Find & Replace / Magic Fill / Keyword Swap, read:
+
+**`extension/emarsys-body-persistence.md`**
+
+## Hard rules
+
+1. **Preview iframe DOM is not durable** across language A→B→A. Emarsys rebuilds from its per-language model.
+2. **Writing `vce-iframes-container[content]` alone does not update** `campaign.contents[lang].blocks[].content[field].value`.
+3. **Do not dump live TinyMCE iframe HTML** into `content` — it pollutes the snapshot and breaks toolbars.
+4. **Content scripts cannot see `window.tinymce`** — use MAIN-world `gem-snippet-iframe-bridge.js`.
+5. **Working approach today:** remember per-language field overrides and intercept preview `content` rebuilds (`rememberFieldOverrides` + `installPreviewContentOverrideHook`). Do not remove that path without a proven live-model write.
+
+## If persistence regresses
+
+Check logs for `overrides-remember` and `content-override-flat applied=N` on language switch. Snapshot-only `campaign-model-flat sources=snapshot:…` is not enough.
