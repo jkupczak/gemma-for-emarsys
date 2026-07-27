@@ -51,20 +51,31 @@
   outline: none;
 }
 
+.gem-link-editor-recent-urls-actions {
+  align-items: center;
+  display: inline-flex !important;
+  flex: 0 0 auto;
+  gap: 2px;
+  margin-top: 5px;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
 .gem-link-editor-recent-urls-open,
-.gem-link-editor-recent-urls-open-spacer {
+.gem-link-editor-recent-urls-open-spacer,
+.gem-link-editor-recent-urls-delete {
   align-items: center;
   display: inline-flex !important;
   flex: 0 0 24px;
   height: 24px;
   justify-content: center;
-  margin-top: 5px;
   opacity: 1 !important;
   visibility: visible !important;
   width: 24px;
 }
 
-.gem-link-editor-recent-urls-open {
+.gem-link-editor-recent-urls-open,
+.gem-link-editor-recent-urls-delete {
   background: none;
   border: 0;
   color: #1f1f1f !important;
@@ -76,23 +87,42 @@
 }
 
 .gem-link-editor-recent-urls-open:hover,
-.gem-link-editor-recent-urls-open:focus-visible {
+.gem-link-editor-recent-urls-open:focus-visible,
+.gem-link-editor-recent-urls-delete:hover,
+.gem-link-editor-recent-urls-delete:focus-visible {
   color: var(--token-font-default, #1f1f1f) !important;
   opacity: 1 !important;
   outline: none;
   visibility: visible !important;
 }
 
-.gem-link-editor-recent-urls-open svg {
+.gem-link-editor-recent-urls-open svg,
+.gem-link-editor-recent-urls-delete svg {
   display: block !important;
+  fill: var(--token-text-default) !important;
   height: 18px;
   opacity: 1 !important;
   visibility: visible !important;
   width: 18px;
 }
 
+.gem-link-editor-recent-urls-open svg path,
+.gem-link-editor-recent-urls-delete svg path {
+  fill: var(--token-text-default) !important;
+  opacity: 1 !important;
+}
+
+/* Beat Emarsys float/dialog button styles that hide icon buttons until hover. */
+e-float-container .gem-link-editor-recent-urls .gem-link-editor-recent-urls-actions,
+e-float-container .gem-link-editor-recent-urls .gem-link-editor-recent-urls-open,
+e-float-container .gem-link-editor-recent-urls .gem-link-editor-recent-urls-delete,
+e-float-container .gem-link-editor-recent-urls .gem-link-editor-recent-urls-open svg,
+e-float-container .gem-link-editor-recent-urls .gem-link-editor-recent-urls-delete svg,
+cb-personalizable-input-with-context.link-editor-url .gem-link-editor-recent-urls-actions,
 cb-personalizable-input-with-context.link-editor-url .gem-link-editor-recent-urls-open,
-cb-personalizable-input-with-context.link-editor-url .gem-link-editor-recent-urls-open svg {
+cb-personalizable-input-with-context.link-editor-url .gem-link-editor-recent-urls-delete,
+cb-personalizable-input-with-context.link-editor-url .gem-link-editor-recent-urls-open svg,
+cb-personalizable-input-with-context.link-editor-url .gem-link-editor-recent-urls-delete svg {
   opacity: 1 !important;
   visibility: visible !important;
 }

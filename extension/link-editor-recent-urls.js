@@ -11,6 +11,9 @@ console.log('[Gem] link-editor-recent-urls.js loaded');
   const EXTERNAL_LINK_ICON =
     '<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor" aria-hidden="true"><path d="m256-240-56-56 384-384H240v-80h480v480h-80v-344L256-240Z"/></svg>';
 
+  const DELETE_LINK_ICON =
+    '<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor" aria-hidden="true"><path d="m256-200-56-56 224-224-224-224 56-56 224 224 224-224 56 56-224 224 224 224-56 56-224-224-224 224Z"/></svg>';
+
   /** @type {{ url: string, usedAt: number }[]} */
   let recentUrlsCache = [];
   let storageLoaded = false;
@@ -80,6 +83,16 @@ console.log('[Gem] link-editor-recent-urls.js loaded');
     recentUrlsCache.sort((a, b) => b.usedAt - a.usedAt);
     recentUrlsCache = recentUrlsCache.slice(0, MAX_RECENT_URLS);
     persistRecentUrls();
+  }
+
+  function removeRecentUrl(url) {
+    const trimmed = String(url ?? '').trim();
+    if (!trimmed) return false;
+    const next = recentUrlsCache.filter((item) => item.url !== trimmed);
+    if (next.length === recentUrlsCache.length) return false;
+    recentUrlsCache = next;
+    persistRecentUrls();
+    return true;
   }
 
   function isOpenableUrl(url) {
@@ -245,12 +258,15 @@ console.log('[Gem] link-editor-recent-urls.js loaded');
         const url = item.url;
         const openable = isOpenableUrl(url);
         const openLink = openable
-          ? `<button type="button" class="gem-link-editor-recent-urls-open" data-url="${escapeHtml(url)}" aria-label="Open link in new tab">${EXTERNAL_LINK_ICON}</button>`
+          ? `<button type="button" class="gem-link-editor-recent-urls-open" data-url="${escapeHtml(url)}" title="Open link in new tab" aria-label="Open link in new tab">${EXTERNAL_LINK_ICON}</button>`
           : '<span class="gem-link-editor-recent-urls-open-spacer" aria-hidden="true"></span>';
         return `
           <li class="gem-link-editor-recent-urls-item">
             <button type="button" class="gem-link-editor-recent-urls-insert" data-url="${escapeHtml(url)}">${escapeHtml(url)}</button>
-            ${openLink}
+            <span class="gem-link-editor-recent-urls-actions">
+              ${openLink}
+              <button type="button" class="gem-link-editor-recent-urls-delete" data-url="${escapeHtml(url)}" title="Remove from recent links" aria-label="Remove from recent links">${DELETE_LINK_ICON}</button>
+            </span>
           </li>
         `;
       })
@@ -279,6 +295,17 @@ console.log('[Gem] link-editor-recent-urls.js loaded');
 
   function bindRecentUrlsList(container, linkEditorHost) {
     container.addEventListener('click', (event) => {
+      const deleteBtn = event.target.closest('.gem-link-editor-recent-urls-delete');
+      if (deleteBtn) {
+        event.preventDefault();
+        event.stopPropagation();
+        const url = deleteBtn.getAttribute('data-url');
+        if (url && removeRecentUrl(url)) {
+          refreshMountedLists();
+        }
+        return;
+      }
+
       const openBtn = event.target.closest('.gem-link-editor-recent-urls-open');
       if (openBtn) {
         event.preventDefault();

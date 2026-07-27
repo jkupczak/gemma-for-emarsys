@@ -77,6 +77,33 @@ runCheck('Focus Layout is wired into settings panel UI + storage', () => {
   assert(src.includes('[GEM_FOCUS_LAYOUT_STORAGE_KEY]'));
 });
 
+runCheck('Focus Layout boots early on <html> at document_start', () => {
+  const manifest = JSON.parse(readFile('extension/manifest.json'));
+  const bootEntry = (manifest.content_scripts || []).find(
+    (entry) =>
+      Array.isArray(entry.js) &&
+      entry.js.includes('gem-focus-layout-boot.js') &&
+      entry.run_at === 'document_start'
+  );
+  assert(bootEntry, 'gem-focus-layout-boot.js document_start entry missing');
+  assert(
+    Array.isArray(bootEntry.css) && bootEntry.css.includes('css--focus-layout.css'),
+    'css--focus-layout.css should inject at document_start with boot script'
+  );
+
+  const bootSrc = readFile('extension/gem-focus-layout-boot.js');
+  assert(bootSrc.includes('document.documentElement'));
+  assert(bootSrc.includes('gem-focus-layout'));
+  assert(bootSrc.includes('fullscreenActive'));
+
+  const css = readFile('extension/css--focus-layout.css');
+  assert(css.includes('html.gem-focus-layout'));
+
+  const enhancer = readFile('extension/verticalnav-enhancer.js');
+  assert(!enhancer.includes('waitForElement("main.e-layout__content"'));
+  assert(enhancer.includes('document.documentElement'));
+});
+
 runCheck('email campaign list waits for enabled state without polling intervals', () => {
   const src = readFile('extension/email-campaign-list.js');
   const section = getSection(
@@ -106,6 +133,31 @@ runCheck('keyword swap readiness event wiring exists', () => {
   assert(keywordSwapSrc.includes("window.dispatchEvent(new CustomEvent('gem:keyword-swap-ready'))"));
 });
 
+runCheck('email body replacements use allowlisted HTML sanitizer', () => {
+  const src = readFile('extension/find-replace-dom-utils.js');
+  assert(src.includes('function sanitizeAllowlistedHtml('));
+  assert(src.includes("'strike'"));
+  assert(src.includes('function applyTextReplacementsInEditableRoot('));
+  assert(src.includes('if (hasReplacement && !simulateOnly)'));
+  assert(src.includes('applyTextReplacementsInEditableRoot(root, matcher, replacement, context)'));
+});
+
+runCheck('image alt and subject paths stay plain-text replace', () => {
+  const src = readFile('extension/find-replace-dom-utils.js');
+  const scanImageAlts = getSection(src, 'function scanImageAlts(', 'function bodySyncLog(');
+  assert(!scanImageAlts.includes('applyTextReplacementsInEditableRoot'));
+  assert(scanImageAlts.includes('replaceInString(alt, matcher, replacement)'));
+  const processSection = getSection(src, 'function processHtmlOrTextContent(', 'function makeSnippetFromChange(');
+  assert(!processSection.includes('applyTextReplacementsInEditableRoot'));
+  assert(processSection.includes('textNode.nodeValue = result.text'));
+});
+
+runCheck('Magic Fill panel still escapes preview HTML in UI', () => {
+  const src = readFile('extension/magic-fill-panel.js');
+  assert(src.includes('function escapeHtml('));
+  assert(src.includes('escapeHtml(item.value)'));
+});
+
 runCheck('syntax check for edited files', () => {
   const filesToCheck = [
     'settings-panel.js',
@@ -113,6 +165,8 @@ runCheck('syntax check for edited files', () => {
     'overlay-panel-controls.js',
     'email-campaign-list.js',
     'keyword-swap.js',
+    'find-replace-dom-utils.js',
+    'magic-fill-panel.js',
     'debug-logging-gate.js',
     'platform.js',
     'background.js',

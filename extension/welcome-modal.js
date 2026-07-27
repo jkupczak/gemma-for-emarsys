@@ -158,7 +158,7 @@ function createWelcomeModalHTML() {
               <li>Live link verification, URL never-check lists, image weight thresholds, and icon badge toggles are configurable in Settings.</li>
             </ul>
 
-            <h4>Recent Campaigns Panel</h4>
+            <h4>Gemma Recent Campaigns Panel</h4>
             <ul>
               <li>Keyboard shortcut: ${typeof window.GEM_MOD_KEY !== 'undefined' ? window.GEM_MOD_KEY : 'CTRL'}+/ opens or closes the panel.</li>
               <li>Rows show unsaved-change and Preflight issue notices when applicable.</li>

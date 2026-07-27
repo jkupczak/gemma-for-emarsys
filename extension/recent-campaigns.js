@@ -949,24 +949,132 @@ console.log("[gem] recent-campaigns.js loaded");
     return pinnedCampaignKeys.has(String(entry.item.urlBase || "").trim());
   }
 
+  function parseRecentSearchMatchTerms(query) {
+    const q = String(query || "").trim().toLowerCase();
+    if (!q) return [];
+    const phrases = [];
+    let remainder = q.replace(/"([^"]+)"/g, (_, p1) => {
+      const phrase = String(p1 || "").trim();
+      if (phrase) phrases.push(phrase);
+      return " ";
+    });
+    const terms = remainder.split(/\s+/).map((v) => v.trim()).filter(Boolean);
+    return phrases.concat(terms);
+  }
+
   function recentDisplayEntryMatchesSearch(entry, query) {
     const q = String(query || "").trim().toLowerCase();
     if (!q) return true;
+    const matchTerms = parseRecentSearchMatchTerms(q);
     function matchesSearch(item) {
-      const phrases = [];
-      let remainder = q.replace(/"([^"]+)"/g, (_, p1) => {
-        const phrase = String(p1 || "").trim();
-        if (phrase) phrases.push(phrase);
-        return " ";
-      });
-      const terms = remainder.split(/\s+/).map((v) => v.trim()).filter(Boolean);
       const haystack = `${item.title} ${item.subject} ${(item.languages || []).join(" ")} ${item.id} ${item.versionLetter || ""}`.toLowerCase();
-      return phrases.every((p) => haystack.includes(p)) && terms.every((t) => haystack.includes(t));
+      return matchTerms.every((t) => haystack.includes(t));
     }
     if (entry.type === "group") {
       return entry.siblings.some((item) => matchesSearch(item));
     }
     return matchesSearch(entry.item);
+  }
+
+  function collectRecentSearchMatchRanges(text, query) {
+    const terms = parseRecentSearchMatchTerms(query);
+    if (!terms.length) return [];
+    const source = String(text || "");
+    const lower = source.toLowerCase();
+    const ranges = [];
+    terms.forEach((term) => {
+      if (!term) return;
+      let from = 0;
+      while (from < lower.length) {
+        const idx = lower.indexOf(term, from);
+        if (idx === -1) break;
+        ranges.push({ start: idx, end: idx + term.length });
+        from = idx + Math.max(1, term.length);
+      }
+    });
+    if (!ranges.length) return [];
+    ranges.sort((a, b) => a.start - b.start || a.end - b.end);
+    const merged = [];
+    ranges.forEach((range) => {
+      const last = merged[merged.length - 1];
+      if (last && range.start <= last.end) {
+        last.end = Math.max(last.end, range.end);
+      } else {
+        merged.push({ start: range.start, end: range.end });
+      }
+    });
+    return merged;
+  }
+
+  function applyRecentCampaignTitleText(titleEl, titleText) {
+    if (!titleEl) return;
+    const text = String(titleText || "");
+    while (titleEl.firstChild) titleEl.removeChild(titleEl.firstChild);
+    const ranges = collectRecentSearchMatchRanges(text, activeSearchQuery);
+    if (!ranges.length) {
+      titleEl.textContent = text;
+      return;
+    }
+    let cursor = 0;
+    ranges.forEach((range) => {
+      if (range.start > cursor) {
+        titleEl.appendChild(document.createTextNode(text.slice(cursor, range.start)));
+      }
+      const mark = document.createElement("mark");
+      mark.className = "gem-recent-campaign-search-highlight";
+      mark.textContent = text.slice(range.start, range.end);
+      titleEl.appendChild(mark);
+      cursor = range.end;
+    });
+    if (cursor < text.length) {
+      titleEl.appendChild(document.createTextNode(text.slice(cursor)));
+    }
+  }
+
+  /** Left-click: current tab, unless campaign editor has unsaved draft changes. */
+  function shouldOpenRecentCampaignInNewTab() {
+    return isCampaignPage() && readDraftSaveButtonUnsavedFromDom();
+  }
+
+  function openRecentCampaignNavigation(targetUrl, campaignId, clickEvent) {
+    const url = String(targetUrl || "").trim();
+    if (!url) return;
+    const openInBackground = !!(clickEvent && (clickEvent.ctrlKey || clickEvent.metaKey));
+    if (openInBackground) {
+      try {
+        chrome.runtime.sendMessage({ action: "openInNewTab", url, active: false });
+      } catch (_) {
+        window.open(url, "_blank");
+      }
+      return;
+    }
+    if (shouldOpenRecentCampaignInNewTab()) {
+      chrome.runtime.sendMessage({
+        action: "focusOrOpenCampaignTab",
+        campaignId: String(campaignId || "").trim(),
+        targetUrl: url
+      });
+      return;
+    }
+    const id = String(campaignId || "").trim();
+    if (id) {
+      let currentId = "";
+      if (isCampaignPage()) currentId = String(getCampaignIdFromUrl() || "").trim();
+      else if (isCampaignManagerDetailsPage() || isBootstrapCampaignSiblingPage()) {
+        currentId = String(getCampIdParam() || "").trim();
+      }
+      if (currentId && currentId === id) return;
+    }
+    window.location.assign(url);
+  }
+
+  function openRecentCampaignFromPanel(item, clickEvent) {
+    if (!item) return;
+    openRecentCampaignNavigation(
+      withCurrentSessionId(item.urlBase),
+      item.id,
+      clickEvent
+    );
   }
 
   function buildRecentDisplayRowOpts(entry, baseRowOpts) {
@@ -1034,11 +1142,7 @@ console.log("[gem] recent-campaigns.js loaded");
       chip.setAttribute("aria-label", `Open Version ${letter}`);
       chip.addEventListener("click", (e) => {
         e.stopPropagation();
-        chrome.runtime.sendMessage({
-          action: "focusOrOpenCampaignTab",
-          campaignId: sibling.id,
-          targetUrl: withCurrentSessionId(sibling.urlBase)
-        });
+        openRecentCampaignFromPanel(sibling, e);
       });
       wrap.appendChild(chip);
     });
@@ -1576,22 +1680,7 @@ console.log("[gem] recent-campaigns.js loaded");
     }
 
     function openCampaignUrl(targetUrl, clickEvent) {
-      const openInBackground = !!(clickEvent && (clickEvent.ctrlKey || clickEvent.metaKey));
-      if (menuOpts.navigateInCurrentTab && !openInBackground) {
-        window.location.assign(targetUrl);
-      } else if (openInBackground) {
-        try {
-          chrome.runtime.sendMessage({ action: "openInNewTab", url: targetUrl, active: false });
-        } catch (_) {
-          window.open(targetUrl, "_blank");
-        }
-      } else {
-        chrome.runtime.sendMessage({
-          action: "focusOrOpenCampaignTab",
-          campaignId: String(item.id || ""),
-          targetUrl
-        });
-      }
+      openRecentCampaignNavigation(targetUrl, item.id, clickEvent);
       closeRecentCampaignRowMenu();
     }
 
@@ -1631,7 +1720,13 @@ console.log("[gem] recent-campaigns.js loaded");
       const switchItem = makeNavMenuItem("Switch to tab");
       switchItem.addEventListener("click", (e) => {
         e.stopPropagation();
-        openCampaignUrl(withCurrentSessionId(item.urlBase));
+        const targetUrl = withCurrentSessionId(item.urlBase);
+        chrome.runtime.sendMessage({
+          action: "focusOrOpenCampaignTab",
+          campaignId: String(item.id || ""),
+          targetUrl
+        });
+        closeRecentCampaignRowMenu();
       });
       menu.appendChild(switchItem);
     }
@@ -2469,7 +2564,7 @@ console.log("[gem] recent-campaigns.js loaded");
       <div class="gem-recent-campaigns-panel-main">
         <div class="gem-recent-campaigns-panel-header">
           <span class="gem-recent-campaigns-panel-title">
-            Recent Campaigns
+            Gemma Recent Campaigns
             <span class="gem-shortcut-hint gem-shortcut-hint--on-surface">${getRecentCampaignsShortcutLabel()}</span>
           </span>
           <button type="button" class="gem-recent-campaigns-panel-close" aria-label="Close Recent Campaigns panel">✕</button>
@@ -2769,12 +2864,8 @@ console.log("[gem] recent-campaigns.js loaded");
       row.classList.add(DRAWER_PREVIEW_ACTIVE_ROW_CLASS);
     }
 
-    const openPrimary = () => {
-      chrome.runtime.sendMessage({
-        action: "focusOrOpenCampaignTab",
-        campaignId: primary.id,
-        targetUrl: withCurrentSessionId(primary.urlBase)
-      });
+    const openPrimary = (e) => {
+      openRecentCampaignFromPanel(primary, e);
     };
 
     const inner = document.createElement("div");
@@ -2816,7 +2907,7 @@ console.log("[gem] recent-campaigns.js loaded");
     title.type = "button";
     title.className = "gem-recent-campaign-title gem-recent-campaign-title-link";
     title.setAttribute("aria-label", getCampaignOpenAriaLabel(primary.title, primary.versionLetter));
-    title.textContent = primary.title;
+    applyRecentCampaignTitleText(title, primary.title);
     title.addEventListener("click", openPrimary);
     titleRow.appendChild(title);
     titleRow.appendChild(createCampaignRowOverflowMenu(primary, options));
@@ -2861,13 +2952,8 @@ console.log("[gem] recent-campaigns.js loaded");
     if (previewOpen && previewCampaignId && campaignId === previewCampaignId) {
       row.classList.add(DRAWER_PREVIEW_ACTIVE_ROW_CLASS);
     }
-    const openCampaign = () => {
-      const targetUrl = withCurrentSessionId(item.urlBase);
-      chrome.runtime.sendMessage({
-        action: "focusOrOpenCampaignTab",
-        campaignId: item.id,
-        targetUrl
-      });
+    const openCampaign = (e) => {
+      openRecentCampaignFromPanel(item, e);
     };
 
     const inner = document.createElement("div");
@@ -2909,7 +2995,7 @@ console.log("[gem] recent-campaigns.js loaded");
     title.type = "button";
     title.className = "gem-recent-campaign-title gem-recent-campaign-title-link";
     title.setAttribute("aria-label", getCampaignOpenAriaLabel(item.title, item.versionLetter));
-    title.textContent = item.title;
+    applyRecentCampaignTitleText(title, item.title);
 
     title.addEventListener("click", openCampaign);
     titleRow.appendChild(title);
@@ -2949,13 +3035,8 @@ console.log("[gem] recent-campaigns.js loaded");
     if (previewOpen && previewCampaignId && campaignId === previewCampaignId) {
       row.classList.add(DRAWER_PREVIEW_ACTIVE_ROW_CLASS);
     }
-    const openCampaign = () => {
-      const targetUrl = withCurrentSessionId(item.urlBase);
-      chrome.runtime.sendMessage({
-        action: "focusOrOpenCampaignTab",
-        campaignId: item.id,
-        targetUrl
-      });
+    const openCampaign = (e) => {
+      openRecentCampaignFromPanel(item, e);
     };
 
     const inner = document.createElement("div");
@@ -2971,7 +3052,7 @@ console.log("[gem] recent-campaigns.js loaded");
     title.type = "button";
     title.className = "gem-recent-campaign-title gem-recent-campaign-title-link";
     title.setAttribute("aria-label", getCampaignOpenAriaLabel(item.title, item.versionLetter));
-    title.textContent = item.title;
+    applyRecentCampaignTitleText(title, item.title);
     title.addEventListener("click", openCampaign);
     titleRow.appendChild(title);
     titleRow.appendChild(createCampaignRowOverflowMenu(item));
@@ -3003,8 +3084,7 @@ console.log("[gem] recent-campaigns.js loaded");
         preflightSummary: statusOpts && statusOpts.preflightSummary,
         hidePreview: true,
         hideEditContent: isCampaignPage(),
-        hideEditSettings: isCampaignManagerDetailsPage(),
-        navigateInCurrentTab: true
+        hideEditSettings: isCampaignManagerDetailsPage()
       })
     );
     group.appendChild(list);

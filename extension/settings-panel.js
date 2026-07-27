@@ -117,20 +117,39 @@ function applyGemThemeMode(mode, opts) {
   }
 }
 
-function migrateLegacyFocusLayoutClass(body) {
-  if (!body) return;
-  if (body.classList.contains("gem-expanded")) {
-    body.classList.remove("gem-expanded");
-    body.classList.add("gem-focus-layout");
+function migrateLegacyFocusLayoutClass(root) {
+  const el = root || document.documentElement;
+  if (!el) return;
+  if (el.classList.contains("gem-expanded")) {
+    el.classList.remove("gem-expanded");
+    el.classList.add("gem-focus-layout");
   }
+  try {
+    const body = document.body;
+    if (body) {
+      if (body.classList.contains("gem-expanded")) body.classList.remove("gem-expanded");
+      if (body.classList.contains("gem-focus-layout")) {
+        body.classList.remove("gem-focus-layout");
+        el.classList.add("gem-focus-layout");
+      }
+    }
+  } catch (_) {}
 }
 
 function applyFocusLayout(enabled) {
   try {
-    const body = document.body;
-    if (!body) return;
-    migrateLegacyFocusLayoutClass(body);
-    body.classList.toggle("gem-focus-layout", !!enabled);
+    if (window.gemFocusLayout && typeof window.gemFocusLayout.setActive === "function") {
+      window.gemFocusLayout.setActive(!!enabled);
+      return;
+    }
+    const root = document.documentElement;
+    if (!root) return;
+    migrateLegacyFocusLayoutClass(root);
+    root.classList.toggle("gem-focus-layout", !!enabled);
+    if (document.body) {
+      document.body.classList.remove("gem-focus-layout");
+      document.body.classList.remove("gem-expanded");
+    }
   } catch (_) {
     // ignore
   }

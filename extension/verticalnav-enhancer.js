@@ -1,11 +1,22 @@
 console.log("[Gem] verticalnav-enhancer.js loaded");
 
-function migrateLegacyFocusLayoutClass(body) {
-  if (!body) return;
-  if (body.classList.contains("gem-expanded")) {
-    body.classList.remove("gem-expanded");
-    body.classList.add("gem-focus-layout");
+function migrateLegacyFocusLayoutClass(root) {
+  const el = root || document.documentElement;
+  if (!el) return;
+  if (el.classList.contains("gem-expanded")) {
+    el.classList.remove("gem-expanded");
+    el.classList.add("gem-focus-layout");
   }
+  try {
+    const body = document.body;
+    if (body) {
+      if (body.classList.contains("gem-expanded")) body.classList.remove("gem-expanded");
+      if (body.classList.contains("gem-focus-layout")) {
+        body.classList.remove("gem-focus-layout");
+        el.classList.add("gem-focus-layout");
+      }
+    }
+  } catch (_) {}
 }
 
 function waitForElement(selector, callback) {
@@ -36,28 +47,36 @@ function updateNavToggleIcons() {}
 window.updateNavToggleIcons = updateNavToggleIcons;
 
 function activateFocusLayout() {
-  const content = document.querySelector("body");
-  if (!content) return;
-
-  migrateLegacyFocusLayoutClass(content);
-  if (!content.classList.contains("gem-focus-layout")) {
-    content.classList.add("gem-focus-layout");
+  if (window.gemFocusLayout && typeof window.gemFocusLayout.setActive === 'function') {
+    window.gemFocusLayout.setActive(true);
+    return;
   }
+  const root = document.documentElement;
+  if (!root) return;
+  migrateLegacyFocusLayoutClass(root);
+  root.classList.add("gem-focus-layout");
 }
 
 function deactivateFocusLayout() {
-  const content = document.querySelector("body");
-  if (!content) return;
-  if (content.classList.contains("gem-focus-layout")) {
-    content.classList.remove("gem-focus-layout");
+  if (window.gemFocusLayout && typeof window.gemFocusLayout.setActive === 'function') {
+    window.gemFocusLayout.setActive(false);
+    return;
   }
+  const root = document.documentElement;
+  if (!root) return;
+  root.classList.remove("gem-focus-layout");
+  try {
+    if (document.body) document.body.classList.remove("gem-focus-layout");
+  } catch (_) {}
 }
 
+// Early boot script usually applies this at document_start; keep a sync restore
+// here without waiting on Emarsys DOM.
 chrome.storage.sync.get({ fullscreenActive: false }, (settings) => {
   if (settings.fullscreenActive) {
-    waitForElement("main.e-layout__content", () => {
-      activateFocusLayout();
-    });
+    activateFocusLayout();
+  } else {
+    migrateLegacyFocusLayoutClass(document.documentElement);
   }
 });
 

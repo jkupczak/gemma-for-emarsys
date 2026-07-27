@@ -278,7 +278,7 @@ function initializePreflightPanel() {
 <gem-preflight class="scrollable">
   <div class="e-section gem-preflight-section">
     <div class="e-section__header">
-      <div class="e-section__title">Preflight</div>
+      <div class="e-section__title">Gemma Preflight</div>
     </div>
     <div class="e-section__content">
       <div class="gem-preflight-collapsible-section" data-role="languageOverviewSection">
@@ -1488,7 +1488,8 @@ function initializePreflightPanel() {
 
   /**
    * Watches the desktop preview iframe document for DOM / attribute changes that can affect
-   * `a[href] img` missing-alt warnings, without re-running the full image-weight scan.
+   * Linked-image missing-alt warnings (only when wrapping <a href> is non-empty),
+   * without re-running the full image-weight scan.
    */
   function setupPreviewDocAccessibilityObserver(iframe) {
     if (!iframe) return;
@@ -1643,20 +1644,29 @@ function initializePreflightPanel() {
     const base = doc.baseURI || window.location.href;
     const seen = new Set();
 
-    doc.querySelectorAll('a[href] img').forEach((imgEl) => {
+    // Only treat images as linked when the wrapping <a> has a non-empty href.
+    // `a[href]` matches href="" too, so check the value explicitly.
+    doc.querySelectorAll('a').forEach((anchorEl) => {
       try {
-        const altRaw = imgEl.getAttribute('alt');
-        const hasAlt = typeof altRaw === 'string' && altRaw.trim().length > 0;
-        if (hasAlt) return;
-        const src = imgEl.getAttribute('src') || imgEl.currentSrc || '';
-        const normalized = normalizeUrl(src, base);
-        if (!normalized) return;
-        const key = `${normalized}::${imgEl.getAttribute('alt') || ''}`;
-        if (seen.has(key)) return;
-        seen.add(key);
-        warnings.push({
-          url: normalized,
-          filename: extractFilename(normalized)
+        const href = String(anchorEl.getAttribute('href') || '').trim();
+        if (!href) return;
+
+        anchorEl.querySelectorAll('img').forEach((imgEl) => {
+          try {
+            const altRaw = imgEl.getAttribute('alt');
+            const hasAlt = typeof altRaw === 'string' && altRaw.trim().length > 0;
+            if (hasAlt) return;
+            const src = imgEl.getAttribute('src') || imgEl.currentSrc || '';
+            const normalized = normalizeUrl(src, base);
+            if (!normalized) return;
+            const key = `${normalized}::${imgEl.getAttribute('alt') || ''}`;
+            if (seen.has(key)) return;
+            seen.add(key);
+            warnings.push({
+              url: normalized,
+              filename: extractFilename(normalized)
+            });
+          } catch (_) {}
         });
       } catch (_) {}
     });

@@ -224,7 +224,7 @@ console.log('[Gem] magic-fill-panel.js loaded');
 <${PANEL_TAG} class="scrollable gem-magic-fill-panel">
   <div class="e-section">
     <div class="e-section__header">
-      <div class="e-section__title">Magic Fill</div>
+      <div class="e-section__title">Gemma Magic Fill</div>
     </div>
     <div class="e-section__content">
       <p class="gem-magic-fill-help">

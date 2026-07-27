@@ -2909,7 +2909,7 @@ function initializeSnippetsTab() {
 <gem-snippets class="scrollable">
   <div class="e-section">
     <div class="e-section__header">
-        <div class="e-section__title">Snippets</div>
+        <div class="e-section__title">Gemma Snippets</div>
     </div>
     <div class="e-section__content">
       <div class="e-margin-bottom-s">

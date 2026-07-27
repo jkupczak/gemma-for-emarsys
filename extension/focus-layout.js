@@ -54,7 +54,7 @@ function initializeFocusLayout() {
 
     // Check for header title and move it to navigation section (only in Focus Layout)
     const headerTitle = getHeaderTitle();
-    const isFocusLayout = document.body.classList.contains('gem-focus-layout');
+    const isFocusLayout = isFocusLayoutActive();
 
     // Handle header title movement (only when expanded)
     if (headerTitle && navSection && isFocusLayout) {
@@ -309,13 +309,16 @@ function moveSelectorsBasedOnView(compactVersionsDiv, isFocusLayout) {
 function setupFocusLayoutObserver(compactVersionsDiv) {
   console.log('[Gem-Focus-Layout] Setting up Focus Layout observer for locale selector');
 
-  // Watch for changes to the body class
+  const root = document.documentElement;
+  if (!root) return;
+
+  // Watch for changes to the <html> class (Focus Layout lives on documentElement).
   if (typeof gemDomWatchObserveAttributes === 'function') {
-    gemDomWatchObserveAttributes(document.body, (mutations) => {
+    gemDomWatchObserveAttributes(root, (mutations) => {
       mutations.forEach((mutation) => {
         if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
           const wasFocusLayout = mutation.oldValue && mutation.oldValue.includes('gem-focus-layout');
-          const isFocusLayout = document.body.classList.contains('gem-focus-layout');
+          const isFocusLayout = root.classList.contains('gem-focus-layout');
 
           if (wasFocusLayout !== isFocusLayout) {
             console.log(`[Gem-Focus-Layout] Focus Layout changed: ${wasFocusLayout} -> ${isFocusLayout}`);
@@ -326,11 +329,11 @@ function setupFocusLayoutObserver(compactVersionsDiv) {
       });
     }, ['class']);
   } else {
-    const bodyObserver = new MutationObserver((mutations) => {
+    const rootObserver = new MutationObserver((mutations) => {
       mutations.forEach((mutation) => {
         if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
           const wasFocusLayout = mutation.oldValue && mutation.oldValue.includes('gem-focus-layout');
-          const isFocusLayout = document.body.classList.contains('gem-focus-layout');
+          const isFocusLayout = root.classList.contains('gem-focus-layout');
 
           if (wasFocusLayout !== isFocusLayout) {
             console.log(`[Gem-Focus-Layout] Focus Layout changed: ${wasFocusLayout} -> ${isFocusLayout}`);
@@ -341,7 +344,7 @@ function setupFocusLayoutObserver(compactVersionsDiv) {
       });
     });
 
-    bodyObserver.observe(document.body, {
+    rootObserver.observe(root, {
       attributes: true,
       attributeFilter: ['class'],
       attributeOldValue: true
@@ -358,7 +361,7 @@ function setupLanguagesSelectorObserver(compactVersionsDiv) {
   const languagesObserver = new MutationObserver((mutations) => {
     mutations.forEach((mutation) => {
       if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
-        const isFocusLayout = document.body.classList.contains('gem-focus-layout');
+        const isFocusLayout = isFocusLayoutActive();
         updateCompactVersionsActiveState(compactVersionsDiv, isFocusLayout);
       }
     });
@@ -387,7 +390,7 @@ function setupLanguagesSelectorObserver(compactVersionsDiv) {
     });
 
     if (needsUpdate) {
-      const isFocusLayout = document.body.classList.contains('gem-focus-layout');
+      const isFocusLayout = isFocusLayoutActive();
       updateCompactVersionsActiveState(compactVersionsDiv, isFocusLayout);
     }
   };
@@ -466,7 +469,10 @@ function clampNavStandardWidth(value) {
 }
 
 function isFocusLayoutActive() {
-  return !!(document.body && document.body.classList.contains('gem-focus-layout'));
+  if (window.gemFocusLayout && typeof window.gemFocusLayout.isActive === 'function') {
+    return !!window.gemFocusLayout.isActive();
+  }
+  return !!(document.documentElement && document.documentElement.classList.contains('gem-focus-layout'));
 }
 
 function getNavPanelDisplayLimits(expanded) {
@@ -621,9 +627,9 @@ function isNavPanelResizable(navSection) {
 function syncNavHandleForLayout(handle) {
   if (!handle) return;
   const expanded = isFocusLayoutActive();
-  handle.style.right = expanded ? '-11px' : '-25px';
+  handle.style.right = expanded ? '-19px' : '-25px';
   handle.style.left = 'auto';
-  handle.style.width = expanded ? '10px' : '24px';
+  handle.style.width = expanded ? '18px' : '24px';
 }
 
 function syncNavPanelHandle(navSection) {

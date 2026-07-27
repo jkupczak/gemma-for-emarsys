@@ -238,9 +238,9 @@ function isMobilePreviewActiveForSync() {
 function syncGemFrameHandleForFocusLayout() {
   const handle = document.querySelector("#gem-frame-handle");
   if (!handle || !document.body) return;
-  const focusLayout = document.body.classList.contains("gem-focus-layout");
-  handle.style.left = focusLayout ? "-10px" : "-24px";
-  handle.style.width = focusLayout ? "10px" : "24px";
+  const focusLayout = document.documentElement.classList.contains("gem-focus-layout");
+  handle.style.left = focusLayout ? "-18px" : "-24px";
+  handle.style.width = focusLayout ? "18px" : "24px";
 }
 
 function applyMobilePreviewStyles(containerEl, iframeEl) {
@@ -291,14 +291,14 @@ function addResizeHandle(container, styleTarget, clone, originalIframe) {
   const handle = document.createElement("div");
   handle.id = "gem-frame-handle";
   handle.className = "gem-resize-handle";
-  const focusLayoutOnCreate = document.body?.classList.contains("gem-focus-layout");
+  const focusLayoutOnCreate = document.documentElement?.classList.contains("gem-focus-layout");
   Object.assign(handle.style, {
     margin: "auto",
     position: "absolute",
     top: "0",
     bottom: "0",
-    left: focusLayoutOnCreate ? "-10px" : "-24px",
-    width: focusLayoutOnCreate ? "10px" : "24px",
+    left: focusLayoutOnCreate ? "-18px" : "-24px",
+    width: focusLayoutOnCreate ? "18px" : "24px",
     height: "100%",
     cursor: "col-resize"
   });

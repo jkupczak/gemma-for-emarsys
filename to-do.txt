@@ -8,10 +8,6 @@
 |                                                                                |
  --------------------------------------------------------------------------------
 
------------------------------------------
------------------------------------------
------------------------------------------
-
 I want to diagnose possible memory footprint issues that my extension might be casusing on Emarsys. I am not sure if Emarsys is the issue or Gemma is the issue. What tests can we run to diagnose possible issues and their causes?
 
 -----------------------------------------

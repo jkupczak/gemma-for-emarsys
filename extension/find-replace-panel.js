@@ -377,7 +377,7 @@ console.log('[Gem] find-replace-panel.js loaded');
 <${PANEL_TAG} class="scrollable gem-find-replace-panel">
   <div class="e-section">
     <div class="e-section__header">
-      <div class="e-section__title">Find and Replace</div>
+      <div class="e-section__title">Gemma Find and Replace</div>
     </div>
     <div class="e-section__content">
       <div class="gem-find-replace-field e-margin-bottom-s">

@@ -690,6 +690,14 @@ span.gem-e-icon {
     margin: 0 0 4px 0;
 }
 
+.gem-recent-campaigns-panel .gem-recent-campaign-search-highlight {
+    color: inherit;
+    border-radius: 2px;
+    padding: 0 1px;
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+}
+
 .gem-recent-campaigns-panel .gem-recent-campaign-row--list-source .gem-recent-campaign-title-link {
     margin: 0;
     font-weight: normal;

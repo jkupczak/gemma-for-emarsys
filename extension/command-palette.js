@@ -263,7 +263,7 @@ console.log('[Gem] command-palette.js loaded');
         ? window.gemIsInboxPreviewActive()
         : !!(document.querySelector('cb-campaign-inbox-preview') && !document.querySelector('cb-campaign-inbox-preview').hasAttribute('hidden'));
     const liveActive = !inboxActive;
-    const focusActive = document.body.classList.contains('gem-focus-layout');
+    const focusActive = document.documentElement.classList.contains('gem-focus-layout');
     const standardActive = !focusActive;
 
     const defs = [

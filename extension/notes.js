@@ -124,7 +124,7 @@ function createNotesPanel() {
   });
 
   const title = document.createElement("span");
-  title.textContent = "Notes";
+  title.textContent = "Gemma Notes";
   Object.assign(title.style, {
     fontWeight: "600",
     fontSize: "15px",
@@ -226,6 +226,9 @@ function createNotesPanel() {
 function showNotesPanel() {
   if (!notesPanel) createNotesPanel();
   notesPanel.dataset.gemPanelOpen = "1";
+  // Keep backdrop in the layer stack scan (gemLayerIsParticipating checks gemPanelOpen),
+  // otherwise a second open can raise the backdrop above the panel.
+  if (notesBackdrop) notesBackdrop.dataset.gemPanelOpen = "1";
 
   const textarea = notesPanel.querySelector("#gem-notes-textarea");
   chrome.storage.sync.get(GEM_NOTES_STORAGE_KEY, (result) => {
@@ -256,6 +259,7 @@ function showNotesPanel() {
 function hideNotesPanel() {
   if (!notesPanel) return;
   notesPanel.dataset.gemPanelOpen = "0";
+  if (notesBackdrop) notesBackdrop.dataset.gemPanelOpen = "0";
   notesPanel.style.transform = "translateX(-100%)";
   notesBackdrop.style.opacity = "0";
   notesBackdrop.style.pointerEvents = "none";

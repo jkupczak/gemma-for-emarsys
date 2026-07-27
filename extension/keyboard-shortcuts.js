@@ -793,19 +793,25 @@ function initializeKeyboardShortcuts() {
         const rootDoc = (() => {
           try { return window.top && window.top.document ? window.top.document : document; } catch (_) { return document; }
         })();
-        const body = rootDoc && rootDoc.body;
-        if (!body) return false;
+        const root = rootDoc && rootDoc.documentElement;
+        if (!root) return false;
 
-        if (body.classList.contains("gem-expanded")) {
-          body.classList.remove("gem-expanded");
+        if (root.classList.contains("gem-expanded")) {
+          root.classList.remove("gem-expanded");
         }
+        try {
+          if (rootDoc.body) {
+            rootDoc.body.classList.remove("gem-expanded");
+            rootDoc.body.classList.remove("gem-focus-layout");
+          }
+        } catch (_) {}
 
-        const wasFocusLayout = body.classList.contains("gem-focus-layout");
-        body.classList.toggle("gem-focus-layout");
-        const isNowFocusLayout = body.classList.contains("gem-focus-layout");
+        const wasFocusLayout = root.classList.contains("gem-focus-layout");
+        root.classList.toggle("gem-focus-layout");
+        const isNowFocusLayout = root.classList.contains("gem-focus-layout");
         console.log("[Gem] Focus Layout toggled:", wasFocusLayout, "->", isNowFocusLayout);
 
-        // Persist state (used by verticalnav-enhancer.js restore)
+        // Persist state (used by focus-layout boot / verticalnav restore)
         chrome.storage.sync.set({ fullscreenActive: isNowFocusLayout }, () => {
           if (chrome.runtime.lastError) {
             console.error("[Gem] Error saving Focus Layout state:", chrome.runtime.lastError);

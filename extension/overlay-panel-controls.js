@@ -332,7 +332,10 @@ function setupCompactEmailToolsSendTestMenuWatcher() {
 }
 
 function isCompactEmailToolsFocusLayoutActive() {
-  return document.body.classList.contains('gem-focus-layout');
+  if (window.gemFocusLayout && typeof window.gemFocusLayout.isActive === 'function') {
+    return !!window.gemFocusLayout.isActive();
+  }
+  return document.documentElement.classList.contains('gem-focus-layout');
 }
 
 function setCompactEmailToolsMenuItemIndicator(item, isOn) {
@@ -420,9 +423,19 @@ function syncCompactEmailToolsFeatureMenuItems() {
 
 function setCompactEmailToolsFocusLayout(enabled) {
   const next = !!enabled;
-  const isFocusLayout = document.body.classList.contains('gem-focus-layout');
+  const isFocusLayout = isCompactEmailToolsFocusLayoutActive();
   if (isFocusLayout === next) return;
-  document.body.classList.toggle('gem-focus-layout', next);
+  if (window.gemFocusLayout && typeof window.gemFocusLayout.setActive === 'function') {
+    window.gemFocusLayout.setActive(next);
+  } else {
+    document.documentElement.classList.toggle('gem-focus-layout', next);
+    try {
+      if (document.body) {
+        document.body.classList.remove('gem-focus-layout');
+        document.body.classList.remove('gem-expanded');
+      }
+    } catch (_) {}
+  }
   if (typeof window.updateNavToggleIcons === 'function') {
     window.updateNavToggleIcons();
   }
@@ -986,7 +999,7 @@ function positionCompactEmailToolsMenu(wrap, menu) {
   }
   if (wrap.classList.contains('gem-compact-email-tools-menu-wrap--header')) {
     left = 96;
-  } else if (document.body.classList.contains('gem-focus-layout')) {
+  } else if (isCompactEmailToolsFocusLayoutActive()) {
     left = anchorRect.left;
     left = Math.min(left, window.innerWidth - menuRect.width - 8);
   } else {
@@ -1106,7 +1119,7 @@ function syncCompactEmailToolsOverflowMenuPlacement() {
 
   closeCompactEmailToolsMenu();
 
-  const isFocusLayout = document.body.classList.contains('gem-focus-layout');
+  const isFocusLayout = isCompactEmailToolsFocusLayoutActive();
 
   if (isFocusLayout) {
     wrap.classList.remove('gem-compact-email-tools-menu-wrap--header');

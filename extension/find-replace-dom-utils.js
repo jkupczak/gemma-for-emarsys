@@ -152,6 +152,228 @@ console.log('[Gem] find-replace-dom-utils.js loaded');
     return /<[a-z][\s\S]*>/i.test(String(value ?? ''));
   }
 
+  const ALLOWLISTED_HTML_TAGS = new Set([
+    'b',
+    'strong',
+    'em',
+    'i',
+    'u',
+    'sup',
+    'a',
+    'strike',
+    'br',
+    'del',
+    'ins',
+    'span',
+  ]);
+
+  const UNSAFE_INLINE_STYLE_PATTERNS = [
+    /expression\s*\(/gi,
+    /url\s*\(\s*['"]?\s*javascript:/gi,
+    /-moz-binding/gi,
+    /@import/gi,
+    /behavior\s*:/gi,
+  ];
+
+  function sanitizeInlineStyle(style) {
+    let cleaned = String(style || '');
+    UNSAFE_INLINE_STYLE_PATTERNS.forEach((pattern) => {
+      cleaned = cleaned.replace(pattern, '');
+    });
+    return cleaned.trim();
+  }
+
+  function sanitizeAllowlistedHtml(html) {
+    const input = String(html ?? '');
+    if (!looksLikeHtml(input)) {
+      return { ok: false, hasElements: false, html: input, reason: 'not-html' };
+    }
+
+    const template = document.createElement('template');
+    template.innerHTML = input;
+    let hasElements = false;
+
+    const walk = (parent) => {
+      const children = Array.from(parent.childNodes);
+      children.forEach((node) => {
+        if (node.nodeType === Node.TEXT_NODE) return;
+        if (node.nodeType !== Node.ELEMENT_NODE) {
+          try {
+            node.remove();
+          } catch (_) {}
+          return;
+        }
+
+        const tag = node.tagName.toLowerCase();
+        if (!ALLOWLISTED_HTML_TAGS.has(tag)) {
+          while (node.firstChild) {
+            parent.insertBefore(node.firstChild, node);
+          }
+          node.remove();
+          return;
+        }
+
+        hasElements = true;
+        Array.from(node.attributes || []).forEach((attr) => {
+          const name = attr.name.toLowerCase();
+          if (name === 'style') return;
+          if (tag === 'a' && name === 'href') return;
+          try {
+            node.removeAttribute(attr.name);
+          } catch (_) {}
+        });
+
+        if (node.hasAttribute('style')) {
+          const cleanedStyle = sanitizeInlineStyle(node.getAttribute('style'));
+          if (cleanedStyle) node.setAttribute('style', cleanedStyle);
+          else node.removeAttribute('style');
+        }
+
+        if (tag === 'a') {
+          const href = node.getAttribute('href');
+          if (href == null || href === '') {
+            while (node.firstChild) {
+              parent.insertBefore(node.firstChild, node);
+            }
+            node.remove();
+            return;
+          }
+        }
+
+        if (tag !== 'br') walk(node);
+      });
+    };
+
+    walk(template.content);
+
+    return {
+      ok: hasElements,
+      hasElements,
+      html: template.innerHTML,
+      reason: hasElements ? 'sanitized' : 'no-elements',
+    };
+  }
+
+  function createFragmentFromSanitizedHtml(doc, sanitizedHtml) {
+    const template = doc.createElement('template');
+    template.innerHTML = String(sanitizedHtml ?? '');
+    const frag = doc.createDocumentFragment();
+    while (template.content.firstChild) {
+      frag.appendChild(template.content.firstChild);
+    }
+    return frag;
+  }
+
+  function createSearchableTextWalkerFilter() {
+    return {
+      acceptNode(node) {
+        if (!node.nodeValue) return NodeFilter.FILTER_REJECT;
+        if (isInsideExistingToken(node.parentNode)) return NodeFilter.FILTER_REJECT;
+        return NodeFilter.FILTER_ACCEPT;
+      },
+    };
+  }
+
+  function findTextNodeAtCharacterOffset(root, charOffset) {
+    if (!root || charOffset < 0) return null;
+    let walked = 0;
+    const walker = root.ownerDocument.createTreeWalker(
+      root,
+      NodeFilter.SHOW_TEXT,
+      createSearchableTextWalkerFilter()
+    );
+    let node;
+    while ((node = walker.nextNode())) {
+      const len = node.nodeValue.length;
+      if (charOffset < walked + len) {
+        return { node, offsetInNode: charOffset - walked };
+      }
+      walked += len;
+    }
+    return null;
+  }
+
+  function collectTextMatchJobsInRoot(root, matcher) {
+    const jobs = [];
+    if (!root || !matcher?.regex) return jobs;
+
+    let globalOffset = 0;
+    const walker = root.ownerDocument.createTreeWalker(
+      root,
+      NodeFilter.SHOW_TEXT,
+      createSearchableTextWalkerFilter()
+    );
+    let textNode;
+    while ((textNode = walker.nextNode())) {
+      const text = textNode.nodeValue;
+      const regex = freshRegex(matcher);
+      let match;
+      while ((match = regex.exec(text)) !== null) {
+        jobs.push({
+          globalOffset: globalOffset + match.index,
+          length: match[0].length,
+          match: match[0],
+          captures: match.slice(1),
+        });
+        if (match[0] === '') regex.lastIndex += 1;
+      }
+      globalOffset += text.length;
+    }
+    return jobs;
+  }
+
+  function applyTextReplacementsInEditableRoot(root, matcher, replacement, context) {
+    const jobs = collectTextMatchJobsInRoot(root, matcher);
+    if (!jobs.length) return { count: 0, changes: [] };
+
+    jobs.sort((a, b) => b.globalOffset - a.globalOffset);
+
+    const doc = root.ownerDocument;
+    let count = 0;
+    const changes = [];
+
+    jobs.forEach((job) => {
+      const located = findTextNodeAtCharacterOffset(root, job.globalOffset);
+      if (!located) return;
+
+      const expanded = expandReplacement(replacement, job.match, job.captures);
+      const snippet = makeSnippet(
+        located.node.nodeValue,
+        located.offsetInNode,
+        job.length
+      );
+
+      const sanitized = looksLikeHtml(expanded) ? sanitizeAllowlistedHtml(expanded) : null;
+      const useHtml = !!(sanitized && sanitized.hasElements);
+
+      const range = doc.createRange();
+      range.setStart(located.node, located.offsetInNode);
+      range.setEnd(located.node, located.offsetInNode + job.length);
+      range.deleteContents();
+
+      if (useHtml) {
+        range.insertNode(createFragmentFromSanitizedHtml(doc, sanitized.html));
+        changes.unshift({
+          context,
+          before: snippet.before + snippet.match + snippet.after,
+          after: snippet.before + sanitized.html + snippet.after,
+          matchText: job.match,
+        });
+      } else {
+        range.insertNode(doc.createTextNode(expanded));
+        changes.unshift({
+          context,
+          before: snippet.before + snippet.match + snippet.after,
+          after: snippet.before + expanded + snippet.after,
+          matchText: job.match,
+        });
+      }
+      count += 1;
+    });
+
+    return { count, changes };
+  }
+
   function forEachSearchableTextNode(root, callback) {
     if (!root) return;
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
@@ -1111,6 +1333,19 @@ console.log('[Gem] find-replace-dom-utils.js loaded');
 
     collectEditableRoots(doc).forEach((root) => {
       const context = getBlockContextLabel(root, doc);
+
+      if (hasReplacement && !simulateOnly) {
+        const result = applyTextReplacementsInEditableRoot(root, matcher, replacement, context);
+        if (result.count > 0) {
+          count += result.count;
+          touched.add(root);
+          if (collectChanges) {
+            result.changes.forEach((item) => changes.push(item));
+          }
+        }
+        return;
+      }
+
       const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
         acceptNode(node) {
           if (!node.nodeValue) return NodeFilter.FILTER_REJECT;
@@ -1129,16 +1364,6 @@ console.log('[Gem] find-replace-dom-utils.js loaded');
           const result = replaceInString(textNode.nodeValue, matcher, replacement);
           if (result.count > 0) {
             count += result.count;
-            if (collectChanges) {
-              result.changes.forEach((item) => changes.push({ ...item, context }));
-            }
-          }
-        } else if (hasReplacement) {
-          const result = replaceInString(textNode.nodeValue, matcher, replacement);
-          if (result.count > 0) {
-            textNode.nodeValue = result.text;
-            count += result.count;
-            touched.add(root);
             if (collectChanges) {
               result.changes.forEach((item) => changes.push({ ...item, context }));
             }
@@ -2379,5 +2604,6 @@ console.log('[Gem] find-replace-dom-utils.js loaded');
     getPreviewIframe,
     getPreviewDocument,
     looksLikeHtml,
+    sanitizeAllowlistedHtml,
   };
 })();
