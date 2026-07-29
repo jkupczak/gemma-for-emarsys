@@ -685,6 +685,48 @@ console.log('[Gem] personalization-tokens.js loaded');
     return sessionFetchPromise;
   }
 
+  /**
+   * Warm the personalization token cache during idle time on campaign edit
+   * pages so the token context menu does not wait on first open.
+   * ensurePersonalizationTokensLoaded() is already once-per-page-load
+   * (sessionTokens cache + shared in-flight promise).
+   */
+  function schedulePersonalizationTokensIdlePrefetch() {
+    if (window._gemPersTokensIdlePrefetchScheduled) return;
+    window._gemPersTokensIdlePrefetchScheduled = true;
+
+    const run = () => {
+      try {
+        ensurePersonalizationTokensLoaded();
+      } catch (_) {}
+    };
+
+    const schedule = () => {
+      try {
+        if (typeof requestIdleCallback === 'function') {
+          requestIdleCallback(run, { timeout: 6000 });
+        } else {
+          setTimeout(run, 1500);
+        }
+      } catch (_) {
+        setTimeout(run, 1500);
+      }
+    };
+
+    // Prefer post-load idle so we do not contend with editor shell boot.
+    try {
+      if (document.readyState === 'complete') {
+        schedule();
+      } else {
+        window.addEventListener('load', schedule, { once: true });
+        // Safety net if `load` is delayed or already missed in odd navigations.
+        setTimeout(schedule, 4000);
+      }
+    } catch (_) {
+      setTimeout(run, 2000);
+    }
+  }
+
   function loadPinnedPersTokens(callback) {
     if (!chrome?.storage?.sync) {
       callback([]);
@@ -789,6 +831,7 @@ console.log('[Gem] personalization-tokens.js loaded');
     return enrichTokenWithRdsPresets(token, getSessionRdsPresetMap());
   };
   window.gemEnsurePersonalizationTokensLoaded = ensurePersonalizationTokensLoaded;
+  window.gemSchedulePersonalizationTokensIdlePrefetch = schedulePersonalizationTokensIdlePrefetch;
   window.gemGetPersonalizationSessionTokens = function () {
     return sessionTokens ? sessionTokens.slice() : [];
   };
@@ -804,4 +847,6 @@ console.log('[Gem] personalization-tokens.js loaded');
   window.gemGemmaPrefixedId = gemmaPrefixedId;
   window.gemParseRecentEntryId = parseRecentEntryId;
   window.gemToPersMenuItem = toMenuItem;
+
+  schedulePersonalizationTokensIdlePrefetch();
 })();

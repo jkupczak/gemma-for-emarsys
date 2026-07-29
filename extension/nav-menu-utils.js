@@ -1,4 +1,4 @@
-console.log("[gem] nav-menu-utils.js loaded");
+console.log("[Gem] nav-menu-utils.js loaded");
 
 /**
  * Dual-menu helpers for Emarsys main navigation.

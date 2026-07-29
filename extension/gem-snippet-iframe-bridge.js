@@ -1,11 +1,46 @@
 (function () {
   'use strict';
 
+  // Preview iframes are often srcdoc/blob and never get the MAIN content_script
+  // page bridge. Install the console gate here before any [Gem]… logs fire.
+  try {
+    if (!window.__gemDebugConsolePatched) {
+      const GEM_DEBUG_LOCAL_KEY = 'gemDebugLogging';
+      const prefixRegex = /^\[gem/i;
+      let enabled = false;
+      try { enabled = localStorage.getItem(GEM_DEBUG_LOCAL_KEY) === 'true'; } catch (_) {}
+      window.__gemDebugConsoleState = window.__gemDebugConsoleState || { enabled: !!enabled };
+      const state = window.__gemDebugConsoleState;
+      state.enabled = !!enabled;
+      window.__gemDebugConsolePatched = true;
+      try { window.GEM_DEBUG = !!state.enabled; } catch (_) {}
+      ['log', 'info', 'debug', 'warn', 'group', 'groupCollapsed'].forEach((methodName) => {
+        const original = console[methodName];
+        if (typeof original !== 'function') return;
+        const bound = original.bind(console);
+        console[methodName] = (...args) => {
+          const first = args && args.length ? args[0] : null;
+          if (!state.enabled && typeof first === 'string' && prefixRegex.test(first)) return;
+          bound(...args);
+        };
+      });
+      if (typeof window.gemIsDebugLoggingEnabled !== 'function') {
+        window.gemIsDebugLoggingEnabled = () => !!state.enabled;
+      }
+      try {
+        window.addEventListener('storage', (event) => {
+          if (!event || event.key !== GEM_DEBUG_LOCAL_KEY) return;
+          state.enabled = event.newValue === 'true';
+          try { window.GEM_DEBUG = !!state.enabled; } catch (_) {}
+        });
+      } catch (_) {}
+    }
+  } catch (_) {}
+
   const MSG_SOURCE_EXT = 'gem-snippet-extension';
   const MSG_SOURCE_BRIDGE = 'gem-snippet-iframe-bridge';
-  // Note: prefix intentionally does NOT match the debug-logging gate's
-  // suppression regex (^\[Gem[\]\-\s]) so these diagnostics always print.
-  const GEM_TR_LOG = '[GemTokenReplace][bridge]';
+  // Gated by debug-logging-page-bridge.js / inline gate above when debug is off.
+  const GEM_TR_LOG = '[Gem][TokenReplace][Bridge]';
 
   function gemTrDescribeNode(node) {
     if (!node) return 'null';
@@ -35,7 +70,7 @@
   const patchedEditorIds = new Set();
   const caretByEditorId = new Map();
 
-  const GEM_BODY_SYNC_LOG = '[GemBodySync][bridge]';
+  const GEM_BODY_SYNC_LOG = '[Gem][BodySync][Bridge]';
 
   function getTinyMCEFrom(win) {
     if (!win) return null;

@@ -934,7 +934,7 @@
 
       if (!result.ok) {
         console.error(
-          '[Gem][Review Links] Snapshot fetch failed:',
+          '[Gem][ReviewLinks] Snapshot fetch failed:',
           result.reason || 'unknown',
           result.error || '',
           result.status || ''

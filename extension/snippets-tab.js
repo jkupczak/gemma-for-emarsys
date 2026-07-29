@@ -436,9 +436,8 @@ function isNonCollapsedRange(range) {
   }
 }
 
-// Note: prefix intentionally does NOT match the debug-logging-gate.js
-// suppression regex (^\[Gem[\]\-\s]) so these diagnostics always print.
-const GEM_TR_LOG = '[GemTokenReplace]';
+// Gated by debug-logging-gate.js when "Enable debug logging" is off.
+const GEM_TR_LOG = '[Gem][TokenReplace]';
 
 function gemTrDescribeNode(node) {
   if (!node) return 'null';
@@ -994,7 +993,7 @@ async function insertHtmlIntoContentEditable(ctx, html, options = {}) {
       placeContentEditableCaretAfterMarker(doc, editor, element);
     }
     try {
-      console.log('[GemDraftDirty]', 'insertHtml: dom-fallback notify', {
+      console.log('[Gem][DraftDirty]', 'insertHtml: dom-fallback notify', {
         placeCaretAfter,
         nudgeFocus: !placeCaretAfter,
       });
@@ -1002,7 +1001,7 @@ async function insertHtmlIntoContentEditable(ctx, html, options = {}) {
   } else {
     notifyEmarsysAfterContentEditableInsert(doc, element, { nudgeFocus: true });
     try {
-      console.log('[GemDraftDirty]', 'insertHtml: tinymce-insert + toolbar-style nudge', {
+      console.log('[Gem][DraftDirty]', 'insertHtml: tinymce-insert + toolbar-style nudge', {
         placeCaretAfter,
         elementId: element.id || null,
         eEditable: element.getAttribute?.('e-editable'),
@@ -2331,14 +2330,14 @@ function logPersonalizableCodeMirrorInsertDebug(phase, ctx, cmEl, vceCm, cmInsta
 
   if (suspiciousZero) {
     console.error(
-      '[Gem][CM Token Insert] Suspicious insert at index 0 while caret ch > 0. Enable Gemma debug logging for the full trace.',
+      '[Gem][CmTokenInsert] Suspicious insert at index 0 while caret ch > 0. Enable Gemma debug logging for the full trace.',
       snapshot
     );
   }
 
   if (!isGemDebugLoggingEnabled()) return;
 
-  console.log('[Gem][CM Token Insert]', phase, snapshot);
+  console.log('[Gem][CmTokenInsert]', phase, snapshot);
 }
 
 function gemDebugPersonalizableCodeMirrorInsertState(ctx) {
@@ -2357,7 +2356,7 @@ function gemDebugPersonalizableCodeMirrorInsertState(ctx) {
     cmInstance,
     { phase: 'manual' }
   );
-  console.log('[Gem][CM Token Insert] manual snapshot', snapshot);
+  console.log('[Gem][CmTokenInsert] manual snapshot', snapshot);
   return snapshot;
 }
 
@@ -4509,16 +4508,16 @@ function initializeSnippetsTab() {
           release: false,
         });
         try {
-          console.log('[GemKeywordSwap] primed editables', primeResult);
+          console.log('[Gem][KeywordSwap] primed editables', primeResult);
         } catch (_) {}
       } catch (e) {
         try {
-          console.warn('[GemKeywordSwap] prime failed', e && e.message ? e.message : e);
+          console.warn('[Gem][KeywordSwap] prime failed', e && e.message ? e.message : e);
         } catch (_) {}
       }
     } else {
       try {
-        console.warn('[GemKeywordSwap] primeEmarsysEditablesInDoc unavailable');
+        console.warn('[Gem][KeywordSwap] primeEmarsysEditablesInDoc unavailable');
       } catch (_) {}
     }
 
@@ -4552,7 +4551,7 @@ function initializeSnippetsTab() {
     });
     const editables = Array.from(editableSet);
     try {
-      console.log('[GemKeywordSwap] scanning editables', {
+      console.log('[Gem][KeywordSwap] scanning editables', {
         contentEditable: doc.querySelectorAll('[contenteditable="true"]').length,
         eEditable: doc.querySelectorAll('[e-editable]').length,
         combined: editables.length,

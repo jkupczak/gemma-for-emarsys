@@ -19,7 +19,7 @@ function initializeRecentlySeenLogger() {
   const dbg = (...args) => {
     try {
       if (!isDebugEnabled()) return;
-      console.log('[Gem-Recently-Seen]', ...args);
+      console.log('[Gem][RecentlySeen]', ...args);
     } catch (_) {}
   };
   const loggedSkips = new Set();

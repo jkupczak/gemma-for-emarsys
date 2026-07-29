@@ -1,31 +1,67 @@
 // focus-layout.js - Handles DOM adjustments when Focus Layout is active
-console.log('[Gem-Focus-Layout] focus-layout.js loaded');
+console.log('[Gem][FocusLayout] focus-layout.js loaded');
 
 function getHeaderTitle() {
   return document.querySelector('h1.e-layout__title');
 }
 
-function placeHeaderTitleAfterCompactTools(navSection, headerTitle) {
-  if (!navSection || !headerTitle) return;
-  const compactTools = navSection.querySelector('.gem-compact-email-tools');
-  if (compactTools) {
-    navSection.insertBefore(headerTitle, compactTools.nextSibling);
-  } else {
-    navSection.insertBefore(headerTitle, navSection.firstChild);
+function ensureCampaignMenuColumnsWrapped(menu) {
+  if (!menu) return null;
+  try {
+    let columns = menu.querySelector(':scope > .gem-campaign-menu-columns');
+    if (columns) return columns;
+
+    const existingColumns = Array.from(
+      menu.querySelectorAll(':scope > .gem-compact-email-tools-menu-column')
+    );
+    if (!existingColumns.length) return null;
+
+    columns = document.createElement('div');
+    columns.className = 'gem-campaign-menu-columns';
+    menu.insertBefore(columns, existingColumns[0]);
+    existingColumns.forEach((col) => columns.appendChild(col));
+    return columns;
+  } catch (_) {
+    return null;
   }
 }
 
-function ensureHeaderTitleAfterCompactTools(navSection, headerTitle) {
-  if (!navSection || !headerTitle || !navSection.contains(headerTitle)) return;
-  const compactTools = navSection.querySelector('.gem-compact-email-tools');
-  if (compactTools && headerTitle.previousElementSibling === compactTools) return;
-  placeHeaderTitleAfterCompactTools(navSection, headerTitle);
+function placeHeaderTitleInCampaignMenu(headerTitle) {
+  if (!headerTitle) return false;
+  const menu = document.querySelector('.gem-campaign-menu');
+  if (!menu) return false;
+
+  const columns = ensureCampaignMenuColumnsWrapped(menu);
+  if (
+    headerTitle.parentElement === menu &&
+    columns &&
+    headerTitle.nextElementSibling === columns
+  ) {
+    return true;
+  }
+
+  if (columns) {
+    menu.insertBefore(headerTitle, columns);
+  } else {
+    menu.insertBefore(headerTitle, menu.firstChild);
+  }
+  return true;
+}
+
+function ensureHeaderTitleInCampaignMenu(headerTitle) {
+  if (!headerTitle || !isFocusLayoutActive()) return;
+  if (placeHeaderTitleInCampaignMenu(headerTitle)) return;
+
+  waitForElement('.gem-campaign-menu', () => {
+    const title = getHeaderTitle();
+    if (title && isFocusLayoutActive()) {
+      placeHeaderTitleInCampaignMenu(title);
+    }
+  });
 }
 
 function getCompactVersionsInsertPoint(navSection) {
   if (!navSection) return null;
-  const headerTitle = navSection.querySelector('h1.e-layout__title');
-  if (headerTitle) return headerTitle.nextSibling;
   const compactTools = navSection.querySelector('.gem-compact-email-tools');
   if (compactTools) return compactTools.nextSibling;
   return navSection.firstChild;
@@ -33,19 +69,17 @@ function getCompactVersionsInsertPoint(navSection) {
 
 function ensureCompactVersionsPosition(navSection, compactVersionsDiv) {
   if (!navSection || !compactVersionsDiv || !navSection.contains(compactVersionsDiv)) return;
-  const anchor =
-    navSection.querySelector('h1.e-layout__title') ||
-    navSection.querySelector('.gem-compact-email-tools');
-  if (anchor && compactVersionsDiv.previousElementSibling === anchor) return;
+  const compactTools = navSection.querySelector('.gem-compact-email-tools');
+  if (compactTools && compactVersionsDiv.previousElementSibling === compactTools) return;
   navSection.insertBefore(compactVersionsDiv, getCompactVersionsInsertPoint(navSection));
 }
 
 function initializeFocusLayout() {
-  console.log('[Gem-Focus-Layout] Initializing Focus Layout functionality');
+  console.log('[Gem][FocusLayout] Initializing Focus Layout functionality');
 
   // Wait for the navigation section to appear
   waitForElement('.e-contentblocks-navigation_section', (navSection) => {
-    console.log('[Gem-Focus-Layout] Content blocks navigation section found, setting up Focus Layout');
+    console.log('[Gem][FocusLayout] Content blocks navigation section found, setting up Focus Layout');
 
     // Create the compact versions div
     const compactVersionsDiv = document.createElement('div');
@@ -67,14 +101,14 @@ function initializeFocusLayout() {
 
         headerTitle.parentNode.insertBefore(placeholder, headerTitle);
         headerTitle.remove();
-        placeHeaderTitleAfterCompactTools(navSection, headerTitle);
+        ensureHeaderTitleInCampaignMenu(headerTitle);
 
-        console.log('[Gem-Focus-Layout] Moved header title to navigation section (Focus Layout)');
-      } else if (!navSection.contains(headerTitle)) {
-        placeHeaderTitleAfterCompactTools(navSection, headerTitle);
-        console.log('[Gem-Focus-Layout] Re-attached header title to navigation section');
+        console.log('[Gem][FocusLayout] Moved header title into campaign menu (Focus Layout)');
+      } else if (!document.querySelector('.gem-campaign-menu')?.contains(headerTitle)) {
+        ensureHeaderTitleInCampaignMenu(headerTitle);
+        console.log('[Gem][FocusLayout] Re-attached header title to campaign menu');
       } else {
-        ensureHeaderTitleAfterCompactTools(navSection, headerTitle);
+        ensureHeaderTitleInCampaignMenu(headerTitle);
       }
     }
 
@@ -99,12 +133,12 @@ function initializeFocusLayout() {
           versionSelector.remove();
           compactVersionsDiv.insertBefore(versionSelector, compactVersionsDiv.firstChild);
 
-          console.log('[Gem-Focus-Layout] Moved version selector to compact versions (Focus Layout)');
+          console.log('[Gem][FocusLayout] Moved version selector to compact versions (Focus Layout)');
         } else {
           // Element is already moved, just make sure it's the first child
           if (!compactVersionsDiv.contains(versionSelector)) {
             compactVersionsDiv.insertBefore(versionSelector, compactVersionsDiv.firstChild);
-            console.log('[Gem-Focus-Layout] Re-attached version selector to compact versions as first child');
+            console.log('[Gem][FocusLayout] Re-attached version selector to compact versions as first child');
           }
         }
 
@@ -117,7 +151,7 @@ function initializeFocusLayout() {
           // Move back to original location
           placeholder.parentNode.insertBefore(versionSelector, placeholder);
           placeholder.remove();
-          console.log('[Gem-Focus-Layout] Moved version selector back to original location (normal view)');
+          console.log('[Gem][FocusLayout] Moved version selector back to original location (normal view)');
         }
       }
     }
@@ -139,12 +173,12 @@ function initializeFocusLayout() {
           localeSelector.remove();
           compactVersionsDiv.appendChild(localeSelector);
 
-          console.log('[Gem-Focus-Layout] Moved multilanguage locale selector to compact versions (Focus Layout)');
+          console.log('[Gem][FocusLayout] Moved multilanguage locale selector to compact versions (Focus Layout)');
         } else {
           // Element is already moved, just make sure it's in the right place
           if (!compactVersionsDiv.contains(localeSelector)) {
             compactVersionsDiv.appendChild(localeSelector);
-            console.log('[Gem-Focus-Layout] Re-attached multilanguage locale selector to compact versions');
+            console.log('[Gem][FocusLayout] Re-attached multilanguage locale selector to compact versions');
           }
         }
 
@@ -157,7 +191,7 @@ function initializeFocusLayout() {
           // Move back to original location
           placeholder.parentNode.insertBefore(localeSelector, placeholder);
           placeholder.remove();
-          console.log('[Gem-Focus-Layout] Moved multilanguage locale selector back to original location (normal view)');
+          console.log('[Gem][FocusLayout] Moved multilanguage locale selector back to original location (normal view)');
         }
       }
     }
@@ -184,7 +218,7 @@ function initializeFocusLayout() {
 
     initializeNavPanelResize(navSection);
 
-    console.log('[Gem-Focus-Layout] Focus Layout functionality initialized successfully');
+    console.log('[Gem][FocusLayout] Focus Layout functionality initialized successfully');
   });
 }
 
@@ -206,12 +240,12 @@ function moveSelectorsBasedOnView(compactVersionsDiv, isFocusLayout) {
 
         headerTitle.parentNode.insertBefore(placeholder, headerTitle);
         headerTitle.remove();
-        placeHeaderTitleAfterCompactTools(navSection, headerTitle);
+        ensureHeaderTitleInCampaignMenu(headerTitle);
 
-        console.log('[Gem-Focus-Layout] Moved header title to navigation section (view change)');
+        console.log('[Gem][FocusLayout] Moved header title into campaign menu (view change)');
       }
 
-      ensureHeaderTitleAfterCompactTools(navSection, headerTitle);
+      ensureHeaderTitleInCampaignMenu(headerTitle);
     } else {
       // Move back to original location
       const placeholder = document.querySelector('[data-gem-header-title-placeholder]');
@@ -221,7 +255,7 @@ function moveSelectorsBasedOnView(compactVersionsDiv, isFocusLayout) {
           // Move back to original location
           placeholder.parentNode.insertBefore(headerTitle, placeholder);
           placeholder.remove();
-          console.log('[Gem-Focus-Layout] Moved header title back to original location (view change)');
+          console.log('[Gem][FocusLayout] Moved header title back to original location (view change)');
         }
       }
     }
@@ -244,7 +278,7 @@ function moveSelectorsBasedOnView(compactVersionsDiv, isFocusLayout) {
         versionSelector.remove();
         compactVersionsDiv.insertBefore(versionSelector, compactVersionsDiv.firstChild);
 
-        console.log('[Gem-Focus-Layout] Moved version selector to compact versions (view change)');
+        console.log('[Gem][FocusLayout] Moved version selector to compact versions (view change)');
       }
 
       // Show the compact versions div
@@ -256,7 +290,7 @@ function moveSelectorsBasedOnView(compactVersionsDiv, isFocusLayout) {
         // Move back to original location
         placeholder.parentNode.insertBefore(versionSelector, placeholder);
         placeholder.remove();
-        console.log('[Gem-Focus-Layout] Moved version selector back to original location (view change)');
+        console.log('[Gem][FocusLayout] Moved version selector back to original location (view change)');
       }
     }
   }
@@ -278,7 +312,7 @@ function moveSelectorsBasedOnView(compactVersionsDiv, isFocusLayout) {
         localeSelector.remove();
         compactVersionsDiv.appendChild(localeSelector);
 
-        console.log('[Gem-Focus-Layout] Moved multilanguage locale selector to compact versions (view change)');
+        console.log('[Gem][FocusLayout] Moved multilanguage locale selector to compact versions (view change)');
       }
 
       // Show the compact versions div
@@ -290,7 +324,7 @@ function moveSelectorsBasedOnView(compactVersionsDiv, isFocusLayout) {
         // Move back to original location
         placeholder.parentNode.insertBefore(localeSelector, placeholder);
         placeholder.remove();
-        console.log('[Gem-Focus-Layout] Moved multilanguage locale selector back to original location (view change)');
+        console.log('[Gem][FocusLayout] Moved multilanguage locale selector back to original location (view change)');
       }
     }
   }
@@ -309,7 +343,7 @@ function moveSelectorsBasedOnView(compactVersionsDiv, isFocusLayout) {
 }
 
 function setupFocusLayoutObserver(compactVersionsDiv) {
-  console.log('[Gem-Focus-Layout] Setting up Focus Layout observer for locale selector');
+  console.log('[Gem][FocusLayout] Setting up Focus Layout observer for locale selector');
 
   const root = document.documentElement;
   if (!root) return;
@@ -323,7 +357,7 @@ function setupFocusLayoutObserver(compactVersionsDiv) {
           const isFocusLayout = root.classList.contains('gem-focus-layout');
 
           if (wasFocusLayout !== isFocusLayout) {
-            console.log(`[Gem-Focus-Layout] Focus Layout changed: ${wasFocusLayout} -> ${isFocusLayout}`);
+            console.log(`[Gem][FocusLayout] Focus Layout changed: ${wasFocusLayout} -> ${isFocusLayout}`);
             moveSelectorsBasedOnView(compactVersionsDiv, isFocusLayout);
             onNavPanelLayoutChanged();
           }
@@ -338,7 +372,7 @@ function setupFocusLayoutObserver(compactVersionsDiv) {
           const isFocusLayout = root.classList.contains('gem-focus-layout');
 
           if (wasFocusLayout !== isFocusLayout) {
-            console.log(`[Gem-Focus-Layout] Focus Layout changed: ${wasFocusLayout} -> ${isFocusLayout}`);
+            console.log(`[Gem][FocusLayout] Focus Layout changed: ${wasFocusLayout} -> ${isFocusLayout}`);
             moveSelectorsBasedOnView(compactVersionsDiv, isFocusLayout);
             onNavPanelLayoutChanged();
           }
@@ -353,11 +387,11 @@ function setupFocusLayoutObserver(compactVersionsDiv) {
     });
   }
 
-  console.log('[Gem-Focus-Layout] Focus Layout observer set up');
+  console.log('[Gem][FocusLayout] Focus Layout observer set up');
 }
 
 function setupLanguagesSelectorObserver(compactVersionsDiv) {
-  console.log('[Gem-Focus-Layout] Setting up languages selector observer');
+  console.log('[Gem][FocusLayout] Setting up languages selector observer');
 
   // Watch for changes to vce-languages-selector class
   const languagesObserver = new MutationObserver((mutations) => {
@@ -415,7 +449,7 @@ function setupLanguagesSelectorObserver(compactVersionsDiv) {
     });
   }
 
-  console.log('[Gem-Focus-Layout] Languages selector observer set up');
+  console.log('[Gem][FocusLayout] Languages selector observer set up');
 }
 
 function updateCompactVersionsActiveState(compactVersionsDiv, isFocusLayout) {
@@ -430,10 +464,10 @@ function updateCompactVersionsActiveState(compactVersionsDiv, isFocusLayout) {
 
   if (shouldBeActive) {
     compactVersionsDiv.classList.add('active');
-    console.log('[Gem-Focus-Layout] Added active class to compact versions');
+    console.log('[Gem][FocusLayout] Added active class to compact versions');
   } else {
     compactVersionsDiv.classList.remove('active');
-    console.log('[Gem-Focus-Layout] Removed active class from compact versions');
+    console.log('[Gem][FocusLayout] Removed active class from compact versions');
   }
 }
 
@@ -441,10 +475,13 @@ const NAV_PANEL_STORAGE_KEY = 'gemNavPanelWidth';
 const NAV_PANEL_REFERENCE_VIEWPORT_KEY = 'gemNavPanelReferenceViewport';
 const NAV_LAYOUT_WIDTH_OFFSET = 24;
 const NAV_STANDARD_DEFAULT = 530;
-const NAV_STANDARD_MIN = 510;
+const NAV_STANDARD_MIN = 500;
 const NAV_STANDARD_MAX = 996;
 const NAV_FOCUS_MIN = 500;
 const NAV_FOCUS_MAX = 1020;
+// Focus display = stored + offset, so stored must be allowed below STANDARD_MIN
+// or Focus Layout cannot shrink to NAV_FOCUS_MIN (510+24 was locking at 534).
+const NAV_STORED_MIN = NAV_FOCUS_MIN - NAV_LAYOUT_WIDTH_OFFSET;
 const NAV_PANEL_RESIZE_DEBOUNCE_MS = 100;
 
 const NAV_RESIZABLE_TAB_SELECTORS = [
@@ -463,6 +500,12 @@ let storedNavPanelStandardWidth = NAV_STANDARD_DEFAULT;
 let storedNavPanelReferenceViewport = 0;
 let navPanelResizeInitialized = false;
 let navPanelNavSection = null;
+
+function clampNavStoredWidth(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return NAV_STANDARD_DEFAULT;
+  return Math.min(Math.max(Math.round(n), NAV_STORED_MIN), NAV_STANDARD_MAX);
+}
 
 function clampNavStandardWidth(value) {
   const n = Number(value);
@@ -525,7 +568,7 @@ function getNavPanelDisplayLimits(expanded) {
 }
 
 function getNavPanelDisplayWidth(storedStandardWidth, expanded) {
-  const stored = clampNavStandardWidth(storedStandardWidth);
+  const stored = clampNavStoredWidth(storedStandardWidth);
   const display = expanded ? stored + NAV_LAYOUT_WIDTH_OFFSET : stored;
   const limits = getNavPanelDisplayLimits(expanded);
   return Math.min(Math.max(display, limits.min), limits.max);
@@ -535,7 +578,7 @@ function toStoredNavPanelWidth(displayWidth, expanded) {
   const limits = getNavPanelDisplayLimits(expanded);
   const clampedDisplay = Math.min(Math.max(Math.round(displayWidth), limits.min), limits.max);
   const stored = expanded ? clampedDisplay - NAV_LAYOUT_WIDTH_OFFSET : clampedDisplay;
-  return clampNavStandardWidth(stored);
+  return clampNavStoredWidth(stored);
 }
 
 function getNavPanelMainRow(navSection) {
@@ -585,11 +628,12 @@ function resolveNavPanelAppliedWidths(storedStandard, navSection) {
   scaledDisplay = Math.min(scaledDisplay, budget, limits.max);
   scaledDisplay = Math.max(scaledDisplay, limits.min);
 
-  const appliedStandard = expanded
-    ? clampNavStandardWidth(scaledDisplay - NAV_LAYOUT_WIDTH_OFFSET)
-    : clampNavStandardWidth(scaledDisplay);
+  const appliedStored = expanded
+    ? clampNavStoredWidth(scaledDisplay - NAV_LAYOUT_WIDTH_OFFSET)
+    : clampNavStoredWidth(scaledDisplay);
+  const appliedStandard = clampNavStandardWidth(appliedStored);
   const appliedFocus = Math.min(
-    Math.max(appliedStandard + NAV_LAYOUT_WIDTH_OFFSET, NAV_FOCUS_MIN),
+    Math.max(appliedStored + NAV_LAYOUT_WIDTH_OFFSET, NAV_FOCUS_MIN),
     NAV_FOCUS_MAX
   );
 
@@ -602,7 +646,7 @@ function getNavPanelAppliedDisplayWidth(navSection) {
 }
 
 function applyNavPanelWidth(storedStandardWidth, options = {}) {
-  const stored = clampNavStandardWidth(storedStandardWidth);
+  const stored = clampNavStoredWidth(storedStandardWidth);
   storedNavPanelStandardWidth = stored;
   const root = document.documentElement;
   if (!root) return;
@@ -610,7 +654,7 @@ function applyNavPanelWidth(storedStandardWidth, options = {}) {
   let standard;
   let focus;
   if (options.skipViewportScale) {
-    standard = stored;
+    standard = clampNavStandardWidth(stored);
     focus = Math.min(
       Math.max(stored + NAV_LAYOUT_WIDTH_OFFSET, NAV_FOCUS_MIN),
       NAV_FOCUS_MAX
@@ -643,7 +687,7 @@ function loadNavPanelWidth(callback) {
 }
 
 function saveNavPanelWidth(storedStandardWidth) {
-  const stored = clampNavStandardWidth(storedStandardWidth);
+  const stored = clampNavStoredWidth(storedStandardWidth);
   storedNavPanelStandardWidth = stored;
 
   const main = getNavPanelMainRow(navPanelNavSection);
@@ -899,6 +943,23 @@ function initializeNavPanelResize(navSection) {
     syncNavPanelHandle(navSection);
   });
 }
+
+
+window.gemSyncFocusLayoutCampaignMenuTitle = function gemSyncFocusLayoutCampaignMenuTitle() {
+  if (!isFocusLayoutActive()) return;
+  const headerTitle = getHeaderTitle();
+  if (!headerTitle) return;
+
+  const existingPlaceholder = document.querySelector('[data-gem-header-title-placeholder]');
+  if (!existingPlaceholder && headerTitle.parentNode) {
+    const placeholder = document.createElement('div');
+    placeholder.style.display = 'none';
+    placeholder.setAttribute('data-gem-header-title-placeholder', 'true');
+    headerTitle.parentNode.insertBefore(placeholder, headerTitle);
+  }
+
+  ensureHeaderTitleInCampaignMenu(headerTitle);
+};
 
 // Initialize when DOM is ready
 if (document.readyState === 'loading') {

@@ -498,16 +498,36 @@ console.log('[Gem] snippet-context-menu.js loaded');
     }
   }
 
+  function injectGemPageScript(doc, { id, file }) {
+    if (!doc || !id || !file) return false;
+    try {
+      if (doc.getElementById(id)) return false;
+      if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.getURL) return false;
+      const script = doc.createElement('script');
+      script.id = id;
+      script.src = chrome.runtime.getURL(file);
+      script.async = false;
+      (doc.documentElement || doc.head || doc.body).appendChild(script);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   function injectIframeBridge(doc) {
     if (!doc || doc._gemSnippetBridgeInjected) return;
     doc._gemSnippetBridgeInjected = true;
     try {
       if (doc.getElementById(IFRAME_BRIDGE_SCRIPT_ID)) return;
-      const script = doc.createElement('script');
-      script.id = IFRAME_BRIDGE_SCRIPT_ID;
-      script.src = chrome.runtime.getURL('gem-snippet-iframe-bridge.js');
-      script.async = false;
-      (doc.documentElement || doc.head || doc.body).appendChild(script);
+      // Gate must load before the bridge in srcdoc/blob preview iframes.
+      injectGemPageScript(doc, {
+        id: 'gem-debug-logging-page-bridge',
+        file: 'debug-logging-page-bridge.js'
+      });
+      injectGemPageScript(doc, {
+        id: IFRAME_BRIDGE_SCRIPT_ID,
+        file: 'gem-snippet-iframe-bridge.js'
+      });
     } catch (_) {}
   }
 
@@ -598,9 +618,8 @@ console.log('[Gem] snippet-context-menu.js loaded');
     }
   }
 
-  // Note: prefix intentionally does NOT match the debug-logging-gate.js
-  // suppression regex (^\[Gem[\]\-\s]) so these diagnostics always print.
-  const GEM_TR_LOG = '[GemTokenReplace]';
+  // Gated by debug-logging-gate.js when "Enable debug logging" is off.
+  const GEM_TR_LOG = '[Gem][TokenReplace]';
 
   function gemTrDescribeNode(node) {
     if (!node) return 'null';
@@ -1732,7 +1751,7 @@ console.log('[Gem] snippet-context-menu.js loaded');
       ok = await window.gemInsertSnippetIntoTarget(ctx, insertItem, { mode });
     }
     try {
-      console.log('[GemDraftDirty]', 'insertMenuToken: finished', {
+      console.log('[Gem][DraftDirty]', 'insertMenuToken: finished', {
         ok,
         mode,
         ctxType: ctx.type,

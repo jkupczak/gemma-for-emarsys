@@ -1,4 +1,4 @@
-console.log("[gem] storage-measurement.js loaded");
+console.log("[Gem] storage-measurement.js loaded");
 
 (function () {
   const SYNC_QUOTA_BYTES = 102400;
@@ -195,7 +195,7 @@ console.log("[gem] storage-measurement.js loaded");
         entries[key] = localStorage.getItem(key);
       }
     } catch (err) {
-      console.warn("[gem] storage-measurement page localStorage read error:", err);
+      console.warn("[Gem] storage-measurement page localStorage read error:", err);
     }
     return entries;
   }
@@ -360,12 +360,12 @@ console.log("[gem] storage-measurement.js loaded");
   function renderCombinedStorage(mount) {
     chrome.storage.sync.get(null, (syncData) => {
       if (chrome.runtime.lastError) {
-        console.warn("[gem] storage-measurement sync read error:", chrome.runtime.lastError);
+        console.warn("[Gem] storage-measurement sync read error:", chrome.runtime.lastError);
         return;
       }
       chrome.storage.local.get(null, (localData) => {
         if (chrome.runtime.lastError) {
-          console.warn("[gem] storage-measurement local read error:", chrome.runtime.lastError);
+          console.warn("[Gem] storage-measurement local read error:", chrome.runtime.lastError);
           return;
         }
 

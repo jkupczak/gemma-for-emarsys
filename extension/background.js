@@ -160,7 +160,7 @@ function rcGetCampaignMatchKey(url, knownId) {
 }
 
 function bgLog(...args) {
-  try { console.log("[Gem] BG]", ...args); } catch (e) {}
+  try { console.log("[Gem][BG]", ...args); } catch (e) {}
 }
 
 /** Ask each campaign editor tab whether the draft save button shows unsaved work (see page-title-updater.js). */
@@ -193,11 +193,11 @@ function queryTabsUnsavedDraftState(tabIds, callback) {
 
 // Send a message to content scripts in a tab
 function sendToTab(tabId, msg) {
-  console.log("[Gem] BG: Sending to tab:", tabId, "msg:", msg);
+  console.log("[Gem][BG] Sending to tab:", tabId, "msg:", msg);
   chrome.tabs.sendMessage(tabId, msg, (response) => {
-    console.log("[Gem] BG: tabs.sendMessage response:", response);
+    console.log("[Gem][BG] tabs.sendMessage response:", response);
     if (chrome.runtime.lastError) {
-      console.log("[Gem] BG: tabs.sendMessage error:", chrome.runtime.lastError.message);
+      console.log("[Gem][BG] tabs.sendMessage error:", chrome.runtime.lastError.message);
     }
   });
 }

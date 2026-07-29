@@ -83,10 +83,11 @@ We did not teach Emarsys’s backpack to remember. We correct the picture every 
 
 ## Debug log crumbs
 
-Prefixes intentionally bypass the debug-logging gate:
+Enable via Settings → “Enable debug logging” (or `gemSetDebugLogging(true, true)`).
+Gemma-prefixed `console.log` / `info` / `debug` / `warn` are suppressed when that setting is off.
 
-- `[GemBodySync]` — content-script probes / dirty / surgical sync
-- `[GemBodySync][bridge]` — MAIN-world bridge
+- `[Gem][BodySync]` — content-script probes / dirty / surgical sync
+- `[Gem][BodySync][Bridge]` — MAIN-world bridge
 
 Useful flat lines:
 

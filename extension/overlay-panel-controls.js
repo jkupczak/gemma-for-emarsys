@@ -1200,6 +1200,9 @@ function setupCompactEmailToolsOverflowMenu(dropdownContainer) {
   menu.className = 'gem-campaign-menu';
   menu.setAttribute('role', 'menu');
 
+  const columns = document.createElement('div');
+  columns.className = 'gem-campaign-menu-columns';
+
   const previewColumn = document.createElement('div');
   previewColumn.className = 'gem-compact-email-tools-menu-column gem-compact-email-tools-menu-column--preview';
 
@@ -1524,10 +1527,11 @@ function setupCompactEmailToolsOverflowMenu(dropdownContainer) {
   featuresColumn.appendChild(targetingPreviewItem);
   featuresColumn.appendChild(highlightEditablesItem);
 
-  menu.appendChild(navColumn);
-  menu.appendChild(previewColumn);
-  menu.appendChild(featuresColumn);
-  menu.appendChild(collaborateColumn);
+  columns.appendChild(navColumn);
+  columns.appendChild(previewColumn);
+  columns.appendChild(featuresColumn);
+  columns.appendChild(collaborateColumn);
+  menu.appendChild(columns);
 
   collaborateColumn.appendChild(sendTestItem);
   collaborateColumn.appendChild(shareLinkItem);
@@ -1557,6 +1561,11 @@ function setupCompactEmailToolsOverflowMenu(dropdownContainer) {
   syncCompactEmailToolsFeatureMenuItems();
   syncCompactEmailToolsOverflowMenuPlacement();
   setupCompactEmailToolsOverflowMenuPlacementWatcher();
+  try {
+    if (typeof window.gemSyncFocusLayoutCampaignMenuTitle === 'function') {
+      window.gemSyncFocusLayoutCampaignMenuTitle();
+    }
+  } catch (_) {}
   setupCompactEmailToolsFeatureMenuSync();
   setupHighlightEditablesWatcher();
   setupCompactEmailToolsPreviewMenuWatcher();
@@ -7662,12 +7671,13 @@ function initializeOverlayPanelControls() {
 
     function debugDumpDialogButtons(modal, label = '') {
       try {
+        if (typeof window.gemIsDebugLoggingEnabled === 'function' && !window.gemIsDebugLoggingEnabled()) return;
         const content = modal.querySelector('.e-dialog__content') || modal;
         const btns = Array.from(content.querySelectorAll('button.e-btn')).slice(0, 30);
         console.log(`[Gem][RecentImages] Button dump ${label} (count=${btns.length}):`);
         btns.forEach((b, i) => {
           const text = (b.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 80);
-          console.log(`  [${i}] class="${b.className}" text="${text}"`, b);
+          console.log(`[Gem][RecentImages]   [${i}] class="${b.className}" text="${text}"`, b);
         });
         const secondary = Array.from(content.querySelectorAll('button.e-btn.e-btn-secondary'));
         console.log(`[Gem][RecentImages] Secondary buttons in content: ${secondary.length}`);
@@ -7767,7 +7777,7 @@ function initializeOverlayPanelControls() {
       console.log("[Gem][RecentImages] modifyImagePropertiesModal called");
 
       const previewLog = (...args) => {
-        try { console.log('[gem-image-preview]', ...args); } catch (_) {}
+        try { console.log('[Gem][ImagePreview]', ...args); } catch (_) {}
       };
 
       // Find the dialog active element

@@ -3764,13 +3764,16 @@ function initializePreflightPanel() {
     if (currentScanToken !== scanToken) return { ok: false, reason: 'stale-scan', totalReferences: 0 };
 
     if (sizeData.unknownCount > 0) {
-      console.groupCollapsed(`[Gem][Preflight] Unknown image sizes: ${sizeData.unknownCount}/${sizeData.networkCount}`);
-      sizeData.unknownDetails.forEach((entry, idx) => {
-        const reason = entry.attempts && entry.attempts.length ? entry.attempts.join(' | ') : 'No diagnostics';
-        console.log(`${idx + 1}. ${entry.url}`);
-        console.log(`   ${reason}`);
-      });
-      console.groupEnd();
+      const debugOn = typeof window.gemIsDebugLoggingEnabled === 'function' && window.gemIsDebugLoggingEnabled();
+      if (debugOn) {
+        console.groupCollapsed(`[Gem][Preflight] Unknown image sizes: ${sizeData.unknownCount}/${sizeData.networkCount}`);
+        sizeData.unknownDetails.forEach((entry, idx) => {
+          const reason = entry.attempts && entry.attempts.length ? entry.attempts.join(' | ') : 'No diagnostics';
+          console.log(`[Gem][Preflight] ${idx + 1}. ${entry.url}`);
+          console.log(`[Gem][Preflight]    ${reason}`);
+        });
+        console.groupEnd();
+      }
     }
 
     const thresholds = await getPreflightThresholdSettings();

@@ -1,5 +1,5 @@
 (function() {
-  const LOG_PREFIX = '[Gemma email-campaign-list]';
+  const LOG_PREFIX = '[Gem][EmailCampaignList]';
   const STORAGE_KEY = 'gemEmailCampaignListLoadAll';
   const FILTER_BUTTON_SELECTOR = 'e-datagrid-wrapper .e-datagrid__header_left .e-datagrid__filter_button button';
   const DATETIME_CLEAR_SELECTOR = '.e-datagrid__advanced_filters .e-datagrid__filter:first-child button.e-datetime__clear';
@@ -154,8 +154,7 @@
   window.gemRunEmailCampaignListLoadAll = gemRunEmailCampaignListLoadAll;
 
   // ── gemOtherRecentCampaigns: scrape campaign list table for Recent Campaigns panel ──
-  // Prefix avoids debug-logging-gate (which hides lines whose first arg matches ^\\[Gemma?\\s).
-  const OTHER_RECENT_LOG = "[EmailListOtherRecent]";
+  const OTHER_RECENT_LOG = "[Gem][EmailListOtherRecent]";
   const OTHER_RECENT_KEY = "gemOtherRecentCampaigns";
   const OTHER_RECENT_MAX = 1000;
   /** Tried in order; main list grid often lives under #main-datagrid and fills rows after header. */
@@ -185,9 +184,9 @@
 
   function otherRecentDebugEnabled() {
     try {
-      return typeof window.gemIsDebugLoggingEnabled !== "function" || window.gemIsDebugLoggingEnabled();
+      return typeof window.gemIsDebugLoggingEnabled === "function" && window.gemIsDebugLoggingEnabled();
     } catch (_) {
-      return true;
+      return false;
     }
   }
 
@@ -1037,7 +1036,7 @@
       return true;
     }
     console.warn(
-      `[Gemma email-campaign-list] ${actionLabel} menu item: native button not found for row`,
+      `[Gem][EmailCampaignList] ${actionLabel} menu item: native button not found for row`,
       tooltipContent
     );
     return false;
@@ -1110,7 +1109,7 @@
         const link = getGoToReportingLinkFromRow(row);
         const href = link ? String(link.getAttribute("href") || "").trim() : "";
         if (!href) {
-          console.warn("[Gemma email-campaign-list] Reporting menu item: native link not found for row");
+          console.warn("[Gem][EmailCampaignList] Reporting menu item: native link not found for row");
           return;
         }
         navigateCampaignUrl(new URL(href, window.location.origin).toString(), e);
@@ -1368,7 +1367,7 @@
   const LIST_PREVIEW_HTML_OPEN_CLASS = 'gem-email-campaign-list-preview-open';
   const PREVIEW_BUTTON_SELECTOR = 'button[aria-label="Preview"]';
   const PREVIEW_TOOLTIP_SELECTOR = 'e-tooltip[content="Preview"]';
-  const PREVIEW_PANEL_LOG = '[Gemma email-campaign-list][preview-panel]';
+  const PREVIEW_PANEL_LOG = '[Gem][EmailCampaignList][PreviewPanel]';
   const LIST_PREVIEW_LOADING_TIMEOUT_MS = 45000;
   const LIST_PREVIEW_SWAP_FLASH_MS = 180;
   const LIST_PREVIEW_POOL_SIZE = 5;

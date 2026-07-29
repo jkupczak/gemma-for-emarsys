@@ -1,4 +1,4 @@
-console.log("[gem] condensed-blocks-panel.js loaded");
+console.log("[Gem] condensed-blocks-panel.js loaded");
 
 const CONDENSED_SELECTOR = "main.e-layout__content section.e-contentblocks-navigation_section";
 let condensedUnsub = null;

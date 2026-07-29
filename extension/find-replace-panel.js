@@ -35,9 +35,8 @@ console.log('[Gem] find-replace-panel.js loaded');
   let globalTabHandlerBound = false;
   let panelHandlersBound = false;
 
-  // Note: prefix intentionally does NOT match debug-logging-gate.js
-  // suppression regex (^\[Gem[\]\-\s]) so these diagnostics always print.
-  const FR_LOG = '[GemFindReplace]';
+  // Gated by debug-logging-gate.js when "Enable debug logging" is off.
+  const FR_LOG = '[Gem][FindReplace]';
 
   function frLog(...args) {
     try {

@@ -1,7 +1,7 @@
 // language-load-overlay.js
 // Shows a lightweight overlay spinner while a new language version loads.
 (function () {
-  const LOG_PREFIX = '[Gem] Language Load Overlay';
+  const LOG_PREFIX = '[Gem][LanguageLoadOverlay]';
   const OVERLAY_ID = 'gem-language-load-overlay';
   const STYLE_ID = 'gem-language-load-style';
   const OVERLAY_TIMEOUT_MS = 20000;

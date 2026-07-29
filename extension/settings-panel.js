@@ -1,4 +1,4 @@
-console.log("[gem] settings-panel.js LOADED in frame:", window.location.href);
+console.log("[Gem] settings-panel.js LOADED in frame:", window.location.href);
 
 function gemToast(message, opts = {}) {
   if (window.gemShowToast) window.gemShowToast(message, opts);
@@ -283,7 +283,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
         snapshot[key] = localStorage.getItem(key);
       }
     } catch (err) {
-      console.warn("[gem] Failed to read localStorage for backup:", err);
+      console.warn("[Gem] Failed to read localStorage for backup:", err);
     }
     return snapshot;
   }
@@ -304,7 +304,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
       try {
         area.get(null, (data) => resolve(data || {}));
       } catch (err) {
-        console.warn("[gem] Failed reading storage area:", err);
+        console.warn("[Gem] Failed reading storage area:", err);
         resolve({});
       }
     });
@@ -587,7 +587,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
         if (copyBtn) copyBtn.disabled = false;
         if (copyBtn) copyBtn.style.opacity = "1";
       } catch (err) {
-        console.error("[gem] Failed to build selective full backup payload:", err);
+        console.error("[Gem] Failed to build selective full backup payload:", err);
         gemToast("Failed to build full backup. Please try again.", { type: "error", durationMs: 3200 });
       }
     });
@@ -609,7 +609,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
           btn.style.background = "#10b981";
         }, 2000);
       } catch (err) {
-        console.error("[gem] Failed to copy full backup:", err);
+        console.error("[Gem] Failed to copy full backup:", err);
         gemToast("Failed to copy to clipboard. Please copy manually.", { type: "error", durationMs: 3200 });
       }
     });
@@ -711,7 +711,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
         gemToast("Full backup imported successfully.", { type: "success", durationMs: 2800 });
         closeModal();
       } catch (err) {
-        console.error("[gem] Failed importing full backup:", err);
+        console.error("[Gem] Failed importing full backup:", err);
         gemToast("Import failed. Please try again.", { type: "error", durationMs: 3200 });
       }
     });
@@ -1626,11 +1626,11 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
 
       if (result.highlightTerms === undefined) {
         // First-time user: use defaults from text-highlighting.js
-        console.log("[gem] Settings panel: First-time user, using default highlight terms");
+        console.log("[Gem] Settings panel: First-time user, using default highlight terms");
         highlightTerms = window.DEFAULT_HIGHLIGHT_TERMS || {};
       } else {
         // Existing user: use their stored terms
-        console.log("[gem] Settings panel: Using existing user highlight terms");
+        console.log("[Gem] Settings panel: Using existing user highlight terms");
         highlightTerms = result.highlightTerms;
       }
 
@@ -2752,7 +2752,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
   // Panel open/close logic
   // ------------------------------------------------------------
   function openPanel() {
-    console.log("[gem] openPanel called, isOpen was:", isOpen);
+    console.log("[Gem] openPanel called, isOpen was:", isOpen);
     createPanel();
     loadSettings();
     attachListeners();
@@ -2770,14 +2770,14 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
 
         // Mark as opened
         chrome.storage.sync.set({ settingsPanelOpened: true });
-        console.log("[gem] First time opening settings panel - welcome link hidden");
+        console.log("[Gem] First time opening settings panel - welcome link hidden");
       } else {
         // Subsequent opens - ensure welcome link is visible
         const welcomeLink = panelEl.querySelector(".gem-welcome-link");
         if (welcomeLink) {
           welcomeLink.style.display = "";
         }
-        console.log("[gem] Settings panel opened before - welcome link visible");
+        console.log("[Gem] Settings panel opened before - welcome link visible");
       }
     });
 
@@ -2787,19 +2787,19 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
       if (typeof window.gemLayerRaise === "function") {
         window.gemLayerRaise(panelEl, { tier: "modal" });
       }
-      console.log("[gem] Panel opened, isOpen now:", isOpen);
+      console.log("[Gem] Panel opened, isOpen now:", isOpen);
     });
   }
 
   function closePanel() {
-    console.log("[gem] closePanel called, isOpen was:", isOpen);
+    console.log("[Gem] closePanel called, isOpen was:", isOpen);
     if (!panelEl) return;
     panelEl.style.right = "-580px";
     if (typeof window.gemLayerRelease === "function") {
       window.gemLayerRelease(panelEl);
     }
     isOpen = false;
-    console.log("[gem] Panel closed, isOpen now:", isOpen);
+    console.log("[Gem] Panel closed, isOpen now:", isOpen);
   }
 
   // ------------------------------------------------------------
@@ -3136,29 +3136,29 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
   // ------------------------------------------------------------
   // Listen for messages from background script or gear icon
   // ------------------------------------------------------------
-  console.log("[gem] settings-panel.js: setting up message listener");
+  console.log("[Gem] settings-panel.js: setting up message listener");
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-    console.log("[gem] settings-panel.js: RECEIVED MESSAGE:", msg, "from:", sender);
-    console.log("[gem] Current isOpen state:", isOpen);
+    console.log("[Gem] settings-panel.js: RECEIVED MESSAGE:", msg, "from:", sender);
+    console.log("[Gem] Current isOpen state:", isOpen);
 
     if (msg.action === "openSettings") {
       // Toggle the panel: close if open, open if closed (from gear icon)
-      console.log("[gem] Processing openSettings toggle from gear icon");
+      console.log("[Gem] Processing openSettings toggle from gear icon");
       if (isOpen) {
-        console.log("[gem] Panel is open, closing it");
+        console.log("[Gem] Panel is open, closing it");
         closePanel();
       } else {
-        console.log("[gem] Panel is closed, opening it");
+        console.log("[Gem] Panel is closed, opening it");
         openPanel();
       }
     } else if (msg.action === "toggleSettingsPanel") {
       // Toggle the panel: close if open, open if closed (from extension icon click)
-      console.log("[gem] Processing toggleSettingsPanel from extension icon");
+      console.log("[Gem] Processing toggleSettingsPanel from extension icon");
       if (isOpen) {
-        console.log("[gem] Panel is open, closing it");
+        console.log("[Gem] Panel is open, closing it");
         closePanel();
       } else {
-        console.log("[gem] Panel is closed, opening it");
+        console.log("[Gem] Panel is closed, opening it");
         openPanel();
       }
       sendResponse({ success: true });

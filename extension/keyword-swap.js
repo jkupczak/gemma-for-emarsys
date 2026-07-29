@@ -1,11 +1,11 @@
-console.log("[Gem-Keyword-Swap] keyword-swap.js loaded");
+console.log("[Gem][KeywordSwap] keyword-swap.js loaded");
 
 // Keyword swap functionality for both content block toolbar and preheader textarea
 function initializeKeywordSwap() {
   if (window.__gemKeywordSwapInitialized) return;
   window.__gemKeywordSwapInitialized = true;
 
-  console.log("[Gem-Keyword-Swap] Initializing keyword swap functionality - function called!");
+  console.log("[Gem][KeywordSwap] Initializing keyword swap functionality - function called!");
 
   // ------------------------------------------------------------
   // Preheader Keyword Swap functionality
@@ -34,7 +34,7 @@ function initializeKeywordSwap() {
       });
     });
 
-    console.log("[Gem-Keyword-Swap] Preheader keyword swap handler initialized");
+    console.log("[Gem][KeywordSwap] Preheader keyword swap handler initialized");
   }
 
   function setupPreheaderKeywordSwap(preheader) {
@@ -69,18 +69,18 @@ function initializeKeywordSwap() {
     // Add as the last child of the actions container
     actionsContainer.appendChild(swapButton);
 
-    console.log("[Gem-Keyword-Swap] Preheader keyword swap button added");
+    console.log("[Gem][KeywordSwap] Preheader keyword swap button added");
   }
 
   function performPreheaderKeywordSwap(preheader) {
     const textarea = preheader.querySelector('textarea');
     if (!textarea) {
-      console.log("[Gem-Keyword-Swap] No textarea found in preheader");
+      console.log("[Gem][KeywordSwap] No textarea found in preheader");
       return;
     }
 
     const textContent = textarea.value;
-    console.log("[Gem-Keyword-Swap] Preheader textarea content:", textContent);
+    console.log("[Gem][KeywordSwap] Preheader textarea content:", textContent);
 
     if (!textContent.trim()) {
       window.gemShowToast && window.gemShowToast('Preheader text is empty.', { type: 'info', duration: 4000 });
@@ -89,15 +89,15 @@ function initializeKeywordSwap() {
 
     // Get all snippets that have keyword swap rules
     getSnippets((snippets) => {
-      console.log("[Gem-Keyword-Swap] Retrieved snippets for preheader swap:", snippets.length);
+      console.log("[Gem][KeywordSwap] Retrieved snippets for preheader swap:", snippets.length);
       const swappableSnippets = snippets.filter((snippet) => {
         const rules = normalizeSwapKeywordsFromSnippet(snippet);
         const hasRules = rules.some((r) => r && r.keyword && r.initiateFrom !== 'toolbar' && r.initiateFrom !== 'panel');
-        console.log(`[Gem-Keyword-Swap] Snippet "${snippet.name}" has swappable rules:`, hasRules, rules);
+        console.log(`[Gem][KeywordSwap] Snippet "${snippet.name}" has swappable rules:`, hasRules, rules);
         return hasRules;
       });
 
-      console.log("[Gem-Keyword-Swap] Found swappable snippets:", swappableSnippets.length);
+      console.log("[Gem][KeywordSwap] Found swappable snippets:", swappableSnippets.length);
 
       if (!swappableSnippets.length) {
         window.gemShowToast && window.gemShowToast('No snippets with keyword swap rules found.', { type: 'info', duration: 4000 });
@@ -113,7 +113,7 @@ function initializeKeywordSwap() {
 
         rules.forEach((rule) => {
           const { keyword, mode, matchRule } = rule;
-          console.log(`[Gem-Keyword-Swap] Processing keyword "${keyword}" with mode "${mode}" and matchRule "${matchRule}"`);
+          console.log(`[Gem][KeywordSwap] Processing keyword "${keyword}" with mode "${mode}" and matchRule "${matchRule}"`);
 
           // Generate the replacement content (HTML token for contenteditable, plain text for textarea)
           const isTextareaContext = true; // We're always in textarea context for preheader
@@ -131,19 +131,19 @@ function initializeKeywordSwap() {
 
           // Match Rules control whether we use word boundaries (\b) or not.
           const regex = createKeywordRegex(keyword, matchRule);
-          console.log(`[Gem-Keyword-Swap] Testing regex: ${regex} against: "${modifiedText}"`);
+          console.log(`[Gem][KeywordSwap] Testing regex: ${regex} against: "${modifiedText}"`);
           const matches = modifiedText.match(regex);
           if (matches) {
-            console.log(`[Gem-Keyword-Swap] Found ${matches.length} matches for "${keyword}":`, matches);
+            console.log(`[Gem][KeywordSwap] Found ${matches.length} matches for "${keyword}":`, matches);
             totalSwaps += matches.length;
             modifiedText = modifiedText.replace(regex, replacementContent);
           } else {
-            console.log(`[Gem-Keyword-Swap] No matches found for "${keyword}"`);
+            console.log(`[Gem][KeywordSwap] No matches found for "${keyword}"`);
           }
         });
       });
 
-      console.log(`[Gem-Keyword-Swap] Total swaps performed: ${totalSwaps}`);
+      console.log(`[Gem][KeywordSwap] Total swaps performed: ${totalSwaps}`);
 
       if (totalSwaps > 0) {
         textarea.value = modifiedText;
@@ -338,7 +338,7 @@ function initializeKeywordSwap() {
       });
     });
 
-    console.log("[Gem-Keyword-Swap] Conditional editor keyword swap handler initialized");
+    console.log("[Gem][KeywordSwap] Conditional editor keyword swap handler initialized");
   }
 
   function setupConditionalEditorKeywordSwap(conditionalEditor) {
@@ -353,7 +353,7 @@ function initializeKeywordSwap() {
       }
     });
 
-    console.log("[Gem-Keyword-Swap] Conditional editor keyword swap buttons added");
+    console.log("[Gem][KeywordSwap] Conditional editor keyword swap buttons added");
   }
 
   function addKeywordSwapButtonToPersonalizableInput(personalizableInput) {
@@ -388,19 +388,19 @@ function initializeKeywordSwap() {
     // Insert the button before the dropdown
     inputGroup.insertBefore(swapButton, dropdown);
 
-    console.log("[Gem-Keyword-Swap] Conditional input keyword swap button added");
+    console.log("[Gem][KeywordSwap] Conditional input keyword swap button added");
   }
 
   function performConditionalInputKeywordSwap(personalizableInput) {
     const input = personalizableInput.querySelector('input.e-input');
     if (!input) {
-      console.log("[Gem-Keyword-Swap] No input element found in conditional personalizable input");
+      console.log("[Gem][KeywordSwap] No input element found in conditional personalizable input");
       window.gemShowToast && window.gemShowToast('Unable to access input content.', { type: 'error', duration: 4000 });
       return;
     }
 
     const textContent = input.value;
-    console.log("[Gem-Keyword-Swap] Conditional input content:", textContent);
+    console.log("[Gem][KeywordSwap] Conditional input content:", textContent);
 
     if (!textContent.trim()) {
       window.gemShowToast && window.gemShowToast('Input is empty.', { type: 'info', duration: 4000 });
@@ -409,13 +409,13 @@ function initializeKeywordSwap() {
 
     // Get snippets from storage
     if (typeof window.getSnippets !== 'function') {
-      console.log("[Gem-Keyword-Swap] getSnippets function not available");
+      console.log("[Gem][KeywordSwap] getSnippets function not available");
       window.gemShowToast && window.gemShowToast('Snippet functionality not available.', { type: 'error', duration: 4000 });
       return;
     }
 
     window.getSnippets((snippets) => {
-      console.log("[Gem-Keyword-Swap] Retrieved snippets:", snippets.length);
+      console.log("[Gem][KeywordSwap] Retrieved snippets:", snippets.length);
 
       // Find snippets with keyword swap rules (excluding panel-only keywords)
       const swappableSnippets = snippets.filter(snippet => {
@@ -423,7 +423,7 @@ function initializeKeywordSwap() {
         return snippet.swapKeywords.some(rule => rule.keyword && rule.keyword.trim() && rule.initiateFrom !== 'panel');
       });
 
-      console.log("[Gem-Keyword-Swap] Swappable snippets found:", swappableSnippets.length);
+      console.log("[Gem][KeywordSwap] Swappable snippets found:", swappableSnippets.length);
 
       if (swappableSnippets.length === 0) {
         window.gemShowToast && window.gemShowToast('No snippets with keyword swap rules found.', { type: 'info', duration: 4000 });
@@ -442,30 +442,30 @@ function initializeKeywordSwap() {
           const mode = normalizeSwapMode(rule.swapMode || 'exact');
           const regex = createKeywordRegex(keyword, mode);
 
-          console.log(`[Gem-Keyword-Swap] Testing snippet "${snippet.name}" keyword "${keyword}" mode "${mode}" regex:`, regex.source);
+          console.log(`[Gem][KeywordSwap] Testing snippet "${snippet.name}" keyword "${keyword}" mode "${mode}" regex:`, regex.source);
 
           // For conditional inputs, always use plain text content
           const replacementContent = snippet.content || '';
 
           if (replacementContent) {
-            console.log(`[Gem-Keyword-Swap] Before replacement - text: "${modifiedText}", looking for: "${keyword}"`);
+            console.log(`[Gem][KeywordSwap] Before replacement - text: "${modifiedText}", looking for: "${keyword}"`);
             const beforeText = modifiedText;
             modifiedText = modifiedText.replace(regex, replacementContent);
             const swaps = (beforeText.match(regex) || []).length - (modifiedText.match(regex) || []).length;
             if (swaps > 0) {
               totalSwaps += swaps;
-              console.log(`[Gem-Keyword-Swap] Replaced ${swaps} occurrence(s) of "${keyword}" with "${replacementContent}"`);
-              console.log(`[Gem-Keyword-Swap] After replacement - text: "${modifiedText}"`);
+              console.log(`[Gem][KeywordSwap] Replaced ${swaps} occurrence(s) of "${keyword}" with "${replacementContent}"`);
+              console.log(`[Gem][KeywordSwap] After replacement - text: "${modifiedText}"`);
             } else {
-              console.log(`[Gem-Keyword-Swap] No matches found for "${keyword}" in text`);
+              console.log(`[Gem][KeywordSwap] No matches found for "${keyword}" in text`);
             }
           } else {
-            console.log(`[Gem-Keyword-Swap] No replacement content for snippet "${snippet.name}"`);
+            console.log(`[Gem][KeywordSwap] No replacement content for snippet "${snippet.name}"`);
           }
         });
       });
 
-      console.log(`[Gem-Keyword-Swap] Total swaps performed: ${totalSwaps}`);
+      console.log(`[Gem][KeywordSwap] Total swaps performed: ${totalSwaps}`);
 
       if (totalSwaps > 0) {
         // Update the input value
@@ -507,7 +507,7 @@ function initializeKeywordSwap() {
       });
     });
 
-    console.log("[Gem-Keyword-Swap] Subject line keyword swap handler initialized");
+    console.log("[Gem][KeywordSwap] Subject line keyword swap handler initialized");
   }
 
   function setupSubjectLineKeywordSwap(subjectInput) {
@@ -547,7 +547,7 @@ function initializeKeywordSwap() {
     // Add as the first child of the toolbar
     toolbar.insertBefore(swapButton, toolbar.firstChild);
 
-    console.log("[Gem-Keyword-Swap] Subject line keyword swap button added");
+    console.log("[Gem][KeywordSwap] Subject line keyword swap button added");
   }
 
   function setSubjectLineContentWithRetry(text, cmInstance, cmEl, attempts = 5, delayMs = 100) {
@@ -556,9 +556,9 @@ function initializeKeywordSwap() {
     if (vceCm) {
       try {
         vceCm.setAttribute('html', text);
-        console.log("[Gem-Keyword-Swap] Updated vce-codemirror html attribute");
+        console.log("[Gem][KeywordSwap] Updated vce-codemirror html attribute");
       } catch (e) {
-        console.log("[Gem-Keyword-Swap] Failed to update vce-codemirror html attribute:", e);
+        console.log("[Gem][KeywordSwap] Failed to update vce-codemirror html attribute:", e);
       }
     }
 
@@ -567,15 +567,15 @@ function initializeKeywordSwap() {
     if (htmlEditor) {
       try {
         htmlEditor.setAttribute('html', text);
-        console.log("[Gem-Keyword-Swap] Updated vce-html-editor html attribute");
+        console.log("[Gem][KeywordSwap] Updated vce-html-editor html attribute");
       } catch (e) {
-        console.log("[Gem-Keyword-Swap] Failed to update vce-html-editor html attribute:", e);
+        console.log("[Gem][KeywordSwap] Failed to update vce-html-editor html attribute:", e);
       }
     }
 
     // First try to use CodeMirror instance if available
     if (cmInstance && typeof cmInstance.setValue === 'function') {
-      console.log("[Gem-Keyword-Swap] Setting content via CodeMirror instance");
+      console.log("[Gem][KeywordSwap] Setting content via CodeMirror instance");
       cmInstance.setValue(text);
 
       // Try focusing and blurring the CodeMirror to trigger change detection
@@ -591,13 +591,13 @@ function initializeKeywordSwap() {
     }
 
     // If CodeMirror instance not available, try DOM manipulation
-    console.log("[Gem-Keyword-Swap] Using DOM fallback to set subject line content");
+    console.log("[Gem][KeywordSwap] Using DOM fallback to set subject line content");
 
     // Try to find and update the textarea that CodeMirror uses
     const textarea = cmEl ? cmEl.querySelector('textarea') : null;
     if (textarea) {
       textarea.value = text;
-      console.log("[Gem-Keyword-Swap] Set content in CodeMirror textarea");
+      console.log("[Gem][KeywordSwap] Set content in CodeMirror textarea");
 
       // Dispatch input and change events on the textarea
       textarea.dispatchEvent(new Event('input', { bubbles: true }));
@@ -608,12 +608,12 @@ function initializeKeywordSwap() {
         // Some CodeMirror versions have a setValueFromTextArea method
         if (typeof cmInstance.setValueFromTextArea === 'function') {
           cmInstance.setValueFromTextArea();
-          console.log("[Gem-Keyword-Swap] Called setValueFromTextArea");
+          console.log("[Gem][KeywordSwap] Called setValueFromTextArea");
         }
         // Try refresh to update display
         if (typeof cmInstance.refresh === 'function') {
           cmInstance.refresh();
-          console.log("[Gem-Keyword-Swap] Called CodeMirror refresh");
+          console.log("[Gem][KeywordSwap] Called CodeMirror refresh");
         }
       }
       return true;
@@ -623,11 +623,11 @@ function initializeKeywordSwap() {
     const pre = cmEl ? cmEl.querySelector('pre.CodeMirror-line') : null;
     if (pre) {
       pre.textContent = text;
-      console.log("[Gem-Keyword-Swap] Set content in DOM pre element (fallback)");
+      console.log("[Gem][KeywordSwap] Set content in DOM pre element (fallback)");
       return true;
     }
 
-    console.log("[Gem-Keyword-Swap] Could not find textarea or pre element for DOM fallback");
+    console.log("[Gem][KeywordSwap] Could not find textarea or pre element for DOM fallback");
 
     // Retry if attempts remain
     if (attempts > 1) {
@@ -647,7 +647,7 @@ function initializeKeywordSwap() {
     const cmEl = vceCm ? vceCm.querySelector('.CodeMirror') : null;
     const cmInstance = cmEl ? (cmEl.CodeMirror || null) : null;
 
-    console.log("[Gem-Keyword-Swap] Subject line CodeMirror debug:", {
+    console.log("[Gem][KeywordSwap] Subject line CodeMirror debug:", {
       vceCm: !!vceCm,
       cmEl: !!cmEl,
       cmInstance: !!cmInstance,
@@ -658,20 +658,20 @@ function initializeKeywordSwap() {
     let textContent = '';
     if (cmInstance && typeof cmInstance.getValue === 'function') {
       textContent = cmInstance.getValue();
-      console.log("[Gem-Keyword-Swap] Got content via CodeMirror instance:", textContent);
+      console.log("[Gem][KeywordSwap] Got content via CodeMirror instance:", textContent);
     } else if (cmEl) {
       // Fallback: get content from the DOM
       const pre = cmEl.querySelector('pre.CodeMirror-line');
       textContent = pre ? (pre.textContent || '') : '';
-      console.log("[Gem-Keyword-Swap] Got content via DOM fallback:", textContent, "pre element found:", !!pre);
+      console.log("[Gem][KeywordSwap] Got content via DOM fallback:", textContent, "pre element found:", !!pre);
     }
 
     if (!textContent && !cmEl) {
-      console.log("[Gem-Keyword-Swap] No CodeMirror element found in subject line");
+      console.log("[Gem][KeywordSwap] No CodeMirror element found in subject line");
       window.gemShowToast && window.gemShowToast('Unable to access subject line content.', { type: 'error', duration: 4000 });
       return;
     }
-    console.log("[Gem-Keyword-Swap] Subject line content:", textContent);
+    console.log("[Gem][KeywordSwap] Subject line content:", textContent);
 
     if (!textContent.trim()) {
       window.gemShowToast && window.gemShowToast('Subject line is empty.', { type: 'info', duration: 4000 });
@@ -680,13 +680,13 @@ function initializeKeywordSwap() {
 
     // Get snippets from storage
     if (typeof window.getSnippets !== 'function') {
-      console.log("[Gem-Keyword-Swap] getSnippets function not available");
+      console.log("[Gem][KeywordSwap] getSnippets function not available");
       window.gemShowToast && window.gemShowToast('Snippet functionality not available.', { type: 'error', duration: 4000 });
       return;
     }
 
     window.getSnippets((snippets) => {
-      console.log("[Gem-Keyword-Swap] Retrieved snippets:", snippets.length);
+      console.log("[Gem][KeywordSwap] Retrieved snippets:", snippets.length);
 
       // Find snippets with keyword swap rules (excluding panel-only keywords)
       const swappableSnippets = snippets.filter(snippet => {
@@ -694,7 +694,7 @@ function initializeKeywordSwap() {
         return snippet.swapKeywords.some(rule => rule.keyword && rule.keyword.trim() && rule.initiateFrom !== 'panel');
       });
 
-      console.log("[Gem-Keyword-Swap] Swappable snippets found:", swappableSnippets.length);
+      console.log("[Gem][KeywordSwap] Swappable snippets found:", swappableSnippets.length);
 
       if (swappableSnippets.length === 0) {
         window.gemShowToast && window.gemShowToast('No snippets with keyword swap rules found.', { type: 'info', duration: 4000 });
@@ -713,30 +713,30 @@ function initializeKeywordSwap() {
           const mode = normalizeSwapMode(rule.swapMode || 'exact');
           const regex = createKeywordRegex(keyword, mode);
 
-          console.log(`[Gem-Keyword-Swap] Testing snippet "${snippet.name}" keyword "${keyword}" mode "${mode}" regex:`, regex.source);
+          console.log(`[Gem][KeywordSwap] Testing snippet "${snippet.name}" keyword "${keyword}" mode "${mode}" regex:`, regex.source);
 
           // For subject line, always use plain text content
           const replacementContent = snippet.content || '';
 
           if (replacementContent) {
-            console.log(`[Gem-Keyword-Swap] Before replacement - text: "${modifiedText}", looking for: "${keyword}"`);
+            console.log(`[Gem][KeywordSwap] Before replacement - text: "${modifiedText}", looking for: "${keyword}"`);
             const beforeText = modifiedText;
             modifiedText = modifiedText.replace(regex, replacementContent);
             const swaps = (beforeText.match(regex) || []).length - (modifiedText.match(regex) || []).length;
             if (swaps > 0) {
               totalSwaps += swaps;
-              console.log(`[Gem-Keyword-Swap] Replaced ${swaps} occurrence(s) of "${keyword}" with "${replacementContent}"`);
-              console.log(`[Gem-Keyword-Swap] After replacement - text: "${modifiedText}"`);
+              console.log(`[Gem][KeywordSwap] Replaced ${swaps} occurrence(s) of "${keyword}" with "${replacementContent}"`);
+              console.log(`[Gem][KeywordSwap] After replacement - text: "${modifiedText}"`);
             } else {
-              console.log(`[Gem-Keyword-Swap] No matches found for "${keyword}" in text`);
+              console.log(`[Gem][KeywordSwap] No matches found for "${keyword}" in text`);
             }
           } else {
-            console.log(`[Gem-Keyword-Swap] No replacement content for snippet "${snippet.name}"`);
+            console.log(`[Gem][KeywordSwap] No replacement content for snippet "${snippet.name}"`);
           }
         });
       });
 
-      console.log(`[Gem-Keyword-Swap] Total swaps performed: ${totalSwaps}`);
+      console.log(`[Gem][KeywordSwap] Total swaps performed: ${totalSwaps}`);
 
       if (totalSwaps > 0) {
         // Set the modified text back to CodeMirror with retry mechanism
@@ -763,13 +763,13 @@ function initializeKeywordSwap() {
   initializeConditionalEditorKeywordSwap();
   initializeSubjectLineKeywordSwap();
 
-  console.log("[Gem-Keyword-Swap] Keyword swap functionality initialized");
+  console.log("[Gem][KeywordSwap] Keyword swap functionality initialized");
 }
 
 // Make the keyword swap functionality available globally
-console.log("[Gem-Keyword-Swap] Assigning initializeKeywordSwap to window");
+console.log("[Gem][KeywordSwap] Assigning initializeKeywordSwap to window");
 window.initializeKeywordSwap = initializeKeywordSwap;
-console.log("[Gem-Keyword-Swap] window.initializeKeywordSwap assigned:", typeof window.initializeKeywordSwap);
+console.log("[Gem][KeywordSwap] window.initializeKeywordSwap assigned:", typeof window.initializeKeywordSwap);
 try {
   window.dispatchEvent(new CustomEvent('gem:keyword-swap-ready'));
 } catch (_) {}
@@ -777,6 +777,6 @@ try {
 // Check if overlay-panel-controls has already been initialized and try to initialize immediately
 // This handles the case where keyword-swap.js loads after overlay-panel-controls.js
 if (window.initializeOverlayPanelControls && document.readyState !== 'loading') {
-  console.log("[Gem-Keyword-Swap] overlay-panel-controls appears to be loaded, initializing immediately");
+  console.log("[Gem][KeywordSwap] overlay-panel-controls appears to be loaded, initializing immediately");
   initializeKeywordSwap();
 }

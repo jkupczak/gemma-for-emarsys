@@ -44,7 +44,11 @@ function getSection(source, startToken, endToken) {
 runCheck('manifest contains debug gate before platform in global content script', () => {
   const manifest = JSON.parse(readFile('extension/manifest.json'));
   const globalScript = (manifest.content_scripts || []).find((entry) =>
-    Array.isArray(entry.matches) && entry.matches.includes('https://*.emarsys.net/*')
+    Array.isArray(entry.matches) &&
+    entry.matches.includes('https://*.emarsys.net/*') &&
+    entry.world !== 'MAIN' &&
+    Array.isArray(entry.js) &&
+    entry.js.includes('debug-logging-gate.js')
   );
 
   assert(globalScript, 'Global content script entry not found');
@@ -55,6 +59,95 @@ runCheck('manifest contains debug gate before platform in global content script'
   assert(debugIndex >= 0, 'debug-logging-gate.js missing from global script list');
   assert(platformIndex >= 0, 'platform.js missing from global script list');
   assert(debugIndex < platformIndex, 'debug-logging-gate.js must load before platform.js');
+
+  const mainBridgeEntry = (manifest.content_scripts || []).find((entry) =>
+    entry &&
+    entry.world === 'MAIN' &&
+    Array.isArray(entry.matches) &&
+    entry.matches.includes('https://*.emarsys.net/*') &&
+    Array.isArray(entry.js) &&
+    entry.js.includes('debug-logging-page-bridge.js')
+  );
+  assert(mainBridgeEntry, 'MAIN-world debug-logging-page-bridge.js entry missing');
+  assert(mainBridgeEntry.all_frames === true, 'MAIN-world debug bridge must run in all frames');
+  assert(mainBridgeEntry.run_at === 'document_start', 'MAIN-world debug bridge must run at document_start');
+});
+
+runCheck('debug-logging-gate suppresses all [Gem…] prefixes when disabled', () => {
+  const gateSrc = readFile('extension/debug-logging-gate.js');
+  const bridgeSrc = readFile('extension/debug-logging-page-bridge.js');
+  assert(
+    /prefixRegex\s*=\s*\/\^\\\[gem\/i/.test(gateSrc),
+    'debug-logging-gate.js must use /^\\[gem/i prefix regex'
+  );
+  assert(
+    /prefixRegex\s*=\s*\/\^\\\[gem\/i/.test(bridgeSrc),
+    'debug-logging-page-bridge.js must use /^\\[gem/i prefix regex'
+  );
+  assert(
+    !gateSrc.includes('Gemma debug logging is available.'),
+    'debug-logging-gate.js must not emit ungated help text on install'
+  );
+  assert(
+    !bridgeSrc.includes('Gemma Regression Harness:'),
+    'debug-logging-page-bridge.js must not emit ungated harness text on install'
+  );
+
+  const prefixRegex = /^\[gem/i;
+  [
+    '[Gem]',
+    '[Gem][FocusLayout]',
+    '[Gem][TokenReplace]',
+    '[Gem][DraftDirty]',
+    '[Gem][BodySync][Bridge]',
+    '[Gem][SwapDebug]',
+    '[Gem][EmailListOtherRecent]',
+    '[Gem][KeywordSwap]'
+  ].forEach((sample) => {
+    assert(prefixRegex.test(sample), `prefix regex should match ${sample}`);
+  });
+  assert(!prefixRegex.test('Gemma debug logging is available.'), 'unbracketed help text is not a gated prefix');
+});
+
+runCheck('Gemma console log prefixes use [Gem][Feature] formatting', () => {
+  const files = [
+    'extension/content-block-toolbar.js',
+    'extension/keyword-swap.js',
+    'extension/focus-layout.js',
+    'extension/email-campaign-list.js',
+    'extension/mobile-view.js',
+    'extension/gem-snippet-iframe-bridge.js',
+    'extension/find-replace-dom-utils.js',
+    'extension/find-replace-panel.js',
+    'extension/magic-fill-panel.js',
+    'extension/snippets-tab.js',
+    'extension/snippet-context-menu.js',
+    'extension/language-load-overlay.js',
+    'extension/background.js'
+  ];
+  const banned = [
+    '[gem]',
+    '[Gem-Keyword-Swap]',
+    '[Gem-Focus-Layout]',
+    '[gem:swap-debug]',
+    '[GemTokenReplace]',
+    '[GemDraftDirty]',
+    '[GemBodySync]',
+    '[Gemma email-campaign-list]',
+    '[Gem mobile-view]',
+    '[Gem] BG]',
+    '[Gem][CM Token Insert]',
+    '[Gem] Language Load Overlay'
+  ];
+  files.forEach((rel) => {
+    const src = readFile(rel);
+    banned.forEach((prefix) => {
+      assert(!src.includes(prefix), `${rel} still contains legacy prefix ${prefix}`);
+    });
+  });
+  assert(readFile('extension/content-block-toolbar.js').includes("[Gem][DraftDirty]"));
+  assert(readFile('extension/keyword-swap.js').includes('[Gem][KeywordSwap]'));
+  assert(readFile('extension/email-campaign-list.js').includes('[Gem][EmailCampaignList]'));
 });
 
 runCheck('platform.js is not duplicated in campaign-specific script list', () => {
@@ -236,6 +329,16 @@ runCheck('main nav injectors support legacy and UI5 menus', () => {
 
   const palette = readFile('extension/command-palette.js');
   assert(palette.includes('gemNavMenu.collectEmarsysNavLinks') || palette.includes('collectEmarsysNavLinks'));
+});
+
+runCheck('personalization tokens prefetch once per campaign page load', () => {
+  const src = readFile('extension/personalization-tokens.js');
+  assert(src.includes('function ensurePersonalizationTokensLoaded('));
+  assert(src.includes('if (sessionTokens !== null)'));
+  assert(src.includes('if (sessionFetchPromise)'));
+  assert(src.includes('function schedulePersonalizationTokensIdlePrefetch('));
+  assert(src.includes('requestIdleCallback'));
+  assert(src.includes('schedulePersonalizationTokensIdlePrefetch()'));
 });
 
 runCheck('syntax check for edited files', () => {

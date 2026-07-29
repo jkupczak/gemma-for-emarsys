@@ -1,4 +1,4 @@
-console.log("[gem] notes.js loaded");
+console.log("[Gem] notes.js loaded");
 
 const GEM_NOTES_STORAGE_KEY = "gemNotes";
 const GEM_NOTES_NAV_ID = "gem-nav-notes-item";

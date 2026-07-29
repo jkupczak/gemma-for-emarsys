@@ -1,4 +1,4 @@
-console.log("[gem] page-localstorage-guard.js loaded");
+console.log("[Gem] page-localstorage-guard.js loaded");
 
 (function () {
   const PAGE_LOCAL_QUOTA_BYTES = 5242880;
@@ -77,7 +77,7 @@ console.log("[gem] page-localstorage-guard.js loaded");
 
         if (testMailResult.runningTotal > TARGET_BYTES) {
           console.warn(
-            "[gem] page localStorage still above 75% after Emarsys cache purge; other keys may need manual review.",
+            "[Gem] page localStorage still above 75% after Emarsys cache purge; other keys may need manual review.",
             "current:", Math.round(testMailResult.runningTotal / 1024) + " KB",
             "target:", Math.round(TARGET_BYTES / 1024) + " KB"
           );
@@ -86,7 +86,7 @@ console.log("[gem] page-localstorage-guard.js loaded");
 
       if (totalRemoved > 0) {
         console.log(
-          "[gem] Pruned Emarsys localStorage cache:",
+          "[Gem] Pruned Emarsys localStorage cache:",
           totalRemoved + " keys removed,",
           Math.round(totalFreed / 1024) + " KB freed.",
           "Was:", Math.round(initialTotal / 1024) + " KB,",

@@ -1520,9 +1520,8 @@ console.log('[Gem] find-replace-dom-utils.js loaded');
     return { count, locations, changes, touched };
   }
 
-  // Note: prefix intentionally does NOT match debug-logging-gate.js
-  // suppression regex (^\[Gem[\]\-\s]) so these diagnostics always print.
-  const BODY_SYNC_LOG = '[GemBodySync]';
+  // Gated by debug-logging-gate.js when "Enable debug logging" is off.
+  const BODY_SYNC_LOG = '[Gem][BodySync]';
 
   function bodySyncLog(...args) {
     try {
@@ -2179,6 +2178,13 @@ console.log('[Gem] find-replace-dom-utils.js loaded');
     try {
       if (doc.getElementById(GEM_BODY_SYNC_BRIDGE_SCRIPT_ID)) return;
       if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.getURL) return;
+      if (!doc.getElementById('gem-debug-logging-page-bridge')) {
+        const gate = doc.createElement('script');
+        gate.id = 'gem-debug-logging-page-bridge';
+        gate.src = chrome.runtime.getURL('debug-logging-page-bridge.js');
+        gate.async = false;
+        (doc.documentElement || doc.head || doc.body).appendChild(gate);
+      }
       const script = doc.createElement('script');
       script.id = GEM_BODY_SYNC_BRIDGE_SCRIPT_ID;
       script.src = chrome.runtime.getURL('gem-snippet-iframe-bridge.js');

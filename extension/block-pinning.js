@@ -1,8 +1,8 @@
-console.log("[gem] block-pinning.js loaded");
+console.log("[Gem] block-pinning.js loaded");
 
 // Block pinning and hiding functionality
 function initializeBlockPinning() {
-  console.log("[gem] Initializing block pinning and hiding");
+  console.log("[Gem] Initializing block pinning and hiding");
 
   // Legacy storage keys
   const PINNED_BLOCKS_KEY = 'pinnedBlocks';

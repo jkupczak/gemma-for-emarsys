@@ -1,4 +1,4 @@
-console.log("[gem] recent-campaigns.js loaded");
+console.log("[Gem] recent-campaigns.js loaded");
 
 (function () {
   const RECENT_STORAGE_KEY = "gemRecentCampaigns";
@@ -55,7 +55,7 @@ console.log("[gem] recent-campaigns.js loaded");
       ].join("|");
       if (dedupeKey === lastRecentPreviewCaptureLogKey) return;
       lastRecentPreviewCaptureLogKey = dedupeKey;
-      console.log("[Gem-RecentPreview]", info);
+      console.log("[Gem][RecentPreview]", info);
     } catch (_) {}
   }
 
@@ -1422,7 +1422,7 @@ console.log("[gem] recent-campaigns.js loaded");
         const prevPreview = String(existing.previewImageUrl || "");
         const nextPreview = String(normalized.previewImageUrl || "");
         if (prevPreview !== nextPreview && isRecentPreviewImageDebugEnabled()) {
-          console.log("[Gem-RecentPreview]", {
+          console.log("[Gem][RecentPreview]", {
             phase: "persist_preview_url",
             campaignId: normalized.id,
             cleared: !nextPreview && !!prevPreview,
@@ -1446,7 +1446,7 @@ console.log("[gem] recent-campaigns.js loaded");
         };
       } else {
         if (normalized.previewImageUrl && isRecentPreviewImageDebugEnabled()) {
-          console.log("[Gem-RecentPreview]", {
+          console.log("[Gem][RecentPreview]", {
             phase: "persist_preview_url",
             campaignId: normalized.id,
             newRow: true,
@@ -1840,7 +1840,7 @@ console.log("[gem] recent-campaigns.js loaded");
   }
 
   function drawerPreviewDbg(...args) {
-    if (DRAWER_PREVIEW_DEBUG) console.log("[Gemma recent-campaigns][preview]", ...args);
+    if (DRAWER_PREVIEW_DEBUG) console.log("[Gem][RecentCampaigns][Preview]", ...args);
   }
 
   function drawerPreviewPriorityLabel(priority) {

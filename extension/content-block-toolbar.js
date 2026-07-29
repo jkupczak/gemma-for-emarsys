@@ -1,8 +1,8 @@
-console.log("[gem] content-block-toolbar.js loaded");
+console.log("[Gem] content-block-toolbar.js loaded");
 
 // Content Block Toolbar management - CSS-only approach
 function initializeContentBlockToolbar() {
-  console.log("[gem] Initializing content block toolbar management");
+  console.log("[Gem] Initializing content block toolbar management");
 
   // Apply initial settings as CSS classes on body
   applyToolbarSettingsAsClasses();
@@ -34,7 +34,7 @@ function initializeContentBlockToolbar() {
     );
 
     if (hasToolbarChange) {
-      console.log("[gem] Toolbar settings changed, reapplying CSS classes");
+      console.log("[Gem] Toolbar settings changed, reapplying CSS classes");
       applyToolbarSettingsAsClasses();
     }
   });
@@ -93,7 +93,7 @@ function applyToolbarSettingsAsClasses() {
     convertEslToTokens: "always-show",
     swapKeywords: "always-show"
   }, (settings) => {
-    console.log("[gem] Applying toolbar settings as CSS classes:", settings);
+    console.log("[Gem] Applying toolbar settings as CSS classes:", settings);
 
     // Remove all existing toolbar classes
     document.body.classList.forEach(className => {
@@ -323,13 +323,13 @@ function injectTextSwapButtonIntoToolbar(toolbarEl) {
 
   const actions = toolbarEl.querySelector(GEM_TOOLBAR_ACTIONS_SELECTOR);
   if (!actions) {
-    console.debug(`[gem:swap-debug] toolbar#${tid}: ✗ no actions container (selector: ${GEM_TOOLBAR_ACTIONS_SELECTOR})`);
+    console.debug(`[Gem][SwapDebug] toolbar#${tid}: ✗ no actions container (selector: ${GEM_TOOLBAR_ACTIONS_SELECTOR})`);
     return { status: 'skipped', reason: 'no-actions-container' };
   }
 
   const reorderBtn = toolbarEl.querySelector(GEM_REORDER_BTN_SELECTOR);
   if (!reorderBtn) {
-    console.debug(`[gem:swap-debug] toolbar#${tid}: ✗ no reorder button (selector: ${GEM_REORDER_BTN_SELECTOR})`);
+    console.debug(`[Gem][SwapDebug] toolbar#${tid}: ✗ no reorder button (selector: ${GEM_REORDER_BTN_SELECTOR})`);
     return { status: 'skipped', reason: 'no-reorder-button' };
   }
 
@@ -337,11 +337,11 @@ function injectTextSwapButtonIntoToolbar(toolbarEl) {
   const blockTemplateName = reorderBtn.getAttribute('blocktemplatename') || '';
   const blockPosition = reorderBtn.getAttribute('blockposition') || '';
 
-  console.debug(`[gem:swap-debug] toolbar#${tid}: inject called — blockId="${eBlockId}", inDoc=${toolbarEl.isConnected}, checked=${!!actions._gemSwapKeywordChecked}, hasAny=${actions._gemSwapKeywordHasAny}`);
+  console.debug(`[Gem][SwapDebug] toolbar#${tid}: inject called — blockId="${eBlockId}", inDoc=${toolbarEl.isConnected}, checked=${!!actions._gemSwapKeywordChecked}, hasAny=${actions._gemSwapKeywordHasAny}`);
 
   // Respect settings: allow user to always hide this icon
   if (document.body.classList.contains('gem-toolbar-swapKeywords-always-hide')) {
-    console.debug(`[gem:swap-debug] toolbar#${tid}: ✗ skipped — always-hide-setting`);
+    console.debug(`[Gem][SwapDebug] toolbar#${tid}: ✗ skipped — always-hide-setting`);
     return { status: 'skipped', reason: 'always-hide-setting' };
   }
 
@@ -354,7 +354,7 @@ function injectTextSwapButtonIntoToolbar(toolbarEl) {
     else existingBtn.removeAttribute('blocktemplatename');
     if (blockPosition) existingBtn.setAttribute('blockposition', blockPosition);
     else existingBtn.removeAttribute('blockposition');
-    console.debug(`[gem:swap-debug] toolbar#${tid}: already-present, attrs updated`);
+    console.debug(`[Gem][SwapDebug] toolbar#${tid}: already-present, attrs updated`);
     return {
       status: 'skipped',
       reason: 'already-present',
@@ -366,7 +366,7 @@ function injectTextSwapButtonIntoToolbar(toolbarEl) {
 
   // Only show this action if the target block contains contenteditable areas.
   if (eBlockId && !blockHasEditableInPreviewIframe(eBlockId)) {
-    console.debug(`[gem:swap-debug] toolbar#${tid}: ✗ skipped — blockHasEditableInPreviewIframe returned false for "${eBlockId}"`);
+    console.debug(`[Gem][SwapDebug] toolbar#${tid}: ✗ skipped — blockHasEditableInPreviewIframe returned false for "${eBlockId}"`);
     return {
       status: 'skipped',
       reason: 'no-editable-in-preview-iframe',
@@ -380,13 +380,13 @@ function injectTextSwapButtonIntoToolbar(toolbarEl) {
   // This requires an async storage read; gate injection with a one-time async check per toolbar instance.
   if (!actions._gemSwapKeywordChecked) {
     actions._gemSwapKeywordChecked = true;
-    console.debug(`[gem:swap-debug] toolbar#${tid}: starting async hasAnySwapKeywordConfigured (blockId="${eBlockId}")`);
+    console.debug(`[Gem][SwapDebug] toolbar#${tid}: starting async hasAnySwapKeywordConfigured (blockId="${eBlockId}")`);
     hasAnySwapKeywordConfigured((hasAny) => {
       actions._gemSwapKeywordHasAny = !!hasAny;
       const stillInDoc = toolbarEl.isConnected;
-      console.debug(`[gem:swap-debug] toolbar#${tid}: async resolved → hasAny=${hasAny}, stillInDoc=${stillInDoc} (blockId="${eBlockId}")`);
+      console.debug(`[Gem][SwapDebug] toolbar#${tid}: async resolved → hasAny=${hasAny}, stillInDoc=${stillInDoc} (blockId="${eBlockId}")`);
       if (!hasAny) {
-        console.debug(`[gem:swap-debug] toolbar#${tid}: ✗ no swap keywords configured — button will not be shown`);
+        console.debug(`[Gem][SwapDebug] toolbar#${tid}: ✗ no swap keywords configured — button will not be shown`);
         gemLogToolbarInjection(toolbarEl, 'swap', {
           status: 'skipped',
           reason: 'no-swap-keywords-configured',
@@ -398,7 +398,7 @@ function injectTextSwapButtonIntoToolbar(toolbarEl) {
       }
       // Toolbar might already be gone by the time storage returns.
       if (!stillInDoc) {
-        console.debug(`[gem:swap-debug] toolbar#${tid}: ✗ toolbar detached before async completed — skipping inject`);
+        console.debug(`[Gem][SwapDebug] toolbar#${tid}: ✗ toolbar detached before async completed — skipping inject`);
         gemLogToolbarInjection(toolbarEl, 'swap', {
           status: 'skipped',
           reason: 'toolbar-detached-before-async',
@@ -408,7 +408,7 @@ function injectTextSwapButtonIntoToolbar(toolbarEl) {
         });
         return;
       }
-      console.debug(`[gem:swap-debug] toolbar#${tid}: ✓ async passed — calling inject again to place button`);
+      console.debug(`[Gem][SwapDebug] toolbar#${tid}: ✓ async passed — calling inject again to place button`);
       injectTextSwapButtonIntoToolbar(toolbarEl);
     });
     return {
@@ -420,7 +420,7 @@ function injectTextSwapButtonIntoToolbar(toolbarEl) {
     };
   }
   if (actions._gemSwapKeywordHasAny === false) {
-    console.debug(`[gem:swap-debug] toolbar#${tid}: ✗ skipped — no-swap-keywords-configured (cached)`);
+    console.debug(`[Gem][SwapDebug] toolbar#${tid}: ✗ skipped — no-swap-keywords-configured (cached)`);
     return {
       status: 'skipped',
       reason: 'no-swap-keywords-configured',
@@ -464,7 +464,7 @@ function injectTextSwapButtonIntoToolbar(toolbarEl) {
 
   tooltip.appendChild(btn);
 
-  console.debug(`[gem:swap-debug] toolbar#${tid}: ✓ all checks passed — inserting button for blockId="${eBlockId}"`);
+  console.debug(`[Gem][SwapDebug] toolbar#${tid}: ✓ all checks passed — inserting button for blockId="${eBlockId}"`);
 
   // Insert right after the token converter icon (if present). Otherwise, fall back to being after the first icon.
   const convertBtn = actions.querySelector(`[block-toolbar-button="${GEM_CONVERT_BTN_ID}"]`);
@@ -472,7 +472,7 @@ function injectTextSwapButtonIntoToolbar(toolbarEl) {
   if (convertTooltip && convertTooltip.parentElement === actions) {
     convertTooltip.insertAdjacentElement('afterend', tooltip);
     const inserted = !!actions.querySelector(`[block-toolbar-button="${GEM_TEXT_SWAP_BTN_ID}"]`);
-    console.debug(`[gem:swap-debug] toolbar#${tid}: inserted=${inserted} (after convertBtn)`);
+    console.debug(`[Gem][SwapDebug] toolbar#${tid}: inserted=${inserted} (after convertBtn)`);
     return {
       status: inserted ? 'added' : 'skipped',
       reason: inserted ? '' : 'insert-failed',
@@ -491,7 +491,7 @@ function injectTextSwapButtonIntoToolbar(toolbarEl) {
   }
 
   const inserted = !!actions.querySelector(`[block-toolbar-button="${GEM_TEXT_SWAP_BTN_ID}"]`);
-  console.debug(`[gem:swap-debug] toolbar#${tid}: inserted=${inserted} (fallback position)`);
+  console.debug(`[Gem][SwapDebug] toolbar#${tid}: inserted=${inserted} (fallback position)`);
   return {
     status: inserted ? 'added' : 'skipped',
     reason: inserted ? '' : 'insert-failed',
@@ -504,7 +504,7 @@ function injectTextSwapButtonIntoToolbar(toolbarEl) {
 function blockHasEditableInPreviewIframe(eBlockId) {
   const iframe = document.querySelector(GEM_TARGET_IFRAME_SELECTOR);
   if (!iframe) {
-    console.debug(`[gem:swap-debug] blockHasEditable("${eBlockId}"): ✗ no iframe matched selector "${GEM_TARGET_IFRAME_SELECTOR}"`);
+    console.debug(`[Gem][SwapDebug] blockHasEditable("${eBlockId}"): ✗ no iframe matched selector "${GEM_TARGET_IFRAME_SELECTOR}"`);
     return false;
   }
 
@@ -512,18 +512,18 @@ function blockHasEditableInPreviewIframe(eBlockId) {
   try {
     doc = iframe.contentDocument || iframe.contentWindow?.document;
   } catch (e) {
-    console.debug(`[gem:swap-debug] blockHasEditable("${eBlockId}"): ✗ cross-origin error accessing iframe.contentDocument`, e);
+    console.debug(`[Gem][SwapDebug] blockHasEditable("${eBlockId}"): ✗ cross-origin error accessing iframe.contentDocument`, e);
     return false;
   }
   if (!doc) {
-    console.debug(`[gem:swap-debug] blockHasEditable("${eBlockId}"): ✗ iframe.contentDocument is null/undefined`);
+    console.debug(`[Gem][SwapDebug] blockHasEditable("${eBlockId}"): ✗ iframe.contentDocument is null/undefined`);
     return false;
   }
 
   try {
     const blockEls = Array.from(doc.querySelectorAll(`[e-block-id="${CSS.escape(eBlockId)}"]`));
     if (!blockEls.length) {
-      console.debug(`[gem:swap-debug] blockHasEditable("${eBlockId}"): block not in iframe → returning TRUE (allow)`);
+      console.debug(`[Gem][SwapDebug] blockHasEditable("${eBlockId}"): block not in iframe → returning TRUE (allow)`);
       return true;
     }
 
@@ -538,12 +538,12 @@ function blockHasEditableInPreviewIframe(eBlockId) {
 
     const result = diagnostics.some((d) => d.editable);
     console.debug(
-      `[gem:swap-debug] blockHasEditable("${eBlockId}"): found ${blockEls.length} block(s), editable=${result}`,
+      `[Gem][SwapDebug] blockHasEditable("${eBlockId}"): found ${blockEls.length} block(s), editable=${result}`,
       diagnostics
     );
     return result;
   } catch (e) {
-    console.debug(`[gem:swap-debug] blockHasEditable("${eBlockId}"): ✗ querySelectorAll threw`, e);
+    console.debug(`[Gem][SwapDebug] blockHasEditable("${eBlockId}"): ✗ querySelectorAll threw`, e);
     return false;
   }
 }
@@ -1053,7 +1053,7 @@ function nudgeEmarsysDirtyDetectionViaFocus(doc, editables = []) {
   const target = editables && editables.find((el) => el && typeof el.focus === 'function');
   if (!target) {
     try {
-      console.log('[GemDraftDirty]', 'nudge:skip-no-target', { count: (editables || []).length });
+      console.log('[Gem][DraftDirty]', 'nudge:skip-no-target', { count: (editables || []).length });
     } catch (_) {}
     return;
   }
@@ -1079,7 +1079,7 @@ function nudgeEmarsysDirtyDetectionViaFocus(doc, editables = []) {
 
   const parkFocusOutside = (reason) => {
     try {
-      console.log('[GemDraftDirty]', 'nudge:park-outside', { reason: reason || null });
+      console.log('[Gem][DraftDirty]', 'nudge:park-outside', { reason: reason || null });
     } catch (_) {}
     try {
       if (typeof FocusEvent === 'function') {
@@ -1116,7 +1116,7 @@ function nudgeEmarsysDirtyDetectionViaFocus(doc, editables = []) {
     const coldStart = !!opts.coldStart;
 
     try {
-      console.log('[GemDraftDirty]', 'nudge:enter', {
+      console.log('[Gem][DraftDirty]', 'nudge:enter', {
         coldStart,
         targetTag: (target.tagName || '').toLowerCase(),
         targetId: target.id || null,
@@ -1176,7 +1176,7 @@ function nudgeEmarsysDirtyDetectionViaFocus(doc, editables = []) {
 
     delay(0, () => {
       try {
-        console.log('[GemDraftDirty]', 'nudge:blur-tick', {
+        console.log('[Gem][DraftDirty]', 'nudge:blur-tick', {
           activeTag: doc.activeElement && doc.activeElement.tagName
             ? doc.activeElement.tagName.toLowerCase()
             : null,
@@ -1224,7 +1224,7 @@ function nudgeEmarsysDirtyDetectionViaFocus(doc, editables = []) {
 
   if (isAlreadyInField()) {
     try {
-      console.log('[GemDraftDirty]', 'nudge:force-cold-start', {
+      console.log('[Gem][DraftDirty]', 'nudge:force-cold-start', {
         targetTag: (target.tagName || '').toLowerCase(),
         targetId: target.id || null,
         activeTag: doc.activeElement && doc.activeElement.tagName
@@ -1273,8 +1273,8 @@ function markEmarsysTextControlDirty(el) {
   } catch (_) {}
 }
 
-// Always-on draft/Save diagnostics (prefix bypasses debug-logging-gate).
-const GEM_DRAFT_DIRTY_LOG = '[GemDraftDirty]';
+// Gated by debug-logging-gate.js when "Enable debug logging" is off.
+const GEM_DRAFT_DIRTY_LOG = '[Gem][DraftDirty]';
 
 function gemProbeDraftSaveState(label, extra) {
   const btn = document.querySelector('cb-draft-save-button button');
@@ -1315,7 +1315,7 @@ window.gemProbeDraftSaveState = gemProbeDraftSaveState;
 window.gemScheduleDraftSaveProbes = gemScheduleDraftSaveProbes;
 
 function setupEditableImageDoubleClickHandler() {
-  console.log("[gem] Setting up editable image double-click handler");
+  console.log("[Gem] Setting up editable image double-click handler");
 
   // Function to handle double-clicks on editable images within the preview iframe
   function handleImageDoubleClick(event) {
@@ -1323,17 +1323,17 @@ function setupEditableImageDoubleClickHandler() {
 
     // Check if the target is an image with [e-editable] attribute
     if (target.tagName === 'IMG' && target.hasAttribute('e-editable')) {
-      console.log("[gem] Double-click detected on editable image:", target);
+      console.log("[Gem] Double-click detected on editable image:", target);
 
       // Find the image properties button
       const imagePropsButton = document.querySelector('button[image-toolbar-button="image-properties-plugin"]');
 
       if (imagePropsButton) {
-        console.log("[gem] Triggering click on image properties button");
+        console.log("[Gem] Triggering click on image properties button");
         // Simulate a click on the button
         imagePropsButton.click();
       } else {
-        console.log("[gem] Image properties button not found in DOM");
+        console.log("[Gem] Image properties button not found in DOM");
       }
     }
   }
@@ -1347,17 +1347,17 @@ function setupEditableImageDoubleClickHandler() {
             node : node.querySelector && node.querySelector('.e-contentblocks-preview__iframe');
 
           if (iframe) {
-            console.log("[gem] Preview iframe found, attaching double-click handler");
+            console.log("[Gem] Preview iframe found, attaching double-click handler");
 
             try {
               const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
               if (iframeDoc && !iframeDoc._gemImageDblClickAttached) {
                 iframeDoc._gemImageDblClickAttached = true;
                 iframeDoc.addEventListener('dblclick', handleImageDoubleClick, true);
-                console.log("[gem] Double-click handler attached to iframe");
+                console.log("[Gem] Double-click handler attached to iframe");
               }
             } catch (error) {
-              console.warn("[gem] Could not attach handler to iframe:", error);
+              console.warn("[Gem] Could not attach handler to iframe:", error);
             }
           }
         }
@@ -1367,7 +1367,7 @@ function setupEditableImageDoubleClickHandler() {
 
   const existingIframe = document.querySelector('.e-contentblocks-preview__iframe');
   if (existingIframe) {
-    console.log("[gem] Existing preview iframe found, attaching double-click handler");
+    console.log("[Gem] Existing preview iframe found, attaching double-click handler");
 
     try {
       const iframeDoc = existingIframe.contentDocument || existingIframe.contentWindow.document;
@@ -1378,15 +1378,15 @@ function setupEditableImageDoubleClickHandler() {
         iframeDoc.addEventListener('dblclick', handleImageDoubleClick, true);
       }
 
-      console.log("[gem] Double-click handler attached to existing iframe");
+      console.log("[Gem] Double-click handler attached to existing iframe");
     } catch (error) {
-      console.warn("[gem] Could not attach handler to existing iframe:", error);
+      console.warn("[Gem] Could not attach handler to existing iframe:", error);
     }
   }
 }
 
 function setupEslTokenDoubleClickHandler() {
-  console.log("[gem] Setting up ESL token double-click handler (desktop preview iframe)");
+  console.log("[Gem] Setting up ESL token double-click handler (desktop preview iframe)");
 
   const DESKTOP_IFRAME_SELECTOR = 'iframe.e-contentblocks-preview__iframe-desktop';
 
@@ -1398,14 +1398,14 @@ function setupEslTokenDoubleClickHandler() {
     const tokenEl = target.closest('[e-token="cust_esl"]');
     if (!tokenEl) return;
 
-    console.log("[gem] Double-click detected on ESL token:", tokenEl);
+    console.log("[Gem] Double-click detected on ESL token:", tokenEl);
 
     const insertEslBtn = document.querySelector('.mce-active[aria-label="Insert Emarsys Scripting Language snippet"] button');
     if (insertEslBtn) {
-      console.log("[gem] Triggering click on Insert ESL snippet button");
+      console.log("[Gem] Triggering click on Insert ESL snippet button");
       insertEslBtn.click();
     } else {
-      console.log("[gem] Insert ESL snippet button not found in DOM");
+      console.log("[Gem] Insert ESL snippet button not found in DOM");
     }
   }
 
@@ -1417,9 +1417,9 @@ function setupEslTokenDoubleClickHandler() {
       if (iframeDoc._gemEslTokenDblClickAttached) return;
       iframeDoc._gemEslTokenDblClickAttached = true;
       iframeDoc.addEventListener('dblclick', handleEslTokenDoubleClick, true);
-      console.log("[gem] ESL token double-click handler attached to desktop iframe");
+      console.log("[Gem] ESL token double-click handler attached to desktop iframe");
     } catch (error) {
-      console.warn("[gem] Could not attach ESL token handler to desktop iframe:", error);
+      console.warn("[Gem] Could not attach ESL token handler to desktop iframe:", error);
     }
   }
 
@@ -1440,7 +1440,7 @@ function setupEslTokenDoubleClickHandler() {
 }
 
 function setupPersonalizationTokenDoubleClickHandler() {
-  console.log("[gem] Setting up personalization token double-click handler (desktop preview iframe)");
+  console.log("[Gem] Setting up personalization token double-click handler (desktop preview iframe)");
 
   const DESKTOP_IFRAME_SELECTOR = 'iframe.e-contentblocks-preview__iframe-desktop';
 
@@ -1459,14 +1459,14 @@ function setupPersonalizationTokenDoubleClickHandler() {
     const tokenEl = target.closest('[e-token="personalization"]');
     if (!tokenEl) return;
 
-    console.log("[gem] Double-click detected on personalization token:", tokenEl);
+    console.log("[Gem] Double-click detected on personalization token:", tokenEl);
 
     const personalizationBtn = findPersonalizationToolbarButton();
     if (personalizationBtn) {
-      console.log("[gem] Triggering click on Personalization toolbar button");
+      console.log("[Gem] Triggering click on Personalization toolbar button");
       personalizationBtn.click();
     } else {
-      console.log("[gem] Personalization toolbar button not found in DOM");
+      console.log("[Gem] Personalization toolbar button not found in DOM");
     }
   }
 
@@ -1478,9 +1478,9 @@ function setupPersonalizationTokenDoubleClickHandler() {
       if (iframeDoc._gemPersTokenDblClickAttached) return;
       iframeDoc._gemPersTokenDblClickAttached = true;
       iframeDoc.addEventListener('dblclick', handlePersonalizationTokenDoubleClick, true);
-      console.log("[gem] Personalization token double-click handler attached to desktop iframe");
+      console.log("[Gem] Personalization token double-click handler attached to desktop iframe");
     } catch (error) {
-      console.warn("[gem] Could not attach personalization token handler to desktop iframe:", error);
+      console.warn("[Gem] Could not attach personalization token handler to desktop iframe:", error);
     }
   }
 
@@ -1500,7 +1500,7 @@ function setupPersonalizationTokenDoubleClickHandler() {
 }
 
 function setupImagePropertiesEnterKeyHandler() {
-  console.log("[gem] Setting up Image Properties Enter key handler");
+  console.log("[Gem] Setting up Image Properties Enter key handler");
 
   /** Topmost `.e-dialog__container` when its title is Image Properties, else null. */
   function getTopmostImagePropertiesDialog() {
@@ -1591,7 +1591,7 @@ function setupImagePropertiesEnterKeyHandler() {
     // OK on the same dialog we validated (not an older `.e-dialog__container` in the tree)
     const okButton = imagePropsDialog.querySelector('button.ok-btn');
     if (okButton) {
-      console.log("[gem] Enter key pressed in Image Properties dialog, clicking OK button");
+      console.log("[Gem] Enter key pressed in Image Properties dialog, clicking OK button");
       okButton.click();
       event.preventDefault();
       event.stopPropagation();
@@ -1601,11 +1601,11 @@ function setupImagePropertiesEnterKeyHandler() {
   // Add the keydown event listener to the document
   document.addEventListener('keydown', handleEnterKey, true);
 
-  console.log("[gem] Image Properties Enter key handler attached");
+  console.log("[Gem] Image Properties Enter key handler attached");
 }
 
 function setupImagePropertiesTabToggleShortcut() {
-  console.log("[gem] Setting up Image Properties tab toggle shortcut (CMD+D / CTRL+D)");
+  console.log("[Gem] Setting up Image Properties tab toggle shortcut (CMD+D / CTRL+D)");
 
   // Function to check if Image Properties dialog is open
   function isImagePropertiesDialogOpen() {
@@ -1639,19 +1639,19 @@ function setupImagePropertiesTabToggleShortcut() {
     const mobileTab = document.querySelector('.e-tabs-dialogheader [data-tab="mobile"]');
 
     if (!desktopTab || !mobileTab) {
-      console.log("[gem] Desktop or mobile tab not found");
+      console.log("[Gem] Desktop or mobile tab not found");
       return;
     }
 
     // Check which tab is currently active and toggle to the other one
     if (desktopTab.classList.contains('e-tabs__title-active')) {
-      console.log("[gem] Toggling from Desktop to Mobile tab");
+      console.log("[Gem] Toggling from Desktop to Mobile tab");
       mobileTab.click();
     } else if (mobileTab.classList.contains('e-tabs__title-active')) {
-      console.log("[gem] Toggling from Mobile to Desktop tab");
+      console.log("[Gem] Toggling from Mobile to Desktop tab");
       desktopTab.click();
     } else {
-      console.log("[gem] No active tab found, defaulting to Desktop");
+      console.log("[Gem] No active tab found, defaulting to Desktop");
       desktopTab.click();
     }
 
@@ -1663,7 +1663,7 @@ function setupImagePropertiesTabToggleShortcut() {
   // Add the keydown event listener to the document
   document.addEventListener('keydown', handleTabToggleShortcut, true);
 
-  console.log("[gem] Image Properties tab toggle shortcut handler attached");
+  console.log("[Gem] Image Properties tab toggle shortcut handler attached");
 }
 
 // Wait for page to be ready before initializing

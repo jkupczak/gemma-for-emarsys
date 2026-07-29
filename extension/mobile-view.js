@@ -1,6 +1,6 @@
 console.log("[Gem] mobile-view.js loaded");
 
-const LOG = "[Gem mobile-view]";
+const LOG = "[Gem][MobileView]";
 const MOBILE_SYNC_DEBOUNCE_MS = 200;
 const DEFAULT_MOBILE_WIDTH = 414;
 const DEFAULT_MOBILE_SCALE = 0.5;

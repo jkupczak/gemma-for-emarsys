@@ -1,8 +1,8 @@
-console.log("[gem] header-copy-icon.js loaded");
+console.log("[Gem] header-copy-icon.js loaded");
 
 // Header title copy functionality
 function initializeHeaderCopyIcon() {
-  console.log("[gem] Initializing header copy icon");
+  console.log("[Gem] Initializing header copy icon");
 
   function buildHeaderActionBaseStyle() {
     return `

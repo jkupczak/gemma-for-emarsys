@@ -22,8 +22,10 @@
     root.__gemDebugGateInstalled = true;
 
     const state = { enabled: false };
-    const prefixRegex = /^\[(?:Gem(?:ma)?|gem(?:ma)?)(?:\]|-|\s)/;
-    const methods = ['log', 'info', 'debug', 'warn'];
+    // Standard log prefix: [Gem] or [Gem][Feature] or [Gem][Feature][Sub…]
+    // Gate matches any first-arg string starting with [Gem / [gem / [Gemma / [gemma
+    const prefixRegex = /^\[gem/i;
+    const methods = ['log', 'info', 'debug', 'warn', 'group', 'groupCollapsed'];
     const canUsePageBridge = typeof window !== 'undefined' && typeof document !== 'undefined';
 
     const emitStateToPage = () => {
@@ -74,13 +76,18 @@
     setGlobal('gemIsDebugLoggingEnabled', () => !!state.enabled);
     setGlobal('gemSetDebugLogging', (enabled, persist = false) => {
       applyDebugFlag(enabled);
-      if (!persist) return;
-      persistLocal(!!enabled);
+      if (persist) {
+        persistLocal(!!enabled);
+        try {
+          if (chrome && chrome.storage && chrome.storage.local) {
+            chrome.storage.local.set({ [GEM_DEBUG_STORAGE_KEY]: !!enabled });
+          }
+        } catch (_) {}
+      }
       try {
-        if (chrome && chrome.storage && chrome.storage.local) {
-          chrome.storage.local.set({ [GEM_DEBUG_STORAGE_KEY]: !!enabled });
-        }
+        console.log(`[Gem] Debug logging ${state.enabled ? 'ON' : 'OFF'}.`);
       } catch (_) {}
+      return state.enabled;
     });
 
     if (canUsePageBridge) {
@@ -118,15 +125,6 @@
     } else {
       applyDebugFlag(localValue);
     }
-
-    try {
-      if (!root.__gemDebugHelpLogged) {
-        root.__gemDebugHelpLogged = true;
-        console.log(
-          `Gemma debug logging is available. Suppresses Gemma console.log/info/debug/warn by default; errors remain. Enable: gemSetDebugLogging(true, true). Disable: gemSetDebugLogging(false, true).`
-        );
-      }
-    } catch (_) {}
 
     try {
       if (chrome && chrome.storage && chrome.storage.local) {

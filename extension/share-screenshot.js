@@ -1,4 +1,4 @@
-console.log("[gem] share-screenshot.js loaded");
+console.log("[Gem] share-screenshot.js loaded");
 
 (function () {
   "use strict";
@@ -44,7 +44,7 @@ console.log("[gem] share-screenshot.js loaded");
   function logShareScreenshotError(label, err, detail) {
     if (!isDebugEnabled()) return;
     const message = err && err.message ? err.message : String(err || label);
-    console.warn(`[Gem-ShareScreenshot] ${label}:`, message, detail || err || "");
+    console.warn(`[Gem][ShareScreenshot] ${label}:`, message, detail || err || "");
   }
 
   function getShareScreenshotErrorToast(err) {

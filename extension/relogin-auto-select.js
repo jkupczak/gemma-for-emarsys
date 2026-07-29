@@ -13,8 +13,8 @@ const OVERLAY_DISMISS_MS = 7000;
 const BUTTON_WATCH_MS = 30000;
 const POLL_MS = 250;
 
-const log = (...args) => console.log('[Gem] relogin-auto-select:', ...args);
-const warn = (...args) => console.warn('[Gem] relogin-auto-select:', ...args);
+const log = (...args) => console.log('[Gem][ReloginAutoSelect]', ...args);
+const warn = (...args) => console.warn('[Gem][ReloginAutoSelect]', ...args);
 
 log('Script loaded. URL:', window.location.href);
 

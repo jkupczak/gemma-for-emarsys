@@ -1,20 +1,20 @@
-console.log("[gem] nav-menu-inject.js loaded");
+console.log("[Gem] nav-menu-inject.js loaded");
 
 const ITEM_ID = "gem-nav-settings-item";
 const ICON_SRC = chrome.runtime.getURL("img/icon-with-transparency.png");
 
 function openGemmaSettings() {
-  console.log("[gem] Nav item clicked → opening settings");
+  console.log("[Gem] Nav item clicked → opening settings");
   try {
-    console.log("[gem] Sending openSettings message to background...");
+    console.log("[Gem] Sending openSettings message to background...");
     chrome.runtime.sendMessage({ action: "openSettings" }, (response) => {
-      console.log("[gem] openSettings response:", response);
+      console.log("[Gem] openSettings response:", response);
       if (chrome.runtime.lastError) {
-        console.log("[gem] openSettings error:", chrome.runtime.lastError);
+        console.log("[Gem] openSettings error:", chrome.runtime.lastError);
       }
     });
   } catch (error) {
-    console.log("[gem] Error sending openSettings:", error);
+    console.log("[Gem] Error sending openSettings:", error);
   }
 }
 

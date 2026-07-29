@@ -20,9 +20,8 @@ console.log('[Gem] magic-fill-panel.js loaded');
   let panelHandlersBound = false;
   let operationInFlight = false;
 
-  // Note: prefix intentionally does NOT match debug-logging-gate.js
-  // suppression regex (^\[Gem[\]\-\s]) so these diagnostics always print.
-  const MF_LOG = '[GemMagicFill]';
+  // Gated by debug-logging-gate.js when "Enable debug logging" is off.
+  const MF_LOG = '[Gem][MagicFill]';
 
   function mfLog(...args) {
     try {

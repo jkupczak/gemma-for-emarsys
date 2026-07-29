@@ -9,6 +9,10 @@ html.gem-focus-layout cb-header {
     display: none !important;
 }
 
+html.gem-focus-layout body {
+    overflow: hidden;
+}
+
 /* Compact Email Tools Dropdown */
 html.gem-focus-layout .gem-compact-email-tools {
     flex-direction: reverse;
@@ -17,6 +21,10 @@ html.gem-focus-layout .gem-compact-email-tools {
     gap: 16px;
     padding: 12px 16px 0 22px;
 }
+    html.gem-focus-layout e-side-navigation ~ #main .gem-compact-email-tools {
+        padding: 12px 16px 12px 16px;
+    }
+
 html.gem-focus-layout .gem-compact-email-tools-dropdown {
     display: flex;
     align-items: center;
@@ -139,7 +147,14 @@ html.gem-focus-layout .gem-compact-email-tools-dropdown {
 
 .gem-compact-email-tools-menu-wrap .gem-campaign-menu--open {
     display: flex;
+    flex-direction: column;
+}
+
+.gem-compact-email-tools-menu-wrap .gem-campaign-menu-columns {
+    display: flex;
     flex-direction: row;
+    min-width: 0;
+    gap: 4px;
 }
 
 .gem-compact-email-tools-menu-wrap .gem-compact-email-tools-menu-column {
@@ -438,6 +453,12 @@ html.gem-focus-layout e-verticalnav-menu {
     }
 }
 
+html.gem-focus-layout e-side-navigation ~ #main e-verticalnav-menu {
+    width: 64px;
+    padding-left: 0;
+}
+
+
 html.gem-focus-layout main cb-block-level-variable .e-section__header,
 html.gem-focus-layout main cb-block-level-variable .e-section__content {
     padding-left: 36px;
@@ -450,13 +471,15 @@ html.gem-focus-layout main cb-overlay-panel .e-contentblocks-overlay_panel-open 
 html.gem-focus-layout main .e-contentblocks-navigation_section h1 {
     margin: 0 !important;
     line-height: 20px !important;
-    word-break: break-all;
-    line-height: 20px;
     font-size: 14px !important;
     font-weight: normal !important;
-    word-break: break-all;
     position: relative;
-    padding: 10px 16px 14px 22px;
+    padding: 10px 100px 14px 22px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    min-width: 0;
+    word-break: normal;
 }
 
 html.gem-focus-layout main .gem-header-copy-icon {
@@ -528,14 +551,17 @@ html.gem-focus-layout main .e-contentblocks-navigation_section {
     height: 100vh;
     margin: -12px 0 0 0 !important;
     position: relative !important;
+    border-left: 1px solid var(--token-border-default) !important;
+    border-right: 1px solid var(--token-border-default) !important;
 }
 
 html.gem-focus-layout main .e-verticalnav__content .e-section .e-section__content {
     border-right: 2px solid var(--token-box-default-background);
 }
 
-html.gem-focus-layout main .e-layout__section-sidebar_with_verticalnav .e-verticalnav {
+html.gem-focus-layout main .e-verticalnav {
     border-radius: 0 !important;
+    border-top: 1px solid var(--token-border-default);
 }
 html.gem-focus-layout .gem-iframe-wrapper {
     border-radius: 5px !important;
@@ -569,6 +595,12 @@ html.gem-focus-layout .e-layout__application .e-layout main.e-layout__content {
     gap: 18px
 }
 
+html.gem-focus-layout e-side-navigation ~ #main main.e-layout__content {
+    width: calc(100vw - 64px);
+    right: 0;
+    left: auto;
+}
+
 html.gem-focus-layout e-shellbar {
     display: none !important;
 }
@@ -599,18 +631,22 @@ html.gem-focus-layout e-navigation:hover {
 /* New Emarsys UI5 side navigation — same Focus Layout peek behavior */
 html.gem-focus-layout e-side-navigation {
     z-index: 610;
-    position: relative;
-    left: -56px;
+    position: fixed;
+    left: 0;
     top:0;
     display:inline-flex !important;
     margin: 0 !important;
-    box-shadow: none !important;
     height: 100vh;
-    transition: left 0.05s ease-out;
 }
-html.gem-focus-layout e-side-navigation:hover {
-    left: 0 !important;
-    transition: left 0.05s ease-out;
+
+html.gem-focus-layout body:has(#main .e-layout__application) ui5-side-navigation-ds-nav {
+    box-shadow: none !important;
+}
+html.gem-focus-layout body:has(#main .e-layout__application) e-side-navigation {
+    opacity: 0.15;
+}
+html.gem-focus-layout body:has(#main .e-layout__application) e-side-navigation:hover {
+    opacity: 1;
 }
 
 html.gem-focus-layout .e-steps {
@@ -754,12 +790,12 @@ html.gem-focus-layout main {
 
 .gem-compact-email-tools-menu-wrap .gem-campaign-menu {
 
-    & > :nth-child(1) {
+    & > .gem-campaign-menu-columns > :nth-child(1) {
         margin: 10px 5px 10px 10px;
         padding: 10px;
     }
 
-    & > :nth-child(2) {
+    & > .gem-campaign-menu-columns > :nth-child(2) {
         background: rgba(255 255 255 / 0.02);
         margin: 10px 0;
         border-radius: 9px;
@@ -767,14 +803,14 @@ html.gem-focus-layout main {
         padding: 10px;
     }
 
-    & > :nth-child(3) {
+    & > .gem-campaign-menu-columns > :nth-child(3) {
         border: none;
         margin: 10px 5px 10px 0;
         border-radius: 9px;
         padding: 10px;
     }
 
-    & > :nth-child(4) {
+    & > .gem-campaign-menu-columns > :nth-child(4) {
         background: rgba(255 255 255 / 0.02);
         margin: 10px 10px 10px 0;
         border-radius: 9px;
@@ -782,4 +818,27 @@ html.gem-focus-layout main {
         padding: 10px;
     }
 
+}
+
+html.gem-focus-layout .gem-campaign-menu > h1.e-layout__title {
+    margin: 0 !important;
+    padding: 12px 100px 12px 16px !important;
+    border-bottom: 1px solid var(--token-box-default-border, rgba(0, 0, 0, 0.1)) !important;
+    font-size: 14px !important;
+    font-weight: normal !important;
+    line-height: 20px !important;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    min-width: 0;
+    position: relative;
+    word-break: normal;
+}
+
+html.gem-focus-layout .gem-campaign-menu > h1.e-layout__title .gem-header-copy-icon {
+    right: 12px;
+}
+
+html.gem-focus-layout .gem-campaign-menu > h1.e-layout__title .gem-header-edit-icon {
+    right: 54px;
 }

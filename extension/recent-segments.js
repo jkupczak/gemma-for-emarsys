@@ -1,4 +1,4 @@
-console.log("[gem] recent-segments.js loaded");
+console.log("[Gem] recent-segments.js loaded");
 
 (function () {
   const STORAGE_KEY = "gemRecentCombinedSegments";
@@ -32,18 +32,18 @@ console.log("[gem] recent-segments.js loaded");
   function debug(label, detail) {
     if (!isDebugEnabled()) return;
     if (detail === undefined) {
-      console.log(`[Gem-RecentSegments] ${label}`);
+      console.log(`[Gem][RecentSegments] ${label}`);
       return;
     }
-    console.log(`[Gem-RecentSegments] ${label}`, detail);
+    console.log(`[Gem][RecentSegments] ${label}`, detail);
   }
 
   function warn(label, detail) {
     if (detail === undefined) {
-      console.warn(`[Gem-RecentSegments] ${label}`);
+      console.warn(`[Gem][RecentSegments] ${label}`);
       return;
     }
-    console.warn(`[Gem-RecentSegments] ${label}`, detail);
+    console.warn(`[Gem][RecentSegments] ${label}`, detail);
   }
 
   function isCampaignManagerDetailsPage() {
