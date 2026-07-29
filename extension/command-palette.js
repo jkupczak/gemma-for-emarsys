@@ -474,33 +474,46 @@ console.log('[Gem] command-palette.js loaded');
 
   function buildEmarsysNavCommands() {
     const commands = [];
-    document.querySelectorAll('.e-navigation__menu_list > li').forEach((li) => {
-      const titleEl = li.querySelector('.e-navigation__action_text');
-      const sectionTitle = titleEl ? String(titleEl.textContent || '').trim() : '';
-      if (!sectionTitle) return;
-      const sectionId = `emarsys-nav-${slugify(sectionTitle)}`;
-      li.querySelectorAll('.e-navigation__submenu a.e-navigation__submenu_action').forEach((link) => {
-        const label = String(link.textContent || '').replace(/\s+/g, ' ').trim();
-        const href = String(link.getAttribute('href') || link.href || '').trim();
-        if (!label || !href || /^javascript:/i.test(href)) return;
-        let absoluteUrl = href;
-        try {
-          absoluteUrl = new URL(href, window.location.origin).href;
-        } catch (_) {
-          return;
-        }
-        commands.push(
-          makeCommand({
-            id: `nav:${absoluteUrl}`,
-            sectionId,
-            sectionTitle,
-            label,
-            run: () => {
-              window.location.assign(absoluteUrl);
-            },
-          })
-        );
+    let links =
+      typeof window.gemNavMenu?.collectEmarsysNavLinks === "function"
+        ? window.gemNavMenu.collectEmarsysNavLinks()
+        : [];
+
+    if (!links.length) {
+      // Fallback: legacy menu only (utils not loaded yet / nav not ready).
+      links = [];
+      document.querySelectorAll('.e-navigation__menu_list > li').forEach((li) => {
+        const titleEl = li.querySelector('.e-navigation__action_text');
+        const sectionTitle = titleEl ? String(titleEl.textContent || '').trim() : '';
+        if (!sectionTitle) return;
+        li.querySelectorAll('.e-navigation__submenu a.e-navigation__submenu_action').forEach((link) => {
+          const label = String(link.textContent || '').replace(/\s+/g, ' ').trim();
+          const href = String(link.getAttribute('href') || link.href || '').trim();
+          if (!label || !href || /^javascript:/i.test(href)) return;
+          links.push({ sectionTitle, label, href });
+        });
       });
+    }
+
+    links.forEach(({ sectionTitle, label, href }) => {
+      let absoluteUrl = href;
+      try {
+        absoluteUrl = new URL(href, window.location.origin).href;
+      } catch (_) {
+        return;
+      }
+      const sectionId = `emarsys-nav-${slugify(sectionTitle)}`;
+      commands.push(
+        makeCommand({
+          id: `nav:${absoluteUrl}`,
+          sectionId,
+          sectionTitle,
+          label,
+          run: () => {
+            window.location.assign(absoluteUrl);
+          },
+        })
+      );
     });
     return commands;
   }

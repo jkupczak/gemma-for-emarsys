@@ -1,6 +1,6 @@
 {
   "name": "Gemma for Emarsys",
-  "version": "14.2.0",
+  "version": "14.2.1",
   "manifest_version": 3,
   "description": "Enhances the Emarsys email editor with a settings panel and more!",
   "permissions": ["storage", "tabs", "webNavigation"],
@@ -30,7 +30,7 @@
       "matches": ["https://*.emarsys.net/*"],
       "exclude_matches": ["https://*.emarsys.net/*gemStripped=true*"],
       "css": ["css--theme.css", "css--global-styles.css", "css--settings-panel.css", "css--command-palette.css"],
-      "js": ["debug-logging-gate.js", "gem-dom-watch.js", "emarsys-auth.js", "page-localstorage-guard.js", "platform.js", "gem-layer-stack.js", "command-palette.js", "highlight-terms-settings.js", "keyboard-shortcuts-modal.js", "theme-applier.js", "gem-toast.js", "shortcut-slots.js", "settings-panel.js", "nav-menu-inject.js", "notes.js", "recent-campaigns.js", "recent-segments.js", "storage-measurement.js", "welcome-modal.js"],
+      "js": ["debug-logging-gate.js", "gem-dom-watch.js", "emarsys-auth.js", "page-localstorage-guard.js", "platform.js", "gem-layer-stack.js", "nav-menu-utils.js", "command-palette.js", "highlight-terms-settings.js", "keyboard-shortcuts-modal.js", "theme-applier.js", "gem-toast.js", "shortcut-slots.js", "settings-panel.js", "nav-menu-inject.js", "notes.js", "recent-campaigns.js", "recent-segments.js", "storage-measurement.js", "welcome-modal.js"],
       "run_at": "document_start"
     },
     {

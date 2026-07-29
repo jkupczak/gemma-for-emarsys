@@ -158,6 +158,86 @@ runCheck('Magic Fill panel still escapes preview HTML in UI', () => {
   assert(src.includes('escapeHtml(item.value)'));
 });
 
+runCheck('body dirty path keeps Emarsys focus nudge for Save', () => {
+  const frDom = readFile('extension/find-replace-dom-utils.js');
+  const markDirty = getSection(frDom, 'function markEmailBodyDirty(', 'function markImageAltsDirty(');
+  assert(markDirty.includes('gemMarkEmarsysDraftDirty'));
+  assert(
+    markDirty.includes('gemNudgeEmarsysDirtyDetectionViaFocus'),
+    'markEmailBodyDirty must nudge focus so Emarsys enables Save'
+  );
+  assert(
+    frDom.includes('capturePreviewScrollFromContainer') && frDom.includes('restorePreviewScroll'),
+    'container content writes must preserve preview iframe scroll'
+  );
+
+  const snippets = readFile('extension/snippets-tab.js');
+  const insertHtml = getSection(
+    snippets,
+    'async function insertHtmlIntoContentEditable(',
+    'function notifyEmarsysAfterContentEditableInsert('
+  );
+  // 14.0.0 behavior: TinyMCE/bridge inserts leave focus in-field for natural blur dirty.
+  assert(insertHtml.includes('if (!insertedViaTinyMCE)'));
+  assert(insertHtml.includes('notifyEmarsysAfterContentEditableInsert'));
+  assert(insertHtml.includes('nudgeFocus: true'));
+  assert(
+    insertHtml.includes('tinymce-insert + toolbar-style nudge') ||
+      insertHtml.includes('after-nudge-request'),
+    'TinyMCE inserts should use toolbar-style focus nudge for Save'
+  );
+  assert(
+    !insertHtml.includes('syncTouchedEditablesIntoContainerContent'),
+    'TinyMCE inserts must not surgical-sync container (rebuilds iframe, wipes dirty)'
+  );
+  assert(
+    !/markEmailBodyDirty\(doc,\s*\[element\]\)/.test(insertHtml),
+    'contenteditable TinyMCE inserts must not force markEmailBodyDirty (blocks natural blur dirty)'
+  );
+
+  const toolbar = readFile('extension/content-block-toolbar.js');
+  const swapFn = getSection(toolbar, 'function applyTextSwapForBlock(', 'function escapeTokenContentForAttribute(');
+  assert(
+    swapFn.includes('nudgeEmarsysDirtyDetectionViaFocus') &&
+      !/markEmailBodyDirty\s*\(/.test(swapFn),
+    'keyword swap must use light dirty nudge (not markEmailBodyDirty surgical sync)'
+  );
+
+  const ctxMenu = readFile('extension/snippet-context-menu.js');
+  assert(
+    ctxMenu.includes('querySelectorAll(MCE_ESL_WIDGET_SELECTOR)') &&
+      ctxMenu.includes('GEM_MCE_INSERT_TOKENS_CLASS'),
+    'Insert Tokens button must inject into every TinyMCE ESL toolbar, not a singleton id'
+  );
+});
+
+runCheck('main nav injectors support legacy and UI5 menus', () => {
+  const manifest = readFile('extension/manifest.json');
+  assert(manifest.includes('nav-menu-utils.js'), 'manifest must load nav-menu-utils.js');
+  assert(
+    manifest.indexOf('nav-menu-utils.js') < manifest.indexOf('nav-menu-inject.js'),
+    'nav-menu-utils.js must load before nav-menu-inject.js'
+  );
+
+  const utils = readFile('extension/nav-menu-utils.js');
+  assert(utils.includes('ui5-side-navigation-ds-nav'));
+  assert(utils.includes('e-navigation__menu_list'));
+  assert(utils.includes('buildUi5ActionItem'));
+  assert(utils.includes('collectEmarsysNavLinks'));
+
+  const inject = readFile('extension/nav-menu-inject.js');
+  assert(inject.includes('buildUi5SettingsItem') && inject.includes('buildLegacySettingsItem'));
+
+  const notes = readFile('extension/notes.js');
+  assert(notes.includes('buildUi5NotesNavItem') && notes.includes('buildLegacyNotesNavItem'));
+
+  const recent = readFile('extension/recent-campaigns.js');
+  assert(recent.includes('buildUi5RecentNavItem') && recent.includes('buildLegacyRecentNavItem'));
+
+  const palette = readFile('extension/command-palette.js');
+  assert(palette.includes('gemNavMenu.collectEmarsysNavLinks') || palette.includes('collectEmarsysNavLinks'));
+});
+
 runCheck('syntax check for edited files', () => {
   const filesToCheck = [
     'settings-panel.js',
@@ -171,7 +251,11 @@ runCheck('syntax check for edited files', () => {
     'platform.js',
     'background.js',
     'emarsys-auth.js',
-    'recent-campaigns.js'
+    'recent-campaigns.js',
+    'nav-menu-utils.js',
+    'nav-menu-inject.js',
+    'notes.js',
+    'command-palette.js'
   ];
 
   filesToCheck.forEach((fileName) => {

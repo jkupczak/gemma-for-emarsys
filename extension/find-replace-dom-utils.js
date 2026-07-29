@@ -1095,11 +1095,91 @@ console.log('[Gem] find-replace-dom-utils.js loaded');
     return { ok: false, reason: 'no-match' };
   }
 
+  function capturePreviewScrollFromContainer(container) {
+    try {
+      const iframe =
+        (container && container.querySelector && container.querySelector('iframe')) ||
+        document.querySelector(PREVIEW_IFRAME_SELECTORS[0] || 'iframe');
+      if (!iframe) return null;
+      let doc = null;
+      try {
+        doc = iframe.contentDocument || iframe.contentWindow?.document || null;
+      } catch (_) {
+        return null;
+      }
+      if (!doc) return null;
+      const win = doc.defaultView;
+      const root = doc.scrollingElement || doc.documentElement || doc.body;
+      const x =
+        (win && (win.scrollX || win.pageXOffset)) ||
+        (root && root.scrollLeft) ||
+        (doc.body && doc.body.scrollLeft) ||
+        0;
+      const y =
+        (win && (win.scrollY || win.pageYOffset)) ||
+        (root && root.scrollTop) ||
+        (doc.body && doc.body.scrollTop) ||
+        0;
+      return { iframe, x: Number(x) || 0, y: Number(y) || 0 };
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function restorePreviewScroll(scrollState) {
+    if (!scrollState || (!scrollState.x && !scrollState.y)) return;
+    const apply = () => {
+      try {
+        const iframe = scrollState.iframe;
+        if (!iframe || !iframe.isConnected) return false;
+        let doc = null;
+        try {
+          doc = iframe.contentDocument || iframe.contentWindow?.document || null;
+        } catch (_) {
+          return false;
+        }
+        if (!doc || !doc.body) return false;
+        const win = doc.defaultView;
+        const root = doc.scrollingElement || doc.documentElement;
+        if (win && typeof win.scrollTo === 'function') {
+          win.scrollTo(scrollState.x, scrollState.y);
+        }
+        if (root) {
+          root.scrollLeft = scrollState.x;
+          root.scrollTop = scrollState.y;
+        }
+        if (doc.body) {
+          doc.body.scrollLeft = scrollState.x;
+          doc.body.scrollTop = scrollState.y;
+        }
+        return true;
+      } catch (_) {
+        return false;
+      }
+    };
+
+    // Emarsys may document.write / rehydrate the iframe after content writes.
+    apply();
+    try {
+      requestAnimationFrame(() => {
+        apply();
+        setTimeout(apply, 0);
+        setTimeout(apply, 50);
+        setTimeout(apply, 150);
+        setTimeout(apply, 350);
+      });
+    } catch (_) {
+      setTimeout(apply, 0);
+      setTimeout(apply, 150);
+    }
+  }
+
   function writeContainerContent(container, html) {
     const next = String(html || '');
     const beforeAttr = String(container.getAttribute('content') || '');
     let beforeProp = null;
     let hasContentProp = false;
+    const savedScroll = capturePreviewScrollFromContainer(container);
     try {
       hasContentProp = 'content' in container;
       if (hasContentProp && container.content != null) {
@@ -1148,6 +1228,7 @@ console.log('[Gem] find-replace-dom-utils.js loaded');
       propMatchesWrite: afterProp == null ? null : afterProp === next,
       attrChanged: beforeAttr !== afterAttr,
       propChanged: beforeProp != null && afterProp != null ? beforeProp !== afterProp : null,
+      restoredScroll: savedScroll ? { x: savedScroll.x, y: savedScroll.y } : null,
     });
 
     try {
@@ -1164,6 +1245,8 @@ console.log('[Gem] find-replace-dom-utils.js loaded');
         );
       }
     } catch (_) {}
+
+    restorePreviewScroll(savedScroll);
 
     return {
       ok: afterAttr === next,
@@ -2445,11 +2528,25 @@ console.log('[Gem] find-replace-dom-utils.js loaded');
       hasNudgeFocus: typeof window.gemNudgeEmarsysDirtyDetectionViaFocus === 'function',
     });
     captureEditorInteractionProbe(doc, 'dirty:start');
+    if (typeof window.gemProbeDraftSaveState === 'function') {
+      window.gemProbeDraftSaveState('markEmailBodyDirty:start', {
+        editableCount: (editables || []).length,
+      });
+    }
 
     // Keep legacy dirty helpers as extra signals.
+    // Emarsys enables campaign Save after an enter+leave on the edited field;
+    // gemNudgeEmarsysDirtyDetectionViaFocus is what historically unlocked Save.
     if (editables.length && typeof window.gemMarkEmarsysDraftDirty === 'function') {
       window.gemMarkEmarsysDraftDirty(doc, editables);
       bodySyncLog('markEmailBodyDirty: called gemMarkEmarsysDraftDirty');
+    }
+    if (editables.length && typeof window.gemNudgeEmarsysDirtyDetectionViaFocus === 'function') {
+      window.gemNudgeEmarsysDirtyDetectionViaFocus(doc, editables);
+      bodySyncLog('markEmailBodyDirty: called gemNudgeEmarsysDirtyDetectionViaFocus');
+    }
+    if (typeof window.gemScheduleDraftSaveProbes === 'function') {
+      window.gemScheduleDraftSaveProbes('markEmailBodyDirty');
     }
 
     // Focused commit path: rewrite while focused, MAIN-world TinyMCE commit,
@@ -2488,10 +2585,16 @@ console.log('[Gem] find-replace-dom-utils.js loaded');
         // Give Emarsys VCE change handlers time to absorb TinyMCE dirty/change
         // before we blur/release the primed editor session.
         delay(250, () => {
+          if (typeof window.gemProbeDraftSaveState === 'function') {
+            window.gemProbeDraftSaveState('markEmailBodyDirty:before-deferred-blur');
+          }
           blurEmarsysEditables(doc, editables);
           captureEditorInteractionProbe(doc, 'dirty:after-commit-blur');
 
           delay(120, () => {
+            if (typeof window.gemProbeDraftSaveState === 'function') {
+              window.gemProbeDraftSaveState('markEmailBodyDirty:before-release-sync');
+            }
             let releaseResult = null;
             try {
               releaseResult = releaseEmarsysEditorSession(doc);
@@ -2529,11 +2632,23 @@ console.log('[Gem] find-replace-dom-utils.js loaded');
 
             captureEditorInteractionProbe(doc, 'dirty:after-surgical-sync');
             schedulePostApplyProbes(doc, 'dirty:post-surgical-sync');
+            if (typeof window.gemProbeDraftSaveState === 'function') {
+              window.gemProbeDraftSaveState('markEmailBodyDirty:after-release-sync', {
+                bridgeOk: !!(bridgeResult && bridgeResult.ok),
+                syncOk: !!(syncResult && syncResult.ok),
+                syncChanged: !!(syncResult && syncResult.changed),
+              });
+            }
           });
         });
       })
       .catch((e) => {
         bodySyncLog('markEmailBodyDirty: bridge commit threw', e && e.message ? e.message : e);
+        if (typeof window.gemProbeDraftSaveState === 'function') {
+          window.gemProbeDraftSaveState('markEmailBodyDirty:bridge-threw', {
+            error: e && e.message ? e.message : String(e),
+          });
+        }
         delay(60, () => {
           blurEmarsysEditables(doc, editables);
           delay(60, () => {

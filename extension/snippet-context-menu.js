@@ -1731,6 +1731,21 @@ console.log('[Gem] snippet-context-menu.js loaded');
     if (typeof window.gemInsertSnippetIntoTarget === 'function') {
       ok = await window.gemInsertSnippetIntoTarget(ctx, insertItem, { mode });
     }
+    try {
+      console.log('[GemDraftDirty]', 'insertMenuToken: finished', {
+        ok,
+        mode,
+        ctxType: ctx.type,
+        itemKind: item.kind || 'snippet',
+        itemName: item.name || item.content || null,
+      });
+      if (typeof window.gemProbeDraftSaveState === 'function') {
+        window.gemProbeDraftSaveState('ctx-menu:after-insert', { ok, mode, ctxType: ctx.type });
+      }
+      if (typeof window.gemScheduleDraftSaveProbes === 'function') {
+        window.gemScheduleDraftSaveProbes('ctx-menu');
+      }
+    } catch (_) {}
     if (ok) {
       pushRecentTokenId(getTokenRowKey(item));
       if (item.kind === 'personalization' && typeof window.gemCacheRecentPersToken === 'function') {
@@ -2278,28 +2293,20 @@ console.log('[Gem] snippet-context-menu.js loaded');
   }
 
   const MCE_ESL_WIDGET_SELECTOR = '[aria-label="Insert Emarsys Scripting Language snippet"]';
-  const GEM_MCE_INSERT_TOKENS_ID = 'gem-mce-insert-tokens';
+  const GEM_MCE_INSERT_TOKENS_CLASS = 'gem-mce-insert-tokens-btn';
 
-  function injectMceInsertTokensButton() {
-    const eslWidget = document.querySelector(MCE_ESL_WIDGET_SELECTOR)?.closest?.('.mce-widget.mce-btn');
-    if (!eslWidget || !eslWidget.parentElement) return false;
-
-    let btn = document.getElementById(GEM_MCE_INSERT_TOKENS_ID);
-    if (btn) {
-      if (btn.previousElementSibling !== eslWidget) {
-        eslWidget.insertAdjacentElement('afterend', btn);
-      }
-      return true;
-    }
-
-    btn = document.createElement('div');
-    btn.id = GEM_MCE_INSERT_TOKENS_ID;
-    btn.className = 'mce-widget mce-btn gem-mce-insert-tokens-btn';
+  function createMceInsertTokensButton() {
+    const btn = document.createElement('div');
+    btn.className = `mce-widget mce-btn ${GEM_MCE_INSERT_TOKENS_CLASS}`;
     btn.setAttribute('tabindex', '-1');
     btn.setAttribute('role', 'button');
     btn.setAttribute('aria-label', 'Insert Tokens');
     btn.innerHTML =
-      '<button role="presentation" type="button" tabindex="-1"><i class="mce-ico gem-i-ai"></i></button>';
+      '<button role="presentation" type="button" tabindex="-1">' +
+      '<span class="mce-ico gem-mce-insert-tokens-icon" aria-hidden="true">' +
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" width="20" height="20" fill="currentColor">' +
+      '<path d="M480-80 120-436l200-244h320l200 244L480-80ZM183-680l-85-85 57-56 85 85-57 56Zm257-80v-120h80v120h-80Zm335 80-57-57 85-85 57 57-85 85ZM480-192l210-208H270l210 208ZM358-600l-99 120h442l-99-120H358Z"/>' +
+      '</svg></span></button>';
 
     btn.addEventListener('mousedown', (event) => {
       event.preventDefault();
@@ -2309,9 +2316,55 @@ console.log('[Gem] snippet-context-menu.js loaded');
       event.stopPropagation();
       openMenuFromTrackedPreviewCaret();
     });
+    return btn;
+  }
 
-    eslWidget.insertAdjacentElement('afterend', btn);
-    return true;
+  function injectMceInsertTokensButton() {
+    // Emarsys can keep multiple TinyMCE toolbars in the DOM (one per recently
+    // focused block). A singleton id only ever sat next to the first ESL widget.
+    const eslWidgets = Array.from(document.querySelectorAll(MCE_ESL_WIDGET_SELECTOR))
+      .map((el) => (el.closest ? el.closest('.mce-widget.mce-btn') : null))
+      .filter((widget, index, list) => widget && widget.parentElement && list.indexOf(widget) === index);
+
+    if (!eslWidgets.length) return false;
+
+    let injected = 0;
+    eslWidgets.forEach((eslWidget) => {
+      const next = eslWidget.nextElementSibling;
+      if (next && next.classList && next.classList.contains(GEM_MCE_INSERT_TOKENS_CLASS)) {
+        injected += 1;
+        return;
+      }
+
+      const parent = eslWidget.parentElement;
+      const existingInGroup =
+        parent &&
+        Array.from(parent.children).find(
+          (child) => child.classList && child.classList.contains(GEM_MCE_INSERT_TOKENS_CLASS)
+        );
+      if (existingInGroup) {
+        eslWidget.insertAdjacentElement('afterend', existingInGroup);
+        injected += 1;
+        return;
+      }
+
+      eslWidget.insertAdjacentElement('afterend', createMceInsertTokensButton());
+      injected += 1;
+    });
+
+    // Drop orphaned copies left behind when Emarsys rebuilds a toolbar group.
+    // The ESL aria-label is often on the widget itself (not a descendant), so
+    // matches() is required — querySelector alone would remove every button.
+    document.querySelectorAll(`.${GEM_MCE_INSERT_TOKENS_CLASS}`).forEach((btn) => {
+      const prev = btn.previousElementSibling;
+      const anchored =
+        !!prev &&
+        (prev.matches?.(MCE_ESL_WIDGET_SELECTOR) ||
+          !!prev.querySelector?.(MCE_ESL_WIDGET_SELECTOR));
+      if (!anchored) btn.remove();
+    });
+
+    return injected > 0;
   }
 
   function setupMceToolbarInsertTokensButton() {

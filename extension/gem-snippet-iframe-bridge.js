@@ -1040,6 +1040,37 @@
     return { dirty: true, fired, meta: describeEditorMeta(editor) };
   }
 
+  /**
+   * Lighter dirty assert for token/snippet inserts.
+   * Do NOT fire TinyMCE 'change'/'input' or call save/triggerSave — Emarsys
+   * handlers currently throw (undefined.content) and can abort dirty wiring.
+   * startContent mismatch + setDirty is enough for a later blur/nudge to see a change.
+   */
+  function markEditorDirtyAfterInsert(editor) {
+    if (!editor) return { dirty: false, fired: [], meta: null };
+    const fired = [];
+    try {
+      const now =
+        typeof editor.getContent === 'function' ? String(editor.getContent({ format: 'raw' }) || '') : '';
+      editor.startContent = `${now}<!--gem-stale-start-->`;
+      fired.push('startContentMismatch');
+    } catch (_) {}
+    try {
+      if (editor.undoManager && typeof editor.undoManager.add === 'function') {
+        editor.undoManager.add();
+        fired.push('undoAdd');
+      }
+    } catch (_) {}
+    try {
+      editor.isNotDirty = false;
+      if (typeof editor.setDirty === 'function') {
+        editor.setDirty(true);
+        fired.push('setDirty');
+      }
+    } catch (_) {}
+    return { dirty: true, fired, meta: describeEditorMeta(editor) };
+  }
+
   function handleCommitEditable(event, data) {
     const targets = Array.isArray(data && data.targets) ? data.targets : [data];
     const results = [];
@@ -1405,12 +1436,28 @@
         console.log(GEM_TR_LOG, 'handleInsert: selection AFTER mceInsertContent:', gemTrDescribeRange(editor.selection.getRng()));
       } catch (_) {}
 
-      if (typeof editor.setDirty === 'function') editor.setDirty(true);
-      if (typeof editor.fire === 'function') editor.fire('change');
+      // Seat caret first — then light dirty assert (no save/triggerSave/input).
       placeCaretAfterMarker(editor);
       requestAnimationFrame(() => {
         placeCaretAfterMarker(editor);
+        try {
+          const marked = markEditorDirtyAfterInsert(editor);
+          console.log(GEM_BODY_SYNC_LOG, 'handleInsert: markEditorDirtyAfterInsert', marked);
+        } catch (e) {
+          try {
+            if (typeof editor.setDirty === 'function') editor.setDirty(true);
+            if (typeof editor.fire === 'function') editor.fire('change');
+          } catch (_) {}
+        }
       });
+      try {
+        markEditorDirtyAfterInsert(editor);
+      } catch (_) {
+        try {
+          if (typeof editor.setDirty === 'function') editor.setDirty(true);
+          if (typeof editor.fire === 'function') editor.fire('change');
+        } catch (_) {}
+      }
       ok = true;
     } catch (e) {
       error = e && e.message ? e.message : String(e);

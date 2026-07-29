@@ -2526,7 +2526,7 @@ console.log("[gem] recent-campaigns.js loaded");
       : "CTRL+/";
   }
 
-  function buildRecentNavItem() {
+  function buildLegacyRecentNavItem() {
     const li = document.createElement("li");
     li.className = "e-navigation__menu_list_item";
     li.id = RECENT_NAV_ID;
@@ -2546,6 +2546,29 @@ console.log("[gem] recent-campaigns.js loaded");
       toggleRecentPanel();
     });
     return li;
+  }
+
+  function buildUi5RecentNavItem(navRoot) {
+    const gem = window.gemNavMenu;
+    const item = gem.buildUi5ActionItem(
+      {
+        id: RECENT_NAV_ID,
+        text: "Recent Campaigns",
+        icon: "history",
+        // email/bookmark-2 are already registered by Emarsys's own nav items.
+        iconFallbacks: ["email", "bookmark-2", "opportunity", "home"],
+        className: "gem-ui5-nav-item--recent",
+        onActivate: () => toggleRecentPanel(),
+      },
+      navRoot
+    );
+    gem.syncUi5CollapsedAttrs(item, navRoot);
+    return item;
+  }
+
+  function buildRecentNavItem(flavor, navRoot) {
+    if (flavor === "ui5" && window.gemNavMenu) return buildUi5RecentNavItem(navRoot);
+    return buildLegacyRecentNavItem();
   }
 
   function createRecentPanel() {
@@ -2820,18 +2843,22 @@ console.log("[gem] recent-campaigns.js loaded");
     });
   }
 
-  function insertRecentNavItem(nav) {
-    if (!nav || nav.querySelector(`#${RECENT_NAV_ID}`)) return;
-    const notesItem = nav.querySelector(`#${NOTES_NAV_ID}`);
-    const settingsItem = nav.querySelector(`#${SETTINGS_NAV_ID}`);
-    const recentItem = buildRecentNavItem();
-
+  function insertRecentNavItem(host, flavor) {
+    if (!host || host.querySelector(`#${RECENT_NAV_ID}`)) return;
+    const recentItem = buildRecentNavItem(flavor || "legacy", host);
+    const gem = window.gemNavMenu;
+    if (gem) {
+      gem.insertRecentRelative(host, recentItem, NOTES_NAV_ID, SETTINGS_NAV_ID);
+      return;
+    }
+    const notesItem = host.querySelector(`#${NOTES_NAV_ID}`);
+    const settingsItem = host.querySelector(`#${SETTINGS_NAV_ID}`);
     if (notesItem && settingsItem && notesItem.nextSibling === settingsItem) {
-      nav.insertBefore(recentItem, settingsItem);
+      host.insertBefore(recentItem, settingsItem);
     } else if (settingsItem) {
-      nav.insertBefore(recentItem, settingsItem);
+      host.insertBefore(recentItem, settingsItem);
     } else {
-      nav.appendChild(recentItem);
+      host.appendChild(recentItem);
     }
   }
 
@@ -3497,8 +3524,17 @@ console.log("[gem] recent-campaigns.js loaded");
   }
 
   function scanForNav(root = document) {
-    root.querySelectorAll("nav .e-navigation__menu_list").forEach((nav) => {
-      insertRecentNavItem(nav);
+    const gem = window.gemNavMenu;
+    if (!gem) {
+      root.querySelectorAll("nav .e-navigation__menu_list").forEach((nav) => {
+        insertRecentNavItem(nav, "legacy");
+        renderRecentList();
+      });
+      return;
+    }
+    const { flavor, hosts } = gem.getNavHosts(root);
+    hosts.forEach((host) => {
+      insertRecentNavItem(host, flavor);
       renderRecentList();
     });
   }
@@ -3509,8 +3545,21 @@ console.log("[gem] recent-campaigns.js loaded");
         for (const node of mutation.addedNodes) {
           if (node.nodeType !== 1) continue;
           if (node.matches && node.matches("nav .e-navigation__menu_list")) {
-            insertRecentNavItem(node);
+            insertRecentNavItem(node, "legacy");
             renderRecentList();
+            continue;
+          }
+          if (node.matches && node.matches("ui5-side-navigation-ds-nav")) {
+            insertRecentNavItem(node, "ui5");
+            renderRecentList();
+            continue;
+          }
+          if (
+            node.id === NOTES_NAV_ID ||
+            node.id === SETTINGS_NAV_ID ||
+            (window.gemNavMenu && window.gemNavMenu.isNavRelatedNode(node))
+          ) {
+            scanForNav(document);
             continue;
           }
           if (node.querySelectorAll) {

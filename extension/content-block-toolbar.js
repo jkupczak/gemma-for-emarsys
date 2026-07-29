@@ -608,178 +608,154 @@ function applyTextSwapForBlock(eBlockId) {
     // Prefer longer keywords to avoid partial matches eating longer ones
     rules.sort((a, b) => b.keyword.length - a.keyword.length);
 
-    (async () => {
-      const iframe = document.querySelector(GEM_TARGET_IFRAME_SELECTOR);
-      if (!iframe) return;
+    const iframe = document.querySelector(GEM_TARGET_IFRAME_SELECTOR);
+    if (!iframe) return;
 
-      let doc;
-      try {
-        doc = iframe.contentDocument || iframe.contentWindow?.document;
-      } catch (e) {
-        return;
-      }
-      if (!doc) return;
+    let doc;
+    try {
+      doc = iframe.contentDocument || iframe.contentWindow?.document;
+    } catch (e) {
+      return;
+    }
+    if (!doc) return;
 
-      const blockEls = Array.from(doc.querySelectorAll(`[e-block-id="${CSS.escape(eBlockId)}"]`));
-      if (!blockEls.length) return;
+    const blockEls = Array.from(doc.querySelectorAll(`[e-block-id="${CSS.escape(eBlockId)}"]`));
+    if (!blockEls.length) return;
 
-      // Wake lazy TinyMCE inside this block before scanning contenteditable roots.
-      const primeFn = window.gemFindReplaceDom && window.gemFindReplaceDom.primeEmarsysEditablesInDoc;
-      if (typeof primeFn === 'function') {
-        try {
-          for (const blockEl of blockEls) {
-            const primeResult = await primeFn(doc, {
-              root: blockEl,
-              filter: (el) => String(el.textContent || '').trim().length > 0,
-              release: false,
-            });
-            try {
-              console.log('[GemKeywordSwap] toolbar primed', eBlockId, primeResult);
-            } catch (_) {}
+    // No programmatic priming: the block toolbar only appears after the user
+    // hovers the content block, which is already Emarsys's wake path for it.
+
+    const isInsideExistingToken = (node) => {
+      let cur = node;
+      while (cur) {
+        if (cur.nodeType === 1) {
+          const el = cur;
+          if (el.matches && (el.matches('span[e-token="cust_esl"]') || el.classList.contains('cbNonEditable'))) {
+            return true;
           }
-        } catch (e) {
-          try {
-            console.warn('[GemKeywordSwap] toolbar prime failed', e && e.message ? e.message : e);
-          } catch (_) {}
         }
+        cur = cur.parentNode;
       }
+      return false;
+    };
 
-      const isInsideExistingToken = (node) => {
-        let cur = node;
-        while (cur) {
-          if (cur.nodeType === 1) {
-            const el = cur;
-            if (el.matches && (el.matches('span[e-token="cust_esl"]') || el.classList.contains('cbNonEditable'))) {
-              return true;
+    let didChange = false;
+    let swapCount = 0;
+    const touchedEditables = new Set();
+    const processedEditables = new Set();
+
+    blockEls.forEach((blockEl) => {
+      const editables = getEditableElementsForBlockEl(blockEl);
+      editables.forEach((editable) => {
+        if (!editable || processedEditables.has(editable)) return;
+        processedEditables.add(editable);
+
+        const walker = doc.createTreeWalker(
+          editable,
+          NodeFilter.SHOW_TEXT,
+          {
+            acceptNode(node) {
+              if (!node.nodeValue) return NodeFilter.FILTER_REJECT;
+              const text = node.nodeValue;
+              const hasAny = rules.some((r) => {
+                return text.indexOf(r.keyword) !== -1;
+              });
+              if (!hasAny) return NodeFilter.FILTER_REJECT;
+              if (isInsideExistingToken(node.parentNode)) return NodeFilter.FILTER_REJECT;
+              return NodeFilter.FILTER_ACCEPT;
             }
           }
-          cur = cur.parentNode;
-        }
-        return false;
-      };
+        );
 
-      let didChange = false;
-      let swapCount = 0;
-      const touchedEditables = new Set();
-      const processedEditables = new Set();
+        const nodes = [];
+        let n;
+        while ((n = walker.nextNode())) nodes.push(n);
 
-      blockEls.forEach((blockEl) => {
-        const editables = getEditableElementsForBlockEl(blockEl);
-        editables.forEach((editable) => {
-          if (!editable || processedEditables.has(editable)) return;
-          processedEditables.add(editable);
+        nodes.forEach((textNode) => {
+          const text = textNode.nodeValue;
 
-          const walker = doc.createTreeWalker(
-            editable,
-            NodeFilter.SHOW_TEXT,
-            {
-              acceptNode(node) {
-                if (!node.nodeValue) return NodeFilter.FILTER_REJECT;
-                const text = node.nodeValue;
-                const hasAny = rules.some((r) => {
-                  return text.indexOf(r.keyword) !== -1;
-                });
-                if (!hasAny) return NodeFilter.FILTER_REJECT;
-                if (isInsideExistingToken(node.parentNode)) return NodeFilter.FILTER_REJECT;
-                return NodeFilter.FILTER_ACCEPT;
-              }
-            }
-          );
+          const frag = doc.createDocumentFragment();
+          const matches = [];
 
-          const nodes = [];
-          let n;
-          while ((n = walker.nextNode())) nodes.push(n);
-
-          nodes.forEach((textNode) => {
-            const text = textNode.nodeValue;
-
-            const frag = doc.createDocumentFragment();
-            const matches = [];
-
-            // Collect all matches for all rules
-            rules.forEach((rule) => {
-              const hay = text;
-              const needle = rule.keyword;
-              let from = 0;
-              while (true) {
-                const idx = hay.indexOf(needle, from);
-                if (idx === -1) break;
-                matches.push({
-                  start: idx,
-                  end: idx + rule.keyword.length,
-                  rule
-                });
-                from = idx + rule.keyword.length;
-              }
-            });
-
-            if (matches.length === 0) return;
-
-            // Sort by start asc, then longest match first to resolve overlaps
-            matches.sort((a, b) => (a.start - b.start) || ((b.end - b.start) - (a.end - a.start)));
-
-            let cursor = 0;
-            matches.forEach((m) => {
-              if (m.start < cursor) return; // overlap, skip
-              const { rule } = m;
-              const snippet = rule.snippet;
-              if (!snippet || typeof snippet.content !== 'string') return;
-
-              // text before
-              if (m.start > cursor) {
-                frag.appendChild(doc.createTextNode(text.slice(cursor, m.start)));
-              }
-
-              if (rule.mode === 'token') {
-                frag.appendChild(createEslTokenSpan(doc, snippet.name || GEM_ESL_TOKEN_NAME, snippet.content));
-              } else {
-                frag.appendChild(doc.createTextNode(snippet.content));
-              }
-
-              didChange = true;
-              swapCount += 1;
-              touchedEditables.add(editable);
-              cursor = m.end;
-            });
-
-            // trailing text
-            if (cursor < text.length) {
-              frag.appendChild(doc.createTextNode(text.slice(cursor)));
-            }
-
-            if (didChange && textNode.parentNode) {
-              textNode.parentNode.replaceChild(frag, textNode);
+          // Collect all matches for all rules
+          rules.forEach((rule) => {
+            const hay = text;
+            const needle = rule.keyword;
+            let from = 0;
+            while (true) {
+              const idx = hay.indexOf(needle, from);
+              if (idx === -1) break;
+              matches.push({
+                start: idx,
+                end: idx + rule.keyword.length,
+                rule
+              });
+              from = idx + rule.keyword.length;
             }
           });
 
-          if (didChange) {
-            editable.dispatchEvent(new Event('input', { bubbles: true }));
-            editable.dispatchEvent(new Event('change', { bubbles: true }));
+          if (matches.length === 0) return;
+
+          // Sort by start asc, then longest match first to resolve overlaps
+          matches.sort((a, b) => (a.start - b.start) || ((b.end - b.start) - (a.end - a.start)));
+
+          let cursor = 0;
+          matches.forEach((m) => {
+            if (m.start < cursor) return; // overlap, skip
+            const { rule } = m;
+            const snippet = rule.snippet;
+            if (!snippet || typeof snippet.content !== 'string') return;
+
+            // text before
+            if (m.start > cursor) {
+              frag.appendChild(doc.createTextNode(text.slice(cursor, m.start)));
+            }
+
+            if (rule.mode === 'token') {
+              frag.appendChild(createEslTokenSpan(doc, snippet.name || GEM_ESL_TOKEN_NAME, snippet.content));
+            } else {
+              frag.appendChild(doc.createTextNode(snippet.content));
+            }
+
+            didChange = true;
+            swapCount += 1;
+            touchedEditables.add(editable);
+            cursor = m.end;
+          });
+
+          // trailing text
+          if (cursor < text.length) {
+            frag.appendChild(doc.createTextNode(text.slice(cursor)));
+          }
+
+          if (didChange && textNode.parentNode) {
+            textNode.parentNode.replaceChild(frag, textNode);
           }
         });
-      });
 
-      if (didChange) {
-        if (
-          window.gemFindReplaceDom &&
-          typeof window.gemFindReplaceDom.markEmailBodyDirty === 'function'
-        ) {
-          window.gemFindReplaceDom.markEmailBodyDirty(doc, Array.from(touchedEditables));
-        } else {
-          markEmarsysDraftDirty(doc, Array.from(touchedEditables));
-          nudgeEmarsysDirtyDetectionViaFocus(doc, Array.from(touchedEditables));
+        if (didChange) {
+          editable.dispatchEvent(new Event('input', { bubbles: true }));
+          editable.dispatchEvent(new Event('change', { bubbles: true }));
         }
-      }
+      });
+    });
 
-      // Toast feedback (global helper defined in snippets-tab.js; no-op if missing)
-      const msg =
-        swapCount > 0
-          ? `Swapped ${swapCount} keyword${swapCount === 1 ? '' : 's'}.`
-          : 'No keywords swapped.';
-      try {
-        window.gemShowToast && window.gemShowToast(msg, { type: swapCount > 0 ? 'success' : 'info' });
-      } catch (_) {}
-    })();
+    if (didChange) {
+      // Match 14.0.0: light dirty nudge only. Do NOT call markEmailBodyDirty —
+      // its surgical container rewrite rebuilds the preview iframe and jumps
+      // scroll back to the top.
+      markEmarsysDraftDirty(doc, Array.from(touchedEditables));
+      nudgeEmarsysDirtyDetectionViaFocus(doc, Array.from(touchedEditables));
+    }
+
+    // Toast feedback (global helper defined in snippets-tab.js; no-op if missing)
+    const msg =
+      swapCount > 0
+        ? `Swapped ${swapCount} keyword${swapCount === 1 ? '' : 's'}.`
+        : 'No keywords swapped.';
+    try {
+      window.gemShowToast && window.gemShowToast(msg, { type: swapCount > 0 ? 'success' : 'info' });
+    } catch (_) {}
   });
 }
 
@@ -1075,81 +1051,199 @@ function markEmarsysDraftDirty(doc, editables = []) {
 
 function nudgeEmarsysDirtyDetectionViaFocus(doc, editables = []) {
   const target = editables && editables.find((el) => el && typeof el.focus === 'function');
-  if (!target) return;
-
-  const win = doc.defaultView;
-  const prevActive = doc.activeElement;
-
-  try {
-    // Focus the editable (similar to user clicking into it)
-    target.focus({ preventScroll: true });
-  } catch (_) {
-    try { target.focus(); } catch (_) {}
+  if (!target) {
+    try {
+      console.log('[GemDraftDirty]', 'nudge:skip-no-target', { count: (editables || []).length });
+    } catch (_) {}
+    return;
   }
 
-  // Place a caret at end (selectionchange is often observed by editors)
-  try {
-    const sel = doc.getSelection && doc.getSelection();
-    if (sel && typeof sel.removeAllRanges === 'function' && typeof sel.addRange === 'function') {
-      const range = doc.createRange();
-      range.selectNodeContents(target);
-      range.collapse(false);
-      sel.removeAllRanges();
-      sel.addRange(range);
-      try { doc.dispatchEvent(new Event('selectionchange', { bubbles: true })); } catch (_) {}
+  const win = doc.defaultView || window;
+  const delay = (ms, fn) => {
+    try {
+      (win.setTimeout || setTimeout)(fn, ms);
+    } catch (_) {
+      setTimeout(fn, ms);
     }
-  } catch (_) {}
+  };
 
-  // Fire a minimal pointer/click sequence to trigger editor wiring
-  try {
-    const mkPointer = (type) => {
-      if (typeof PointerEvent === 'function') {
-        return new PointerEvent(type, { bubbles: true, cancelable: true, view: win, pointerType: 'mouse' });
+  const isAlreadyInField = () => {
+    try {
+      const ae = doc.activeElement;
+      if (ae === target) return true;
+      if (ae && target.contains && target.contains(ae)) return true;
+      if (target.classList && target.classList.contains('mce-edit-focus')) return true;
+    } catch (_) {}
+    return false;
+  };
+
+  const parkFocusOutside = (reason) => {
+    try {
+      console.log('[GemDraftDirty]', 'nudge:park-outside', { reason: reason || null });
+    } catch (_) {}
+    try {
+      if (typeof FocusEvent === 'function') {
+        target.dispatchEvent(
+          new FocusEvent('focusout', { bubbles: true, cancelable: false, relatedTarget: null })
+        );
+        target.dispatchEvent(
+          new FocusEvent('blur', { bubbles: false, cancelable: false, relatedTarget: null })
+        );
+      } else {
+        target.dispatchEvent(new Event('focusout', { bubbles: true }));
+        target.dispatchEvent(new Event('blur'));
       }
-      return new MouseEvent(type, { bubbles: true, cancelable: true, view: win });
-    };
-    const mkMouse = (type) => new MouseEvent(type, { bubbles: true, cancelable: true, view: win });
-
-    target.dispatchEvent(mkPointer('pointerdown'));
-    target.dispatchEvent(mkMouse('mousedown'));
-    target.dispatchEvent(mkMouse('mouseup'));
-    target.dispatchEvent(mkMouse('click'));
-  } catch (_) {}
-
-  // Emarsys seems to mark dirty only after the user enters AND leaves the block.
-  // So we also trigger a lightweight "focus out" path after handlers run.
-  // Restore focus back to what the user had if possible; otherwise blur the target.
-  try {
-    if (win && win.setTimeout) {
-      win.setTimeout(() => {
-        // Always explicitly blur the target (and fire focusout) to mimic the "click in then click out" path.
+    } catch (_) {}
+    try {
+      target.blur();
+    } catch (_) {}
+    try {
+      if (doc.body) {
+        if (!doc.body.hasAttribute('tabindex')) doc.body.setAttribute('tabindex', '-1');
         try {
-          if (typeof FocusEvent === 'function') {
-            target.dispatchEvent(new FocusEvent('focusout', { bubbles: true, cancelable: false, relatedTarget: null }));
-            target.dispatchEvent(new FocusEvent('blur', { bubbles: false, cancelable: false, relatedTarget: null }));
-          } else {
-            target.dispatchEvent(new Event('focusout', { bubbles: true }));
-            target.dispatchEvent(new Event('blur'));
-          }
-        } catch (_) {}
-        try { target.blur(); } catch (_) {}
-
-        // Prefer restoring previous focus if it exists and differs from target
-        if (prevActive && prevActive !== target && typeof prevActive.focus === 'function') {
-          try { prevActive.focus({ preventScroll: true }); } catch (_) {
-            try { prevActive.focus(); } catch (_) {}
-          }
-        } else {
-          // Otherwise focus something inert so the active element isn't left on the editable.
-          try {
-            if (doc.body && typeof doc.body.focus === 'function') doc.body.focus({ preventScroll: true });
-          } catch (_) {
-            try { if (doc.body) doc.body.focus(); } catch (_) {}
-          }
+          doc.body.focus({ preventScroll: true });
+        } catch (_) {
+          doc.body.focus();
         }
-      }, 0);
+      }
+    } catch (_) {}
+  };
+
+  // Emarsys enables Save after a real enter then leave. If TinyMCE is already
+  // focused (token context menu path), a no-op re-focus + blur does not unlock Save.
+  const runEnterLeave = (opts = {}) => {
+    const restoreFocusEl = opts.restoreFocusEl || null;
+    const coldStart = !!opts.coldStart;
+
+    try {
+      console.log('[GemDraftDirty]', 'nudge:enter', {
+        coldStart,
+        targetTag: (target.tagName || '').toLowerCase(),
+        targetId: target.id || null,
+        eEditable: target.getAttribute?.('e-editable'),
+        contentEditable: target.getAttribute?.('contenteditable'),
+        activeTag: doc.activeElement && doc.activeElement.tagName
+          ? doc.activeElement.tagName.toLowerCase()
+          : null,
+        saveBefore: (() => {
+          const btn = document.querySelector('cb-draft-save-button button');
+          return btn ? { disabled: !!btn.disabled } : null;
+        })(),
+      });
+    } catch (_) {}
+
+    try {
+      target.focus({ preventScroll: true });
+    } catch (_) {
+      try {
+        target.focus();
+      } catch (_) {}
     }
-  } catch (_) {}
+
+    try {
+      const sel = doc.getSelection && doc.getSelection();
+      if (sel && typeof sel.removeAllRanges === 'function' && typeof sel.addRange === 'function') {
+        const range = doc.createRange();
+        range.selectNodeContents(target);
+        range.collapse(false);
+        sel.removeAllRanges();
+        sel.addRange(range);
+        try {
+          doc.dispatchEvent(new Event('selectionchange', { bubbles: true }));
+        } catch (_) {}
+      }
+    } catch (_) {}
+
+    try {
+      const mkPointer = (type) => {
+        if (typeof PointerEvent === 'function') {
+          return new PointerEvent(type, {
+            bubbles: true,
+            cancelable: true,
+            view: win,
+            pointerType: 'mouse',
+          });
+        }
+        return new MouseEvent(type, { bubbles: true, cancelable: true, view: win });
+      };
+      const mkMouse = (type) => new MouseEvent(type, { bubbles: true, cancelable: true, view: win });
+
+      target.dispatchEvent(mkPointer('pointerdown'));
+      target.dispatchEvent(mkMouse('mousedown'));
+      target.dispatchEvent(mkMouse('mouseup'));
+      target.dispatchEvent(mkMouse('click'));
+    } catch (_) {}
+
+    delay(0, () => {
+      try {
+        console.log('[GemDraftDirty]', 'nudge:blur-tick', {
+          activeTag: doc.activeElement && doc.activeElement.tagName
+            ? doc.activeElement.tagName.toLowerCase()
+            : null,
+          activeIsTarget: doc.activeElement === target,
+          coldStart,
+        });
+      } catch (_) {}
+
+      try {
+        if (typeof FocusEvent === 'function') {
+          target.dispatchEvent(
+            new FocusEvent('focusout', { bubbles: true, cancelable: false, relatedTarget: null })
+          );
+          target.dispatchEvent(
+            new FocusEvent('blur', { bubbles: false, cancelable: false, relatedTarget: null })
+          );
+        } else {
+          target.dispatchEvent(new Event('focusout', { bubbles: true }));
+          target.dispatchEvent(new Event('blur'));
+        }
+      } catch (_) {}
+      try {
+        target.blur();
+      } catch (_) {}
+
+      if (restoreFocusEl && restoreFocusEl !== target && typeof restoreFocusEl.focus === 'function') {
+        try {
+          restoreFocusEl.focus({ preventScroll: true });
+        } catch (_) {
+          try {
+            restoreFocusEl.focus();
+          } catch (_) {}
+        }
+      } else {
+        parkFocusOutside('after-leave');
+      }
+
+      try {
+        if (typeof window.gemProbeDraftSaveState === 'function') {
+          window.gemProbeDraftSaveState('nudge:after-blur', { coldStart });
+        }
+      } catch (_) {}
+    });
+  };
+
+  if (isAlreadyInField()) {
+    try {
+      console.log('[GemDraftDirty]', 'nudge:force-cold-start', {
+        targetTag: (target.tagName || '').toLowerCase(),
+        targetId: target.id || null,
+        activeTag: doc.activeElement && doc.activeElement.tagName
+          ? doc.activeElement.tagName.toLowerCase()
+          : null,
+        hasMceEditFocus: !!(target.classList && target.classList.contains('mce-edit-focus')),
+      });
+    } catch (_) {}
+    parkFocusOutside('cold-start');
+    // Give Emarsys a beat to leave edit mode before a fresh enter+leave.
+    delay(20, () => runEnterLeave({ coldStart: true, restoreFocusEl: null }));
+    return;
+  }
+
+  const prevActive = doc.activeElement;
+  runEnterLeave({
+    coldStart: false,
+    restoreFocusEl: prevActive && prevActive !== target ? prevActive : null,
+  });
 }
 
 function markEmarsysTextControlDirty(el) {
@@ -1179,10 +1273,46 @@ function markEmarsysTextControlDirty(el) {
   } catch (_) {}
 }
 
+// Always-on draft/Save diagnostics (prefix bypasses debug-logging-gate).
+const GEM_DRAFT_DIRTY_LOG = '[GemDraftDirty]';
+
+function gemProbeDraftSaveState(label, extra) {
+  const btn = document.querySelector('cb-draft-save-button button');
+  const gemBtn = document.querySelector('gem-cb-draft-save-button button');
+  const info = {
+    label: String(label || ''),
+    t: Date.now(),
+    emarsysSave: btn
+      ? { disabled: !!btn.disabled, hasDisabledAttr: btn.hasAttribute('disabled') }
+      : null,
+    gemSave: gemBtn
+      ? { disabled: !!gemBtn.disabled, hasDisabledAttr: gemBtn.hasAttribute('disabled') }
+      : null,
+  };
+  if (extra && typeof extra === 'object') Object.assign(info, extra);
+  try {
+    console.log(GEM_DRAFT_DIRTY_LOG, info);
+  } catch (_) {}
+  return info;
+}
+
+function gemScheduleDraftSaveProbes(baseLabel, delaysMs) {
+  const delays = Array.isArray(delaysMs) && delaysMs.length
+    ? delaysMs
+    : [0, 50, 120, 280, 400, 600, 900, 1300];
+  delays.forEach((ms) => {
+    setTimeout(() => {
+      gemProbeDraftSaveState(`${baseLabel}+${ms}ms`);
+    }, ms);
+  });
+}
+
 window.gemFindTinyMCEEditorForElement = findTinyMCEEditorForElement;
 window.gemMarkEmarsysDraftDirty = markEmarsysDraftDirty;
 window.gemMarkEmarsysTextControlDirty = markEmarsysTextControlDirty;
 window.gemNudgeEmarsysDirtyDetectionViaFocus = nudgeEmarsysDirtyDetectionViaFocus;
+window.gemProbeDraftSaveState = gemProbeDraftSaveState;
+window.gemScheduleDraftSaveProbes = gemScheduleDraftSaveProbes;
 
 function setupEditableImageDoubleClickHandler() {
   console.log("[gem] Setting up editable image double-click handler");

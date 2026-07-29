@@ -15,7 +15,7 @@ let notesSaveTimeout = null;
 
 // ── Nav button ──────────────────────────────────────────────────────────
 
-function buildNotesNavItem() {
+function buildLegacyNotesNavItem() {
   const li = document.createElement("li");
   li.className = "e-navigation__menu_list_item";
   li.id = GEM_NOTES_NAV_ID;
@@ -34,17 +34,45 @@ function buildNotesNavItem() {
   return li;
 }
 
-function injectNotesNavItem(nav) {
-  if (!nav || nav.querySelector(`#${GEM_NOTES_NAV_ID}`)) return;
+function buildUi5NotesNavItem(navRoot) {
+  const gem = window.gemNavMenu;
+  const item = gem.buildUi5ActionItem(
+    {
+      id: GEM_NOTES_NAV_ID,
+      text: "Notes",
+      icon: "notes",
+      // Emarsys only registers icons it ships; curriculum is already in the menu.
+      iconFallbacks: ["curriculum", "business-card", "image-viewer", "home"],
+      className: "gem-ui5-nav-item--notes",
+      onActivate: toggleNotesPanel,
+    },
+    navRoot
+  );
+  gem.syncUi5CollapsedAttrs(item, navRoot);
+  return item;
+}
 
-  const settingsItem = nav.querySelector("#gem-nav-settings-item");
-  if (settingsItem) {
-    nav.insertBefore(buildNotesNavItem(), settingsItem);
+function injectNotesNavItem(host, flavor) {
+  if (!host || host.querySelector(`#${GEM_NOTES_NAV_ID}`)) return;
+  const gem = window.gemNavMenu;
+  const item =
+    flavor === "ui5" && gem ? buildUi5NotesNavItem(host) : buildLegacyNotesNavItem();
+  if (gem) {
+    gem.insertRelativeToSettings(host, item, "gem-nav-settings-item");
+  } else {
+    const settingsItem = host.querySelector("#gem-nav-settings-item");
+    if (settingsItem) host.insertBefore(item, settingsItem);
   }
 }
 
 function scanForNav(root = document) {
-  root.querySelectorAll("nav .e-navigation__menu_list").forEach(injectNotesNavItem);
+  const gem = window.gemNavMenu;
+  if (!gem) {
+    root.querySelectorAll("nav .e-navigation__menu_list").forEach((nav) => injectNotesNavItem(nav, "legacy"));
+    return;
+  }
+  const { flavor, hosts } = gem.getNavHosts(root);
+  hosts.forEach((host) => injectNotesNavItem(host, flavor));
 }
 
 function observeNav() {
@@ -54,15 +82,29 @@ function observeNav() {
         if (node.nodeType !== 1) continue;
 
         if (node.id === "gem-nav-settings-item") {
-          const nav = node.closest(".e-navigation__menu_list");
-          if (nav) injectNotesNavItem(nav);
+          const gem = window.gemNavMenu;
+          const host =
+            node.closest?.("ul.e-navigation__menu_list") ||
+            node.closest?.("ui5-side-navigation-ds-nav");
+          if (host) {
+            const flavor = host.matches?.("ui5-side-navigation-ds-nav") ? "ui5" : "legacy";
+            injectNotesNavItem(host, flavor);
+          } else if (gem) {
+            scanForNav(document);
+          }
         } else if (node.querySelectorAll) {
           const settingsItems = node.querySelectorAll("#gem-nav-settings-item");
           settingsItems.forEach((si) => {
-            const nav = si.closest(".e-navigation__menu_list");
-            if (nav) injectNotesNavItem(nav);
+            const host =
+              si.closest("ul.e-navigation__menu_list") ||
+              si.closest("ui5-side-navigation-ds-nav");
+            if (host) {
+              const flavor = host.matches?.("ui5-side-navigation-ds-nav") ? "ui5" : "legacy";
+              injectNotesNavItem(host, flavor);
+            }
           });
           scanForNav(node);
+          if (window.gemNavMenu?.isNavRelatedNode(node)) scanForNav(document);
         }
       }
     }

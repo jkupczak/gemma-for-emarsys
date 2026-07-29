@@ -179,6 +179,8 @@ function initializeFocusLayout() {
     // Set up observers for view changes and selector visibility
     setupFocusLayoutObserver(compactVersionsDiv);
     setupLanguagesSelectorObserver(compactVersionsDiv);
+    setupSideNavigationFocusAttrObserver();
+    syncSideNavigationFocusAttr(isFocusLayout);
 
     initializeNavPanelResize(navSection);
 
@@ -441,7 +443,7 @@ const NAV_LAYOUT_WIDTH_OFFSET = 24;
 const NAV_STANDARD_DEFAULT = 530;
 const NAV_STANDARD_MIN = 510;
 const NAV_STANDARD_MAX = 996;
-const NAV_FOCUS_MIN = 534;
+const NAV_FOCUS_MIN = 500;
 const NAV_FOCUS_MAX = 1020;
 const NAV_PANEL_RESIZE_DEBOUNCE_MS = 100;
 
@@ -473,6 +475,46 @@ function isFocusLayoutActive() {
     return !!window.gemFocusLayout.isActive();
   }
   return !!(document.documentElement && document.documentElement.classList.contains('gem-focus-layout'));
+}
+
+/**
+ * New Emarsys UI5 nav (<e-side-navigation>) needs `collapsed` while Focus
+ * Layout is active. Do not touch the attribute when leaving Focus Layout /
+ * loading in Standard — leave Emarsys's own collapsed state alone.
+ */
+function syncSideNavigationFocusAttr(isFocusLayout = isFocusLayoutActive()) {
+  if (!isFocusLayout) return;
+  try {
+    document.querySelectorAll('e-side-navigation').forEach((el) => {
+      if (!el.hasAttribute('collapsed')) {
+        el.setAttribute('collapsed', '');
+      }
+    });
+  } catch (_) {}
+}
+
+function setupSideNavigationFocusAttrObserver() {
+  if (window._gemSideNavFocusAttrObserved) return;
+  window._gemSideNavFocusAttrObserved = true;
+
+  const scanNode = (node) => {
+    if (!node || node.nodeType !== 1) return false;
+    try {
+      if (node.matches?.('e-side-navigation')) return true;
+      return !!node.querySelector?.('e-side-navigation');
+    } catch (_) {
+      return false;
+    }
+  };
+
+  const maybeSync = (mutations) => {
+    if (!mutations.some((m) => [...m.addedNodes].some(scanNode))) return;
+    syncSideNavigationFocusAttr();
+  };
+
+  if (typeof gemDomWatchSubscribe === 'function') {
+    gemDomWatchSubscribe(maybeSync);
+  }
 }
 
 function getNavPanelDisplayLimits(expanded) {
@@ -649,6 +691,7 @@ function syncNavPanelHandle(navSection) {
 function onNavPanelLayoutChanged() {
   applyNavPanelWidth(storedNavPanelStandardWidth);
   syncNavPanelHandle(navPanelNavSection);
+  syncSideNavigationFocusAttr();
 }
 
 function ensureNavResizeHandle(navSection) {

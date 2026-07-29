@@ -120,6 +120,12 @@ ul.e-navigation__menu_list {
     display: none !important;
 }
 
+/* New Emarsys UI5 side navigation — Gemma items */
+#gem-nav-notes-item.gem-ui5-nav-item,
+ui5-side-navigation-item-ds-nav#gem-nav-notes-item {
+    margin-top: auto;
+}
+
 /* =emailCampaignList */
 /* Zebra Striping */
 #campaign-list-container .e-table.e-table-datagrid_overview.e-datagrid__table .e-datagrid__row.e-table__row:nth-child(even) {
@@ -134,6 +140,10 @@ ul.e-navigation__menu_list {
 .e-navigation__panel > nav.e-navigation__menu {
     background-image: linear-gradient(to top, var(--token-static-600) 0%, color-mix(in srgb, var(--token-static-600) 15%, transparent) 15%, transparent 30%);
     transition: background-image 2s ease-out;
+}
+
+e-side-navigation ui5-side-navigation-ds-nav {
+    background-image: linear-gradient(to top, var(--token-static-600) 0%, color-mix(in srgb, var(--token-static-600) 15%, transparent) 12%, transparent 28%);
 }
 
 html.FLIPPER-theme-eveningHorizon .e-navigation__panel #gem-nav-settings-item .e-navigation__action_text {
@@ -1622,4 +1632,9 @@ color-mix(in srgb, var(--token-gray-100, #dbeafe) 25%, transparent);
 
 .gem-i-ai:before {
     content: var(--token-glyphs-ai) !important;
+}
+
+/* Remove the background from Emarsys' global nav menu items */
+.ui5-sn-item {
+    background: transparent !important;
 }

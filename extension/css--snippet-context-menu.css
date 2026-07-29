@@ -303,3 +303,23 @@
 .gem-shortcut-picker-clear:hover {
   text-decoration: underline;
 }
+
+/* TinyMCE toolbar: Insert Tokens uses the Snippets vertical-nav SVG */
+.gem-mce-insert-tokens-btn .gem-mce-insert-tokens-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 36px;
+  line-height: 1;
+}
+
+.gem-mce-insert-tokens-btn .gem-mce-insert-tokens-icon svg {
+  display: block;
+  width: 18px;
+  height: 18px;
+}
+
+.mce-ico.gem-mce-insert-tokens-icon:has(svg):before {
+  display: none;
+}

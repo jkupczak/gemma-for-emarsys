@@ -54,7 +54,7 @@ html.gem-focus-layout .gem-compact-email-tools-dropdown {
     margin: 0;
     border: 0;
     background: none;
-    font-size: 19px;
+    font-size: 17px;
     font-weight: 700;
     line-height: 1.2;
     color: var(--token-font-default);
@@ -592,6 +592,23 @@ html.gem-focus-layout e-navigation {
     }
 }
 html.gem-focus-layout e-navigation:hover {
+    left: 0 !important;
+    transition: left 0.05s ease-out;
+}
+
+/* New Emarsys UI5 side navigation — same Focus Layout peek behavior */
+html.gem-focus-layout e-side-navigation {
+    z-index: 610;
+    position: relative;
+    left: -56px;
+    top:0;
+    display:inline-flex !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    height: 100vh;
+    transition: left 0.05s ease-out;
+}
+html.gem-focus-layout e-side-navigation:hover {
     left: 0 !important;
     transition: left 0.05s ease-out;
 }

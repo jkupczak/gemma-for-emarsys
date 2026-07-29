@@ -725,8 +725,9 @@ function appendContentEditableCaretMarker(html) {
   return `${String(html ?? '')}<span ${GEM_CARET_MARKER_ATTR}="1">\u200b</span>`;
 }
 
-function placeContentEditableCaretAfterMarker(doc, editor, element) {
+function placeContentEditableCaretAfterMarker(doc, editor, element, options = {}) {
   if (!doc) return false;
+  const shouldFocus = options.focus !== false;
 
   const marker = doc.querySelector(`[${GEM_CARET_MARKER_ATTR}]`);
   if (!marker) return false;
@@ -738,9 +739,11 @@ function placeContentEditableCaretAfterMarker(doc, editor, element) {
     marker.remove();
 
     if (editor && editor.selection) {
-      try {
-        editor.focus();
-      } catch (_) {}
+      if (shouldFocus) {
+        try {
+          editor.focus();
+        } catch (_) {}
+      }
       if (typeof editor.selection.setRng === 'function') {
         editor.selection.setRng(range);
         if (typeof editor.nodeChanged === 'function') {
@@ -750,7 +753,7 @@ function placeContentEditableCaretAfterMarker(doc, editor, element) {
       }
     }
 
-    if (element) {
+    if (shouldFocus && element) {
       try {
         element.focus({ preventScroll: true });
       } catch (_) {
@@ -968,16 +971,18 @@ async function insertHtmlIntoContentEditable(ctx, html, options = {}) {
 
     insertedViaTinyMCE = tryInsertContentEditableViaTinyMCE(doc, element, insertHtml, ctx);
     if (!insertedViaTinyMCE) {
-      insertSnippetAtCaret(element, insertHtml, doc, null, null, range);
+      insertSnippetAtCaret(element, insertHtml, doc, null, null, range, { notifyDirty: false });
     }
   }
 
+  // After TinyMCE/bridge insert:
+  // - Never surgical-sync the preview container (Emarsys rebuilds the iframe).
+  // - Never fire TinyMCE 'change' from the bridge (Emarsys throws on it).
+  // - Do run the same enter/leave nudge the toolbar uses to unlock Save.
+  //   (Natural blur alone is unreliable after a parent-page context-menu click.)
   if (placeCaretAfter) {
     const editor = findTinyMCEEditorForCtx(ctx);
     placeContentEditableCaretAfterMarker(doc, editor, element);
-    requestAnimationFrame(() => {
-      placeContentEditableCaretAfterMarker(doc, editor, element);
-    });
   }
 
   if (!insertedViaTinyMCE) {
@@ -988,6 +993,36 @@ async function insertHtmlIntoContentEditable(ctx, html, options = {}) {
       const editor = findTinyMCEEditorForCtx(ctx);
       placeContentEditableCaretAfterMarker(doc, editor, element);
     }
+    try {
+      console.log('[GemDraftDirty]', 'insertHtml: dom-fallback notify', {
+        placeCaretAfter,
+        nudgeFocus: !placeCaretAfter,
+      });
+    } catch (_) {}
+  } else {
+    notifyEmarsysAfterContentEditableInsert(doc, element, { nudgeFocus: true });
+    try {
+      console.log('[GemDraftDirty]', 'insertHtml: tinymce-insert + toolbar-style nudge', {
+        placeCaretAfter,
+        elementId: element.id || null,
+        eEditable: element.getAttribute?.('e-editable'),
+        className: String(element.className || '').slice(0, 120),
+        docHasFocus: (() => {
+          try {
+            return !!doc.hasFocus?.();
+          } catch (_) {
+            return null;
+          }
+        })(),
+        note: 'nudgeFocus=true (cold-start if already focused); no container sync',
+      });
+      if (typeof window.gemProbeDraftSaveState === 'function') {
+        window.gemProbeDraftSaveState('insertHtml:after-nudge-request');
+      }
+      if (typeof window.gemScheduleDraftSaveProbes === 'function') {
+        window.gemScheduleDraftSaveProbes('insertHtml:tinymce');
+      }
+    } catch (_) {}
   }
   return true;
 }
@@ -1025,9 +1060,22 @@ function tryInsertContentEditableViaTinyMCE(doc, element, html, ctx) {
         editor.undoManager.add();
       }
     }
-    if (typeof editor.setDirty === 'function') editor.setDirty(true);
-    if (typeof editor.fire === 'function') editor.fire('change');
     placeContentEditableCaretAfterMarker(doc, editor, element);
+    // Match bridge handleInsert: assert dirty AFTER caret placement.
+    if (typeof editor.setDirty === 'function') editor.setDirty(true);
+    if (typeof editor.fire === 'function') {
+      try { editor.fire('input'); } catch (_) {}
+      try { editor.fire('change'); } catch (_) {}
+    }
+    try {
+      if (editor.startContent != null) {
+        const now =
+          typeof editor.getContent === 'function' ? String(editor.getContent({ format: 'raw' }) || '') : '';
+        editor.startContent = `${now}<!--gem-stale-start-->`;
+      }
+      editor.isNotDirty = false;
+      if (typeof editor.setDirty === 'function') editor.setDirty(true);
+    } catch (_) {}
     return true;
   } catch (e) {
     console.warn('[Gem] TinyMCE insert failed, falling back to DOM insert:', e);
@@ -1050,9 +1098,10 @@ function notifyEmarsysAfterContentEditableInsert(doc, element, { nudgeFocus = fa
   }
 }
 
-function insertSnippetAtCaret(element, snippetHTML, doc, dropId = null, dropEvent = null, savedRange = null) {
+function insertSnippetAtCaret(element, snippetHTML, doc, dropId = null, dropEvent = null, savedRange = null, options = {}) {
   insertionCounter++;
   const insertionId = `insert-${insertionCounter}-${Date.now()}`;
+  const notifyDirty = options.notifyDirty !== false;
 
   console.log(`[Gem] INSERT #${insertionCounter} (${insertionId}): insertSnippetAtCaret called for element ${element.id || 'unknown'}`);
   console.log(`[Gem] INSERT #${insertionCounter}: From drop: ${dropId || 'unknown'}`);
@@ -1119,6 +1168,9 @@ function insertSnippetAtCaret(element, snippetHTML, doc, dropId = null, dropEven
         marker.remove();
         selection.removeAllRanges();
         selection.addRange(range);
+        if (notifyDirty) {
+          notifyEmarsysAfterContentEditableInsert(doc, element, { nudgeFocus: true });
+        }
         return;
       } catch (_) {
         try {
@@ -1137,6 +1189,9 @@ function insertSnippetAtCaret(element, snippetHTML, doc, dropId = null, dropEven
       }
       selection.removeAllRanges();
       selection.addRange(range);
+    }
+    if (notifyDirty) {
+      notifyEmarsysAfterContentEditableInsert(doc, element, { nudgeFocus: true });
     }
   } catch (error) {
     console.log(`[Gem] INSERT #${insertionCounter} (${insertionId}): Error inserting snippet:`, error?.message || error);

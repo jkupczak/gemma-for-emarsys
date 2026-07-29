@@ -1,10 +1,24 @@
 console.log("[gem] nav-menu-inject.js loaded");
 
-const NAV_SELECTOR = "ul.e-navigation__menu_list";
 const ITEM_ID = "gem-nav-settings-item";
 const ICON_SRC = chrome.runtime.getURL("img/icon-with-transparency.png");
 
-function buildItem() {
+function openGemmaSettings() {
+  console.log("[gem] Nav item clicked → opening settings");
+  try {
+    console.log("[gem] Sending openSettings message to background...");
+    chrome.runtime.sendMessage({ action: "openSettings" }, (response) => {
+      console.log("[gem] openSettings response:", response);
+      if (chrome.runtime.lastError) {
+        console.log("[gem] openSettings error:", chrome.runtime.lastError);
+      }
+    });
+  } catch (error) {
+    console.log("[gem] Error sending openSettings:", error);
+  }
+}
+
+function buildLegacySettingsItem() {
   const li = document.createElement("li");
   li.className = "e-navigation__menu_list_item";
   li.id = ITEM_ID;
@@ -20,55 +34,77 @@ function buildItem() {
   `;
 
   const btn = li.querySelector("button");
-  if (btn) {
-    btn.addEventListener("click", () => {
-      console.log("[gem] Nav item clicked → opening settings");
-
-      try {
-        // Send message to background script to handle settings panel toggle
-        console.log("[gem] Sending openSettings message to background...");
-        chrome.runtime.sendMessage({ action: "openSettings" }, (response) => {
-          console.log("[gem] openSettings response:", response);
-          if (chrome.runtime.lastError) {
-            console.log("[gem] openSettings error:", chrome.runtime.lastError);
-          }
-        });
-      } catch (error) {
-        console.log("[gem] Error sending openSettings:", error);
-      }
-    });
-  }
-
+  if (btn) btn.addEventListener("click", openGemmaSettings);
   return li;
 }
 
-function insertItem(nav) {
-  if (!nav || nav.querySelector(`#${ITEM_ID}`)) return;
-  const li = buildItem();
-  nav.appendChild(li);
+function buildUi5SettingsItem(navRoot) {
+  const gem = window.gemNavMenu;
+  const item = gem.buildUi5ActionItem(
+    {
+      id: ITEM_ID,
+      text: "Gemma Settings",
+      // Prefer a loaded Emarsys icon; Gemma logo is patched into the shadow root.
+      icon: "action-settings",
+      iconFallbacks: ["sap-box", "puzzle", "curriculum", "home"],
+      className: "gem-ui5-nav-item--settings",
+      logoUrl: ICON_SRC,
+      onActivate: openGemmaSettings,
+    },
+    navRoot
+  );
+  gem.syncUi5CollapsedAttrs(item, navRoot);
+  return item;
+}
+
+function insertItem(host, flavor) {
+  if (!host || host.querySelector(`#${ITEM_ID}`)) return;
+  const gem = window.gemNavMenu;
+  if (flavor === "ui5" && gem) {
+    host.appendChild(buildUi5SettingsItem(host));
+    return;
+  }
+  host.appendChild(buildLegacySettingsItem());
 }
 
 function scanAndInsert(root = document) {
-  const navs = root.querySelectorAll(NAV_SELECTOR);
-  navs.forEach(insertItem);
+  const gem = window.gemNavMenu;
+  if (!gem) {
+    document.querySelectorAll("ul.e-navigation__menu_list").forEach((nav) => insertItem(nav, "legacy"));
+    return;
+  }
+  const { flavor, hosts } = gem.getNavHosts(root === document ? document : root);
+  if (!hosts.length && root !== document) {
+    const again = gem.getNavHosts(document);
+    again.hosts.forEach((host) => insertItem(host, again.flavor));
+    return;
+  }
+  hosts.forEach((host) => insertItem(host, flavor));
 }
 
 function observe() {
   window.gemDomWatchSubscribe(function (mutations) {
+    let needed = false;
     mutations.forEach(function (mutation) {
       mutation.addedNodes.forEach(function (node) {
         if (node.nodeType !== 1) return;
-        if (node.matches && node.matches(NAV_SELECTOR)) {
-          insertItem(node);
-        } else if (node.querySelectorAll) {
-          scanAndInsert(node);
+        const gem = window.gemNavMenu;
+        if (gem?.isNavRelatedNode(node) || node.matches?.("ul.e-navigation__menu_list, ui5-side-navigation-ds-nav, e-side-navigation, e-navigation")) {
+          needed = true;
+          return;
+        }
+        if (node.querySelectorAll && (
+          node.querySelector("ul.e-navigation__menu_list") ||
+          node.querySelector("ui5-side-navigation-ds-nav") ||
+          node.querySelector("e-side-navigation")
+        )) {
+          needed = true;
         }
       });
     });
+    if (needed) scanAndInsert(document);
   });
 }
 
-// Kick off as early as possible
 scanAndInsert();
 observe();
-
