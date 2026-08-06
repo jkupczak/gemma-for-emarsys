@@ -1,0 +1,128 @@
+/* Campaign editor styles (r=contentBlocks/campaign only) */
+
+body {
+    overflow: hidden;
+}
+
+/* Resize handles */
+#gem-frame-handle,
+#gem-nav-handle {
+    margin: auto;
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    height: 100%;
+    cursor: col-resize;
+}
+
+#gem-frame-handle {
+    left: -24px;
+    width: 24px;
+}
+
+#gem-nav-handle {
+    right: -25px;
+    left: auto;
+    width: 24px;
+}
+
+.gem-resize-handle:before {
+    content: "";
+    display: block;
+    background: var(--token-box-default-border);
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    max-width: 4px;
+    height: 10%;
+    min-height: 50px;
+    max-height: 50%;
+    opacity: 0.5;
+    border-radius: 999px;
+    margin: auto;
+    transition: height 0.1s ease-in;
+}
+
+.gem-resize-handle:hover:before {
+    height: 15%;
+    min-height: 70px;
+    max-height: 100%;
+    opacity: 1;
+    background: var(--token-primary-500);
+}
+
+.gem-resize-handle.gem-resize-handle--active:before {
+    background: var(--token-primary-800);
+}
+
+/* Size details overlay */
+.gem-frame-size-details {
+    transition: opacity 0.5s ease-out;
+}
+
+.gem-frame-size-details.gem-frame-size-details--fade-out {
+    opacity: 0;
+}
+
+.gem-frame-size-details-item {
+    width: auto;
+    font-size: 16px;
+    line-height: 20px;
+}
+
+.gem-frame-size-details-item label {
+    display: block;
+    font-size: 10px;
+    line-height: 14px;
+    text-transform: uppercase;
+}
+
+/* Panels */
+/* Language Versions */
+vce-languages-list .e-stretch .e-table[data-e-version="2"] {
+    padding:0 !important
+}
+vce-languages-list > div.e-stretch {
+    height:auto;
+}
+
+/* Link highlight preview overlays (classes injected into desktop preview iframe by link-highlight-preview.js) */
+.gem-link-highlight-overlay {
+    background: rgba(37, 99, 235, 0.12);
+    box-shadow: inset 0 0 0 2px rgba(37, 99, 235, 0.55);
+    border-radius: 2px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.gem-link-highlight-pip {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: rgba(37, 99, 235, 0.95);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.85);
+}
+
+.gem-link-highlight-label {
+    color: #fff;
+    font-size: 10px;
+    line-height: 1.2;
+    font-family: system-ui, -apple-system, sans-serif;
+    text-align: center;
+    word-break: break-all;
+    padding: 2px 10px;
+    max-width: 100%;
+    max-height: 100%;
+    overflow: hidden;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.75);
+    background: rgba(37, 99, 235, 0.72);
+    border-radius: 2px;
+}

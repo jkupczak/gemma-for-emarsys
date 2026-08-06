@@ -95,7 +95,7 @@ window.gemUpdateMobilePreviewToggleUi = updateMobilePreviewToggleUi;
 
 const PREVIEW_LONG_WORD_THRESHOLD = 20;
 const SANITIZED_PREVIEW_GEM_REMOVE_SELECTORS =
-  "#gem-text-highlight-container, #gem-alt-text-overlay-container, #gem-block-targeting-styles, #gem-block-targeting-settings-styles";
+  "#gem-text-highlight-container, #gem-alt-text-overlay-container, #gem-link-highlight-overlay-container, #gem-link-highlight-styles, #gem-block-targeting-styles, #gem-block-targeting-settings-styles";
 const SANITIZED_PREVIEW_VCE_REMOVE_SELECTORS = [
   "e-vce-borderer",
   "e-vce-borderer-element",
@@ -235,17 +235,7 @@ function isMobilePreviewActiveForSync() {
   return true;
 }
 
-function syncGemFrameHandleForFocusLayout() {
-  const handle = document.querySelector("#gem-frame-handle");
-  if (!handle || !document.body) return;
-  const focusLayout = document.documentElement.classList.contains("gem-focus-layout");
-  handle.style.left = focusLayout ? "-18px" : "-24px";
-  handle.style.width = focusLayout ? "18px" : "24px";
-}
-
 function applyMobilePreviewStyles(containerEl, iframeEl) {
-  syncGemFrameHandleForFocusLayout();
-
   const container = containerEl || document.querySelector(".gem-iframe-wrapper");
   const clone = iframeEl || document.querySelector(".iframe-duplicate");
   if (!container || !clone) return;
@@ -291,17 +281,6 @@ function addResizeHandle(container, styleTarget, clone, originalIframe) {
   const handle = document.createElement("div");
   handle.id = "gem-frame-handle";
   handle.className = "gem-resize-handle";
-  const focusLayoutOnCreate = document.documentElement?.classList.contains("gem-focus-layout");
-  Object.assign(handle.style, {
-    margin: "auto",
-    position: "absolute",
-    top: "0",
-    bottom: "0",
-    left: focusLayoutOnCreate ? "-18px" : "-24px",
-    width: focusLayoutOnCreate ? "18px" : "24px",
-    height: "100%",
-    cursor: "col-resize"
-  });
 
   let dragging = false;
   let startX = 0;

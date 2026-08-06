@@ -224,7 +224,6 @@ The block reset button in the toolbar should have a confirmation prompt.
 
 add text highlighting to the subject line, preview text, and conditional text editors
 
-
  --------------------------------------------------------------------------------
 |                                                                                |
 |                                                                                |

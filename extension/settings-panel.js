@@ -27,6 +27,9 @@ const GEM_EMAIL_CAMPAIGN_LIST_OVERFLOW_TOGGLES_DEFAULT = {
   distribute: true
 };
 const GEM_FOCUS_LAYOUT_STORAGE_KEY = "fullscreenActive";
+const GEM_FOCUS_LAYOUT_TYPE_STORAGE_KEY = "gemFocusLayoutType";
+const GEM_FOCUS_LAYOUT_TYPE_DEFAULT = "full";
+const GEM_FOCUS_LAYOUT_TYPE_CLASS_FULL = "gem-focus-layout:full";
 const GEM_PREFLIGHT_TOTAL_IMAGE_WEIGHT_THRESHOLD_VALUE_KEY = 'gemPreflightTotalImageWeightThresholdValue';
 const GEM_PREFLIGHT_TOTAL_IMAGE_WEIGHT_THRESHOLD_UNIT_KEY = 'gemPreflightTotalImageWeightThresholdUnit';
 const GEM_PREFLIGHT_SINGULAR_IMAGE_WEIGHT_THRESHOLD_VALUE_KEY = 'gemPreflightSingularImageWeightThresholdValue';
@@ -136,19 +139,40 @@ function migrateLegacyFocusLayoutClass(root) {
   } catch (_) {}
 }
 
-function applyFocusLayout(enabled) {
+function normalizeFocusLayoutType(value) {
+  if (window.gemFocusLayout && typeof window.gemFocusLayout.normalizeType === "function") {
+    return window.gemFocusLayout.normalizeType(value);
+  }
+  return value === "normal" ? "normal" : "full";
+}
+
+function applyFocusLayout(enabled, type) {
   try {
-    if (window.gemFocusLayout && typeof window.gemFocusLayout.setActive === "function") {
-      window.gemFocusLayout.setActive(!!enabled);
-      return;
+    const normalizedType = normalizeFocusLayoutType(
+      type !== undefined ? type : (window.gemFocusLayout && typeof window.gemFocusLayout.getType === "function"
+        ? window.gemFocusLayout.getType()
+        : GEM_FOCUS_LAYOUT_TYPE_DEFAULT)
+    );
+
+    if (window.gemFocusLayout) {
+      if (typeof window.gemFocusLayout.setType === "function") {
+        window.gemFocusLayout.setType(normalizedType);
+      }
+      if (typeof window.gemFocusLayout.setActive === "function") {
+        window.gemFocusLayout.setActive(!!enabled);
+        return;
+      }
     }
+
     const root = document.documentElement;
     if (!root) return;
     migrateLegacyFocusLayoutClass(root);
     root.classList.toggle("gem-focus-layout", !!enabled);
+    root.classList.toggle(GEM_FOCUS_LAYOUT_TYPE_CLASS_FULL, !!enabled && normalizedType === "full");
     if (document.body) {
       document.body.classList.remove("gem-focus-layout");
       document.body.classList.remove("gem-expanded");
+      document.body.classList.remove(GEM_FOCUS_LAYOUT_TYPE_CLASS_FULL);
     }
   } catch (_) {
     // ignore
@@ -800,6 +824,34 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
         <h2>Email Editor Settings</h2>
 
         <div class="gem-setting-section">
+          <h3>Link Highlight Preview</h3>
+          <div class="gem-setting gem-setting-condensed">
+            <div class="gem-e-switch-wrapper">
+              <label for="opt-link-highlight-preview-enabled">Toggle Link Highlight Previews</label>
+              <div class="gem-e-switch--fat e-switch">
+                <input type="checkbox" class="e-switch__input" id="opt-link-highlight-preview-enabled" checked>
+                <label class="e-switch__toggle" for="opt-link-highlight-preview-enabled"></label>
+              </div>
+            </div>
+            <p class="sub-label">
+              When enabled, links in the desktop email preview show a glow overlay so you can spot them quickly. You can also toggle this from the campaign overflow menu.
+            </p>
+          </div>
+          <div class="gem-setting gem-setting-condensed">
+            <div style="display: flex; gap: 12px; align-items: center;">
+              <label for="opt-link-highlight-show-urls" style="flex: 1;">Link URL Display</label>
+              <select id="opt-link-highlight-show-urls" style="width: 150px;">
+                <option value="hide-urls" selected>Hide URLs</option>
+                <option value="show-urls">Show URLs</option>
+              </select>
+            </div>
+            <p class="sub-label">
+              Choose whether link overlays include the URL text on wider links, or show only the glow and pip indicator.
+            </p>
+          </div>
+        </div>
+
+        <div class="gem-setting-section">
           <h3>ALT Text Preview</h3>
           <div class="gem-setting gem-setting-condensed">
             <div class="gem-e-switch-wrapper">
@@ -880,6 +932,15 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
             <p class="sub-label">
               Focus Layout increases the total viewable area of your email by over 40%. Turn it on here, choose it from the email tools menu, via the <span class="gem-e-icon">&#61658;</span> icon next to your email, or use the keyboard shortcut CMD+SHIFT+F or CTRL+SHIFT+F at any time. Turn it off to return to Standard Layout.
             </p>
+            <div class="gem-setting-section">
+              <div class="gem-setting-condensed" style="display: flex; gap: 12px; align-items: center;">
+                <label for="opt-focus-layout-type" style="flex: 1;">Focus Layout Type</label>
+                <select id="opt-focus-layout-type" style="width: 120px;">
+                  <option value="normal">Normal</option>
+                  <option value="full">Full</option>
+                </select>
+              </div>
+            </div>
           </div>
           <div class="gem-setting">
 
@@ -1666,6 +1727,9 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
         [GEM_EMAIL_CAMPAIGN_LIST_LOAD_ALL_KEY]: false,
         [GEM_EMAIL_CAMPAIGN_LIST_OVERFLOW_TOGGLES_KEY]: GEM_EMAIL_CAMPAIGN_LIST_OVERFLOW_TOGGLES_DEFAULT,
         [GEM_FOCUS_LAYOUT_STORAGE_KEY]: false,
+        [GEM_FOCUS_LAYOUT_TYPE_STORAGE_KEY]: GEM_FOCUS_LAYOUT_TYPE_DEFAULT,
+        gemLinkHighlightPreviewEnabled: true,
+        gemLinkHighlightShowUrls: "hide-urls",
         gemAltTextPreviewEnabled: true,
         gemAltTextVisibility: "always-show",
         gemBlockTargetingPreviewEnabled: true,
@@ -1738,10 +1802,28 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
           focusLayoutToggle.checked = settings[GEM_FOCUS_LAYOUT_STORAGE_KEY] === true;
         }
 
-        applyFocusLayout(settings[GEM_FOCUS_LAYOUT_STORAGE_KEY] === true);
+        const focusLayoutTypeEl = document.getElementById("opt-focus-layout-type");
+        const focusLayoutType = normalizeFocusLayoutType(
+          settings[GEM_FOCUS_LAYOUT_TYPE_STORAGE_KEY]
+        );
+        if (focusLayoutTypeEl) {
+          focusLayoutTypeEl.value = focusLayoutType;
+        }
+
+        applyFocusLayout(settings[GEM_FOCUS_LAYOUT_STORAGE_KEY] === true, focusLayoutType);
 
         const altTextEnabledEl = document.getElementById("opt-alt-text-preview-enabled");
         if (altTextEnabledEl) altTextEnabledEl.checked = settings.gemAltTextPreviewEnabled !== false;
+
+        const linkHighlightEnabledEl = document.getElementById("opt-link-highlight-preview-enabled");
+        if (linkHighlightEnabledEl) {
+          linkHighlightEnabledEl.checked = settings.gemLinkHighlightPreviewEnabled !== false;
+        }
+
+        const linkHighlightShowUrlsEl = document.getElementById("opt-link-highlight-show-urls");
+        if (linkHighlightShowUrlsEl) {
+          linkHighlightShowUrlsEl.value = settings.gemLinkHighlightShowUrls || "hide-urls";
+        }
 
         const altTextVisibilityEl = document.getElementById("opt-alt-text-visibility");
         if (altTextVisibilityEl) altTextVisibilityEl.value = settings.gemAltTextVisibility || "always-show";
@@ -1869,6 +1951,9 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
             document.getElementById("opt-enable-mobile-preview")?.checked ?? true;
           const focusLayoutEnabled =
             document.getElementById("opt-enable-focus-layout")?.checked ?? false;
+          const focusLayoutType = normalizeFocusLayoutType(
+            document.getElementById("opt-focus-layout-type")?.value
+          );
 
           const settingsToSave = {
             [GEM_THEME_MODE_STORAGE_KEY]:
@@ -1915,8 +2000,13 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
               document.getElementById("opt-email-campaign-list-load-all")?.checked ?? false,
             [GEM_EMAIL_CAMPAIGN_LIST_OVERFLOW_TOGGLES_KEY]: readEmailCampaignListOverflowTogglesFromUI(),
             [GEM_FOCUS_LAYOUT_STORAGE_KEY]: focusLayoutEnabled,
+            [GEM_FOCUS_LAYOUT_TYPE_STORAGE_KEY]: focusLayoutType,
             mobilePreviewWidth: safeWidth,
             mobilePreviewScale: safeScale,
+            gemLinkHighlightPreviewEnabled:
+              document.getElementById("opt-link-highlight-preview-enabled")?.checked ?? true,
+            gemLinkHighlightShowUrls:
+              document.getElementById("opt-link-highlight-show-urls")?.value ?? "hide-urls",
             gemAltTextPreviewEnabled:
               document.getElementById("opt-alt-text-preview-enabled")?.checked ?? true,
             gemAltTextVisibility:
@@ -1953,7 +2043,10 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
 
           // Apply immediately + cache synchronously for next page load
           applyGemThemeMode(settingsToSave[GEM_THEME_MODE_STORAGE_KEY], { persistLocal: true });
-          applyFocusLayout(settingsToSave[GEM_FOCUS_LAYOUT_STORAGE_KEY]);
+          applyFocusLayout(
+            settingsToSave[GEM_FOCUS_LAYOUT_STORAGE_KEY],
+            settingsToSave[GEM_FOCUS_LAYOUT_TYPE_STORAGE_KEY]
+          );
           const toolbarVisible = settingsToSave[GEM_CAMPAIGN_PREVIEW_TOOLBAR_VISIBLE_KEY] !== false;
           if (typeof window.gemApplyCampaignPreviewToolbarVisibility === 'function') {
             window.gemApplyCampaignPreviewToolbarVisibility(toolbarVisible);
@@ -2098,8 +2191,8 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
       "opt-swap-keywords",
       "opt-enable-highlighting",
       "opt-enable-focus-layout",
-      "opt-enable-mobile-preview",
-      "opt-email-campaign-list-load-all",
+      "opt-focus-layout-type",
+      "opt-enable-mobile-preview",      "opt-email-campaign-list-load-all",
       "opt-email-campaign-list-overflow-edit-translations",
       "opt-email-campaign-list-overflow-distribute",
       "opt-mobile-preview-width",
@@ -2115,6 +2208,8 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
       "opt-custom-paste-underline",
       "opt-custom-paste-sup",
       "opt-custom-paste-anchor",
+      "opt-link-highlight-preview-enabled",
+      "opt-link-highlight-show-urls",
       "opt-alt-text-preview-enabled",
       "opt-alt-text-visibility",
       "opt-block-targeting-preview-enabled",

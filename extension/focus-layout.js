@@ -710,14 +710,6 @@ function isNavPanelResizable(navSection) {
   return NAV_RESIZABLE_TAB_SELECTORS.some((selector) => content.querySelector(selector));
 }
 
-function syncNavHandleForLayout(handle) {
-  if (!handle) return;
-  const expanded = isFocusLayoutActive();
-  handle.style.right = expanded ? '-19px' : '-25px';
-  handle.style.left = 'auto';
-  handle.style.width = expanded ? '18px' : '24px';
-}
-
 function syncNavPanelHandle(navSection) {
   if (!navSection) return;
   const handle = navSection.querySelector('#gem-nav-handle');
@@ -728,7 +720,6 @@ function syncNavPanelHandle(navSection) {
   }
   if (handle) {
     handle.style.display = '';
-    syncNavHandleForLayout(handle);
   }
 }
 
@@ -744,15 +735,6 @@ function ensureNavResizeHandle(navSection) {
   const handle = document.createElement('div');
   handle.id = 'gem-nav-handle';
   handle.className = 'gem-resize-handle';
-  Object.assign(handle.style, {
-    margin: 'auto',
-    position: 'absolute',
-    top: '0',
-    bottom: '0',
-    height: '100%',
-    cursor: 'col-resize',
-  });
-  syncNavHandleForLayout(handle);
 
   let dragging = false;
   let startX = 0;

@@ -65,20 +65,33 @@ function deactivateFocusLayout() {
   const root = document.documentElement;
   if (!root) return;
   root.classList.remove("gem-focus-layout");
+  root.classList.remove("gem-focus-layout:full");
   try {
-    if (document.body) document.body.classList.remove("gem-focus-layout");
+    if (document.body) {
+      document.body.classList.remove("gem-focus-layout");
+      document.body.classList.remove("gem-focus-layout:full");
+    }
   } catch (_) {}
 }
 
 // Early boot script usually applies this at document_start; keep a sync restore
 // here without waiting on Emarsys DOM.
-chrome.storage.sync.get({ fullscreenActive: false }, (settings) => {
-  if (settings.fullscreenActive) {
-    activateFocusLayout();
-  } else {
-    migrateLegacyFocusLayoutClass(document.documentElement);
+chrome.storage.sync.get(
+  { fullscreenActive: false, gemFocusLayoutType: 'full' },
+  (settings) => {
+    if (window.gemFocusLayout && typeof window.gemFocusLayout.setType === 'function') {
+      window.gemFocusLayout.setType(settings.gemFocusLayoutType);
+    }
+    if (settings.fullscreenActive) {
+      activateFocusLayout();
+    } else {
+      migrateLegacyFocusLayoutClass(document.documentElement);
+      if (window.gemFocusLayout && typeof window.gemFocusLayout.setType === 'function') {
+        window.gemFocusLayout.setType(settings.gemFocusLayoutType);
+      }
+    }
   }
-});
+);
 
 chrome.storage.sync.get({ mobileViewVisible: true }, (settings) => {
   if (!settings.mobileViewVisible) {

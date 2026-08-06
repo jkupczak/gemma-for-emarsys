@@ -165,9 +165,13 @@ runCheck('platform.js is not duplicated in campaign-specific script list', () =>
 runCheck('Focus Layout is wired into settings panel UI + storage', () => {
   const src = readFile('extension/settings-panel.js');
   assert(src.includes('const GEM_FOCUS_LAYOUT_STORAGE_KEY = "fullscreenActive";'));
+  assert(src.includes('const GEM_FOCUS_LAYOUT_TYPE_STORAGE_KEY = "gemFocusLayoutType";'));
   assert(src.includes('id="opt-enable-focus-layout"'));
+  assert(src.includes('id="opt-focus-layout-type"'));
   assert(src.includes('applyFocusLayout('));
   assert(src.includes('[GEM_FOCUS_LAYOUT_STORAGE_KEY]'));
+  assert(src.includes('[GEM_FOCUS_LAYOUT_TYPE_STORAGE_KEY]'));
+  assert(src.includes('GEM_FOCUS_LAYOUT_TYPE_DEFAULT = "full"'));
 });
 
 runCheck('Focus Layout boots early on <html> at document_start', () => {
@@ -188,6 +192,9 @@ runCheck('Focus Layout boots early on <html> at document_start', () => {
   assert(bootSrc.includes('document.documentElement'));
   assert(bootSrc.includes('gem-focus-layout'));
   assert(bootSrc.includes('fullscreenActive'));
+  assert(bootSrc.includes('gemFocusLayoutType'));
+  assert(bootSrc.includes('gem-focus-layout:full'));
+  assert(bootSrc.includes("TYPE_DEFAULT = 'full'"));
 
   const css = readFile('extension/css--focus-layout.css');
   assert(css.includes('html.gem-focus-layout'));

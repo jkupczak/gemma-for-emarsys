@@ -4,11 +4,20 @@
   'use strict';
 
   const CLASS_NAME = 'gem-focus-layout';
+  const TYPE_CLASS_FULL = 'gem-focus-layout:full';
   const LEGACY_CLASS = 'gem-expanded';
   const STORAGE_KEY = 'fullscreenActive';
+  const TYPE_STORAGE_KEY = 'gemFocusLayoutType';
+  const TYPE_DEFAULT = 'full';
+
+  let cachedType = TYPE_DEFAULT;
 
   function getRoot() {
     return document.documentElement || null;
+  }
+
+  function normalizeFocusLayoutType(value) {
+    return value === 'normal' ? 'normal' : 'full';
   }
 
   function migrateLegacyClasses(root) {
@@ -31,7 +40,33 @@
         body.classList.remove(CLASS_NAME);
         root.classList.add(CLASS_NAME);
       }
+      if (body.classList.contains(TYPE_CLASS_FULL)) {
+        body.classList.remove(TYPE_CLASS_FULL);
+      }
     } catch (_) {}
+  }
+
+  function syncTypeClass(root, enabled, type) {
+    if (!root) return;
+    const normalized = normalizeFocusLayoutType(type);
+    if (enabled && normalized === 'full') {
+      root.classList.add(TYPE_CLASS_FULL);
+    } else {
+      root.classList.remove(TYPE_CLASS_FULL);
+    }
+  }
+
+  function setFocusLayoutType(type) {
+    cachedType = normalizeFocusLayoutType(type);
+    const root = getRoot();
+    if (!root) return cachedType;
+    migrateLegacyClasses(root);
+    syncTypeClass(root, root.classList.contains(CLASS_NAME), cachedType);
+    return cachedType;
+  }
+
+  function getFocusLayoutType() {
+    return cachedType;
   }
 
   function setFocusLayoutActive(enabled) {
@@ -39,10 +74,12 @@
     if (!root) return false;
     migrateLegacyClasses(root);
     root.classList.toggle(CLASS_NAME, !!enabled);
+    syncTypeClass(root, !!enabled, cachedType);
     try {
       if (document.body) {
         document.body.classList.remove(CLASS_NAME);
         document.body.classList.remove(LEGACY_CLASS);
+        document.body.classList.remove(TYPE_CLASS_FULL);
       }
     } catch (_) {}
     return root.classList.contains(CLASS_NAME);
@@ -60,24 +97,53 @@
 
   window.gemFocusLayout = {
     CLASS_NAME,
+    TYPE_CLASS_FULL,
     STORAGE_KEY,
+    TYPE_STORAGE_KEY,
+    TYPE_DEFAULT,
     isActive: isFocusLayoutActive,
     setActive: setFocusLayoutActive,
+    getType: getFocusLayoutType,
+    setType: setFocusLayoutType,
+    normalizeType: normalizeFocusLayoutType,
     migrate: migrateLegacyClasses,
   };
 
   function bootFromStorage() {
     try {
-      chrome.storage.sync.get({ [STORAGE_KEY]: false }, (settings) => {
-        if (chrome.runtime.lastError) return;
-        if (settings && settings[STORAGE_KEY]) {
-          setFocusLayoutActive(true);
-        } else {
-          migrateLegacyClasses(getRoot());
+      chrome.storage.sync.get(
+        {
+          [STORAGE_KEY]: false,
+          [TYPE_STORAGE_KEY]: TYPE_DEFAULT,
+        },
+        (settings) => {
+          if (chrome.runtime.lastError) return;
+          cachedType = normalizeFocusLayoutType(
+            settings && settings[TYPE_STORAGE_KEY]
+          );
+          if (settings && settings[STORAGE_KEY]) {
+            setFocusLayoutActive(true);
+          } else {
+            const root = getRoot();
+            migrateLegacyClasses(root);
+            syncTypeClass(root, false, cachedType);
+          }
         }
-      });
+      );
     } catch (_) {}
   }
+
+  try {
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area !== 'sync' || !changes) return;
+      if (changes[TYPE_STORAGE_KEY]) {
+        setFocusLayoutType(changes[TYPE_STORAGE_KEY].newValue);
+      }
+      if (changes[STORAGE_KEY]) {
+        setFocusLayoutActive(!!changes[STORAGE_KEY].newValue);
+      }
+    });
+  } catch (_) {}
 
   bootFromStorage();
 })();

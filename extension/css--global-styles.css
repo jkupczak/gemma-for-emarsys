@@ -144,6 +144,7 @@ ui5-side-navigation-item-ds-nav#gem-nav-notes-item {
 
 e-side-navigation ui5-side-navigation-ds-nav {
     background-image: linear-gradient(to top, var(--token-static-600) 0%, color-mix(in srgb, var(--token-static-600) 15%, transparent) 12%, transparent 28%);
+    padding-bottom: 0.5rem;
 }
 
 html.FLIPPER-theme-eveningHorizon .e-navigation__panel #gem-nav-settings-item .e-navigation__action_text {
@@ -1638,3 +1639,4 @@ color-mix(in srgb, var(--token-gray-100, #dbeafe) 25%, transparent);
 .ui5-sn-item {
     background: transparent !important;
 }
+

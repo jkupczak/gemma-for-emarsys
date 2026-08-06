@@ -793,22 +793,34 @@ function initializeKeyboardShortcuts() {
         const rootDoc = (() => {
           try { return window.top && window.top.document ? window.top.document : document; } catch (_) { return document; }
         })();
+        const rootWin = (() => {
+          try { return window.top || window; } catch (_) { return window; }
+        })();
         const root = rootDoc && rootDoc.documentElement;
         if (!root) return false;
 
-        if (root.classList.contains("gem-expanded")) {
-          root.classList.remove("gem-expanded");
-        }
-        try {
-          if (rootDoc.body) {
-            rootDoc.body.classList.remove("gem-expanded");
-            rootDoc.body.classList.remove("gem-focus-layout");
-          }
-        } catch (_) {}
+        const api = rootWin.gemFocusLayout;
+        const wasFocusLayout = api && typeof api.isActive === 'function'
+          ? api.isActive()
+          : root.classList.contains("gem-focus-layout");
+        const isNowFocusLayout = !wasFocusLayout;
 
-        const wasFocusLayout = root.classList.contains("gem-focus-layout");
-        root.classList.toggle("gem-focus-layout");
-        const isNowFocusLayout = root.classList.contains("gem-focus-layout");
+        if (api && typeof api.setActive === 'function') {
+          api.setActive(isNowFocusLayout);
+        } else {
+          if (root.classList.contains("gem-expanded")) {
+            root.classList.remove("gem-expanded");
+          }
+          try {
+            if (rootDoc.body) {
+              rootDoc.body.classList.remove("gem-expanded");
+              rootDoc.body.classList.remove("gem-focus-layout");
+              rootDoc.body.classList.remove("gem-focus-layout:full");
+            }
+          } catch (_) {}
+          root.classList.toggle("gem-focus-layout", isNowFocusLayout);
+          root.classList.toggle("gem-focus-layout:full", false);
+        }
         console.log("[Gem] Focus Layout toggled:", wasFocusLayout, "->", isNowFocusLayout);
 
         // Persist state (used by focus-layout boot / verticalnav restore)

@@ -398,9 +398,15 @@ function syncCompactEmailToolsFeatureMenuItems() {
   );
 
   applyCompactEmailToolsInboxBlockedMenuItem(menu.querySelector('[data-gem-mobile-preview-toggle]'));
+  applyCompactEmailToolsInboxBlockedMenuItem(menu.querySelector('[data-gem-link-highlight-toggle]'));
   applyCompactEmailToolsInboxBlockedMenuItem(menu.querySelector('[data-gem-alt-text-preview-toggle]'));
   applyCompactEmailToolsInboxBlockedMenuItem(menu.querySelector('[data-gem-targeting-preview-toggle]'));
   applyCompactEmailToolsInboxBlockedMenuItem(menu.querySelector('[data-gem-highlight-editables-toggle]'));
+
+  setCompactEmailToolsMenuItemIndicator(
+    menu.querySelector('[data-gem-link-highlight-toggle]'),
+    typeof window.gemIsLinkHighlightPreviewActive === 'function' && window.gemIsLinkHighlightPreviewActive()
+  );
 
   setCompactEmailToolsMenuItemIndicator(
     menu.querySelector('[data-gem-alt-text-preview-toggle]'),
@@ -430,9 +436,17 @@ function setCompactEmailToolsFocusLayout(enabled) {
   } else {
     document.documentElement.classList.toggle('gem-focus-layout', next);
     try {
+      const type = window.gemFocusLayout && typeof window.gemFocusLayout.getType === 'function'
+        ? window.gemFocusLayout.getType()
+        : 'full';
+      document.documentElement.classList.toggle(
+        'gem-focus-layout:full',
+        next && type === 'full'
+      );
       if (document.body) {
         document.body.classList.remove('gem-focus-layout');
         document.body.classList.remove('gem-expanded');
+        document.body.classList.remove('gem-focus-layout:full');
       }
     } catch (_) {}
   }
@@ -680,6 +694,9 @@ function setupCompactEmailToolsFeatureMenuSync() {
       if (namespace !== 'sync') return;
       const syncKeys = [
         'mobileViewVisible',
+        'gemLinkHighlightOverlayActive',
+        'gemLinkHighlightPreviewEnabled',
+        'gemLinkHighlightShowUrls',
         'gemAltTextPreviewOverlayActive',
         'gemAltTextPreviewEnabled',
         'gemBlockTargetingPreviewEnabled',
@@ -829,6 +846,13 @@ window.gemRunCampaignMenuCommand = function gemRunCampaignMenuCommand(commandId)
       if (isCompactEmailToolsInboxBlocked()) return false;
       if (typeof window.gemToggleMobilePreview === 'function') {
         window.gemToggleMobilePreview();
+      }
+      syncCompactEmailToolsFeatureMenuItems();
+      return true;
+    case 'campaign:highlight-links':
+      if (isCompactEmailToolsInboxBlocked()) return false;
+      if (typeof window.gemToggleLinkHighlightPreview === 'function') {
+        window.gemToggleLinkHighlightPreview();
       }
       syncCompactEmailToolsFeatureMenuItems();
       return true;
@@ -1437,6 +1461,21 @@ function setupCompactEmailToolsOverflowMenu(dropdownContainer) {
     syncCompactEmailToolsFeatureMenuItems();
   });
 
+  const linkHighlightItem = makeCompactEmailToolsToggleMenuItem('Highlight Links', {
+    withIndicator: true,
+    indicatorOnLeft: true,
+    dataAttr: 'data-gem-link-highlight-toggle'
+  });
+  markCompactEmailToolsMenuItemDimWhenIdle(linkHighlightItem);
+  linkHighlightItem.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (isCompactEmailToolsInboxBlocked()) return;
+    if (typeof window.gemToggleLinkHighlightPreview === 'function') {
+      window.gemToggleLinkHighlightPreview();
+    }
+    syncCompactEmailToolsFeatureMenuItems();
+  });
+
   const altTextPreviewItem = makeCompactEmailToolsToggleMenuItem('Highlight ALT Text', {
     withIndicator: true,
     indicatorOnLeft: true,
@@ -1523,6 +1562,7 @@ function setupCompactEmailToolsOverflowMenu(dropdownContainer) {
   featuresColumn.appendChild(focusEditorItem);
   featuresColumn.appendChild(editorModeDivider);
   featuresColumn.appendChild(mobilePreviewItem);
+  featuresColumn.appendChild(linkHighlightItem);
   featuresColumn.appendChild(altTextPreviewItem);
   featuresColumn.appendChild(targetingPreviewItem);
   featuresColumn.appendChild(highlightEditablesItem);

@@ -219,6 +219,166 @@
     return template && typeof template.html === 'string' ? template.html : '';
   }
 
+  function escapeRegExp(value) {
+    return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  function resolveBlockOptionals(block, templateIndex) {
+    const blockOptionals = block && block.optionals && typeof block.optionals === 'object'
+      ? block.optionals
+      : {};
+    if (Object.keys(blockOptionals).length) return blockOptionals;
+
+    const templateId = String(block && block.template || '').trim();
+    if (!templateId || !templateIndex) return blockOptionals;
+
+    const template = templateIndex.get(templateId);
+    if (template && template.optionals && typeof template.optionals === 'object') {
+      return template.optionals;
+    }
+
+    return blockOptionals;
+  }
+
+  function collectEditableNamesFromHtmlString(html) {
+    const names = new Set();
+    const raw = String(html || '');
+    if (!raw || !raw.includes('e-editable')) return names;
+
+    const pattern = /\be-editable\s*=\s*(["'])([^"']+)\1/gi;
+    let match = pattern.exec(raw);
+    while (match) {
+      const name = String(match[2] || '').trim();
+      if (name) names.add(name);
+      match = pattern.exec(raw);
+    }
+
+    return names;
+  }
+
+  function extractOptionalSegmentInnerHtml(html, optionalName) {
+    const blockHtml = String(html || '');
+    const name = String(optionalName || '').trim();
+    if (!blockHtml || !name || !blockHtml.includes('e-optional')) return '';
+
+    const escapedName = escapeRegExp(name);
+    const pattern = new RegExp(
+      `<e-optional\\b[^>]*\\bname\\s*=\\s*(["'])${escapedName}\\1[^>]*>([\\s\\S]*?)<\\/e-optional>`,
+      'i'
+    );
+    const match = pattern.exec(blockHtml);
+    return match ? match[2] : '';
+  }
+
+  function collectDisabledOptionalEditables(html, optionals) {
+    const disabled = new Set();
+    const map = optionals && typeof optionals === 'object' ? optionals : {};
+    const blockHtml = String(html || '');
+    if (!blockHtml || !blockHtml.includes('e-optional')) return disabled;
+
+    Object.entries(map).forEach(([optionalName, entry]) => {
+      if (!entry || typeof entry !== 'object' || entry.enabled !== false) return;
+
+      const segment = extractOptionalSegmentInnerHtml(blockHtml, optionalName);
+      if (!segment) return;
+
+      collectEditableNamesFromHtmlString(segment).forEach((editableName) => {
+        disabled.add(editableName);
+      });
+    });
+
+    return disabled;
+  }
+
+  function filterContentForDisabledOptionals(content, disabledEditables) {
+    const fields = content && typeof content === 'object' ? content : {};
+    if (!Object.keys(fields).length || !disabledEditables || !disabledEditables.size) {
+      return fields;
+    }
+
+    const filtered = {};
+    Object.entries(fields).forEach(([fieldKey, field]) => {
+      const editableName = String(fieldKey || '').trim();
+      if (editableName && disabledEditables.has(editableName)) return;
+      filtered[fieldKey] = field;
+    });
+
+    return filtered;
+  }
+
+  function isEditableExcluded(editable, excludedEditables) {
+    if (!excludedEditables || !excludedEditables.size) return false;
+    const name = String(editable || '').trim();
+    return !!name && excludedEditables.has(name);
+  }
+
+  function stripInactiveOptionalBranches(html, optionals) {
+    const blockHtml = String(html || '');
+    const map = optionals && typeof optionals === 'object' ? optionals : {};
+    if (!blockHtml || !blockHtml.includes('e-optional')) return blockHtml;
+
+    const hasDisabledBranch = Object.values(map).some(
+      (entry) => entry && typeof entry === 'object' && entry.enabled === false
+    );
+    if (!hasDisabledBranch) return blockHtml;
+
+    try {
+      const doc = new DOMParser().parseFromString(blockHtml, 'text/html');
+      const root = doc.body || doc.documentElement;
+      if (!root) return blockHtml;
+
+      root.querySelectorAll('e-optional[name]').forEach((node) => {
+        const name = String(node.getAttribute('name') || '').trim();
+        if (!name) return;
+
+        const entry = map[name];
+        if (entry && typeof entry === 'object' && entry.enabled === false) {
+          node.remove();
+        }
+      });
+
+      return root.innerHTML;
+    } catch (_) {
+      return blockHtml;
+    }
+  }
+
+  function collectEditableNamesFromHtml(html) {
+    const names = new Set();
+    const blockHtml = String(html || '');
+    if (!blockHtml || !blockHtml.includes('e-editable')) return names;
+
+    try {
+      const doc = new DOMParser().parseFromString(blockHtml, 'text/html');
+      doc.querySelectorAll('[e-editable]').forEach((el) => {
+        const name = String(el.getAttribute('e-editable') || '').trim();
+        if (name) names.add(name);
+      });
+    } catch (_) {}
+
+    return names;
+  }
+
+  function filterContentForStrippedHtml(rawHtml, strippedHtml, content) {
+    const fields = content && typeof content === 'object' ? content : {};
+    if (!Object.keys(fields).length) return fields;
+
+    const rawEditables = collectEditableNamesFromHtml(rawHtml);
+    if (!rawEditables.size) return fields;
+
+    const strippedEditables = collectEditableNamesFromHtml(strippedHtml);
+    const filtered = {};
+
+    Object.entries(fields).forEach(([fieldKey, field]) => {
+      const editableName = String(fieldKey || '').trim();
+      if (!editableName) return;
+      if (rawEditables.has(editableName) && !strippedEditables.has(editableName)) return;
+      filtered[fieldKey] = field;
+    });
+
+    return filtered;
+  }
+
   function cssEscapeAttrValue(value) {
     const raw = String(value || '');
     if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
@@ -311,13 +471,14 @@
     }
   }
 
-  function extractLinksFromBlockContent(html, content, readOnlyLinks) {
+  function extractLinksFromBlockContent(html, content, readOnlyLinks, excludedEditables) {
     const links = [];
     const fields = content && typeof content === 'object' ? content : {};
     const urlFieldHrefs = new Map();
 
     Object.entries(fields).forEach(([fieldKey, field]) => {
       if (!field || typeof field !== 'object') return;
+      if (isEditableExcluded(fieldKey, excludedEditables)) return;
       if (!/URL$/i.test(fieldKey) || !field.attributes) return;
 
       const href = String(field.attributes.href || '').trim();
@@ -336,6 +497,8 @@
         const anchors = doc.querySelectorAll('a[href]');
         anchors.forEach((anchor, anchorIndex) => {
           const editable = String(anchor.getAttribute('e-editable') || '').trim();
+          if (isEditableExcluded(editable, excludedEditables)) return;
+
           const templateHref = String(anchor.getAttribute('href') || '').trim();
           const configured = editable && urlFieldHrefs.has(editable)
             ? urlFieldHrefs.get(editable)
@@ -371,6 +534,8 @@
     }
 
     urlFieldHrefs.forEach(({ href, tracked }, fieldKey) => {
+      if (isEditableExcluded(fieldKey, excludedEditables)) return;
+
       const pairedText = getPairedTextFieldValue(fields, fieldKey);
       const record = buildLinkRecord(
         href,
@@ -384,6 +549,7 @@
 
     Object.entries(fields).forEach(([fieldKey, field]) => {
       if (!field || typeof field !== 'object') return;
+      if (isEditableExcluded(fieldKey, excludedEditables)) return;
       if (/URL$/i.test(fieldKey)) return;
 
       const fieldLink = extractLinkFromFieldLink(field);
@@ -409,10 +575,15 @@
   function extractLinksFromBlock(block, templateIndex) {
     if (!block) return [];
 
-    const content = block.content && typeof block.content === 'object' ? block.content : {};
-    const html = resolveBlockHtml(block, templateIndex);
+    const rawContent = block.content && typeof block.content === 'object' ? block.content : {};
+    const rawHtml = resolveBlockHtml(block, templateIndex);
+    const optionals = resolveBlockOptionals(block, templateIndex);
+    const disabledEditables = collectDisabledOptionalEditables(rawHtml, optionals);
+    const html = stripInactiveOptionalBranches(rawHtml, optionals);
+    let content = filterContentForStrippedHtml(rawHtml, html, rawContent);
+    content = filterContentForDisabledOptionals(content, disabledEditables);
     const readOnlyLinks = Array.isArray(block.read_only_links) ? block.read_only_links : null;
-    return extractLinksFromBlockContent(html, content, readOnlyLinks);
+    return extractLinksFromBlockContent(html, content, readOnlyLinks, disabledEditables);
   }
 
   function normalizeLinkRow(link, frequency) {
@@ -583,6 +754,11 @@
     extractLinksFromHtml,
     buildBlockTemplateIndex,
     resolveBlockHtml,
+    resolveBlockOptionals,
+    collectDisabledOptionalEditables,
+    filterContentForDisabledOptionals,
+    stripInactiveOptionalBranches,
+    filterContentForStrippedHtml,
     mergeBlockContentIntoHtml,
     extractLinksFromBlockContent,
     extractLinksFromBlock,

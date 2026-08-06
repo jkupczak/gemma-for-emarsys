@@ -286,6 +286,7 @@ console.log('[Gem] command-palette.js loaded');
       { id: 'campaign:standard-layout', label: 'Standard Layout', sectionId: 'campaign-editor', sectionTitle: 'Campaign Editor', exclude: standardActive },
       { id: 'campaign:focus-layout', label: 'Focus Layout', sectionId: 'campaign-editor', sectionTitle: 'Campaign Editor', exclude: focusActive },
       { id: 'campaign:mobile-sidepanel', label: 'Mobile Sidepanel', sectionId: 'campaign-editor', sectionTitle: 'Campaign Editor' },
+      { id: 'campaign:highlight-links', label: 'Highlight Links', sectionId: 'campaign-editor', sectionTitle: 'Campaign Editor' },
       { id: 'campaign:highlight-alt-text', label: 'Highlight ALT Text', sectionId: 'campaign-editor', sectionTitle: 'Campaign Editor' },
       { id: 'campaign:highlight-targeting', label: 'Highlight Targeting', sectionId: 'campaign-editor', sectionTitle: 'Campaign Editor' },
       { id: 'campaign:highlight-editables', label: 'Highlight Editables', sectionId: 'campaign-editor', sectionTitle: 'Campaign Editor' },
