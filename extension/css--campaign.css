@@ -4,6 +4,37 @@ body {
     overflow: hidden;
 }
 
+
+/* ------------------------------------------------------------------------------------------------ */
+/* Vertical Nav Menu */
+/* ------------------------------------------------------------------------------------------------ */
+e-verticalnav-menu {
+    padding-top: 8px;
+    gap: 2px !important;
+    display: flex !important;
+    flex-direction: column !important;
+}
+
+/* Override the default active state for the vertical nav menu because we can't control it when switching to and from the Snippets tab */
+cb-vertical-tab .e-verticalnavitem-active gem-e-icon svg {
+    fill: var(--token-tab-selected-text) !important;
+}
+e-verticalnav-menu:has(.gem-e-verticalnav-item[status="active"]) e-verticalnav-item:not(.gem-e-verticalnav-item) .e-verticalnavitem-active:after {
+    display: none !important;
+}
+e-verticalnav-menu:has(.gem-e-verticalnav-item[status="active"]) e-verticalnav-item:not(.gem-e-verticalnav-item) .e-icon {
+    color: var(--token-icon-default-text) !important;
+}
+#gem-preflight-tab {
+    border-bottom: 1px solid var(--token-border-default);
+    padding-bottom: 8px;
+}
+#gem-snippets-tab { 
+    border-top: 1px solid var(--token-border-default);
+    margin-top: 6px;
+    padding-top: 8px;
+}
+
 /* Resize handles */
 #gem-frame-handle,
 #gem-nav-handle {

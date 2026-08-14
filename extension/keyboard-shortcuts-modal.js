@@ -63,12 +63,31 @@
     ];
   }
 
-  function renderKeyboardShortcutsModal(requireMod) {
+  function getUserCreatedShortcutRows(bindings) {
+    if (!Array.isArray(bindings) || !bindings.length) return [];
+    const labelById = new Map();
+    if (typeof window.gemGetAssignablePaletteCommands === 'function') {
+      window.gemGetAssignablePaletteCommands().forEach((cmd) => {
+        labelById.set(cmd.id, cmd.label);
+      });
+    }
+    return bindings.map((entry) => {
+      const combo =
+        typeof window.gemFormatUserShortcutCombo === 'function'
+          ? window.gemFormatUserShortcutCombo(entry.code, entry.presetId)
+          : `${window.GEM_MOD_KEY || 'CTRL'}+${entry.code}`;
+      const label = labelById.get(entry.commandId) || entry.commandId;
+      return [combo, label];
+    });
+  }
+
+  function renderKeyboardShortcutsModal(requireMod, userBindings) {
     const existing = document.getElementById('gem-keyboard-shortcuts-modal');
     if (existing) existing.remove();
     unbindShortcutsModalEscape();
 
     const mod = window.GEM_MOD_KEY || 'CTRL';
+    const userShortcutRows = getUserCreatedShortcutRows(userBindings);
 
     const modal = document.createElement('div');
     modal.id = 'gem-keyboard-shortcuts-modal';
@@ -83,15 +102,15 @@
       </div>
       <div class="gem-welcome-modal__body gem-scrollable" style="max-height: 70vh; overflow-y: auto;">
         <p style="margin: 0 0 20px 0; color: var(--token-font-muted, #666); font-size: 13px; line-height: 1.45;">
-          Shortcuts work in the email editor and most Gemma panels. Opening Recent Campaigns, Notes, or Settings with a shortcut will close the other panel if it is already open.
+          Shortcuts work in the email editor and most Gemma panels. Opening Gemma Recent Campaigns, Gemma Notes, or Gemma Settings with a shortcut will close the other panel if it is already open.
         </p>
 
         ${section('Panels &amp; Navigation', [
           [`${mod}+G`, 'Open or close Gemma Settings'],
-          [`${mod}+/`, 'Open or close Recent Campaigns'],
-          [`${mod}+;`, 'Open or close Notes'],
-          [`${mod}+P`, 'Open or close Command Palette'],
-          [`${mod}+Shift+P`, 'Open or close Command Palette'],
+          [`${mod}+/`, 'Open or close Gemma Recent Campaigns'],
+          [`${mod}+;`, 'Open or close Gemma Notes'],
+          [`${mod}+P`, 'Open or close Gemma Command Palette'],
+          [`${mod}+Shift+P`, 'Open or close Gemma Command Palette'],
           [`${mod}+Shift+F`, 'Toggle between Standard Layout and Focus Layout'],
           [`${mod}+Shift+M`, 'Toggle Mobile Sidepanel'],
           [`${mod}+Shift+,`, 'Previous language version (when language selector is available)'],
@@ -122,6 +141,8 @@
           ['←', 'Previous campaign in the side preview (when preview is open; not while typing in a field)'],
           ['→', 'Next campaign in the side preview (when preview is open; not while typing in a field)']
         ])}
+
+        ${userShortcutRows.length ? section('User Created Shortcuts', userShortcutRows) : ''}
       </div>
       <div class="gem-welcome-modal__footer">
         <button class="e-btn e-btn-primary gem-keyboard-shortcuts-close" type="button">Close</button>
@@ -180,16 +201,19 @@
   }
 
   function showKeyboardShortcutsModal() {
-    const finish = (requireMod) => renderKeyboardShortcutsModal(!!requireMod);
+    const finish = (requireMod, userBindings) =>
+      renderKeyboardShortcutsModal(!!requireMod, userBindings || []);
     if (!chrome?.storage?.sync) {
-      finish(false);
+      finish(false, []);
       return;
     }
     chrome.storage.sync.get({
       [SNIPPET_CONTEXT_MENU_TRIGGER_KEY]: 'right-click',
       [SNIPPET_CONTEXT_MENU_REQUIRE_MOD_KEY]: false,
+      gemUserCreatedShortcuts: [],
     }, (res) => {
-      finish(resolveSnippetContextMenuRequireMod(res));
+      const userBindings = Array.isArray(res?.gemUserCreatedShortcuts) ? res.gemUserCreatedShortcuts : [];
+      finish(resolveSnippetContextMenuRequireMod(res), userBindings);
     });
   }
 

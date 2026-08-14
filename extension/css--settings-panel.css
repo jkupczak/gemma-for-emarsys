@@ -531,3 +531,60 @@ padding-bottom:0;
   font-size: 11px;
   align-self: center;
 }
+
+.gem-user-shortcut-row {
+  flex-wrap: wrap;
+}
+
+.gem-user-shortcut-key-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.gem-user-shortcut-preset {
+  min-width: 130px;
+  flex: 0 0 130px;
+}
+
+.gem-user-shortcut-command {
+  min-width: 140px;
+}
+
+.gem-user-shortcut-key {
+  width: 72px;
+  min-width: 72px;
+  flex: 0 0 72px;
+}
+
+.gem-user-shortcut-delete {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  color: var(--token-font-default);
+  opacity: 0.75;
+}
+
+.gem-user-shortcut-delete:hover {
+  opacity: 1;
+  color: var(--token-primary-600);
+}
+
+.gem-user-shortcut-delete svg {
+  display: block;
+  width: 20px;
+  height: 20px;
+}
+
+.gem-user-shortcuts-add-btn {
+  width: calc(100% - 40px);
+  margin: 0 auto 20px auto;
+  display: block !important;
+}
+
+.gem-user-shortcuts-add-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}

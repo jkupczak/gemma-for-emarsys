@@ -2531,7 +2531,7 @@ console.log("[Gem] recent-campaigns.js loaded");
     li.className = "e-navigation__menu_list_item";
     li.id = RECENT_NAV_ID;
     li.innerHTML = `
-      <button type="button" class="e-navigation__action" aria-haspopup="true" aria-expanded="false" menu-item-id="recent_campaigns_new_main" tracking-id="recent_campaigns_new_main" aria-label="Recent Campaigns">
+      <button type="button" class="e-navigation__action" aria-haspopup="true" aria-expanded="false" menu-item-id="recent_campaigns_new_main" tracking-id="recent_campaigns_new_main" aria-label="Gemma Recent Campaigns">
         <e-icon class="e-navigation__action_icon" color="inherit" icon="ac-action-timer">
           <div aria-hidden="true" class="e-icon-wrapper">
             <div class="e-icon text-color-inherit">&#xF021;</div>
@@ -2553,7 +2553,7 @@ console.log("[Gem] recent-campaigns.js loaded");
     const item = gem.buildUi5ActionItem(
       {
         id: RECENT_NAV_ID,
-        text: "Recent Campaigns",
+        text: "Gemma Recent Campaigns",
         icon: "history",
         // email/bookmark-2 are already registered by Emarsys's own nav items.
         iconFallbacks: ["email", "bookmark-2", "opportunity", "home"],

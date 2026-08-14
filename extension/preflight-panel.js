@@ -260,13 +260,13 @@ function initializePreflightPanel() {
 <cb-vertical-tab id="gem-preflight-tab" value="tooltips.preflight" icon="rocket">
   <e-verticalnav-item class="gem-e-verticalnav-item gem-preflight-nav-item">
     <div class="e-verticalnavitem">
-      <e-tooltip placement="right" content="Preflight" role="tooltip" aria-description="Preflight">
+      <e-tooltip placement="right" content="Gemma Preflight" role="tooltip" aria-description="Gemma Preflight">
         <div class="e-verticalnavitem__icon e-svgclickfix">
           <e-icon icon="rocket"><div aria-hidden="true" class="e-icon-wrapper"><div class="e-icon">&#xF168;</div></div></e-icon>
         </div>
       </e-tooltip>
       <span class="gem-preflight-alert-pip" data-role="preflightAlertPip" style="display:none;">0</span>
-      <div class="e-verticalnavitem__value">Preflight</div>
+      <div class="e-verticalnavitem__value">Gemma Preflight</div>
     </div>
   </e-verticalnav-item>
 </cb-vertical-tab>

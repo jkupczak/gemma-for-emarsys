@@ -876,6 +876,10 @@ html.gem-focus-layout .gem-campaign-menu > h1.e-layout__title .gem-header-edit-i
 
 html.gem-focus-layout\:full .gem-resize-handle:before {
     opacity: 1;
+    background: var(--token-border-default);
+}
+html.gem-focus-layout\:full .gem-resize-handle:hover:before {
+    background: var(--token-primary-500);
 }
 
 
@@ -911,5 +915,5 @@ html.gem-focus-layout\:full .gem-resize-handle::before {
     min-width: 5px !important;
     max-width: 5px !important;
     width: 5px !important;
-    box-shadow:0 0 0 2px #fff;
+    box-shadow:0 0 0 2px var(--token-box-default-background);
 }

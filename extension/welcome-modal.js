@@ -37,10 +37,11 @@ function createWelcomeModalHTML() {
             </li>
             <li><b>Mobile Sidepanel</b> See a mobile preview of your email right next to your desktop view while you make edits. This is turned on by default and can be toggled from the settings menu or the <span class="gem-e-icon">&#xF133;</span> icon in the bottom left of the editor. You can also adjust width of it by dragging it or editing it in the settings panel.</li>
             <li><b>Custom Color Swatches</b> Custom color swatches are now permanent! Emarsys doesn't remember what colors you used when editing an email. But Gemma does. You can also add default presets that will always display at the top of the color picker (up to 8) from the settings panel.</li>
-            <li><b>Notes</b> Keep notes right in Emarsys! Find the Notes nav item in the vertical navigation and start taking notes right from any page.</li>
+            <li><b>Gemma Notes</b> Keep notes right in Emarsys! Find the Gemma Notes nav item in the vertical navigation and start taking notes right from any page.</li>
             <li><b>ALT Text Preview</b> Make it easier to QA ALT text by showing it when you hover over images in the email editor preview.</li>
-            <li><b>Recent Campaigns</b> See a list of your most recent campaigns in the left navigation. Click on a campaign to open it in a new tab. Pin campaigns, duplicate them, copy share links, and see unsaved-change and Preflight issue badges on each row.</li>
+            <li><b>Gemma Recent Campaigns</b> See a list of your most recent campaigns in the left navigation. Click on a campaign to open it in a new tab. Pin campaigns, duplicate them, copy share links, and see unsaved-change and Preflight issue badges on each row.</li>
             <li><b>Email Campaign List Tools</b> On the campaign list page, use row overflow menus for quick actions (duplicate, delete, and more). Preview campaigns in a side panel without leaving the list.</li>
+            <li><b>Custom Shortcuts</b> Assign your own keyboard shortcuts to Command Palette actions from Gemma Settings. Pick a command, modifier combination, and key — then use them anywhere in Emarsys. Open the Shortcuts reference from Settings to review everything you have configured.</li>
             <li><b>Settings &amp; Backup</b> Monitor Chrome storage usage, export/import a full Gemma backup, and toggle debug logging from the Advanced section.</li>
             <li><b>Relogin Helper</b> When Emarsys shows the account re-login screen, Gemma can auto-select your account so you get back to work faster.</li>
           </ul>
@@ -165,15 +166,16 @@ function createWelcomeModalHTML() {
               <li>Overflow menu supports share link, duplicate, and other campaign actions.</li>
             </ul>
 
-            <h4>Settings Panel</h4>
+            <h4>Gemma Settings Panel</h4>
             <ul>
               <li>Keyboard shortcut: ${typeof window.GEM_MOD_KEY !== 'undefined' ? window.GEM_MOD_KEY : 'CTRL'}+G opens or closes the panel.</li>
+              <li>Custom Shortcuts let you bind Command Palette actions to your own modifier + key combinations.</li>
               <li>Storage meter shows Chrome sync/local usage for Gemma data.</li>
               <li>Full backup export/import covers settings, snippets, favorites, Preflight data, and more.</li>
               <li>Advanced: enable debug logging for troubleshooting (requires page reload).</li>
             </ul>
 
-            <h4>Notes Panel</h4>
+            <h4>Gemma Notes Panel</h4>
             <ul>
               <li>Keyboard shortcut: ${typeof window.GEM_MOD_KEY !== 'undefined' ? window.GEM_MOD_KEY : 'CTRL'}+; opens or closes the panel.</li>
             </ul>

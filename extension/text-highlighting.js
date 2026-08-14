@@ -135,6 +135,8 @@ let lifecycleUnsub = null;
 let debounceTimer = null;
 let currentIframe = null;
 let textHighlightsPaused = false;
+let scrollHandler = null;
+let resizeHandler = null;
 
 window.gemPauseTextHighlights = function () {
   textHighlightsPaused = true;
@@ -328,6 +330,37 @@ function highlightMatchesInIframe(iframe) {
   }));
 }
 
+function removeViewportListeners() {
+  if (scrollHandler && currentIframe) {
+    try {
+      const win = currentIframe.contentWindow;
+      if (win) {
+        win.removeEventListener('scroll', scrollHandler);
+        win.removeEventListener('resize', resizeHandler);
+      }
+    } catch (_) {}
+  }
+  scrollHandler = null;
+  resizeHandler = null;
+}
+
+function attachViewportListeners(iframe) {
+  removeViewportListeners();
+
+  const win = iframe.contentWindow;
+  if (!win) return;
+
+  const onViewportChange = () => {
+    if (iframe !== currentIframe || textHighlightsPaused) return;
+    debounce(() => highlightMatchesInIframe(iframe));
+  };
+
+  scrollHandler = onViewportChange;
+  resizeHandler = onViewportChange;
+  win.addEventListener('scroll', scrollHandler, { passive: true });
+  win.addEventListener('resize', resizeHandler);
+}
+
 // Observe DOM until iframe appears with a ready document + body
 function waitForIframeReady(callback) {
   function tryReady() {
@@ -373,6 +406,8 @@ function bindToIframe(iframe) {
 
   const doc = iframe.contentDocument;
   if (!doc || !doc.body) return;
+
+  attachViewportListeners(iframe);
 
   // Initial highlight
   debounce(() => highlightMatchesInIframe(iframe));
@@ -441,6 +476,7 @@ function watchIframeLifecycle() {
         iframeMutationObserver.disconnect();
         iframeMutationObserver = null;
       }
+      removeViewportListeners();
     }
 
     if (iframe && iframe !== currentIframe) {
@@ -467,6 +503,8 @@ function disableHighlighting() {
     iframeMutationObserver.disconnect();
     iframeMutationObserver = null;
   }
+
+  removeViewportListeners();
 
   // Clear current overlays
   clearOverlays();

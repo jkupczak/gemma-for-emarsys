@@ -220,11 +220,16 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
         '<e-icon icon="radio-checked"><div aria-hidden="true" class="e-icon-wrapper"><div class="e-icon">&#xF15E;</div></div></e-icon>' +
       '</button>';
 
-    const altBtn = document.getElementById('altTextPreviewButton');
-    if (altBtn && altBtn.closest('e-tooltip')) {
-      altBtn.closest('e-tooltip').insertAdjacentElement('afterend', wrapper);
+    const linkBtn = document.getElementById('linkHighlightPreviewButton');
+    if (linkBtn && linkBtn.closest('e-tooltip')) {
+      linkBtn.closest('e-tooltip').insertAdjacentElement('afterend', wrapper);
     } else {
-      anchor.insertAdjacentElement('afterend', wrapper);
+      const altBtn = document.getElementById('altTextPreviewButton');
+      if (altBtn && altBtn.closest('e-tooltip')) {
+        altBtn.closest('e-tooltip').insertAdjacentElement('afterend', wrapper);
+      } else {
+        anchor.insertAdjacentElement('afterend', wrapper);
+      }
     }
 
     toolbarButtonEl = wrapper.querySelector('#blockTargetingPreviewButton');

@@ -3,6 +3,8 @@
   'use strict';
 
   const IFRAME_SELECTOR = 'iframe.e-contentblocks-preview__iframe-desktop';
+  const BUTTON_GROUP_SELECTOR = 'cb-campaign-preview .e-buttongroup';
+  const ANCHOR_SELECTOR = 'cb-highlight-editables-switch';
   const OVERLAY_CONTAINER_ID = 'gem-link-highlight-overlay-container';
   const STYLE_ID = 'gem-link-highlight-styles';
   const STORAGE_OVERLAY_ACTIVE_KEY = 'gemLinkHighlightOverlayActive';
@@ -57,6 +59,7 @@
   let debounceTimer = null;
   let scrollHandler = null;
   let resizeHandler = null;
+  let buttonEl = null;
 
   function debounce(fn, delay = 150) {
     clearTimeout(debounceTimer);
@@ -86,6 +89,7 @@
         chrome.storage.sync.get({ [STORAGE_OVERLAY_ACTIVE_KEY]: false }, (result) => {
           const overlayOn = result[STORAGE_OVERLAY_ACTIVE_KEY] === true;
           isActive = overlayOn;
+          if (buttonEl) buttonEl.classList.toggle('e-btn-active', isActive);
           if (isActive) enable();
           else disable();
           syncMenuIndicators();
@@ -93,12 +97,14 @@
       } else {
         if (isActive) disable();
         isActive = false;
+        if (buttonEl) buttonEl.classList.remove('e-btn-active');
         syncMenuIndicators();
       }
     }
 
     if (changes[STORAGE_OVERLAY_ACTIVE_KEY] && settingEnabled) {
       isActive = changes[STORAGE_OVERLAY_ACTIVE_KEY].newValue === true;
+      if (buttonEl) buttonEl.classList.toggle('e-btn-active', isActive);
       if (isActive) enable();
       else disable();
       syncMenuIndicators();
@@ -118,6 +124,60 @@
     }
   }
 
+  function injectButton() {
+    if (document.getElementById('linkHighlightPreviewButton')) return;
+
+    const anchor = document.querySelector(ANCHOR_SELECTOR);
+    if (!anchor) return;
+
+    const buttonGroup = anchor.closest('.e-buttongroup');
+    if (!buttonGroup) return;
+
+    const wrapper = document.createElement('e-tooltip');
+    wrapper.setAttribute('placement', 'bottom');
+    wrapper.setAttribute('content', 'Highlight Links');
+    wrapper.innerHTML =
+      '<button id="linkHighlightPreviewButton" type="button" class="e-btn e-btn-onlyicon e-svgclickfix" aria-description="" aria-label="Highlight Links">' +
+        '<e-icon icon="link"><div aria-hidden="true" class="e-icon-wrapper"><div class="e-icon">&#xF11B;</div></div></e-icon>' +
+      '</button>';
+
+    const blockBtn = document.getElementById('blockTargetingPreviewButton');
+    if (blockBtn && blockBtn.closest('e-tooltip')) {
+      blockBtn.closest('e-tooltip').insertAdjacentElement('beforebegin', wrapper);
+    } else {
+      const altBtn = document.getElementById('altTextPreviewButton');
+      if (altBtn && altBtn.closest('e-tooltip')) {
+        altBtn.closest('e-tooltip').insertAdjacentElement('afterend', wrapper);
+      } else {
+        anchor.insertAdjacentElement('afterend', wrapper);
+      }
+    }
+
+    buttonEl = wrapper.querySelector('#linkHighlightPreviewButton');
+    buttonEl.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      toggle();
+    });
+
+    if (settingEnabled && isActive) {
+      buttonEl.classList.add('e-btn-active');
+    }
+  }
+
+  function waitForButtonGroup() {
+    if (document.querySelector(BUTTON_GROUP_SELECTOR) && document.querySelector(ANCHOR_SELECTOR)) {
+      injectButton();
+      return;
+    }
+
+    if (typeof window.gemDomWatchWaitFor === 'function') {
+      window.gemDomWatchWaitFor(BUTTON_GROUP_SELECTOR, function () {
+        if (document.querySelector(ANCHOR_SELECTOR)) injectButton();
+      });
+    }
+  }
+
   function toggle() {
     if (!settingEnabled) {
       try {
@@ -127,6 +187,10 @@
     }
 
     isActive = !isActive;
+
+    if (buttonEl) {
+      buttonEl.classList.toggle('e-btn-active', isActive);
+    }
 
     if (isActive) {
       enable();
@@ -422,6 +486,7 @@
   }
 
   loadSettings(() => {
+    waitForButtonGroup();
     if (isActive) {
       enable();
     }

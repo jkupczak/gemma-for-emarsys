@@ -12,6 +12,35 @@ console.log('[Gem] command-palette.js loaded');
   const PIN_SVG =
     '<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#1f1f1f" aria-hidden="true"><path d="m640-480 80 80v80H520v240l-40 40-40-40v-240H240v-80l80-80v-280h-40v-80h400v80h-40v280Zm-286 80h252l-46-46v-314H400v314l-46 46Zm126 0Z"/></svg>';
 
+  const CAMPAIGN_OVERFLOW_DEFS = [
+    { id: 'campaign:email-settings', label: 'Email Settings', sectionId: 'campaign-campaign', sectionTitle: 'Campaign Navigation' },
+    { id: 'campaign:campaign-check', label: 'Campaign Check', sectionId: 'campaign-campaign', sectionTitle: 'Campaign Navigation' },
+    { id: 'campaign:scheduling', label: 'Scheduling', sectionId: 'campaign-campaign', sectionTitle: 'Campaign Navigation' },
+    { id: 'campaign:duplicate', label: 'Duplicate', sectionId: 'campaign-campaign', sectionTitle: 'Campaign Navigation' },
+    { id: 'campaign:live-editor', label: 'Live Editor', sectionId: 'campaign-views', sectionTitle: 'Campaign Views' },
+    { id: 'campaign:inbox-preview', label: 'Inbox Preview', sectionId: 'campaign-views', sectionTitle: 'Campaign Views' },
+    { id: 'campaign:contact-preview', label: 'Contact Preview', sectionId: 'campaign-views', sectionTitle: 'Campaign Views' },
+    { id: 'campaign:review-links', label: 'Review Links', sectionId: 'campaign-views', sectionTitle: 'Campaign Views' },
+    { id: 'campaign:review-scripts', label: 'Review Scripts', sectionId: 'campaign-views', sectionTitle: 'Campaign Views' },
+    { id: 'campaign:compare-previews', label: 'Compare Previews', sectionId: 'campaign-views', sectionTitle: 'Campaign Views' },
+    { id: 'campaign:standard-layout', label: 'Standard Layout', sectionId: 'campaign-editor', sectionTitle: 'Campaign Editor' },
+    { id: 'campaign:focus-layout', label: 'Focus Layout', sectionId: 'campaign-editor', sectionTitle: 'Campaign Editor' },
+    { id: 'campaign:mobile-sidepanel', label: 'Mobile Sidepanel', sectionId: 'campaign-editor', sectionTitle: 'Campaign Editor' },
+    { id: 'campaign:highlight-links', label: 'Highlight Links', sectionId: 'campaign-editor', sectionTitle: 'Campaign Editor' },
+    { id: 'campaign:highlight-alt-text', label: 'Highlight ALT Text', sectionId: 'campaign-editor', sectionTitle: 'Campaign Editor' },
+    { id: 'campaign:highlight-targeting', label: 'Highlight Targeting', sectionId: 'campaign-editor', sectionTitle: 'Campaign Editor' },
+    { id: 'campaign:highlight-editables', label: 'Highlight Editables', sectionId: 'campaign-editor', sectionTitle: 'Campaign Editor' },
+    { id: 'campaign:send-a-test', label: 'Send a Test', sectionId: 'campaign-collaborate', sectionTitle: 'Collaborate' },
+    { id: 'campaign:share-link', label: 'Share Campaign Link', sectionId: 'campaign-collaborate', sectionTitle: 'Collaborate' },
+    { id: 'campaign:share-screenshot', label: 'Share Campaign Screenshot', sectionId: 'campaign-collaborate', sectionTitle: 'Collaborate' },
+  ];
+
+  const GEMMA_FUNCTION_DEFS = [
+    { id: 'gemma:notes', label: 'Gemma Notes', sectionId: 'gemma-functions', sectionTitle: 'Gemma Functions' },
+    { id: 'gemma:recent-campaigns', label: 'Gemma Recent Campaigns', sectionId: 'gemma-functions', sectionTitle: 'Gemma Functions' },
+    { id: 'gemma:settings', label: 'Gemma Settings', sectionId: 'gemma-functions', sectionTitle: 'Gemma Functions' },
+  ];
+
   const PANEL_TABS = [
     { tabId: 'emailBasicsTab', label: 'Email Basics' },
     { tabId: 'blocksTab', label: 'Blocks' },
@@ -22,8 +51,8 @@ console.log('[Gem] command-palette.js loaded');
     { tabId: 'localesTab', label: 'Languages' },
     { tabId: 'customTab_personaliztation', label: 'Personalization' },
     { tabId: 'gem-snippets-tab', label: 'Gemma Snippets' },
-    { tabId: 'gem-find-replace-tab', label: 'Find and Replace' },
-    { tabId: 'gem-magic-fill-tab', label: 'Magic Fill' },
+    { tabId: 'gem-find-replace-tab', label: 'Gemma Find and Replace' },
+    { tabId: 'gem-magic-fill-tab', label: 'Gemma Magic Fill' },
     { tabId: 'gem-preflight-tab', label: 'Gemma Preflight' },
   ];
 
@@ -266,34 +295,19 @@ console.log('[Gem] command-palette.js loaded');
     const focusActive = document.documentElement.classList.contains('gem-focus-layout');
     const standardActive = !focusActive;
 
-    const defs = [
-      { id: 'campaign:email-settings', label: 'Email Settings', sectionId: 'campaign-campaign', sectionTitle: 'Campaign Navigation' },
-      { id: 'campaign:campaign-check', label: 'Campaign Check', sectionId: 'campaign-campaign', sectionTitle: 'Campaign Navigation' },
-      { id: 'campaign:scheduling', label: 'Scheduling', sectionId: 'campaign-campaign', sectionTitle: 'Campaign Navigation' },
-      { id: 'campaign:duplicate', label: 'Duplicate', sectionId: 'campaign-campaign', sectionTitle: 'Campaign Navigation' },
-      { id: 'campaign:live-editor', label: 'Live Editor', sectionId: 'campaign-views', sectionTitle: 'Campaign Views', exclude: liveActive },
-      { id: 'campaign:inbox-preview', label: 'Inbox Preview', sectionId: 'campaign-views', sectionTitle: 'Campaign Views', exclude: inboxActive },
-      { id: 'campaign:contact-preview', label: 'Contact Preview', sectionId: 'campaign-views', sectionTitle: 'Campaign Views' },
-      { id: 'campaign:review-links', label: 'Review Links', sectionId: 'campaign-views', sectionTitle: 'Campaign Views' },
-      { id: 'campaign:review-scripts', label: 'Review Scripts', sectionId: 'campaign-views', sectionTitle: 'Campaign Views' },
-      {
-        id: 'campaign:compare-previews',
-        label: 'Compare Previews',
-        sectionId: 'campaign-views',
-        sectionTitle: 'Campaign Views',
-        exclude: !(typeof window.gemCanComparePreviews === 'function' && window.gemCanComparePreviews()),
-      },
-      { id: 'campaign:standard-layout', label: 'Standard Layout', sectionId: 'campaign-editor', sectionTitle: 'Campaign Editor', exclude: standardActive },
-      { id: 'campaign:focus-layout', label: 'Focus Layout', sectionId: 'campaign-editor', sectionTitle: 'Campaign Editor', exclude: focusActive },
-      { id: 'campaign:mobile-sidepanel', label: 'Mobile Sidepanel', sectionId: 'campaign-editor', sectionTitle: 'Campaign Editor' },
-      { id: 'campaign:highlight-links', label: 'Highlight Links', sectionId: 'campaign-editor', sectionTitle: 'Campaign Editor' },
-      { id: 'campaign:highlight-alt-text', label: 'Highlight ALT Text', sectionId: 'campaign-editor', sectionTitle: 'Campaign Editor' },
-      { id: 'campaign:highlight-targeting', label: 'Highlight Targeting', sectionId: 'campaign-editor', sectionTitle: 'Campaign Editor' },
-      { id: 'campaign:highlight-editables', label: 'Highlight Editables', sectionId: 'campaign-editor', sectionTitle: 'Campaign Editor' },
-      { id: 'campaign:send-a-test', label: 'Send a Test', sectionId: 'campaign-collaborate', sectionTitle: 'Collaborate' },
-      { id: 'campaign:share-link', label: 'Share Campaign Link', sectionId: 'campaign-collaborate', sectionTitle: 'Collaborate' },
-      { id: 'campaign:share-screenshot', label: 'Share Campaign Screenshot', sectionId: 'campaign-collaborate', sectionTitle: 'Collaborate' },
-    ];
+    const defs = CAMPAIGN_OVERFLOW_DEFS.map((def) => {
+      if (def.id === 'campaign:live-editor') return { ...def, exclude: liveActive };
+      if (def.id === 'campaign:inbox-preview') return { ...def, exclude: inboxActive };
+      if (def.id === 'campaign:compare-previews') {
+        return {
+          ...def,
+          exclude: !(typeof window.gemCanComparePreviews === 'function' && window.gemCanComparePreviews()),
+        };
+      }
+      if (def.id === 'campaign:standard-layout') return { ...def, exclude: standardActive };
+      if (def.id === 'campaign:focus-layout') return { ...def, exclude: focusActive };
+      return def;
+    });
 
     return defs
       .filter((def) => !def.exclude)
@@ -440,37 +454,62 @@ console.log('[Gem] command-palette.js loaded');
   }
 
   function buildGemmaFunctionCommands() {
-    return [
+    return GEMMA_FUNCTION_DEFS.map((def) =>
       makeCommand({
-        id: 'gemma:notes',
-        sectionId: 'gemma-functions',
-        sectionTitle: 'Gemma Functions',
-        label: 'Notes',
+        id: def.id,
+        sectionId: def.sectionId,
+        sectionTitle: def.sectionTitle,
+        label: def.label,
         run: () => {
-          if (typeof window.gemToggleNotesPanel === 'function') window.gemToggleNotesPanel();
-        },
-      }),
-      makeCommand({
-        id: 'gemma:recent-campaigns',
-        sectionId: 'gemma-functions',
-        sectionTitle: 'Gemma Functions',
-        label: 'Recent Campaigns',
-        run: () => {
-          if (typeof window.gemToggleRecentCampaignsPanel === 'function') {
+          if (def.id === 'gemma:notes' && typeof window.gemToggleNotesPanel === 'function') {
+            window.gemToggleNotesPanel();
+          } else if (
+            def.id === 'gemma:recent-campaigns' &&
+            typeof window.gemToggleRecentCampaignsPanel === 'function'
+          ) {
             window.gemToggleRecentCampaignsPanel();
+          } else if (def.id === 'gemma:settings' && typeof window.openGemmaSettings === 'function') {
+            window.openGemmaSettings();
           }
         },
-      }),
-      makeCommand({
-        id: 'gemma:settings',
-        sectionId: 'gemma-functions',
-        sectionTitle: 'Gemma Functions',
-        label: 'Gemma Settings',
-        run: () => {
-          if (typeof window.openGemmaSettings === 'function') window.openGemmaSettings();
-        },
-      }),
-    ];
+      })
+    );
+  }
+
+  function getAssignablePaletteCommands() {
+    const panelDefs = PANEL_TABS.map((tab) => ({
+      id: `panel:${tab.tabId}`,
+      label: tab.label,
+      sectionId: 'panels',
+      sectionTitle: 'Campaign Panels',
+    }));
+    return [...CAMPAIGN_OVERFLOW_DEFS, ...panelDefs, ...GEMMA_FUNCTION_DEFS].map((def) => ({
+      id: def.id,
+      label: def.label,
+      sectionId: def.sectionId,
+      sectionTitle: def.sectionTitle,
+    }));
+  }
+
+  function gemIsPaletteCommandAvailableOnPage(commandId) {
+    const id = String(commandId || '').trim();
+    if (!id) return false;
+    const commands = buildAllCommands();
+    return commands.some((entry) => entry.id === id);
+  }
+
+  function gemRunPaletteCommandById(commandId) {
+    const id = String(commandId || '').trim();
+    if (!id) return false;
+    const commands = buildAllCommands();
+    const cmd = commands.find((entry) => entry.id === id);
+    if (!cmd || typeof cmd.run !== 'function') return false;
+    try {
+      cmd.run();
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   function buildEmarsysNavCommands() {
@@ -613,6 +652,26 @@ console.log('[Gem] command-palette.js loaded');
     return escapeHtml(label);
   }
 
+  const USER_SHORTCUT_DISPLAY_LIMIT = 2;
+
+  function getCommandShortcutHtml(commandId) {
+    const combos =
+      typeof window.gemGetUserShortcutCombosByCommandId === 'function'
+        ? window.gemGetUserShortcutCombosByCommandId(commandId)
+        : [];
+    if (!combos.length) return '';
+    const visible = combos.slice(0, USER_SHORTCUT_DISPLAY_LIMIT);
+    const overflowCount = combos.length - visible.length;
+    const badges = visible
+      .map((combo) => `<kbd class="gem-command-palette__row-shortcut">${escapeHtml(combo)}</kbd>`)
+      .join('');
+    const overflowBadge =
+      overflowCount > 0
+        ? `<span class="gem-command-palette__row-shortcut-overflow" title="${escapeHtml(combos.join(', '))}">+${overflowCount}</span>`
+        : '';
+    return `<span class="gem-command-palette__row-shortcuts">${badges}${overflowBadge}</span>`;
+  }
+
   function renderCommandList() {
     if (!paletteEl) return;
     const listEl = paletteEl.querySelector('.gem-command-palette__list');
@@ -654,6 +713,7 @@ console.log('[Gem] command-palette.js loaded');
                   <div class="gem-command-palette__row" data-command-id="${escapeHtml(cmd.id)}">
                     <button type="button" class="gem-command-palette__row-btn" data-action="run">
                       <span class="gem-command-palette__row-label">${getCommandRowLabelHtml(cmd, group.sectionId)}</span>
+                      ${getCommandShortcutHtml(cmd.id)}
                     </button>
                     ${pinBtn}
                   </div>
@@ -889,6 +949,12 @@ console.log('[Gem] command-palette.js loaded');
             : [];
           refreshAndRenderIfOpen();
         }
+        if (area === 'sync') {
+          const shortcutStorageKey = window.GEM_USER_CREATED_SHORTCUTS_STORAGE_KEY || 'gemUserCreatedShortcuts';
+          if (changes[shortcutStorageKey]) {
+            refreshAndRenderIfOpen();
+          }
+        }
         if (area === 'local') {
           if (changes[RECENT_STORAGE_KEY] || changes[OTHER_RECENT_STORAGE_KEY]) {
             loadRecentCampaignCaches(refreshAndRenderIfOpen);
@@ -896,11 +962,19 @@ console.log('[Gem] command-palette.js loaded');
         }
       });
     }
+
+    window.addEventListener('gem-user-shortcuts-changed', () => {
+      refreshAndRenderIfOpen();
+    });
   }
 
   window.gemIsCommandPaletteOpen = function gemIsCommandPaletteOpen() {
     return paletteOpen;
   };
+
+  window.gemGetAssignablePaletteCommands = getAssignablePaletteCommands;
+  window.gemIsPaletteCommandAvailableOnPage = gemIsPaletteCommandAvailableOnPage;
+  window.gemRunPaletteCommandById = gemRunPaletteCommandById;
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);

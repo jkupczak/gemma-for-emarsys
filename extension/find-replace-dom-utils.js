@@ -561,7 +561,7 @@ console.log('[Gem] find-replace-dom-utils.js loaded');
     }
 
     // Make priming visible / help Emarsys lazy-init (same “jump between blocks”
-    // behavior Magic Fill exhibits when waking many fields).
+    // behavior Gemma Magic Fill exhibits when waking many fields).
     try {
       if (typeof el.scrollIntoView === 'function') {
         el.scrollIntoView({ block: 'nearest', inline: 'nearest' });

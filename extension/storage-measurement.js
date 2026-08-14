@@ -43,7 +43,7 @@ console.log("[Gem] storage-measurement.js loaded");
         /^b\d+$/.test(key),
     },
     {
-      name: "Notes",
+      name: "Gemma Notes",
       color: "var(--token-topaz-400)",
       match: (key) => key === "gemNotes",
     },
@@ -61,6 +61,11 @@ console.log("[Gem] storage-measurement.js loaded");
         key === "gemPreflightSingularImageWeightThresholdValue" ||
         key === "gemPreflightSingularImageWeightThresholdUnit" ||
         key === "urlPreflightNeverCheck",
+    },
+    {
+      name: "Custom Shortcuts",
+      color: "var(--token-amethyst-300)",
+      match: (key) => key === "gemUserCreatedShortcuts",
     },
     {
       name: "Settings",

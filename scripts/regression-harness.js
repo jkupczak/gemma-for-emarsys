@@ -252,7 +252,7 @@ runCheck('image alt and subject paths stay plain-text replace', () => {
   assert(processSection.includes('textNode.nodeValue = result.text'));
 });
 
-runCheck('Magic Fill panel still escapes preview HTML in UI', () => {
+runCheck('Gemma Magic Fill panel still escapes preview HTML in UI', () => {
   const src = readFile('extension/magic-fill-panel.js');
   assert(src.includes('function escapeHtml('));
   assert(src.includes('escapeHtml(item.value)'));
@@ -348,6 +348,26 @@ runCheck('personalization tokens prefetch once per campaign page load', () => {
   assert(src.includes('schedulePersonalizationTokensIdlePrefetch()'));
 });
 
+runCheck('user shortcuts use stable binding ids and allow duplicate commands', () => {
+  const src = readFile('extension/user-shortcuts.js');
+  assert(src.includes('function generateBindingId('), 'generateBindingId missing');
+  assert(src.includes('seenComboKeys'), 'combo dedupe must use seenComboKeys');
+  assert(!src.includes('seenCommandIds'), 'must not dedupe by commandId');
+  assert(/normalized\.push\(\{\s*id,\s*commandId,\s*presetId,\s*code\s*\}\)/.test(src), 'bindings must include id');
+});
+
+runCheck('command palette caps visible user shortcut badges', () => {
+  const src = readFile('extension/command-palette.js');
+  assert(src.includes('USER_SHORTCUT_DISPLAY_LIMIT'), 'display limit constant missing');
+  assert(src.includes('row-shortcut-overflow'), 'overflow badge missing');
+  assert(src.includes('.slice(0, USER_SHORTCUT_DISPLAY_LIMIT)'), 'must slice visible shortcuts');
+});
+
+runCheck('welcome modal mentions Custom Shortcuts', () => {
+  const src = readFile('extension/welcome-modal.js');
+  assert(src.includes('Custom Shortcuts'), 'welcome modal must mention Custom Shortcuts');
+});
+
 runCheck('syntax check for edited files', () => {
   const filesToCheck = [
     'settings-panel.js',
@@ -365,7 +385,9 @@ runCheck('syntax check for edited files', () => {
     'nav-menu-utils.js',
     'nav-menu-inject.js',
     'notes.js',
-    'command-palette.js'
+    'command-palette.js',
+    'user-shortcuts.js',
+    'welcome-modal.js'
   ];
 
   filesToCheck.forEach((fileName) => {

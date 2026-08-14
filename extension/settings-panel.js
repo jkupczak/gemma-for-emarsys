@@ -393,7 +393,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
     },
     {
       id: "notes",
-      label: "Notes",
+      label: "Gemma Notes",
       syncKeys: ["gemNotes"],
       localKeys: []
     },
@@ -819,6 +819,17 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
               When navigating to certain Emarsys links (such as links shared by teammates), Emarsys may show a security confirmation page asking you to select your active account. When enabled, Gemma automatically confirms and redirects you to the intended page, including when the link opens in a background tab.
             </p>
           </div>
+        </div>
+
+        <div class="gem-setting-section" id="gem-settings-user-shortcuts">
+          <h3>Custom Shortcuts</h3>
+          <p class="gem-setting-info" id="gem-user-shortcuts-info">
+            Assign actions to a keyboard shortcut. Choose a modifier combination and key for each shortcut. Campaign editor commands only work while editing an email.
+          </p>
+          <div id="gem-user-shortcuts-list"></div>
+          <button class="e-btn gem-user-shortcuts-add-btn" type="button">
+            Add a Shortcut
+          </button>
         </div>
 
         <h2>Email Editor Settings</h2>
@@ -1912,6 +1923,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
         loadSavedSearches();
         loadPreflightNeverCheckList();
         loadShortcutSlotsSection();
+        loadUserCreatedShortcutsSection();
 
         chrome.storage.local.get({ [GEM_DEBUG_LOGGING_KEY]: false }, (debugRes) => {
           const debugEl = document.getElementById("opt-debug-logging");
@@ -2306,6 +2318,8 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
       unhideBtn.addEventListener("click", handlers.unhideAllBlocksHandler);
     }
 
+    setupUserCreatedShortcutsControls();
+
     _gemSettingsListenersAttached = true;
   }
 
@@ -2389,6 +2403,276 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
     } finally {
       _gemPasteUiSyncing = false;
     }
+  }
+
+  function loadUserCreatedShortcutsSection() {
+    const container = document.getElementById('gem-user-shortcuts-list');
+    const addBtn = document.querySelector('.gem-user-shortcuts-add-btn');
+    if (!container) return;
+
+    const render = (savedBindings, draftRow) => {
+      container.innerHTML = '';
+      savedBindings.forEach((binding) => {
+        container.appendChild(renderUserShortcutRow(binding, savedBindings, false));
+      });
+      if (draftRow) {
+        container.appendChild(renderUserShortcutRow(draftRow, savedBindings, true));
+      }
+      if (addBtn) {
+        addBtn.disabled = !!draftRow;
+      }
+    };
+
+    if (typeof window.gemLoadUserShortcutSettings !== 'function') {
+      container.innerHTML = '';
+      if (addBtn) addBtn.disabled = true;
+      return;
+    }
+
+    window.gemLoadUserShortcutSettings(({ bindings }) => {
+      const draft = container._gemUserShortcutDraft || null;
+      render(bindings, draft);
+    });
+  }
+
+  const GEM_USER_SHORTCUT_DELETE_SVG =
+    '<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" aria-hidden="true"><path fill="currentColor" d="M280-120q-33 0-56.5-23.5T200-200v-520h-40v-80h200v-40h240v40h200v80h-40v520q0 33-23.5 56.5T680-120H280Zm400-600H280v520h400v-520ZM360-280h80v-360h-80v360Zm160 0h80v-360h-80v360ZM280-720v520-520Z"/></svg>';
+
+  function buildUserShortcutCommandOptions(selectEl, selectedId) {
+    if (typeof window.gemGetAssignablePaletteCommands !== 'function') return;
+    const commands = window.gemGetAssignablePaletteCommands();
+
+    selectEl.innerHTML = '';
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'Select command';
+    selectEl.appendChild(placeholder);
+
+    const groups = new Map();
+    commands.forEach((cmd) => {
+      if (!groups.has(cmd.sectionTitle)) {
+        groups.set(cmd.sectionTitle, []);
+      }
+      groups.get(cmd.sectionTitle).push(cmd);
+    });
+
+    groups.forEach((items, sectionTitle) => {
+      const group = document.createElement('optgroup');
+      group.label = sectionTitle;
+      items
+        .slice()
+        .sort((a, b) => a.label.localeCompare(b.label))
+        .forEach((cmd) => {
+          const opt = document.createElement('option');
+          opt.value = cmd.id;
+          opt.textContent = cmd.label;
+          group.appendChild(opt);
+        });
+      selectEl.appendChild(group);
+    });
+
+    selectEl.value = selectedId || '';
+  }
+
+  function buildUserShortcutPresetOptions(selectEl, selectedPresetId) {
+    selectEl.innerHTML = '';
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'Select modifier';
+    selectEl.appendChild(placeholder);
+
+    if (typeof window.gemGetUserShortcutModifierPresets !== 'function') return;
+    window.gemGetUserShortcutModifierPresets().forEach((preset) => {
+      const opt = document.createElement('option');
+      opt.value = preset.id;
+      opt.textContent = preset.label;
+      selectEl.appendChild(opt);
+    });
+
+    selectEl.value = selectedPresetId || '';
+  }
+
+  function getUsedCodesForPreset(savedBindings, presetId, selectedCode, draftBinding, isDraft) {
+    const normalizedPreset =
+      typeof window.gemNormalizeUserShortcutPresetId === 'function'
+        ? window.gemNormalizeUserShortcutPresetId(presetId)
+        : presetId;
+    return savedBindings
+      .filter((entry) => {
+        const entryPreset =
+          typeof window.gemNormalizeUserShortcutPresetId === 'function'
+            ? window.gemNormalizeUserShortcutPresetId(entry.presetId)
+            : entry.presetId;
+        if (entryPreset !== normalizedPreset) return false;
+        if (entry.code === selectedCode) return false;
+        if (isDraft && draftBinding?.code === entry.code && draftBinding?.presetId === entryPreset) return false;
+        return true;
+      })
+      .map((entry) => entry.code)
+      .filter(Boolean);
+  }
+
+  function buildUserShortcutKeyOptions(selectEl, selectedCode, presetId, savedBindings, draftBinding, isDraft) {
+    const usedCodes = getUsedCodesForPreset(savedBindings, presetId, selectedCode, draftBinding, isDraft);
+    const options =
+      typeof window.gemGetUserShortcutKeyOptions === 'function'
+        ? window.gemGetUserShortcutKeyOptions(usedCodes, presetId)
+        : [];
+
+    selectEl.innerHTML = '';
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'Select key';
+    selectEl.appendChild(placeholder);
+
+    options.forEach((entry) => {
+      const opt = document.createElement('option');
+      opt.value = entry.code;
+      opt.textContent = entry.label;
+      selectEl.appendChild(opt);
+    });
+
+    selectEl.value = selectedCode || '';
+  }
+
+  function renderUserShortcutRow(binding, savedBindings, isDraft) {
+    const row = document.createElement('div');
+    row.className = 'color-swatch-item gem-user-shortcut-row';
+    if (isDraft) row.dataset.gemUserShortcutDraft = 'true';
+    if (binding?.id) row.dataset.gemUserShortcutId = binding.id;
+
+    const defaultPresetId = window.GEM_USER_SHORTCUT_DEFAULT_PRESET_ID || 'mod-option';
+    const currentPresetId = binding?.presetId || defaultPresetId;
+
+    const commandSelect = document.createElement('select');
+    commandSelect.className = 'color-swatch-input gem-user-shortcut-command';
+    commandSelect.setAttribute('aria-label', 'Command Palette action');
+    commandSelect.style.flex = '1';
+    commandSelect.style.minWidth = '0';
+    buildUserShortcutCommandOptions(commandSelect, binding?.commandId || '');
+    row.appendChild(commandSelect);
+
+    const keyWrap = document.createElement('div');
+    keyWrap.className = 'gem-user-shortcut-key-wrap';
+
+    const presetSelect = document.createElement('select');
+    presetSelect.className = 'color-swatch-input gem-user-shortcut-preset';
+    presetSelect.setAttribute('aria-label', 'Modifier combination');
+    buildUserShortcutPresetOptions(presetSelect, binding?.presetId || '');
+    keyWrap.appendChild(presetSelect);
+
+    const keySelect = document.createElement('select');
+    keySelect.className = 'color-swatch-input gem-user-shortcut-key';
+    keySelect.setAttribute('aria-label', 'Shortcut key');
+    buildUserShortcutKeyOptions(
+      keySelect,
+      binding?.code || '',
+      presetSelect.value || currentPresetId,
+      savedBindings,
+      binding,
+      isDraft
+    );
+    keyWrap.appendChild(keySelect);
+
+    row.appendChild(keyWrap);
+
+    const isComplete = !!(binding?.commandId && binding?.presetId && binding?.code);
+
+    if (isComplete && !isDraft) {
+      const deleteBtn = document.createElement('button');
+      deleteBtn.type = 'button';
+      deleteBtn.className = 'gem-user-shortcut-delete gem-e-btn-slim gem-e-btn-no-border gem-e-btn-no-hover e-btn e-btn-borderless e-btn-onlyicon';
+      deleteBtn.setAttribute('aria-label', 'Delete shortcut');
+      deleteBtn.innerHTML = GEM_USER_SHORTCUT_DELETE_SVG;
+      deleteBtn.addEventListener('click', () => {
+        if (typeof window.gemSaveUserCreatedShortcuts !== 'function') return;
+        const bindingId = row.dataset.gemUserShortcutId;
+        const next = savedBindings.filter((entry) => entry.id !== bindingId);
+        window.gemSaveUserCreatedShortcuts(next, () => {
+          loadUserCreatedShortcutsSection();
+        });
+      });
+      row.appendChild(deleteBtn);
+    }
+
+    const getDraftState = () => ({
+      commandId: commandSelect.value.trim(),
+      presetId: presetSelect.value.trim(),
+      code: keySelect.value.trim(),
+    });
+
+    const tryPersist = () => {
+      const { commandId, presetId, code } = getDraftState();
+      if (!commandId || !presetId || !code) {
+        if (isDraft) {
+          const container = document.getElementById('gem-user-shortcuts-list');
+          if (container) {
+            container._gemUserShortcutDraft = { commandId, presetId, code };
+          }
+        }
+        return;
+      }
+
+      const next = savedBindings.slice();
+      const entry = {
+        id:
+          binding?.id ||
+          (typeof window.gemGenerateUserShortcutBindingId === 'function'
+            ? window.gemGenerateUserShortcutBindingId()
+            : ''),
+        commandId,
+        presetId,
+        code,
+      };
+      if (isDraft) {
+        next.push(entry);
+        const container = document.getElementById('gem-user-shortcuts-list');
+        if (container) container._gemUserShortcutDraft = null;
+      } else {
+        const editIndex = savedBindings.findIndex((b) => b.id === binding?.id);
+        if (editIndex >= 0) next[editIndex] = entry;
+      }
+
+      if (typeof window.gemSaveUserCreatedShortcuts !== 'function') return;
+      window.gemSaveUserCreatedShortcuts(next, () => {
+        loadUserCreatedShortcutsSection();
+      });
+    };
+
+    commandSelect.addEventListener('change', tryPersist);
+
+    presetSelect.addEventListener('change', () => {
+      buildUserShortcutKeyOptions(
+        keySelect,
+        '',
+        presetSelect.value,
+        savedBindings,
+        getDraftState(),
+        isDraft
+      );
+      tryPersist();
+    });
+
+    keySelect.addEventListener('change', tryPersist);
+
+    return row;
+  }
+
+  function setupUserCreatedShortcutsControls() {
+    const addBtn = document.querySelector('.gem-user-shortcuts-add-btn');
+    const container = document.getElementById('gem-user-shortcuts-list');
+    if (!addBtn || !container || addBtn._gemUserShortcutsWired) return;
+    addBtn._gemUserShortcutsWired = true;
+
+    addBtn.addEventListener('click', () => {
+      if (container._gemUserShortcutDraft) return;
+      container._gemUserShortcutDraft = {
+        commandId: '',
+        presetId: '',
+        code: '',
+      };
+      loadUserCreatedShortcutsSection();
+    });
   }
 
   // ------------------------------------------------------------
@@ -2889,6 +3173,10 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
   function closePanel() {
     console.log("[Gem] closePanel called, isOpen was:", isOpen);
     if (!panelEl) return;
+    const shortcutsContainer = document.getElementById('gem-user-shortcuts-list');
+    if (shortcutsContainer) {
+      shortcutsContainer._gemUserShortcutDraft = null;
+    }
     panelEl.style.right = "-580px";
     if (typeof window.gemLayerRelease === "function") {
       window.gemLayerRelease(panelEl);
@@ -3082,6 +3370,10 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
 
     if (window.GEM_SHORTCUT_SLOTS_STORAGE_KEY && changes[window.GEM_SHORTCUT_SLOTS_STORAGE_KEY]) {
       loadShortcutSlotsSection();
+    }
+
+    if (window.GEM_USER_CREATED_SHORTCUTS_STORAGE_KEY && changes[window.GEM_USER_CREATED_SHORTCUTS_STORAGE_KEY]) {
+      loadUserCreatedShortcutsSection();
     }
 
     // Content Block Toolbar settings

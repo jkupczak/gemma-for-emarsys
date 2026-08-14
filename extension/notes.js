@@ -26,7 +26,7 @@ function buildLegacyNotesNavItem() {
           <div class="e-icon text-color-inherit"></div>
         </div>
       </e-icon>
-      <span class="e-navigation__action_text">Notes</span>
+      <span class="e-navigation__action_text">Gemma Notes</span>
     </button>
   `;
 
@@ -39,7 +39,7 @@ function buildUi5NotesNavItem(navRoot) {
   const item = gem.buildUi5ActionItem(
     {
       id: GEM_NOTES_NAV_ID,
-      text: "Notes",
+      text: "Gemma Notes",
       icon: "notes",
       // Emarsys only registers icons it ships; curriculum is already in the menu.
       iconFallbacks: ["curriculum", "business-card", "image-viewer", "home"],

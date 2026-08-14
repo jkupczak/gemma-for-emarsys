@@ -355,7 +355,7 @@ console.log('[Gem] find-replace-panel.js loaded');
 <cb-vertical-tab id="${TAB_ID}" value="tooltips.findReplace" icon="find-replace">
   <e-verticalnav-item class="gem-e-verticalnav-item">
     <div class="e-verticalnavitem">
-      <e-tooltip placement="right" content="Find and Replace" role="tooltip" aria-description="Find and Replace">
+      <e-tooltip placement="right" content="Gemma Find and Replace" role="tooltip" aria-description="Gemma Find and Replace">
         <div class="e-verticalnavitem__icon e-svgclickfix">
           <gem-e-icon icon="gem-find-replace">
             <div aria-hidden="true" class="e-icon-wrapper">
@@ -364,7 +364,7 @@ console.log('[Gem] find-replace-panel.js loaded');
           </gem-e-icon>
         </div>
       </e-tooltip>
-      <div class="e-verticalnavitem__value">Find and Replace</div>
+      <div class="e-verticalnavitem__value">Gemma Find and Replace</div>
     </div>
   </e-verticalnav-item>
 </cb-vertical-tab>
@@ -376,7 +376,7 @@ console.log('[Gem] find-replace-panel.js loaded');
 <${PANEL_TAG} class="scrollable gem-find-replace-panel">
   <div class="e-section">
     <div class="e-section__header">
-      <div class="e-section__title">Gemma Find and Replace</div>
+      <div class="e-section__title">Gemma Find and Replace <sup>BETA</sup></div>
     </div>
     <div class="e-section__content">
       <div class="gem-find-replace-field e-margin-bottom-s">
@@ -412,7 +412,7 @@ console.log('[Gem] find-replace-panel.js loaded');
       </fieldset>
       <button type="button" class="e-btn gem-find-replace-find-matches" data-role="findMatchesBtn" disabled>Find Matches</button>
       <div class="gem-find-replace-match-results" data-role="matchResults" hidden></div>
-      <button type="button" class="e-btn e-btn-primary gem-find-replace-apply e-margin-top-s" data-role="applyBtn" disabled>Find and Replace</button>
+      <button type="button" class="e-btn e-btn-primary gem-find-replace-apply e-margin-top-s" data-role="applyBtn" disabled>Gemma Find and Replace</button>
       <div class="gem-find-replace-replace-preview" data-role="replacePreview" hidden>
         <div class="gem-find-replace-label gem-find-replace-replace-preview-title">Replace preview</div>
         <div class="gem-find-replace-replace-preview-list" data-role="replacePreviewList"></div>
@@ -863,7 +863,7 @@ console.log('[Gem] find-replace-panel.js loaded');
           });
 
           // Wake lazy TinyMCE on dormant [e-editable] fields before mutating.
-          // Prime broadly (any non-empty dormant field), same approach as Magic Fill —
+          // Prime broadly (any non-empty dormant field), same approach as Gemma Magic Fill —
           // a match-only filter was skipping candidates and leaving edits non-durable.
           if (typeof utils.primeEmarsysEditablesInDoc === 'function') {
             try {

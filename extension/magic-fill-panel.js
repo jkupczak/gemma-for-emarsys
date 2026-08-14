@@ -202,7 +202,7 @@ console.log('[Gem] magic-fill-panel.js loaded');
 <cb-vertical-tab id="${TAB_ID}" value="tooltips.magicFill" icon="magic-fill">
   <e-verticalnav-item class="gem-e-verticalnav-item">
     <div class="e-verticalnavitem">
-      <e-tooltip placement="right" content="Magic Fill" role="tooltip" aria-description="Magic Fill">
+      <e-tooltip placement="right" content="Gemma Magic Fill" role="tooltip" aria-description="Gemma Magic Fill">
         <div class="e-verticalnavitem__icon e-svgclickfix">
           <gem-e-icon icon="gem-magic-fill">
             <div aria-hidden="true" class="e-icon-wrapper">
@@ -211,7 +211,7 @@ console.log('[Gem] magic-fill-panel.js loaded');
           </gem-e-icon>
         </div>
       </e-tooltip>
-      <div class="e-verticalnavitem__value">Magic Fill</div>
+      <div class="e-verticalnavitem__value">Gemma Magic Fill</div>
     </div>
   </e-verticalnav-item>
 </cb-vertical-tab>
@@ -223,7 +223,7 @@ console.log('[Gem] magic-fill-panel.js loaded');
 <${PANEL_TAG} class="scrollable gem-magic-fill-panel">
   <div class="e-section">
     <div class="e-section__header">
-      <div class="e-section__title">Gemma Magic Fill</div>
+      <div class="e-section__title">Gemma Magic Fill <sup>BETA</sup></div>
     </div>
     <div class="e-section__content">
       <p class="gem-magic-fill-help">
@@ -616,7 +616,7 @@ console.log('[Gem] magic-fill-panel.js loaded');
   async function buildScanPlan(payload) {
     const utils = frDom();
     if (!utils || !mfDom()) {
-      return { ok: false, error: 'Magic Fill helpers are not loaded.' };
+      return { ok: false, error: 'Gemma Magic Fill helpers are not loaded.' };
     }
 
     const originalLanguage =
@@ -1165,7 +1165,7 @@ console.log('[Gem] magic-fill-panel.js loaded');
       clearResults();
 
       window.gemShowToast &&
-        window.gemShowToast(`Applied ${total} Magic Fill replacement${total === 1 ? '' : 's'}.`, {
+        window.gemShowToast(`Applied ${total} Gemma Magic Fill replacement${total === 1 ? '' : 's'}.`, {
           type: 'success',
           duration: 3000,
         });

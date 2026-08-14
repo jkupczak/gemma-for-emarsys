@@ -1006,24 +1006,6 @@ cb-available-block-list .e-section .e-section__title {
     flex-grow: 0 !important;
 }
 
-/* ------------------------------------------------------------------------------------------------ */
-/* Vertical Nav Menu */
-/* ------------------------------------------------------------------------------------------------ */
-e-verticalnav-menu {
-    padding-top: 8px;
-}
-
-/* Override the default active state for the vertical nav menu because we can't control it when switching to and from the Snippets tab */
-cb-vertical-tab .e-verticalnavitem-active gem-e-icon svg {
-    fill: var(--token-tab-selected-text) !important;
-}
-e-verticalnav-menu:has(.gem-e-verticalnav-item[status="active"]) e-verticalnav-item:not(.gem-e-verticalnav-item) .e-verticalnavitem-active:after {
-    display: none !important;
-}
-e-verticalnav-menu:has(.gem-e-verticalnav-item[status="active"]) e-verticalnav-item:not(.gem-e-verticalnav-item) .e-icon {
-    color: var(--token-icon-default-text) !important;
-}
-
 gem-preflight .gem-preflight-section {
     margin-bottom: 14px;
 }
@@ -2820,13 +2802,6 @@ e-float-container .e-dialog-iframe .e-dialog__content {
     user-select: unset;
 }
 
-e-verticalnav-menu {
-    gap: 0 !important;
-    display: flex !important;
-    flex-direction: column !important;
-}
-
-
 vce-languages-list .e-datagrid__item_actions_wrapper {
     vertical-align: top;
     border-bottom: 1px solid var(--token-tableCell-default-border);
@@ -2847,4 +2822,16 @@ vce-languages-list [data-e-version="2"].e-table td {
 
 vce-languages-list .e-btn-onlyicon {
     width: unset;
+}
+
+.gem-e-btn-no-border {
+    border:none !important;
+}
+.gem-e-btn-no-hover:hover {
+    border:none !important;
+    background:none !important;
+}
+.gem-e-btn-slim {
+    width:unset !important;
+    border:none !important;
 }

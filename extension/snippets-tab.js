@@ -2931,9 +2931,15 @@ function initializeSnippetsTab() {
   function createSnippetsTabHTML() {
     return `
 <cb-vertical-tab id="gem-snippets-tab" value="tooltips.snippets" icon="snippets">
+  <div style="
+      text-transform: uppercase;
+      text-align: center;
+      font-size: 10px;
+      letter-spacing: 1px;
+  ">Gemma</div>
   <e-verticalnav-item class="gem-e-verticalnav-item">
     <div class="e-verticalnavitem">
-      <e-tooltip placement="right" content="Snippets" role="tooltip" aria-description="Snippets">
+      <e-tooltip placement="right" content="Gemma Snippets" role="tooltip" aria-description="Gemma Snippets">
       <div class="e-verticalnavitem__icon e-svgclickfix">
         <gem-e-icon icon="gem-snippets">
           <div aria-hidden="true" class="e-icon-wrapper">
@@ -2945,7 +2951,7 @@ function initializeSnippetsTab() {
       </div>
       </e-tooltip>
 
-      <div class="e-verticalnavitem__value">Snippets</div>
+      <div class="e-verticalnavitem__value">Gemma Snippets</div>
     </div>
   </e-verticalnav-item>
 </cb-vertical-tab>
@@ -4491,7 +4497,7 @@ function initializeSnippetsTab() {
     }
 
     // Wake lazy TinyMCE on dormant [e-editable] fields before swapping.
-    // Prefer the shared preview doc helper (same iframe Magic Fill / F&R use).
+    // Prefer the shared preview doc helper (same iframe Gemma Magic Fill / F&R use).
     const frDom = window.gemFindReplaceDom;
     const primeFn = frDom && frDom.primeEmarsysEditablesInDoc;
     const previewDocFromFr =
@@ -4503,7 +4509,7 @@ function initializeSnippetsTab() {
     if (typeof primeFn === 'function') {
       try {
         const primeResult = await primeFn(targetDoc, {
-          // Broad prime like Magic Fill / F&R so cold-loaded drafts wake TinyMCE.
+          // Broad prime like Gemma Magic Fill / F&R so cold-loaded drafts wake TinyMCE.
           filter: (el) => String(el.textContent || '').trim().length > 0,
           release: false,
         });

@@ -21,6 +21,8 @@ console.log("[Gem] alt-text-preview.js loaded");
   let hoverLeaveHandler = null;
   let hoveredImgId = null;
   let buttonEl = null;
+  let scrollHandler = null;
+  let resizeHandler = null;
 
   function debounce(fn, delay = 150) {
     clearTimeout(debounceTimer);
@@ -173,6 +175,7 @@ console.log("[Gem] alt-text-preview.js loaded");
       iframeMutationObserver.disconnect();
       iframeMutationObserver = null;
     }
+    removeViewportListeners();
     removeHoverListeners();
     clearOverlays();
     hoveredImgId = null;
@@ -386,6 +389,37 @@ console.log("[Gem] alt-text-preview.js loaded");
     });
   }
 
+  function removeViewportListeners() {
+    if (scrollHandler && currentIframe) {
+      try {
+        const win = currentIframe.contentWindow;
+        if (win) {
+          win.removeEventListener("scroll", scrollHandler);
+          win.removeEventListener("resize", resizeHandler);
+        }
+      } catch (_) {}
+    }
+    scrollHandler = null;
+    resizeHandler = null;
+  }
+
+  function attachViewportListeners(iframe) {
+    removeViewportListeners();
+
+    const win = iframe.contentWindow;
+    if (!win) return;
+
+    const onViewportChange = () => {
+      if (iframe !== currentIframe || !isActive) return;
+      debounce(() => renderOverlays(iframe));
+    };
+
+    scrollHandler = onViewportChange;
+    resizeHandler = onViewportChange;
+    win.addEventListener("scroll", scrollHandler, { passive: true });
+    win.addEventListener("resize", resizeHandler);
+  }
+
   function isGemElement(el) {
     if (el.id && el.id.startsWith("gem-")) return true;
     if (el.classList) {
@@ -413,6 +447,7 @@ console.log("[Gem] alt-text-preview.js loaded");
     const doc = iframe.contentDocument;
     if (!doc || !doc.body) return;
 
+    attachViewportListeners(iframe);
     debounce(() => renderOverlays(iframe));
 
     if (iframeMutationObserver) {
@@ -474,6 +509,7 @@ console.log("[Gem] alt-text-preview.js loaded");
           iframeMutationObserver.disconnect();
           iframeMutationObserver = null;
         }
+        removeViewportListeners();
         removeHoverListeners();
       }
 

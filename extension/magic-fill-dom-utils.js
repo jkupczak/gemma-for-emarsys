@@ -1,6 +1,6 @@
 console.log('[Gem] magic-fill-dom-utils.js loaded');
 
-// Shared parsing/matching helpers for the Magic Fill panel. Reuses the
+// Shared parsing/matching helpers for the Gemma Magic Fill panel. Reuses the
 // scanning primitives in find-replace-dom-utils.js (buildMatcher,
 // processHtmlOrTextContent, scanEmailBody, markEmailBodyDirty) so replacement
 // behavior — HTML-vs-text detection, skipping existing personalization
