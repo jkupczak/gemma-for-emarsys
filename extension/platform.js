@@ -75,6 +75,33 @@
     }
   }
 
+  /**
+   * URLSearchParams serializes `/` as %2F. Emarsys routes such as
+   * r=emailCampaignList/index and r=contentBlocks/campaign must stay literal
+   * so Chrome match patterns and Gemma URL checks still work.
+   */
+  function gemHrefPreserveQuerySlashes(urlOrHref) {
+    let href = '';
+    if (typeof urlOrHref === 'string') {
+      href = urlOrHref;
+    } else if (urlOrHref && typeof urlOrHref.href === 'string') {
+      href = urlOrHref.href;
+    } else if (urlOrHref && typeof urlOrHref.toString === 'function') {
+      href = urlOrHref.toString();
+    }
+    if (!href) return href;
+
+    const hashIdx = href.indexOf('#');
+    const hash = hashIdx === -1 ? '' : href.slice(hashIdx);
+    const withoutHash = hashIdx === -1 ? href : href.slice(0, hashIdx);
+    const queryIdx = withoutHash.indexOf('?');
+    if (queryIdx === -1) return href;
+    return withoutHash.slice(0, queryIdx)
+      + withoutHash.slice(queryIdx).replace(/%2F/gi, '/')
+      + hash;
+  }
+
+  window.gemHrefPreserveQuerySlashes = gemHrefPreserveQuerySlashes;
   window.gemIsGemStrippedCampaignUrl = gemIsGemStrippedCampaignUrl;
 
   window.gemIsGemStrippedEmbedIframe = function gemIsGemStrippedEmbedIframe(iframe) {

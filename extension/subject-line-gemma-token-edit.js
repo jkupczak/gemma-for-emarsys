@@ -249,6 +249,7 @@
     closeBtn?.addEventListener('click', close);
 
     applyBtn?.addEventListener('click', () => {
+      if (applyBtn.disabled || applyBtn.getAttribute('aria-disabled') === 'true') return;
       const nextName = nameInput ? nameInput.value.trim() : '';
       const nextCode = codeInput ? codeInput.value : '';
       if (!nextName || !nextCode.trim()) {

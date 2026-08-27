@@ -1075,7 +1075,9 @@
       url.searchParams.set("r", "contentBlocks/campaign");
       url.searchParams.set("id", campaignId);
       if (sid) url.searchParams.set("session_id", sid);
-      return url.toString();
+      return typeof window.gemHrefPreserveQuerySlashes === "function"
+        ? window.gemHrefPreserveQuerySlashes(url)
+        : url.toString().replace(/\?[^#]*/, (query) => query.replace(/%2F/gi, "/"));
     }
 
     function buildSettingsUrl() {

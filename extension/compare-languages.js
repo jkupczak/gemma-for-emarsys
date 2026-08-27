@@ -187,13 +187,6 @@
     return true;
   }
 
-  function activateBlocksNavTab() {
-    const tab = document.querySelector('#blocksTab e-verticalnav-item');
-    if (!tab) return false;
-    tab.click();
-    return true;
-  }
-
   async function openLanguageForEditing(languageValue) {
     const value = String(languageValue || '').trim();
     if (!value) return false;
@@ -221,7 +214,6 @@
       return false;
     }
 
-    activateBlocksNavTab();
     return true;
   }
 
@@ -837,10 +829,17 @@
   function sortComparisonCaptures(captures) {
     const activeValue = String(getSelectedLanguageValue() || '').trim();
     const pinnedEntryKey = common.resolvePinnedEntryKey(COMPARE_MODE, activeValue);
+    const pickerOrder = new Map(
+      getCampaignLanguages().map((entry, index) => [String(entry.value || '').trim(), index])
+    );
     return common.sortEntries(captures, {
       pinnedEntryKey,
       getEntryKey: (entry) => entry.value,
       getSortLabel: (entry) => entry.label || '',
+      getSourceIndex: (entry) => {
+        const key = String(entry.value || '').trim();
+        return pickerOrder.has(key) ? pickerOrder.get(key) : Number.MAX_SAFE_INTEGER;
+      },
     });
   }
 
@@ -1206,26 +1205,17 @@
       }
 
       const originalLanguage = getSelectedLanguageValue();
-      const otherLanguages = languages.filter((entry) => entry.value !== originalLanguage);
-      const originalEntry = languages.find((entry) => entry.value === originalLanguage);
 
       try {
-        for (let i = 0; i < otherLanguages.length; i += 1) {
+        for (let i = 0; i < languages.length; i += 1) {
           if (!isCurrentCaptureGeneration(generation)) break;
 
-          const lang = otherLanguages[i];
+          const lang = languages[i];
           const entry = await captureLanguagePreview(modal, lang, { generation });
           if (!entry || !isCurrentCaptureGeneration(generation)) break;
 
           updateComparisonColumnCapture(modal, entry);
           if (entry.error === 'Cancelled') break;
-        }
-
-        if (isCurrentCaptureGeneration(generation) && originalEntry && originalLanguage) {
-          const entry = await captureLanguagePreview(modal, originalEntry, { generation });
-          if (entry && isCurrentCaptureGeneration(generation)) {
-            updateComparisonColumnCapture(modal, entry);
-          }
         }
 
         if (!isCurrentCaptureGeneration(generation)) {

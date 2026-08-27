@@ -82,6 +82,28 @@
     box-shadow: none;
   }
 
+#opt-campaign-tab-title-regex,
+#opt-campaign-tab-title-format {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  box-sizing: border-box;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+label[for="opt-campaign-tab-title-format"] {
+  margin-top: 16px;
+}
+
+#opt-campaign-tab-title-regex[aria-invalid="true"] {
+  border-color: var(--token-carnelian-default, #c53030);
+}
+
+.gem-campaign-tab-title-regex-error {
+  color: var(--token-carnelian-default, #c53030);
+  margin-top: 8px;
+}
+
 .gem-setting label + label { padding: 12px 0 0 }
 [data-gem-paste-allow-disabled] { display: none; }
 p:has(+ [data-gem-paste-allow-disabled]) { margin-bottom: 0 !important; }

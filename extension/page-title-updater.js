@@ -1,5 +1,8 @@
 console.log("[Gem] page-title-updater.js loaded");
 
+const GEM_PAGE_TITLE_CAMPAIGN_REGEX_KEY = "gemCampaignTabTitleRegex";
+const GEM_PAGE_TITLE_CAMPAIGN_FORMAT_KEY = "gemCampaignTabTitleFormat";
+
 // Global variables
 let currentCampaignName = null;
 let campaignNameObserver = null;
@@ -10,6 +13,67 @@ let saveButtonAttributeTarget = null;
 let hasUnsavedChanges = false;
 let titleAnimationInterval = null;
 let animationState = 0; // 0 for 🔴, 1 for ⚫
+let campaignTabTitleRegexSource = "";
+let campaignTabTitleFormatSource = "";
+
+function compileCampaignTabTitleRegex(source) {
+  const trimmed = String(source || "").trim();
+  if (!trimmed) return null;
+  const wrapped = trimmed.match(/^\/([\s\S]+)\/([gimsuy]*)$/);
+  if (wrapped) {
+    const flags = String(wrapped[2] || "").replace(/g/g, "");
+    return new RegExp(wrapped[1], flags);
+  }
+  return new RegExp(trimmed);
+}
+
+function applyCampaignTabTitleFormat(match, format) {
+  return String(format || "").replace(/\$(\$|&|0|[1-9]\d?)|\$<([^>]+)>/g, (_whole, token, named) => {
+    if (named) {
+      const groups = match.groups || {};
+      return groups[named] != null ? String(groups[named]) : "";
+    }
+    if (token === "$") return "$";
+    if (token === "&" || token === "0") return match[0] || "";
+    const index = Number(token);
+    if (index > 0 && index < match.length && match[index] != null) return String(match[index]);
+    return "";
+  });
+}
+
+function extractCampaignTabTitle(campaignName, patternSource, formatSource) {
+  const name = String(campaignName || "").trim();
+  if (!name) return "";
+  const trimmedPattern = String(patternSource || "").trim();
+  if (!trimmedPattern) return name;
+
+  let regex = null;
+  try {
+    regex = compileCampaignTabTitleRegex(trimmedPattern);
+  } catch (_) {
+    return name;
+  }
+  if (!regex) return name;
+
+  regex.lastIndex = 0;
+  const match = regex.exec(name);
+  if (!match) return name;
+
+  const format = String(formatSource || "");
+  if (format) {
+    const formatted = applyCampaignTabTitleFormat(match, format).trim();
+    return formatted || name;
+  }
+
+  for (let i = 1; i < match.length; i += 1) {
+    const group = match[i];
+    if (group != null && String(group).trim()) return String(group).trim();
+  }
+
+  const full = match[0];
+  if (full != null && String(full).trim()) return String(full).trim();
+  return name;
+}
 
 // Function to update the page title with campaign name and unsaved changes indicator
 function updatePageTitle(campaignName) {
@@ -20,9 +84,14 @@ function updatePageTitle(campaignName) {
 
   // Clean up the campaign name (trim whitespace)
   const cleanName = campaignName.trim();
+  currentCampaignName = cleanName;
 
   // Create base title
-  let newTitle = cleanName;
+  let newTitle = extractCampaignTabTitle(
+    cleanName,
+    campaignTabTitleRegexSource,
+    campaignTabTitleFormatSource
+  );
 
   // Add unsaved changes indicator if there are unsaved changes
   if (hasUnsavedChanges) {
@@ -32,9 +101,7 @@ function updatePageTitle(campaignName) {
 
   // Only update if the title would actually change
   if (document.title !== newTitle) {
-    const oldTitle = document.title;
     document.title = newTitle;
-    currentCampaignName = cleanName;
   }
 }
 
@@ -295,6 +362,51 @@ function cleanupTitleAnimation() {
   saveButtonAttributeTarget = null;
 }
 
+function loadCampaignTabTitleRegex(callback) {
+  const done = () => {
+    if (typeof callback === "function") callback();
+  };
+
+  if (typeof chrome === "undefined" || !chrome.storage || !chrome.storage.sync) {
+    campaignTabTitleRegexSource = "";
+    campaignTabTitleFormatSource = "";
+    done();
+    return;
+  }
+
+  chrome.storage.sync.get(
+    {
+      [GEM_PAGE_TITLE_CAMPAIGN_REGEX_KEY]: "",
+      [GEM_PAGE_TITLE_CAMPAIGN_FORMAT_KEY]: "",
+    },
+    (result) => {
+      campaignTabTitleRegexSource = String((result && result[GEM_PAGE_TITLE_CAMPAIGN_REGEX_KEY]) || "");
+      campaignTabTitleFormatSource = String((result && result[GEM_PAGE_TITLE_CAMPAIGN_FORMAT_KEY]) || "");
+      done();
+    }
+  );
+}
+
+function bindCampaignTabTitleRegexWatcher() {
+  if (typeof chrome === "undefined" || !chrome.storage || !chrome.storage.onChanged) return;
+  if (bindCampaignTabTitleRegexWatcher.bound) return;
+  bindCampaignTabTitleRegexWatcher.bound = true;
+
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== "sync" || !changes) return;
+    let changed = false;
+    if (changes[GEM_PAGE_TITLE_CAMPAIGN_REGEX_KEY]) {
+      campaignTabTitleRegexSource = String(changes[GEM_PAGE_TITLE_CAMPAIGN_REGEX_KEY].newValue || "");
+      changed = true;
+    }
+    if (changes[GEM_PAGE_TITLE_CAMPAIGN_FORMAT_KEY]) {
+      campaignTabTitleFormatSource = String(changes[GEM_PAGE_TITLE_CAMPAIGN_FORMAT_KEY].newValue || "");
+      changed = true;
+    }
+    if (changed && currentCampaignName) updatePageTitle(currentCampaignName);
+  });
+}
+
 // Initialize the page title updater
 function initializePageTitleUpdater() {
   console.log("[Gem] Initializing page title updater");
@@ -302,8 +414,10 @@ function initializePageTitleUpdater() {
   // Clean up any existing animation
   cleanupTitleAnimation();
 
-  // Start monitoring for the campaign name element
-  monitorCampaignName();
+  bindCampaignTabTitleRegexWatcher();
+  loadCampaignTabTitleRegex(() => {
+    monitorCampaignName();
+  });
 
   // Start monitoring save button for unsaved changes indicator
   monitorSaveButton();

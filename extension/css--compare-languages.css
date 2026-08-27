@@ -1075,6 +1075,14 @@
     word-break: break-all;
 }
 
+.gem-review-links__esl {
+    margin-top: 6px;
+}
+
+.gem-review-links__esl--unavailable {
+    cursor: pointer;
+}
+
 .gem-review-links__row--locked {
     opacity: 0.7;
 }

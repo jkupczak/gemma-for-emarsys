@@ -20,6 +20,7 @@ function initializePreflightPanel() {
     missingAlt: true,
     linkTitles: true,
     linkLint: true,
+    eslValidation: true,
     imageWeight: true
   };
   const GEM_TEXT_HIGHLIGHTS_RENDERED_EVENT = 'gem:text-highlights-rendered';
@@ -79,6 +80,9 @@ function initializePreflightPanel() {
   /** Rows skipped because they matched `preflightNeverCheckUrls`. */
   let cachedSkippedLinkRows = [];
   let openLinkRowMenuKey = '';
+  let eslValidateGeneration = 0;
+  /** `rowKey`s whose ESL error panel is expanded. */
+  const expandedEslRowKeys = new Set();
 
   const GEM_PREFLIGHT_LIVE_SESSION_KEY = 'gemPreflightLinkLiveSessionV1';
   let preflightLiveSessionSaveTimer = null;
@@ -821,7 +825,7 @@ function initializePreflightPanel() {
       (toggles.imageWeight ? (Number.parseInt(String(latestImageAlertCount), 10) || 0) : 0) +
       (toggles.missingAlt ? (Number.parseInt(String(latestAccessibilityMissingAltCount), 10) || 0) : 0) +
       (toggles.linkTitles ? (Number.parseInt(String(latestLinkTitlesAlertCount), 10) || 0) : 0) +
-      (toggles.linkLint ? (Number.parseInt(String(latestLinksAlertCount), 10) || 0) : 0) +
+      (Number.parseInt(String(latestLinksAlertCount), 10) || 0) +
       (toggles.textAlerts ? (Number.parseInt(String(latestNotifyAlertCount), 10) || 0) : 0)
     );
     chrome.storage.local.set({ [PREFLIGHT_ALERT_COUNT_KEY]: alertCount });
@@ -1036,6 +1040,59 @@ function initializePreflightPanel() {
     }
   }
 
+  function isPlaceholderHref(href) {
+    const s = String(href || '').trim();
+    return !s || s === '(no href)' || s === '(empty href)';
+  }
+
+  function rowHasFormatIssues(row) {
+    return !!(row && Array.isArray(row.issueLabels) && row.issueLabels.length > 0);
+  }
+
+  function rowHasEslFail(row) {
+    return !!(row && row.eslStatus === 'fail');
+  }
+
+  function rowHasDisplayIssues(row) {
+    return rowHasFormatIssues(row) || rowHasEslFail(row);
+  }
+
+  function withLinkRowIssueFlags(row, extra) {
+    const next = extra ? Object.assign({}, row, extra) : Object.assign({}, row);
+    next.hasIssues = rowHasDisplayIssues(next);
+    return next;
+  }
+
+  function uniqueEslErrorTexts(errors) {
+    const seen = new Set();
+    const out = [];
+    (Array.isArray(errors) ? errors : []).forEach((text) => {
+      const s = String(text || '').trim();
+      if (!s || seen.has(s)) return;
+      seen.add(s);
+      out.push(s);
+    });
+    return out;
+  }
+
+  function countFlaggedLinkRows(rows, respectToggles) {
+    const t = cachedPreflightIconPipToggles || PREFLIGHT_ICON_PIP_TOGGLES_DEFAULT;
+    return (Array.isArray(rows) ? rows : []).reduce((sum, row) => {
+      if (!row) return sum;
+      const formatFail = (!respectToggles || t.linkLint !== false) && rowHasFormatIssues(row);
+      const eslFail = (!respectToggles || t.eslValidation !== false) && rowHasEslFail(row);
+      return sum + (formatFail || eslFail ? 1 : 0);
+    }, 0);
+  }
+
+  function seedLinkRowEslFields(row) {
+    const placeholder = isPlaceholderHref(row && row.displayHref);
+    return withLinkRowIssueFlags(row, {
+      eslStatus: placeholder ? 'pass' : 'pending',
+      eslErrors: []
+    });
+  }
+
   function analyzeLinksInPreviewDoc(doc) {
     const anchors = Array.from(doc.querySelectorAll('a'));
     const anchorRowKeysInOrder = anchors.map((a) => linkGroupingKey(a));
@@ -1067,7 +1124,7 @@ function initializePreflightPanel() {
           meta.hasTemplateTokens ? g.displayHref : (meta.fetchCandidateUrl || g.displayHref),
           doc && doc.baseURI
         );
-        return {
+        return seedLinkRowEslFields({
           rowKey: g.key,
           displayHref: g.displayHref,
           referenceCount: g.referenceCount,
@@ -1076,7 +1133,7 @@ function initializePreflightPanel() {
           hasTemplateTokens: !!meta.hasTemplateTokens,
           fetchCandidateUrl: meta.fetchCandidateUrl,
           neverCheckUrlKey
-        };
+        });
       })
       .sort((a, b) => {
         if (a.hasIssues !== b.hasIssues) return a.hasIssues ? -1 : 1;
@@ -1088,10 +1145,12 @@ function initializePreflightPanel() {
       .map((row) => ({
         ...row,
         issueLabels: [],
-        hasIssues: false
+        hasIssues: false,
+        eslStatus: undefined,
+        eslErrors: []
       }));
     const rows = allRows.filter((row) => !(row.neverCheckUrlKey && preflightNeverCheckUrls.has(row.neverCheckUrlKey)));
-    const linksAlertCount = rows.reduce((sum, row) => sum + (Array.isArray(row.issueLabels) ? row.issueLabels.length : 0), 0);
+    const linksAlertCount = countFlaggedLinkRows(rows, true);
 
     return {
       totalAnchors: anchors.length,
@@ -1266,11 +1325,12 @@ function initializePreflightPanel() {
   }
 
   function getPreflightSectionAlertCounts() {
+    const linkRows = (cachedLinksAnalysis && Array.isArray(cachedLinksAnalysis.rows)) ? cachedLinksAnalysis.rows : [];
     return {
       languageOverview: getLanguageOverviewAlertCount(),
       textAnalysis: Math.max(0, Number.parseInt(String(latestNotifyAlertCount), 10) || 0),
       accessibility: getAccessibilityCombinedAlertCount(),
-      links: preflightHideLinksSection ? 0 : (Math.max(0, Number.parseInt(String(latestLinksAlertCount), 10) || 0)),
+      links: preflightHideLinksSection ? 0 : countFlaggedLinkRows(linkRows, false),
       images: Math.max(0, Number.parseInt(String(latestImageAlertCount), 10) || 0)
     };
   }
@@ -1376,6 +1436,7 @@ function initializePreflightPanel() {
       missingAlt: src.missingAlt !== false,
       linkTitles: src.linkTitles !== false,
       linkLint: src.linkLint !== false,
+      eslValidation: src.eslValidation !== false,
       imageWeight: src.imageWeight !== false
     };
   }
@@ -1551,6 +1612,8 @@ function initializePreflightPanel() {
     cachedLinksAnalysis = null;
     cachedSkippedLinkRows = [];
     openLinkRowMenuKey = '';
+    eslValidateGeneration += 1;
+    expandedEslRowKeys.clear();
     contactPreviewRenderedRowByEditorKey.clear();
     linkLiveState.clear();
     setLiveLinkFootnoteText('', false);
@@ -2209,6 +2272,35 @@ function initializePreflightPanel() {
     });
   }
 
+  function buildEslStatusHtml(row) {
+    const rk = encodeURIComponent(row.rowKey || '');
+    const status = row.eslStatus || 'pending';
+    if (status === 'pass') {
+      return '<span class="gem-preflight-live-chip gem-preflight-live-chip--ok" aria-label="ESL validation passed">Passed</span>';
+    }
+    if (status === 'unavailable') {
+      return `<button type="button" class="gem-preflight-live-chip gem-preflight-live-chip--warn gem-preflight-live-chip-btn" data-action="gem-esl-retry" data-gem-link-row-key="${rk}" title="Try again" aria-label="ESL validation unavailable. Try again">Unavailable</button>`;
+    }
+    if (status === 'fail') {
+      const expanded = expandedEslRowKeys.has(row.rowKey);
+      const toggleLabel = expanded ? 'Hide ESL errors' : 'Show ESL errors';
+      return `<button type="button" class="gem-preflight-live-chip gem-preflight-live-chip--error gem-preflight-live-chip-btn" data-action="gem-esl-toggle-errors" data-gem-link-row-key="${rk}" aria-expanded="${expanded ? 'true' : 'false'}" aria-label="Failed. ${toggleLabel}" title="${toggleLabel}">Failed</button>
+        <button type="button" class="gem-preflight-esl-fail-icon-btn" data-action="gem-esl-toggle-errors" data-gem-link-row-key="${rk}" aria-expanded="${expanded ? 'true' : 'false'}" aria-label="${toggleLabel}" title="${toggleLabel}">!</button>`;
+    }
+    return '<span class="gem-preflight-live-chip gem-preflight-live-chip--pending" aria-label="Checking ESL validation">Checking…</span>';
+  }
+
+  function buildEslErrorsBlock(row) {
+    if (row.eslStatus !== 'fail' || !expandedEslRowKeys.has(row.rowKey)) return '';
+    const errors = uniqueEslErrorTexts(row.eslErrors);
+    const list = errors.length ? errors : ['Invalid ESL.'];
+    return `<div class="gem-preflight-links-stacked-subtext" role="region" aria-label="ESL validation errors">
+              <ul class="gem-preflight-links-issue-list">
+                ${list.map((lab) => `<li>${escapeHtmlText(lab)}</li>`).join('')}
+              </ul>
+            </div>`;
+  }
+
   function renderLinksTableHtml(lrows, opts = {}) {
     const inSkippedSection = !!opts.isSkippedSection;
     if (inSkippedSection) {
@@ -2218,7 +2310,7 @@ function initializePreflightPanel() {
           const live = {
             className: 'gem-preflight-live-chip--skipped',
             label: 'Skipped by setting',
-            detailText: 'This URL is listed in the Skip List and is excluded from formatting and live checks.'
+            detailText: 'This URL is listed in the Skip List and is excluded from ESL, formatting, and live checks.'
           };
           const cpBadge = row.isContactPreviewRenderedRow
             ? '<div class="gem-preflight-links-row-cp-badge">Contact Preview - rendered URL</div>'
@@ -2315,6 +2407,16 @@ function initializePreflightPanel() {
             ? `<div class="gem-preflight-links-stacked-subtext"><span class="gem-preflight-links-stacked-label-inline">Rendered URL:</span> ${escapeHtmlText(renderedDisplayHref)}</div>`
             : ''
           }
+          <div class="gem-preflight-links-stacked-kv-row">
+            <div class="gem-preflight-links-stacked-kv-label">ESL Validation</div>
+            <div class="gem-preflight-links-stacked-kv-value">${buildEslStatusHtml(row)}</div>
+          </div>
+          ${buildEslErrorsBlock(row)}
+          <div class="gem-preflight-links-stacked-kv-row">
+            <div class="gem-preflight-links-stacked-kv-label">Formatting</div>
+            <div class="gem-preflight-links-stacked-kv-value">${formattingStatus}</div>
+          </div>
+          ${formattingIssuesBlock}
           ${showLiveSection
             ? `<div class="gem-preflight-links-stacked-kv-row">
               <div class="gem-preflight-links-stacked-kv-label gem-preflight-links-stacked-kv-label--with-help">
@@ -2333,11 +2435,6 @@ function initializePreflightPanel() {
             ${liveDetailBlock}`
             : ''
           }
-          <div class="gem-preflight-links-stacked-kv-row">
-            <div class="gem-preflight-links-stacked-kv-label">Formatting</div>
-            <div class="gem-preflight-links-stacked-kv-value">${formattingStatus}</div>
-          </div>
-          ${formattingIssuesBlock}
         </div>
         </div>`;
       })
@@ -2589,23 +2686,142 @@ function initializePreflightPanel() {
   }
 
   function refreshLinkMetricsFromCache() {
-    const panel = document.querySelector(PRELIGHT_PANEL_TAG);
-    if (!panel) return;
-    const linksTotalEl = panel.querySelector('[data-metric="linksTotal"]');
-    const linksUniqueEl = panel.querySelector('[data-metric="linksUnique"]');
     const activeRows = (cachedLinksAnalysis && Array.isArray(cachedLinksAnalysis.rows)) ? cachedLinksAnalysis.rows : [];
     const skippedRows = Array.isArray(cachedSkippedLinkRows) ? cachedSkippedLinkRows : [];
     const totalAnchors = activeRows.concat(skippedRows).reduce((sum, row) => sum + (row && row.referenceCount ? row.referenceCount : 0), 0);
     const totalUniqueLinks = activeRows.length + skippedRows.length;
-    const linksAlertCount = activeRows.reduce((sum, row) => sum + (Array.isArray(row.issueLabels) ? row.issueLabels.length : 0), 0);
-    if (linksTotalEl) linksTotalEl.textContent = String(totalAnchors);
-    if (linksUniqueEl) linksUniqueEl.textContent = String(totalUniqueLinks);
-    updateLinksSectionPip(linksAlertCount);
+    const sectionCount = countFlaggedLinkRows(activeRows, false);
+    const navCount = preflightHideLinksSection ? 0 : countFlaggedLinkRows(activeRows, true);
+    latestLinksAlertCount = navCount;
     if (cachedLinksAnalysis) {
       cachedLinksAnalysis.totalAnchors = totalAnchors;
       cachedLinksAnalysis.uniqueCount = totalUniqueLinks;
-      cachedLinksAnalysis.linksAlertCount = linksAlertCount;
+      cachedLinksAnalysis.linksAlertCount = navCount;
     }
+    persistAndUpdateOverallAlertPip();
+    const panel = document.querySelector(PRELIGHT_PANEL_TAG);
+    if (!panel) return;
+    const linksTotalEl = panel.querySelector('[data-metric="linksTotal"]');
+    const linksUniqueEl = panel.querySelector('[data-metric="linksUnique"]');
+    if (linksTotalEl) linksTotalEl.textContent = String(totalAnchors);
+    if (linksUniqueEl) linksUniqueEl.textContent = String(totalUniqueLinks);
+    updateLinksSectionPip(sectionCount);
+  }
+
+  function pruneExpandedEslRowKeys(rows) {
+    const failKeys = new Set((Array.isArray(rows) ? rows : []).filter((row) => row && row.eslStatus === 'fail').map((row) => row.rowKey));
+    Array.from(expandedEslRowKeys).forEach((key) => {
+      if (!failKeys.has(key)) expandedEslRowKeys.delete(key);
+    });
+  }
+
+  function adoptLinksAnalysisFromScan(linkAnalysis) {
+    cachedSkippedLinkRows = Array.isArray(linkAnalysis && linkAnalysis.skippedRows) ? linkAnalysis.skippedRows : [];
+    const rows = linkAnalysis && Array.isArray(linkAnalysis.rows) ? linkAnalysis.rows : [];
+    if (!rows.length) {
+      cachedLinksAnalysis = null;
+      return;
+    }
+    cachedLinksAnalysis = {
+      totalAnchors: linkAnalysis.totalAnchors,
+      uniqueCount: linkAnalysis.uniqueCount,
+      linksAlertCount: preflightHideLinksSection ? 0 : (linkAnalysis.linksAlertCount || 0),
+      rows: rows,
+      anchorRowKeysInOrder: linkAnalysis.anchorRowKeysInOrder || []
+    };
+  }
+
+  async function runPreflightEslValidation(scanToken) {
+    if (scanToken != null && currentScanToken !== scanToken) return;
+    const gen = ++eslValidateGeneration;
+    if (!cachedLinksAnalysis || !Array.isArray(cachedLinksAnalysis.rows)) return;
+
+    const toCheck = [];
+    cachedLinksAnalysis.rows = cachedLinksAnalysis.rows.map((row) => {
+      if (isPlaceholderHref(row && row.displayHref)) {
+        return withLinkRowIssueFlags(row, { eslStatus: 'pass', eslErrors: [] });
+      }
+      if (row.eslStatus && row.eslStatus !== 'pending') {
+        return row;
+      }
+      const name = 'template' + (toCheck.length + 1);
+      toCheck.push({ rowKey: row.rowKey, name: name, text: String(row.displayHref || '').trim() });
+      return withLinkRowIssueFlags(row, { eslStatus: 'pending', eslErrors: [] });
+    });
+
+    refreshLinksTableFromCache();
+    refreshLinkMetricsFromCache();
+
+    if (!toCheck.length) return;
+    if (scanToken != null && currentScanToken !== scanToken) return;
+
+    let result;
+    if (typeof window.gemValidateEslTemplates !== 'function') {
+      result = { status: 'unavailable', errors: [] };
+    } else {
+      try {
+        result = await window.gemValidateEslTemplates(toCheck.map((item) => ({ name: item.name, text: item.text })));
+      } catch (_) {
+        result = { status: 'unavailable', errors: [] };
+      }
+    }
+
+    if (gen !== eslValidateGeneration) return;
+    if (scanToken != null && currentScanToken !== scanToken) return;
+    if (!cachedLinksAnalysis || !Array.isArray(cachedLinksAnalysis.rows)) return;
+
+    const errorsByName = {};
+    const unnamedErrors = [];
+    (result && Array.isArray(result.errors) ? result.errors : []).forEach((err) => {
+      const name = String((err && err.template_name) || '').trim();
+      const text = String((err && err.reason_text) || '').trim();
+      if (!text) return;
+      if (!name) {
+        unnamedErrors.push(text);
+        return;
+      }
+      if (!errorsByName[name]) errorsByName[name] = [];
+      errorsByName[name].push(text);
+    });
+
+    const nameByRowKey = new Map(toCheck.map((item) => [item.rowKey, item.name]));
+    const allUnavailable = !result || result.status === 'unavailable' || result.status === 'aborted';
+
+    cachedLinksAnalysis.rows = cachedLinksAnalysis.rows.map((row) => {
+      const name = nameByRowKey.get(row.rowKey);
+      if (!name) return row;
+      if (allUnavailable) {
+        return withLinkRowIssueFlags(row, { eslStatus: 'unavailable', eslErrors: [] });
+      }
+      const errs = (errorsByName[name] || []).slice();
+      if (toCheck.length === 1 && !errs.length && unnamedErrors.length) {
+        errs.push.apply(errs, unnamedErrors);
+      }
+      return withLinkRowIssueFlags(row, {
+        eslStatus: errs.length ? 'fail' : 'pass',
+        eslErrors: errs
+      });
+    });
+
+    pruneExpandedEslRowKeys(cachedLinksAnalysis.rows);
+    cachedLinksAnalysis.rows = sortLinkRowsForDisplay(cachedLinksAnalysis.rows);
+    refreshLinksTableFromCache();
+    refreshLinkMetricsFromCache();
+    if (isPreflightActive() && countFlaggedLinkRows(cachedLinksAnalysis.rows, false) > 0) {
+      const els = getPreflightPanelEls();
+      if (els && els.panel) syncPreflightSectionCollapseUI(els.panel, 'links', false);
+    }
+  }
+
+  function retryPreflightEslForRow(rowKey) {
+    if (!rowKey || !cachedLinksAnalysis || !Array.isArray(cachedLinksAnalysis.rows)) return;
+    cachedLinksAnalysis.rows = cachedLinksAnalysis.rows.map((row) => {
+      if (!row || row.rowKey !== rowKey) return row;
+      if (isPlaceholderHref(row.displayHref)) return row;
+      return withLinkRowIssueFlags(row, { eslStatus: 'pending', eslErrors: [] });
+    });
+    refreshLinksTableFromCache();
+    void runPreflightEslValidation(currentScanToken);
   }
 
   function applyNeverCheckToCurrentRows(targetUrl, shouldSkip) {
@@ -2620,8 +2836,9 @@ function initializePreflightPanel() {
       active.forEach((row) => {
         const key = normalizePreflightNeverCheckUrl(row && (row.neverCheckUrlKey || row.fetchCandidateUrl || row.displayHref));
         if (key && key === normalizedTarget) {
-          skipped.push({ ...row, issueLabels: [], hasIssues: false });
+          skipped.push({ ...row, issueLabels: [], hasIssues: false, eslStatus: undefined, eslErrors: [] });
           if (row && row.rowKey) {
+            expandedEslRowKeys.delete(row.rowKey);
             linkLiveState.delete(row.rowKey);
             const syn = contactPreviewRenderedRowByEditorKey.get(row.rowKey);
             if (syn && syn.rowKey) linkLiveState.delete(syn.rowKey);
@@ -2645,7 +2862,10 @@ function initializePreflightPanel() {
         else stillSkipped.push(row);
       });
       if (movedBack.length) {
-        const restored = movedBack.map((row) => ({ ...row, hasIssues: Array.isArray(row.issueLabels) && row.issueLabels.length > 0 }));
+        const restored = movedBack.map((row) => seedLinkRowEslFields({
+          ...row,
+          hasIssues: Array.isArray(row.issueLabels) && row.issueLabels.length > 0
+        }));
         cachedLinksAnalysis.rows = sortLinkRowsForDisplay(active.concat(restored));
         cachedSkippedLinkRows = sortLinkRowsForDisplay(stillSkipped);
         const existing = new Set(cachedLinksAnalysis.anchorRowKeysInOrder || []);
@@ -2663,6 +2883,7 @@ function initializePreflightPanel() {
     renderSkippedUrlsSection();
     refreshLinkMetricsFromCache();
     schedulePersistPreflightLiveSession();
+    if (!shouldSkip) void runPreflightEslValidation(currentScanToken);
   }
 
   async function reapplyNeverCheckSetToCachedRows() {
@@ -2673,10 +2894,17 @@ function initializePreflightPanel() {
     const allRows = active.concat(skipped);
     const nextActive = [];
     const nextSkipped = [];
+    const previouslyActiveKeys = new Set(active.map((row) => row && row.rowKey).filter(Boolean));
     allRows.forEach((row) => {
       const key = normalizePreflightNeverCheckUrl(row && (row.neverCheckUrlKey || row.fetchCandidateUrl || row.displayHref));
-      if (key && preflightNeverCheckUrls.has(key)) nextSkipped.push({ ...row, issueLabels: [], hasIssues: false });
-      else nextActive.push({ ...row, hasIssues: Array.isArray(row.issueLabels) && row.issueLabels.length > 0 });
+      if (key && preflightNeverCheckUrls.has(key)) {
+        if (row && row.rowKey) expandedEslRowKeys.delete(row.rowKey);
+        nextSkipped.push({ ...row, issueLabels: [], hasIssues: false, eslStatus: undefined, eslErrors: [] });
+      } else if (previouslyActiveKeys.has(row && row.rowKey) && row.eslStatus && row.eslStatus !== 'pending') {
+        nextActive.push(withLinkRowIssueFlags(row));
+      } else {
+        nextActive.push(seedLinkRowEslFields(row));
+      }
     });
     cachedLinksAnalysis.rows = sortLinkRowsForDisplay(nextActive);
     cachedSkippedLinkRows = sortLinkRowsForDisplay(nextSkipped);
@@ -2688,6 +2916,7 @@ function initializePreflightPanel() {
     renderSkippedUrlsSection();
     refreshLinkMetricsFromCache();
     schedulePersistPreflightLiveSession();
+    void runPreflightEslValidation(currentScanToken);
   }
 
   function truncateForPreflightNote(text, maxLen) {
@@ -3005,6 +3234,26 @@ function initializePreflightPanel() {
           });
         }
         openLinkRowMenuKey = '';
+        return;
+      }
+      const eslRetry = event.target.closest('[data-action="gem-esl-retry"]');
+      if (eslRetry) {
+        event.preventDefault();
+        if (openLinkRowMenuKey) openLinkRowMenuKey = '';
+        const rowKey = decodeURIComponent(eslRetry.getAttribute('data-gem-link-row-key') || '');
+        retryPreflightEslForRow(rowKey);
+        return;
+      }
+      const eslToggle = event.target.closest('[data-action="gem-esl-toggle-errors"]');
+      if (eslToggle) {
+        event.preventDefault();
+        if (openLinkRowMenuKey) openLinkRowMenuKey = '';
+        const rowKey = decodeURIComponent(eslToggle.getAttribute('data-gem-link-row-key') || '');
+        if (rowKey) {
+          if (expandedEslRowKeys.has(rowKey)) expandedEslRowKeys.delete(rowKey);
+          else expandedEslRowKeys.add(rowKey);
+        }
+        refreshLinksTableFromCache();
         return;
       }
       if (openLinkRowMenuKey) {
@@ -3546,6 +3795,8 @@ function initializePreflightPanel() {
       if (linksUniqueEl) linksUniqueEl.textContent = 'Scanning...';
       cachedLinksAnalysis = null;
       cachedSkippedLinkRows = [];
+      eslValidateGeneration += 1;
+      expandedEslRowKeys.clear();
       clearContactPreviewRenderedRows();
       linkLiveState.clear();
       setLiveLinkFootnoteText('', false);
@@ -3581,8 +3832,8 @@ function initializePreflightPanel() {
         const skippedCount = Array.isArray(payload.linksPayload.skippedRows) ? payload.linksPayload.skippedRows.length : 0;
         if (linksTotalEl) linksTotalEl.textContent = String(payload.linksPayload.totalAnchors);
         if (linksUniqueEl) linksUniqueEl.textContent = String((payload.linksPayload.uniqueCount || 0) + skippedCount);
-        updateLinksSectionPip(payload.linksPayload.linksAlertCount || 0);
         const lrows = Array.isArray(payload.linksPayload.rows) ? payload.linksPayload.rows : [];
+        updateLinksSectionPip(countFlaggedLinkRows(lrows, false));
         cachedSkippedLinkRows = Array.isArray(payload.linksPayload.skippedRows) ? payload.linksPayload.skippedRows : [];
         if (lrows.length) {
           cachedLinksAnalysis = {
@@ -3642,8 +3893,8 @@ function initializePreflightPanel() {
       const skippedCount = Array.isArray(linksPayload.skippedRows) ? linksPayload.skippedRows.length : 0;
       linksTotalEl.textContent = String(linksPayload.totalAnchors);
       linksUniqueEl.textContent = String((linksPayload.uniqueCount || 0) + skippedCount);
-      updateLinksSectionPip(linksPayload.linksAlertCount || 0);
       const lrows = Array.isArray(linksPayload.rows) ? linksPayload.rows : [];
+      updateLinksSectionPip(countFlaggedLinkRows(lrows, false));
       cachedSkippedLinkRows = Array.isArray(linksPayload.skippedRows) ? linksPayload.skippedRows : [];
       if (lrows.length) {
         cachedLinksAnalysis = {
@@ -3752,6 +4003,7 @@ function initializePreflightPanel() {
       }
       latestLinksAlertCount = preflightHideLinksSection ? 0 : (linkAnalysis.linksAlertCount || 0);
       latestNotifyAlertCount = latestNotifyAlertCount || 0;
+      adoptLinksAnalysisFromScan(linkAnalysis);
       persistAndUpdateOverallAlertPip();
       await updateImagesMetricsUI({
         state: 'error',
@@ -3759,6 +4011,7 @@ function initializePreflightPanel() {
         linksPayload,
         preserveAccessibilityUi: skipAccessibilityScan
       });
+      void runPreflightEslValidation(scanToken);
       return { ok: false, reason: 'measure-failed', totalReferences: 0, totalLinkAnchors: linkAnalysis.totalAnchors };
     }
     if (currentScanToken !== scanToken) return { ok: false, reason: 'stale-scan', totalReferences: 0 };
@@ -3811,6 +4064,7 @@ function initializePreflightPanel() {
     }
     latestLinksAlertCount = linksAlertCount;
     latestNotifyAlertCount = notifyAlertCount;
+    adoptLinksAnalysisFromScan(linkAnalysis);
     persistAndUpdateOverallAlertPip();
 
     const unknownSuffix = sizeData.unknownCount > 0 ? ` (+ ${sizeData.unknownCount} unknown)` : '';
@@ -3851,6 +4105,7 @@ function initializePreflightPanel() {
           : `Image weight analysis requires permission. Link checks: ${linksAlertCount} issue(s). Accessibility: ${missingAltCount} linked image(s) missing ALT; ${linkTitlesCount} link(s) with title attributes. Text "Notify" matches: ${notifyAlertCount}.`
       });
     }
+    void runPreflightEslValidation(scanToken);
     return { ok: true, reason: 'success', totalReferences: refs.length, totalLinkAnchors: linkAnalysis.totalAnchors };
   }
 
@@ -4140,6 +4395,11 @@ function initializePreflightPanel() {
       }
       if (changes[PREFLIGHT_ICON_PIP_TOGGLES_KEY]) {
         cachedPreflightIconPipToggles = normalizePreflightIconPipToggles(changes[PREFLIGHT_ICON_PIP_TOGGLES_KEY].newValue);
+        if (cachedLinksAnalysis && !preflightHideLinksSection) {
+          latestLinksAlertCount = countFlaggedLinkRows(cachedLinksAnalysis.rows, true);
+        } else if (preflightHideLinksSection) {
+          latestLinksAlertCount = 0;
+        }
         persistAndUpdateOverallAlertPip();
         return;
       }

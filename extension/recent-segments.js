@@ -18,6 +18,8 @@ console.log("[Gem] recent-segments.js loaded");
   let recentSegmentsInitialized = false;
   let initialSegmentLoadLogged = false;
   let showAllRecentSegments = false;
+  let lastKnownCampaignCategory = null;
+  let recentSegmentsRefreshTimer = null;
 
   function isDebugEnabled() {
     try {
@@ -500,6 +502,32 @@ console.log("[Gem] recent-segments.js loaded");
     renderRecentSegmentsList(recentSegmentsCache);
   }
 
+  function scheduleRecentSegmentsRefresh() {
+    if (recentSegmentsRefreshTimer) clearTimeout(recentSegmentsRefreshTimer);
+    recentSegmentsRefreshTimer = setTimeout(() => {
+      recentSegmentsRefreshTimer = null;
+      if (!isRecentSegmentsAllowed()) {
+        removeRecentSegmentsUI();
+        return;
+      }
+      loadRecentSegments(refreshRecentSegmentsUI);
+    }, 50);
+  }
+
+  function syncCampaignCategoryFromPage(reason) {
+    const current = getCampaignCategoryId();
+    if (lastKnownCampaignCategory === current) return false;
+    debug("campaign_category changed", {
+      value: current,
+      previous: lastKnownCampaignCategory,
+      reason: reason || "unknown",
+    });
+    lastKnownCampaignCategory = current;
+    showAllRecentSegments = false;
+    scheduleRecentSegmentsRefresh();
+    return true;
+  }
+
   function logSegmentId(segmentId) {
     const id = String(segmentId || "").trim();
     const campaignCategory = getCampaignCategoryId();
@@ -604,13 +632,51 @@ console.log("[Gem] recent-segments.js loaded");
 
   function bindCampaignCategoryListener() {
     const categorySelect = document.querySelector(CAMPAIGN_CATEGORY_SELECT_SELECTOR);
-    if (!categorySelect || categorySelect.dataset.gemRecentSegmentsBound === "true") return;
-    categorySelect.dataset.gemRecentSegmentsBound = "true";
-    categorySelect.addEventListener("change", () => {
-      debug("campaign_category changed", { value: getCampaignCategoryId() });
-      showAllRecentSegments = false;
+    if (categorySelect && categorySelect.dataset.gemRecentSegmentsBound !== "true") {
+      categorySelect.dataset.gemRecentSegmentsBound = "true";
+      categorySelect.addEventListener(
+        "change",
+        () => {
+          syncCampaignCategoryFromPage("select-change");
+        },
+        true,
+      );
+    }
+
+    if (bindCampaignCategoryListener._documentBound) return;
+    bindCampaignCategoryListener._documentBound = true;
+
+    document.addEventListener(
+      "change",
+      (event) => {
+        const target = event.target;
+        if (!target || typeof target.matches !== "function") return;
+        if (!target.matches(CAMPAIGN_CATEGORY_SELECT_SELECTOR)) return;
+        syncCampaignCategoryFromPage("document-change");
+      },
+      true,
+    );
+
+    setInterval(() => {
+      if (!recentSegmentsInitialized) return;
+      syncCampaignCategoryFromPage("poll");
+    }, SEGMENT_DETECT_INTERVAL_MS);
+  }
+
+  function bindSegmentSelectOptionsWatcher() {
+    const segmentSelect = document.getElementById(SEGMENT_SELECT_ID);
+    if (!segmentSelect || segmentSelect.dataset.gemRecentSegmentsOptionsBound === "true") return;
+    segmentSelect.dataset.gemRecentSegmentsOptionsBound = "true";
+
+    const sync = () => {
+      if (syncCampaignCategoryFromPage("segment-options")) return;
       if (!isRecentSegmentsAllowed()) return;
-      loadRecentSegments(refreshRecentSegmentsUI);
+      scheduleRecentSegmentsRefresh();
+    };
+
+    new MutationObserver(sync).observe(segmentSelect, {
+      childList: true,
+      subtree: true,
     });
   }
 
@@ -642,6 +708,8 @@ console.log("[Gem] recent-segments.js loaded");
     if (!onDetailsPage) return;
 
     const start = () => {
+      bindCampaignCategoryListener();
+
       if (recentSegmentsInitialized) return;
 
       const sourceSelect = document.getElementById(SOURCE_SELECT_ID);
@@ -657,6 +725,7 @@ console.log("[Gem] recent-segments.js loaded");
       }
 
       recentSegmentsInitialized = true;
+      lastKnownCampaignCategory = getCampaignCategoryId();
       syncCombinedSegmentTableState();
       warn("start — DOM ready", getSegmentDebugSnapshot());
       debug("start", getSegmentDebugSnapshot());
@@ -665,6 +734,7 @@ console.log("[Gem] recent-segments.js loaded");
       bindCampaignCategoryListener();
       bindSegmentSelectListener();
       bindSegmentSelectDisabledWatcher();
+      bindSegmentSelectOptionsWatcher();
       logCurrentSegmentOnLoad();
     };
 

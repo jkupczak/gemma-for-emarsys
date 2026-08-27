@@ -14,7 +14,7 @@
   const DEFAULT_DESKTOP_WIDTH = 620;
   const DEFAULT_MOBILE_WIDTH = 414;
   const DEFAULT_ZOOM = '50';
-  const DEFAULT_PREVIEW_SORT = 'asc';
+  const DEFAULT_PREVIEW_SORT = 'picker';
   const DEFAULT_PIN_ACTIVE_EMAIL = true;
   const DEFAULT_CONTENT_VIEW = 'previews';
   const DEFAULT_SHOW_SUBJECT_PREVIEW = false;
@@ -243,7 +243,9 @@
   }
 
   function normalizeComparePreviewSort(value) {
-    return String(value) === 'desc' ? 'desc' : DEFAULT_PREVIEW_SORT;
+    const v = String(value || '').trim();
+    if (v === 'picker' || v === 'asc' || v === 'desc') return v;
+    return DEFAULT_PREVIEW_SORT;
   }
 
   function normalizeCompareSyncPinActiveEmail(value) {
@@ -716,7 +718,13 @@
   function syncCompareLayoutControlsUi(modal) {
     if (!modal) return;
     const sortSelect = modal.querySelector('.gem-compare-languages-modal__sort-select');
-    if (sortSelect) sortSelect.value = comparePreviewSortOrder;
+    if (!sortSelect) return;
+    const pickerOpt = sortSelect.querySelector('option[value="picker"]');
+    if (pickerOpt) {
+      const mode = String(modal.dataset.gemCompareMode || '').trim();
+      pickerOpt.textContent = mode === 'versions' ? 'Version order' : 'Language order';
+    }
+    sortSelect.value = comparePreviewSortOrder;
   }
 
   function syncCompareDeviceWidthInput(modal) {
@@ -1114,6 +1122,7 @@
               <label class="gem-compare-languages-modal__sort-field">
                 <span class="gem-compare-languages-modal__sort-label">Sort</span>
                 <select class="gem-compare-languages-modal__sort-select" aria-label="Sort previews">
+                  <option value="picker">Language order</option>
                   <option value="asc">A → Z</option>
                   <option value="desc">Z → A</option>
                 </select>
@@ -1245,24 +1254,35 @@
     compareModalEscapeUnsub = null;
   }
 
-  function sortCompareEntries(entries, { pinnedEntryKey, getEntryKey, getSortLabel }) {
+  function sortCompareEntries(entries, { pinnedEntryKey, getEntryKey, getSortLabel, getSourceIndex }) {
     const sortOrder = comparePreviewSortOrder;
     const pinnedKey = String(pinnedEntryKey || '').trim();
+    const indexed = entries.map((entry, index) => ({
+      entry,
+      index: typeof getSourceIndex === 'function' ? Number(getSourceIndex(entry, index)) : index,
+    }));
 
-    return entries.slice().sort((a, b) => {
+    indexed.sort((a, b) => {
       if (pinnedKey) {
-        const aKey = String(getEntryKey(a) || '').trim();
-        const bKey = String(getEntryKey(b) || '').trim();
+        const aKey = String(getEntryKey(a.entry) || '').trim();
+        const bKey = String(getEntryKey(b.entry) || '').trim();
         if (aKey === pinnedKey && bKey !== pinnedKey) return -1;
         if (aKey !== pinnedKey && bKey === pinnedKey) return 1;
       }
-      const cmp = String(getSortLabel(a)).localeCompare(
-        String(getSortLabel(b)),
+      if (sortOrder === 'picker') {
+        const aIdx = Number.isFinite(a.index) ? a.index : Number.MAX_SAFE_INTEGER;
+        const bIdx = Number.isFinite(b.index) ? b.index : Number.MAX_SAFE_INTEGER;
+        return aIdx - bIdx;
+      }
+      const cmp = String(getSortLabel(a.entry)).localeCompare(
+        String(getSortLabel(b.entry)),
         undefined,
         { sensitivity: 'base' }
       );
       return sortOrder === 'desc' ? -cmp : cmp;
     });
+
+    return indexed.map((item) => item.entry);
   }
 
   function getScrollColumnsEl(root) {

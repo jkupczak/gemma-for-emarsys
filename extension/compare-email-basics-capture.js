@@ -201,7 +201,9 @@
       const sid = String(sessionId || '').trim();
       if (sid) url.searchParams.set('session_id', sid);
       if (stripped) url.searchParams.set('gemStripped', 'true');
-      return url.toString();
+      return typeof window.gemHrefPreserveQuerySlashes === 'function'
+        ? window.gemHrefPreserveQuerySlashes(url)
+        : url.toString().replace(/\?[^#]*/, (query) => query.replace(/%2F/gi, '/'));
     } catch (_) {
       return '';
     }

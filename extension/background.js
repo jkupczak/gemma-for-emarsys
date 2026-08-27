@@ -13,6 +13,19 @@ let rcTabsRefreshTimer = null;
 const RC_TABS_REFRESH_DEBOUNCE_MS = 300;
 const EMARSYS_TAB_URL_PATTERN = 'https://*.emarsys.net/*';
 
+function bgHrefPreserveQuerySlashes(href) {
+  const raw = String(href || '');
+  if (!raw) return raw;
+  const hashIdx = raw.indexOf('#');
+  const hash = hashIdx === -1 ? '' : raw.slice(hashIdx);
+  const withoutHash = hashIdx === -1 ? raw : raw.slice(0, hashIdx);
+  const queryIdx = withoutHash.indexOf('?');
+  if (queryIdx === -1) return raw;
+  return withoutHash.slice(0, queryIdx)
+    + withoutHash.slice(queryIdx).replace(/%2F/gi, '/')
+    + hash;
+}
+
 // --- Emarsys duplicate campaign ---
 
 async function duplicateEmarsysCampaign(sourceCampaignId, token) {
@@ -440,7 +453,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   if (action === "focusOrOpenCampaignTab") {
     const campaignId = String(msg.campaignId || "").trim();
-    const targetUrl = String(msg.targetUrl || "").trim();
+    const targetUrl = bgHrefPreserveQuerySlashes(String(msg.targetUrl || "").trim());
     if (!campaignId || !targetUrl) {
       sendResponse({ ok: false, reason: "missing_campaign_id_or_url" });
       return;
@@ -900,7 +913,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         });
       }
 
-      chrome.tabs.create({ url, active: false }, (tab) => {
+      chrome.tabs.create({ url: bgHrefPreserveQuerySlashes(url), active: false }, (tab) => {
         if (!tab || tab.id == null || chrome.runtime.lastError) {
           finish({
             ok: false,
@@ -1024,7 +1037,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   if (action === 'openInNewTab') {
-    const url = String(msg.url || '').trim();
+    const url = bgHrefPreserveQuerySlashes(String(msg.url || '').trim());
     if (url) {
       const active = msg.active !== false;
       chrome.tabs.create({ url, active });

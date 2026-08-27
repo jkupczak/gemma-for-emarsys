@@ -42,18 +42,18 @@ console.log('[Gem] command-palette.js loaded');
   ];
 
   const PANEL_TABS = [
-    { tabId: 'emailBasicsTab', label: 'Email Basics' },
-    { tabId: 'blocksTab', label: 'Blocks' },
-    { tabId: 'linksTab', label: 'Links' },
-    { tabId: 'latestMediaTab', label: 'Recent Media' },
-    { tabId: 'variablesEditorTab', label: 'Style Settings' },
-    { tabId: 'versionsTab', label: 'Versions' },
-    { tabId: 'localesTab', label: 'Languages' },
-    { tabId: 'customTab_personaliztation', label: 'Personalization' },
-    { tabId: 'gem-snippets-tab', label: 'Gemma Snippets' },
-    { tabId: 'gem-find-replace-tab', label: 'Gemma Find and Replace' },
-    { tabId: 'gem-magic-fill-tab', label: 'Gemma Magic Fill' },
-    { tabId: 'gem-preflight-tab', label: 'Gemma Preflight' },
+    { tabId: 'emailBasicsTab', label: 'Email Basics', sectionId: 'panels', sectionTitle: 'Campaign Panels' },
+    { tabId: 'blocksTab', label: 'Blocks', sectionId: 'panels', sectionTitle: 'Campaign Panels' },
+    { tabId: 'linksTab', label: 'Links', sectionId: 'panels', sectionTitle: 'Campaign Panels' },
+    { tabId: 'latestMediaTab', label: 'Recent Media', sectionId: 'panels', sectionTitle: 'Campaign Panels' },
+    { tabId: 'variablesEditorTab', label: 'Style Settings', sectionId: 'panels', sectionTitle: 'Campaign Panels' },
+    { tabId: 'versionsTab', label: 'Versions', sectionId: 'panels', sectionTitle: 'Campaign Panels' },
+    { tabId: 'localesTab', label: 'Languages', sectionId: 'panels', sectionTitle: 'Campaign Panels' },
+    { tabId: 'customTab_personaliztation', label: 'Personalization', sectionId: 'panels', sectionTitle: 'Campaign Panels' },
+    { tabId: 'gem-snippets-tab', label: 'Gemma Snippets', sectionId: 'gemma-campaign-panels', sectionTitle: 'Gemma Campaign Panels' },
+    { tabId: 'gem-find-replace-tab', label: 'Gemma Find and Replace', sectionId: 'gemma-campaign-panels', sectionTitle: 'Gemma Campaign Panels' },
+    { tabId: 'gem-magic-fill-tab', label: 'Gemma Magic Fill', sectionId: 'gemma-campaign-panels', sectionTitle: 'Gemma Campaign Panels' },
+    { tabId: 'gem-preflight-tab', label: 'Gemma Preflight', sectionId: 'gemma-campaign-panels', sectionTitle: 'Gemma Campaign Panels' },
   ];
 
   let paletteEl = null;
@@ -127,6 +127,24 @@ console.log('[Gem] command-palette.js loaded');
     return terms.every((term) => hay.includes(term));
   }
 
+  function applyPinnedIds(raw, { persist = false } = {}) {
+    const next = [];
+    const seen = new Set();
+    (Array.isArray(raw) ? raw : []).forEach((id) => {
+      const normalized = normalizeCommandId(id);
+      if (!normalized || seen.has(normalized)) return;
+      seen.add(normalized);
+      next.push(normalized);
+    });
+    const previous = Array.isArray(raw)
+      ? raw.map((id) => String(id || '').trim()).filter(Boolean)
+      : [];
+    const changed = previous.length !== next.length || previous.some((id, index) => id !== next[index]);
+    pinnedIds = next;
+    if (persist && changed) savePinnedIds();
+    return pinnedIds;
+  }
+
   function loadPinnedIds(callback) {
     if (!chrome?.storage?.sync) {
       pinnedIds = [];
@@ -134,10 +152,7 @@ console.log('[Gem] command-palette.js loaded');
       return;
     }
     chrome.storage.sync.get({ [PINNED_STORAGE_KEY]: [] }, (res) => {
-      const raw = res[PINNED_STORAGE_KEY];
-      pinnedIds = Array.isArray(raw)
-        ? raw.map((id) => String(id || '').trim()).filter(Boolean)
-        : [];
+      applyPinnedIds(res[PINNED_STORAGE_KEY], { persist: true });
       if (callback) callback(pinnedIds);
     });
   }
@@ -239,25 +254,59 @@ console.log('[Gem] command-palette.js loaded');
       url.searchParams.set('r', CAMPAIGN_ROUTE);
       url.searchParams.set('id', id);
       url.hash = '';
-      return url.href;
+      return toEmarsysHref(url);
     } catch (_) {
       return '';
     }
+  }
+
+  function toEmarsysHref(urlOrHref) {
+    if (typeof window.gemHrefPreserveQuerySlashes === 'function') {
+      return window.gemHrefPreserveQuerySlashes(urlOrHref);
+    }
+    const href = typeof urlOrHref === 'string'
+      ? urlOrHref
+      : (urlOrHref && urlOrHref.href) || '';
+    return href.replace(/\?[^#]*/, (query) => query.replace(/%2F/gi, '/'));
   }
 
   function withCurrentSessionId(href) {
     try {
       const current = new URL(window.location.href);
       const sessionId = (current.searchParams.get('session_id') || '').trim();
-      if (!sessionId) return href;
       const target = new URL(href, window.location.origin);
-      if (!target.searchParams.get('session_id')) {
-        target.searchParams.set('session_id', sessionId);
-      }
-      return target.href;
+      if (sessionId) target.searchParams.set('session_id', sessionId);
+      return toEmarsysHref(target);
     } catch (_) {
       return href;
     }
+  }
+
+  function stableNavHref(href) {
+    try {
+      const url = new URL(href, window.location.origin);
+      const params = [...url.searchParams.entries()]
+        .filter(([key]) => key !== 'session_id')
+        .sort(([a], [b]) => a.localeCompare(b));
+      const query = params
+        .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value).replace(/%2F/gi, '/')}`)
+        .join('&');
+      return toEmarsysHref(`${url.origin}${url.pathname}${query ? `?${query}` : ''}${url.hash}`);
+    } catch (_) {
+      return String(href || '').trim();
+    }
+  }
+
+  function normalizeCommandId(id) {
+    const raw = String(id || '').trim();
+    if (!raw.startsWith('nav:')) return raw;
+    const href = raw.slice(4);
+    const stable = stableNavHref(href);
+    return stable ? `nav:${stable}` : raw;
+  }
+
+  function commandIdsEqual(a, b) {
+    return normalizeCommandId(a) === normalizeCommandId(b);
   }
 
   function focusOrOpenCampaign(campaignId, targetUrl) {
@@ -383,8 +432,8 @@ console.log('[Gem] command-palette.js loaded');
     return PANEL_TABS.map((tab) =>
       makeCommand({
         id: `panel:${tab.tabId}`,
-        sectionId: 'panels',
-        sectionTitle: 'Campaign Panels',
+        sectionId: tab.sectionId,
+        sectionTitle: tab.sectionTitle,
         label: tab.label,
         run: () => {
           activateVerticalNavTab(tab.tabId);
@@ -480,8 +529,8 @@ console.log('[Gem] command-palette.js loaded');
     const panelDefs = PANEL_TABS.map((tab) => ({
       id: `panel:${tab.tabId}`,
       label: tab.label,
-      sectionId: 'panels',
-      sectionTitle: 'Campaign Panels',
+      sectionId: tab.sectionId,
+      sectionTitle: tab.sectionTitle,
     }));
     return [...CAMPAIGN_OVERFLOW_DEFS, ...panelDefs, ...GEMMA_FUNCTION_DEFS].map((def) => ({
       id: def.id,
@@ -495,14 +544,14 @@ console.log('[Gem] command-palette.js loaded');
     const id = String(commandId || '').trim();
     if (!id) return false;
     const commands = buildAllCommands();
-    return commands.some((entry) => entry.id === id);
+    return commands.some((entry) => commandIdsEqual(entry.id, id));
   }
 
   function gemRunPaletteCommandById(commandId) {
     const id = String(commandId || '').trim();
     if (!id) return false;
     const commands = buildAllCommands();
-    const cmd = commands.find((entry) => entry.id === id);
+    const cmd = commands.find((entry) => commandIdsEqual(entry.id, id));
     if (!cmd || typeof cmd.run !== 'function') return false;
     try {
       cmd.run();
@@ -542,15 +591,16 @@ console.log('[Gem] command-palette.js loaded');
       } catch (_) {
         return;
       }
+      const stableUrl = stableNavHref(absoluteUrl);
       const sectionId = `emarsys-nav-${slugify(sectionTitle)}`;
       commands.push(
         makeCommand({
-          id: `nav:${absoluteUrl}`,
+          id: `nav:${stableUrl}`,
           sectionId,
           sectionTitle,
           label,
           run: () => {
-            window.location.assign(absoluteUrl);
+            window.location.assign(withCurrentSessionId(stableUrl));
           },
         })
       );
@@ -605,12 +655,16 @@ console.log('[Gem] command-palette.js loaded');
   }
 
   function getCommandById(id) {
-    return renderedCommands.find((cmd) => cmd.id === id) || allCommands.find((cmd) => cmd.id === id) || null;
+    return (
+      renderedCommands.find((cmd) => commandIdsEqual(cmd.id, id))
+      || allCommands.find((cmd) => commandIdsEqual(cmd.id, id))
+      || null
+    );
   }
 
   function buildPinnedCommands(commands) {
-    const byId = new Map(commands.map((cmd) => [cmd.id, cmd]));
-    return pinnedIds.map((id) => byId.get(id)).filter(Boolean);
+    const byId = new Map(commands.map((cmd) => [normalizeCommandId(cmd.id), cmd]));
+    return pinnedIds.map((id) => byId.get(normalizeCommandId(id))).filter(Boolean);
   }
 
   function groupCommands(commands, options = {}) {
@@ -703,7 +757,7 @@ console.log('[Gem] command-palette.js loaded');
           <div class="gem-command-palette__rows">
             ${group.commands
               .map((cmd) => {
-                const pinned = pinnedIds.includes(cmd.id);
+                const pinned = pinnedIds.some((id) => commandIdsEqual(id, cmd.id));
                 const pinClass = pinned ? ' gem-command-palette__pin--active' : '';
                 const pinBtn =
                   cmd.pinnable === false
@@ -755,12 +809,12 @@ console.log('[Gem] command-palette.js loaded');
   }
 
   function togglePin(commandId) {
-    const id = String(commandId || '').trim();
+    const id = normalizeCommandId(commandId);
     if (!id) return;
-    if (pinnedIds.includes(id)) {
-      pinnedIds = pinnedIds.filter((x) => x !== id);
+    if (pinnedIds.some((pinned) => commandIdsEqual(pinned, id))) {
+      pinnedIds = pinnedIds.filter((x) => !commandIdsEqual(x, id));
     } else {
-      pinnedIds = [id, ...pinnedIds.filter((x) => x !== id)];
+      pinnedIds = [id, ...pinnedIds.filter((x) => !commandIdsEqual(x, id))];
     }
     savePinnedIds();
     renderCommandList();
@@ -943,10 +997,7 @@ console.log('[Gem] command-palette.js loaded');
     if (chrome?.storage?.onChanged) {
       chrome.storage.onChanged.addListener((changes, area) => {
         if (area === 'sync' && changes[PINNED_STORAGE_KEY]) {
-          const raw = changes[PINNED_STORAGE_KEY].newValue;
-          pinnedIds = Array.isArray(raw)
-            ? raw.map((id) => String(id || '').trim()).filter(Boolean)
-            : [];
+          applyPinnedIds(changes[PINNED_STORAGE_KEY].newValue);
           refreshAndRenderIfOpen();
         }
         if (area === 'sync') {

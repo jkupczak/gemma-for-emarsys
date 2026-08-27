@@ -16,6 +16,7 @@
     showAssociatedText: false,
     showTotals: true,
     showFrequency: false,
+    showEslValidation: true,
   };
 
   const SVG_LOCK = '<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor" aria-hidden="true"><path d="M240-80q-33 0-56.5-23.5T160-160v-400q0-33 23.5-56.5T240-640h40v-80q0-83 58.5-141.5T480-920q83 0 141.5 58.5T680-720v80h40q33 0 56.5 23.5T800-560v400q0 33-23.5 56.5T720-80H240Zm0-80h480v-400H240v400Zm296.5-143.5Q560-327 560-360t-23.5-56.5Q513-440 480-440t-56.5 23.5Q400-393 400-360t23.5 56.5Q447-280 480-280t56.5-23.5ZM360-640h240v-80q0-50-35-85t-85-35q-50 0-85 35t-35 85v80ZM240-160v-400 400Z"/></svg>';
@@ -31,12 +32,16 @@
   let showAssociatedText = false;
   let showTotals = true;
   let showFrequency = false;
+  let showEslValidation = true;
   let lastReviewLinksColumns = null;
   let lastReviewLinksModal = null;
   let lastReviewLinksPanel = null;
   let reviewLinksPrefsLoaded = false;
   let reviewLinksPrefsLoadPromise = null;
   let reviewLinksPrefsStorageListenerBound = false;
+  let reviewLinksEslGeneration = 0;
+  /** @type {Map<string, { status: string, errors: string[] }>} */
+  const reviewLinksEslCache = new Map();
 
   function escapeHtml(str) {
     return String(str || '')
@@ -66,6 +71,7 @@
       showAssociatedText: !!prefs.showAssociatedText,
       showTotals: prefs.showTotals !== false,
       showFrequency: !!prefs.showFrequency,
+      showEslValidation: prefs.showEslValidation !== false,
     };
   }
 
@@ -78,6 +84,7 @@
       showAssociatedText,
       showTotals,
       showFrequency,
+      showEslValidation,
     });
   }
 
@@ -90,7 +97,8 @@
       && left.showTrackedStatus === right.showTrackedStatus
       && left.showAssociatedText === right.showAssociatedText
       && left.showTotals === right.showTotals
-      && left.showFrequency === right.showFrequency;
+      && left.showFrequency === right.showFrequency
+      && left.showEslValidation === right.showEslValidation;
   }
 
   function applyReviewLinksPrefs(raw) {
@@ -102,6 +110,7 @@
     showAssociatedText = prefs.showAssociatedText;
     showTotals = prefs.showTotals;
     showFrequency = prefs.showFrequency;
+    showEslValidation = prefs.showEslValidation;
   }
 
   function persistReviewLinksPrefs() {
@@ -151,6 +160,7 @@
 
       if (typeof common.getContentView === 'function' && common.getContentView() === 'links') {
         refreshReviewLinksView();
+        if (showEslValidation) void runReviewLinksEslValidation();
       }
     });
   }
@@ -212,6 +222,136 @@
     }
   }
 
+  function clearReviewLinksEslCache() {
+    reviewLinksEslGeneration += 1;
+    reviewLinksEslCache.clear();
+  }
+
+  function collectUniqueReviewLinksHrefs(columns) {
+    const seen = new Set();
+    (Array.isArray(columns) ? columns : []).forEach((column) => {
+      (Array.isArray(column && column.links) ? column.links : []).forEach((link) => {
+        const href = String(link && link.href || '').trim();
+        if (href) seen.add(href);
+      });
+    });
+    return Array.from(seen);
+  }
+
+  function seedReviewLinksEslPending(columns) {
+    collectUniqueReviewLinksHrefs(columns).forEach((href) => {
+      if (!reviewLinksEslCache.has(href)) {
+        reviewLinksEslCache.set(href, { status: 'pending', errors: [] });
+      }
+    });
+  }
+
+  function uniqueEslErrorTexts(errors) {
+    const seen = new Set();
+    const out = [];
+    (Array.isArray(errors) ? errors : []).forEach((text) => {
+      const s = String(text || '').trim();
+      if (!s || seen.has(s)) return;
+      seen.add(s);
+      out.push(s);
+    });
+    return out;
+  }
+
+  function renderReviewLinksEslHtml(href) {
+    if (!showEslValidation) return '';
+    const key = String(href || '').trim();
+    if (!key) return '';
+    const entry = reviewLinksEslCache.get(key);
+    if (!entry) return '';
+    const state = entry.status === 'pending' ? 'waiting' : entry.status;
+    const render = typeof window.gemRenderEslValidatorHeader === 'function'
+      ? window.gemRenderEslValidatorHeader
+      : null;
+    if (!render) return '';
+    const html = render(state, uniqueEslErrorTexts(entry.errors));
+    if (!html) return '';
+    const unavailable = entry.status === 'unavailable';
+    const extraClass = unavailable ? ' gem-review-links__esl--unavailable' : '';
+    const retryAttrs = unavailable
+      ? ` data-action="gem-review-links-esl-retry" data-gem-review-links-href="${escapeHtml(key)}" role="button" tabindex="0" title="Try again"`
+      : '';
+    return `<div class="gem-review-links__esl${extraClass}"${retryAttrs}>${html}</div>`;
+  }
+
+  async function runReviewLinksEslValidation() {
+    if (!showEslValidation) return;
+    if (!lastReviewLinksColumns) return;
+
+    seedReviewLinksEslPending(lastReviewLinksColumns);
+    refreshReviewLinksView();
+
+    const toCheck = [];
+    collectUniqueReviewLinksHrefs(lastReviewLinksColumns).forEach((href) => {
+      const entry = reviewLinksEslCache.get(href);
+      if (!entry || entry.status !== 'pending') return;
+      const name = 'template' + (toCheck.length + 1);
+      toCheck.push({ href: href, name: name, text: href });
+    });
+
+    if (!toCheck.length) return;
+
+    const gen = ++reviewLinksEslGeneration;
+    let result;
+    if (typeof window.gemValidateEslTemplates !== 'function') {
+      result = { status: 'unavailable', errors: [] };
+    } else {
+      try {
+        result = await window.gemValidateEslTemplates(toCheck.map((item) => ({ name: item.name, text: item.text })));
+      } catch (_) {
+        result = { status: 'unavailable', errors: [] };
+      }
+    }
+
+    if (gen !== reviewLinksEslGeneration) return;
+
+    const errorsByName = {};
+    const unnamedErrors = [];
+    (result && Array.isArray(result.errors) ? result.errors : []).forEach((err) => {
+      const name = String((err && err.template_name) || '').trim();
+      const text = String((err && err.reason_text) || '').trim();
+      if (!text) return;
+      if (!name) {
+        unnamedErrors.push(text);
+        return;
+      }
+      if (!errorsByName[name]) errorsByName[name] = [];
+      errorsByName[name].push(text);
+    });
+
+    const allUnavailable = !result || result.status === 'unavailable' || result.status === 'aborted';
+    toCheck.forEach((item) => {
+      if (allUnavailable) {
+        reviewLinksEslCache.set(item.href, { status: 'unavailable', errors: [] });
+        return;
+      }
+      const errs = (errorsByName[item.name] || []).slice();
+      if (toCheck.length === 1 && !errs.length && unnamedErrors.length) {
+        errs.push.apply(errs, unnamedErrors);
+      }
+      reviewLinksEslCache.set(item.href, {
+        status: errs.length ? 'fail' : 'pass',
+        errors: uniqueEslErrorTexts(errs),
+      });
+    });
+
+    if (!showEslValidation) return;
+    refreshReviewLinksView();
+  }
+
+  function retryReviewLinksEslHref(href) {
+    const key = String(href || '').trim();
+    if (!key) return;
+    reviewLinksEslCache.set(key, { status: 'pending', errors: [] });
+    refreshReviewLinksView();
+    void runReviewLinksEslValidation();
+  }
+
   function getCurrentCampaignId() {
     try {
       return (new URL(window.location.href).searchParams.get('id') || '').trim();
@@ -248,6 +388,7 @@
     lastReviewLinksColumns = null;
     lastReviewLinksModal = null;
     lastReviewLinksPanel = null;
+    clearReviewLinksEslCache();
   }
 
   function ensureDraftSaveComplete(timeoutMs = DRAFT_SAVE_TIMEOUT_MS) {
@@ -332,6 +473,10 @@
     const mode = String(modal?.dataset?.gemCompareMode || '').trim();
 
     if (mode === 'languages' && typeof window.gemGetCompareLanguageCaptures === 'function') {
+      const pickerOrder = new Map(
+        (typeof window.gemGetCampaignLanguages === 'function' ? window.gemGetCampaignLanguages() : [])
+          .map((entry, index) => [String(entry.value || '').trim(), index])
+      );
       return {
         mode,
         entries: window.gemGetCompareLanguageCaptures(),
@@ -341,16 +486,28 @@
           return entry.isMaster ? `${label} (master)` : label;
         },
         getSortLabel: (entry) => String(entry.label || entry.value || ''),
+        getSourceIndex: (entry) => {
+          const key = String(entry.value || '').trim();
+          return pickerOrder.has(key) ? pickerOrder.get(key) : Number.MAX_SAFE_INTEGER;
+        },
       };
     }
 
     if (mode === 'versions' && typeof window.gemGetCompareVersionEntries === 'function') {
+      const pickerOrder = new Map(
+        (typeof window.gemGetCampaignVersions === 'function' ? window.gemGetCampaignVersions() : [])
+          .map((entry, index) => [String(entry.id || '').trim(), index])
+      );
       return {
         mode,
         entries: window.gemGetCompareVersionEntries(),
         getEntryKey: (entry) => entry.id,
         getEntryLabel: (entry) => entry.label || entry.letter || entry.id,
         getSortLabel: (entry) => entry.letter || entry.label || entry.id,
+        getSourceIndex: (entry) => {
+          const key = String(entry.id || '').trim();
+          return pickerOrder.has(key) ? pickerOrder.get(key) : Number.MAX_SAFE_INTEGER;
+        },
       };
     }
 
@@ -584,6 +741,7 @@
             ${lockHtml}
             <span class="gem-review-links__url">${escapeHtml(link.href)}</span>
           </div>
+          ${renderReviewLinksEslHtml(link.href)}
         </td>
       </tr>
     `.trim();
@@ -636,6 +794,21 @@
 
     wrap.addEventListener('mouseleave', () => {
       clearReviewLinksUrlHighlight(wrap);
+    });
+
+    wrap.addEventListener('click', (event) => {
+      const retry = event.target && event.target.closest('[data-action="gem-review-links-esl-retry"]');
+      if (!retry || !wrap.contains(retry)) return;
+      event.preventDefault();
+      retryReviewLinksEslHref(retry.getAttribute('data-gem-review-links-href'));
+    });
+
+    wrap.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      const retry = event.target && event.target.closest('[data-action="gem-review-links-esl-retry"]');
+      if (!retry || !wrap.contains(retry)) return;
+      event.preventDefault();
+      retryReviewLinksEslHref(retry.getAttribute('data-gem-review-links-href'));
     });
   }
 
@@ -738,6 +911,10 @@
           <input type="checkbox" data-gem-review-links-show-totals checked />
           Show Totals
         </label>
+        <label class="gem-compare-languages-modal__links-toolbar-checkbox">
+          <input type="checkbox" data-gem-review-links-show-esl checked />
+          Show ESL Validation
+        </label>
       </div>
     `.trim();
   }
@@ -779,6 +956,11 @@
     const totalsCheckbox = toolbar.querySelector('[data-gem-review-links-show-totals]');
     if (totalsCheckbox) {
       totalsCheckbox.checked = showTotals;
+    }
+
+    const eslCheckbox = toolbar.querySelector('[data-gem-review-links-show-esl]');
+    if (eslCheckbox) {
+      eslCheckbox.checked = showEslValidation;
     }
   }
 
@@ -846,6 +1028,14 @@
         showTotals = !!target.checked;
         persistReviewLinksPrefs();
         refreshReviewLinksView();
+        return;
+      }
+
+      if (target.matches('[data-gem-review-links-show-esl]')) {
+        showEslValidation = !!target.checked;
+        persistReviewLinksPrefs();
+        refreshReviewLinksView();
+        if (showEslValidation) void runReviewLinksEslValidation();
       }
     });
   }
@@ -861,7 +1051,8 @@
       if (!toolbar.dataset.gemReviewLinksToolbarReady
         || !toolbar.querySelector('[data-gem-review-links-tracking]')
         || !toolbar.querySelector('[data-gem-review-links-show-totals]')
-        || !toolbar.querySelector('[data-gem-review-links-show-frequency]')) {
+        || !toolbar.querySelector('[data-gem-review-links-show-frequency]')
+        || !toolbar.querySelector('[data-gem-review-links-show-esl]')) {
         toolbar.innerHTML = buildReviewLinksToolbarHtml();
         toolbar.dataset.gemReviewLinksToolbarReady = 'true';
         bindReviewLinksToolbar(targetModal);
@@ -893,10 +1084,12 @@
       pinnedEntryKey: null,
       getEntryKey: active.getEntryKey,
       getSortLabel: active.getSortLabel,
+      getSourceIndex: active.getSourceIndex,
     });
 
     const generation = ++linksFetchGeneration;
     linksFetchInFlight = true;
+    clearReviewLinksEslCache();
 
     renderReviewLinksColumns(targetModal, panel, sortedEntries.map((entry) => ({
       key: active.getEntryKey(entry),
@@ -961,10 +1154,12 @@
         };
       });
 
-      renderReviewLinksColumns(targetModal, panel, orderedColumns);
       lastReviewLinksColumns = orderedColumns;
       lastReviewLinksModal = targetModal;
       lastReviewLinksPanel = panel;
+      if (showEslValidation) seedReviewLinksEslPending(orderedColumns);
+      renderReviewLinksColumns(targetModal, panel, orderedColumns);
+      if (showEslValidation) void runReviewLinksEslValidation();
     } finally {
       if (generation === linksFetchGeneration) {
         linksFetchInFlight = false;

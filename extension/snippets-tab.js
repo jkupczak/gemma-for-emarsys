@@ -5783,6 +5783,8 @@ function initializeSnippetsTab() {
     // Enter key on form to submit
     const handleEnter = (event) => {
       if (event.key === 'Enter' && event.ctrlKey) {
+        const okBtn = document.getElementById('gem-modal-ok-btn');
+        if (okBtn && (okBtn.disabled || okBtn.getAttribute('aria-disabled') === 'true')) return;
         handleSnippetSave(snippetId);
       }
     };
@@ -5803,6 +5805,9 @@ function initializeSnippetsTab() {
 
   // Function to handle saving a snippet (create or update)
   function handleSnippetSave(editingSnippetId = null) {
+    const okBtn = document.getElementById('gem-modal-ok-btn');
+    if (okBtn && (okBtn.disabled || okBtn.getAttribute('aria-disabled') === 'true')) return;
+
     const categoryInput = document.getElementById('gem-snippet-category-input');
     const nameInput = document.getElementById('gem-snippet-name-input');
     const codeInput = document.getElementById('gem-snippet-code-input');

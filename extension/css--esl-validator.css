@@ -1,0 +1,40 @@
+/* Gemma ESL validator chrome — matches Emarsys e-validator states. */
+
+.gem-esl-validator {
+  margin-top: 8px;
+  width: 100%;
+}
+
+.gem-esl-validator[hidden] {
+  display: none !important;
+}
+
+e-validator-header .e-validator__header {
+  padding:4px 0 !important;
+  gap:5px !important;
+}
+
+e-validator-header .e-validator__icon {
+  width: auto !important;
+}
+
+e-validator-header .e-validator__icon e-busy-indicator {
+  vertical-align: middle !important;
+}
+
+e-validator-header .e-validator__icon {
+  margin-right:0 !important;
+}
+
+e-validator-header .e-validator__title {
+  font-size: 13px !important;
+  opacity: 0.8 !important;
+}
+
+e-validator-header .e-icon {
+  margin-right:0 !important;
+}
+
+.gem-esl-validator[data-state="unavailable"] {
+  cursor: pointer;
+}

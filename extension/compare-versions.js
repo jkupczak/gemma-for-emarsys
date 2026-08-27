@@ -68,7 +68,9 @@
       const sid = getCurrentSessionId();
       if (sid) url.searchParams.set('session_id', sid);
       url.searchParams.set('gemStripped', 'true');
-      return url.toString();
+      return typeof window.gemHrefPreserveQuerySlashes === 'function'
+        ? window.gemHrefPreserveQuerySlashes(url)
+        : url.toString().replace(/\?[^#]*/, (query) => query.replace(/%2F/gi, '/'));
     } catch (_) {
       return '';
     }
@@ -96,10 +98,17 @@
   function sortComparisonVersions(versions) {
     const activeId = getCurrentCampaignId();
     const pinnedEntryKey = common.resolvePinnedEntryKey(COMPARE_MODE, activeId);
+    const pickerOrder = new Map(
+      getCampaignVersions().map((entry, index) => [String(entry.id || '').trim(), index])
+    );
     return common.sortEntries(versions, {
       pinnedEntryKey,
       getEntryKey: (entry) => entry.id,
       getSortLabel: (entry) => entry.letter || entry.label || '',
+      getSourceIndex: (entry) => {
+        const key = String(entry.id || '').trim();
+        return pickerOrder.has(key) ? pickerOrder.get(key) : Number.MAX_SAFE_INTEGER;
+      },
     });
   }
 

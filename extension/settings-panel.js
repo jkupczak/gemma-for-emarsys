@@ -44,6 +44,7 @@ const GEM_PREFLIGHT_ICON_PIP_TOGGLES_DEFAULT = {
   missingAlt: true,
   linkTitles: true,
   linkLint: true,
+  eslValidation: true,
   imageWeight: true
 };
 const GEM_PREFLIGHT_DEFAULT_TOTAL_IMAGE_WEIGHT_THRESHOLD_VALUE = 3;
@@ -52,10 +53,108 @@ const GEM_PREFLIGHT_DEFAULT_IMAGE_WEIGHT_THRESHOLD_UNIT = 'MB';
 const GEM_COMPARE_LANGUAGES_DESKTOP_WIDTH_KEY = 'gemCompareLanguagesDesktopWidth';
 const GEM_COMPARE_LANGUAGES_MOBILE_WIDTH_KEY = 'gemCompareLanguagesMobileWidth';
 const GEM_CAMPAIGN_PREVIEW_TOOLBAR_VISIBLE_KEY = 'gemCampaignPreviewToolbarVisible';
+const GEM_CAMPAIGN_TAB_TITLE_REGEX_KEY = 'gemCampaignTabTitleRegex';
+const GEM_CAMPAIGN_TAB_TITLE_FORMAT_KEY = 'gemCampaignTabTitleFormat';
 const GEM_SNIPPET_CONTEXT_MENU_TRIGGER_KEY = 'gemSnippetContextMenuTrigger';
 const GEM_SNIPPET_CONTEXT_MENU_TRIGGER_DEFAULT = 'right-click';
 const GEM_SNIPPET_CONTEXT_MENU_ENABLED_KEY = 'gemSnippetContextMenuEnabled';
 const GEM_SNIPPET_CONTEXT_MENU_REQUIRE_MOD_KEY = 'gemSnippetContextMenuRequireMod';
+
+function compileCampaignTabTitleRegex(source) {
+  const trimmed = String(source || "").trim();
+  if (!trimmed) return null;
+  const wrapped = trimmed.match(/^\/([\s\S]+)\/([gimsuy]*)$/);
+  if (wrapped) {
+    const flags = String(wrapped[2] || "").replace(/g/g, "");
+    return new RegExp(wrapped[1], flags);
+  }
+  return new RegExp(trimmed);
+}
+
+function applyCampaignTabTitleFormat(match, format) {
+  return String(format || "").replace(/\$(\$|&|0|[1-9]\d?)|\$<([^>]+)>/g, (_whole, token, named) => {
+    if (named) {
+      const groups = match.groups || {};
+      return groups[named] != null ? String(groups[named]) : "";
+    }
+    if (token === "$") return "$";
+    if (token === "&" || token === "0") return match[0] || "";
+    const index = Number(token);
+    if (index > 0 && index < match.length && match[index] != null) return String(match[index]);
+    return "";
+  });
+}
+
+function extractCampaignTabTitle(campaignName, patternSource, formatSource) {
+  const name = String(campaignName || "").trim();
+  if (!name) return "";
+  const trimmedPattern = String(patternSource || "").trim();
+  if (!trimmedPattern) return name;
+
+  let regex = null;
+  try {
+    regex = compileCampaignTabTitleRegex(trimmedPattern);
+  } catch (_) {
+    return name;
+  }
+  if (!regex) return name;
+
+  regex.lastIndex = 0;
+  const match = regex.exec(name);
+  if (!match) return name;
+
+  const format = String(formatSource || "");
+  if (format) {
+    const formatted = applyCampaignTabTitleFormat(match, format).trim();
+    return formatted || name;
+  }
+
+  for (let i = 1; i < match.length; i += 1) {
+    const group = match[i];
+    if (group != null && String(group).trim()) return String(group).trim();
+  }
+
+  const full = match[0];
+  if (full != null && String(full).trim()) return String(full).trim();
+  return name;
+}
+
+function getCampaignTabTitlePreviewSource() {
+  const el = document.querySelector("cb-campaign-name");
+  return el ? String(el.textContent || "").trim() : "";
+}
+
+function syncCampaignTabTitlePreview() {
+  const previewEl = document.getElementById("opt-campaign-tab-title-preview");
+  if (!previewEl) return;
+  const source = getCampaignTabTitlePreviewSource();
+  if (!source) {
+    previewEl.textContent = "Open an email campaign to preview the tab title.";
+    return;
+  }
+  const pattern = document.getElementById("opt-campaign-tab-title-regex")?.value || "";
+  const format = document.getElementById("opt-campaign-tab-title-format")?.value || "";
+  previewEl.textContent = `Preview: ${extractCampaignTabTitle(source, pattern, format)}`;
+}
+
+function syncCampaignTabTitleRegexValidity() {
+  const input = document.getElementById("opt-campaign-tab-title-regex");
+  const errorEl = document.getElementById("opt-campaign-tab-title-regex-error");
+  if (!input) return true;
+  const value = String(input.value || "").trim();
+  let valid = true;
+  if (value) {
+    try {
+      compileCampaignTabTitleRegex(value);
+    } catch (_) {
+      valid = false;
+    }
+  }
+  input.setAttribute("aria-invalid", valid ? "false" : "true");
+  if (errorEl) errorEl.hidden = valid;
+  syncCampaignTabTitlePreview();
+  return valid;
+}
 
 function resolveSnippetContextMenuTrigger(settings) {
   const trigger = settings?.[GEM_SNIPPET_CONTEXT_MENU_TRIGGER_KEY];
@@ -835,6 +934,21 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
         <h2>Email Editor Settings</h2>
 
         <div class="gem-setting-section">
+          <h3>Browser Tab Title</h3>
+          <div class="gem-setting gem-setting-condensed">
+            <label for="opt-campaign-tab-title-regex">Campaign title pattern</label>
+            <input type="text" id="opt-campaign-tab-title-regex" class="e-input" spellcheck="false" autocomplete="off" placeholder="Optional regular expression" aria-describedby="opt-campaign-tab-title-regex-help opt-campaign-tab-title-regex-error" />
+            <label for="opt-campaign-tab-title-format">Tab title format</label>
+            <input type="text" id="opt-campaign-tab-title-format" class="e-input" spellcheck="false" autocomplete="off" placeholder="$2 - $1" aria-describedby="opt-campaign-tab-title-regex-help" />
+            <p class="sub-label" id="opt-campaign-tab-title-regex-help">
+              Optional. Match the campaign name, then build the browser tab title from that match. Use $1, $2, and so on for capture groups, $&amp; for the full match, and plain text for anything else. Leave the pattern blank to use the full campaign name. If the pattern matches and the format is blank, Gemma uses the first capture group, or the full match. Invalid patterns are ignored.
+            </p>
+            <p class="sub-label" id="opt-campaign-tab-title-preview">Open an email campaign to preview the tab title.</p>
+            <p class="sub-label gem-campaign-tab-title-regex-error" id="opt-campaign-tab-title-regex-error" hidden>That pattern is not a valid regular expression, so the full campaign name will be used.</p>
+          </div>
+        </div>
+
+        <div class="gem-setting-section">
           <h3>Link Highlight Preview</h3>
           <div class="gem-setting gem-setting-condensed">
             <div class="gem-e-switch-wrapper">
@@ -1264,6 +1378,13 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
                 </div>
               </div>
               <div class="gem-e-switch-wrapper">
+                <label for="opt-preflight-pip-esl-validation">ESL validation</label>
+                <div class="gem-e-switch--fat e-switch">
+                  <input type="checkbox" class="e-switch__input" id="opt-preflight-pip-esl-validation" checked>
+                  <label class="e-switch__toggle" for="opt-preflight-pip-esl-validation"></label>
+                </div>
+              </div>
+              <div class="gem-e-switch-wrapper">
                 <label for="opt-preflight-pip-image-weight">Image weight alerts</label>
                 <div class="gem-e-switch--fat e-switch">
                   <input type="checkbox" class="e-switch__input" id="opt-preflight-pip-image-weight" checked>
@@ -1572,6 +1693,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
       missingAlt: src.missingAlt !== false,
       linkTitles: src.linkTitles !== false,
       linkLint: src.linkLint !== false,
+      eslValidation: src.eslValidation !== false,
       imageWeight: src.imageWeight !== false
     };
   }
@@ -1583,6 +1705,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
       ["opt-preflight-pip-missing-alt", "missingAlt"],
       ["opt-preflight-pip-link-titles", "linkTitles"],
       ["opt-preflight-pip-link-lint", "linkLint"],
+      ["opt-preflight-pip-esl-validation", "eslValidation"],
       ["opt-preflight-pip-image-weight", "imageWeight"]
     ];
     pairs.forEach(([id, key]) => {
@@ -1597,6 +1720,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
       missingAlt: document.getElementById("opt-preflight-pip-missing-alt")?.checked,
       linkTitles: document.getElementById("opt-preflight-pip-link-titles")?.checked,
       linkLint: document.getElementById("opt-preflight-pip-link-lint")?.checked,
+      eslValidation: document.getElementById("opt-preflight-pip-esl-validation")?.checked,
       imageWeight: document.getElementById("opt-preflight-pip-image-weight")?.checked
     });
   }
@@ -1757,7 +1881,9 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
         [GEM_SHARED_LINK_AUTO_SELECT_KEY]: true,
         [GEM_PREFLIGHT_ICON_PIP_TOGGLES_KEY]: GEM_PREFLIGHT_ICON_PIP_TOGGLES_DEFAULT,
         [GEM_COMPARE_LANGUAGES_DESKTOP_WIDTH_KEY]: GEM_COMPARE_LANGUAGES_DEFAULT_DESKTOP_WIDTH,
-        [GEM_COMPARE_LANGUAGES_MOBILE_WIDTH_KEY]: GEM_COMPARE_LANGUAGES_DEFAULT_MOBILE_WIDTH
+        [GEM_COMPARE_LANGUAGES_MOBILE_WIDTH_KEY]: GEM_COMPARE_LANGUAGES_DEFAULT_MOBILE_WIDTH,
+        [GEM_CAMPAIGN_TAB_TITLE_REGEX_KEY]: "",
+        [GEM_CAMPAIGN_TAB_TITLE_FORMAT_KEY]: ""
       }, (settings) => {
         syncThemeSwatchUI(settings[GEM_THEME_MODE_STORAGE_KEY]);
 
@@ -1880,6 +2006,16 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
         if (compareMobileWidthEl) {
           compareMobileWidthEl.value = String(settings[GEM_COMPARE_LANGUAGES_MOBILE_WIDTH_KEY] ?? GEM_COMPARE_LANGUAGES_DEFAULT_MOBILE_WIDTH);
         }
+
+        const campaignTabTitleRegexEl = document.getElementById("opt-campaign-tab-title-regex");
+        if (campaignTabTitleRegexEl) {
+          campaignTabTitleRegexEl.value = String(settings[GEM_CAMPAIGN_TAB_TITLE_REGEX_KEY] || "");
+        }
+        const campaignTabTitleFormatEl = document.getElementById("opt-campaign-tab-title-format");
+        if (campaignTabTitleFormatEl) {
+          campaignTabTitleFormatEl.value = String(settings[GEM_CAMPAIGN_TAB_TITLE_FORMAT_KEY] || "");
+        }
+        syncCampaignTabTitleRegexValidity();
 
         const widthInput = document.getElementById("opt-mobile-preview-width");
         if (widthInput) widthInput.value = settings.mobilePreviewWidth || 414;
@@ -2050,7 +2186,11 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
             [GEM_SHARED_LINK_AUTO_SELECT_KEY]:
               document.getElementById("opt-shared-link-auto-select")?.checked ?? true,
             [GEM_COMPARE_LANGUAGES_DESKTOP_WIDTH_KEY]: safeCompareDesktopWidth,
-            [GEM_COMPARE_LANGUAGES_MOBILE_WIDTH_KEY]: safeCompareMobileWidth
+            [GEM_COMPARE_LANGUAGES_MOBILE_WIDTH_KEY]: safeCompareMobileWidth,
+            [GEM_CAMPAIGN_TAB_TITLE_REGEX_KEY]:
+              String(document.getElementById("opt-campaign-tab-title-regex")?.value || "").trim(),
+            [GEM_CAMPAIGN_TAB_TITLE_FORMAT_KEY]:
+              String(document.getElementById("opt-campaign-tab-title-format")?.value || "")
           };
 
           // Apply immediately + cache synchronously for next page load
@@ -2237,10 +2377,13 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
       "opt-preflight-pip-missing-alt",
       "opt-preflight-pip-link-titles",
       "opt-preflight-pip-link-lint",
+      "opt-preflight-pip-esl-validation",
       "opt-preflight-pip-image-weight",
       "opt-shared-link-auto-select",
       "opt-compare-languages-desktop-width",
-      "opt-compare-languages-mobile-width"
+      "opt-compare-languages-mobile-width",
+      "opt-campaign-tab-title-regex",
+      "opt-campaign-tab-title-format"
     ];
 
     settingsIds.forEach((id) => {
@@ -2248,6 +2391,25 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
       if (!el) return;
       el.addEventListener("change", handlers.saveSettingsHandler);
     });
+
+    const campaignTabTitleRegexEl = document.getElementById("opt-campaign-tab-title-regex");
+    const campaignTabTitleFormatEl = document.getElementById("opt-campaign-tab-title-format");
+    if (campaignTabTitleRegexEl && campaignTabTitleRegexEl.dataset.gemBound !== "true") {
+      campaignTabTitleRegexEl.dataset.gemBound = "true";
+      let regexSaveTimer = null;
+      const queueSave = () => {
+        syncCampaignTabTitleRegexValidity();
+        if (regexSaveTimer) clearTimeout(regexSaveTimer);
+        regexSaveTimer = setTimeout(() => {
+          regexSaveTimer = null;
+          handlers.saveSettingsHandler();
+        }, 300);
+      };
+      campaignTabTitleRegexEl.addEventListener("input", queueSave);
+      if (campaignTabTitleFormatEl) {
+        campaignTabTitleFormatEl.addEventListener("input", queueSave);
+      }
+    }
 
     const gemmaTokenMenuTriggerEl = document.getElementById("opt-gemma-token-menu-trigger");
     if (gemmaTokenMenuTriggerEl) {
@@ -2459,15 +2621,12 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
     groups.forEach((items, sectionTitle) => {
       const group = document.createElement('optgroup');
       group.label = sectionTitle;
-      items
-        .slice()
-        .sort((a, b) => a.label.localeCompare(b.label))
-        .forEach((cmd) => {
-          const opt = document.createElement('option');
-          opt.value = cmd.id;
-          opt.textContent = cmd.label;
-          group.appendChild(opt);
-        });
+      items.forEach((cmd) => {
+        const opt = document.createElement('option');
+        opt.value = cmd.id;
+        opt.textContent = cmd.label;
+        group.appendChild(opt);
+      });
       selectEl.appendChild(group);
     });
 

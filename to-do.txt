@@ -8,6 +8,35 @@
 |                                                                                |
  --------------------------------------------------------------------------------
 
+Can I improve the block targeting reporting so that it's not '…' until the user takes an action on it?
+
+Recent campaigns panel doesn't need to get thinner when the preview pane is open.
+
+resize handles need a new :after element that is 100% height and colored purple on hover
+
+Gemma settings button in the vertical nav needs to be a settings gear icon instead of a diamond
+
+Notes icon in the vertical nav needs something more appropriate.
+
+A pip that always shows the amount of block targeting in the email needs to get added to the block targeting toggle icon
+
+Hold Option for X seconds to show a a fullscreen overlay with details about the current campaign
+
+The Deep Link button in link dialog needs more padding above it to separate it from our list of recent links
+
+Command Palette needs a button shortcut somewhere so that its not accessible by just the keyboard shortcut
+
+When version or language is deleted, a space is still present for it in the upper left.
+
+put a pip on the links icon to show how many there are
+
+Clicking on a token in the CodeMirror powered subject line should select it, not immediately open the edit snippet dialog. Here is what selecting a token in the MCE Editor looks like in Emarsys for comparison.
+
+Language and version pickers need white text in dark mode, so black text in light mode
+
+----------------------------------------
+
+
 I want to diagnose possible memory footprint issues that my extension might be casusing on Emarsys. I am not sure if Emarsys is the issue or Gemma is the issue. What tests can we run to diagnose possible issues and their causes?
 
 -----------------------------------------

@@ -285,12 +285,22 @@ console.log("[Gem] recent-campaigns.js loaded");
     }
   }
 
+  function toEmarsysHref(urlOrHref) {
+    if (typeof window.gemHrefPreserveQuerySlashes === "function") {
+      return window.gemHrefPreserveQuerySlashes(urlOrHref);
+    }
+    const href = typeof urlOrHref === "string"
+      ? urlOrHref
+      : (urlOrHref && urlOrHref.href) || "";
+    return href.replace(/\?[^#]*/, (query) => query.replace(/%2F/gi, "/"));
+  }
+
   function withCurrentSessionId(rawUrl) {
     try {
       const parsed = new URL(rawUrl, window.location.origin);
       const sid = getCurrentSessionId();
       if (sid) parsed.searchParams.set("session_id", sid);
-      return parsed.toString();
+      return toEmarsysHref(parsed);
     } catch (_) {
       return rawUrl;
     }
