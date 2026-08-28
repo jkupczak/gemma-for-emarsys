@@ -2542,14 +2542,17 @@ console.log("[Gem] recent-campaigns.js loaded");
     li.id = RECENT_NAV_ID;
     li.innerHTML = `
       <button type="button" class="e-navigation__action" aria-haspopup="true" aria-expanded="false" menu-item-id="recent_campaigns_new_main" tracking-id="recent_campaigns_new_main" aria-label="Gemma Recent Campaigns">
-        <e-icon class="e-navigation__action_icon" color="inherit" icon="ac-action-timer">
+        <e-icon class="e-navigation__action_icon" color="inherit" icon="custom">
           <div aria-hidden="true" class="e-icon-wrapper">
-            <div class="e-icon text-color-inherit">&#xF021;</div>
+            <div class="e-icon text-color-inherit gem-nav-custom-svg"></div>
           </div>
         </e-icon>
         <span class="e-navigation__action_text">Recent Campaigns</span>
       </button>
     `;
+    if (window.gemNavMenu) {
+      window.gemNavMenu.applyLegacyNavSvg(li, window.gemNavMenu.GEM_NAV_ICON_SVGS.recent);
+    }
 
     const button = li.querySelector(".e-navigation__action");
     button.addEventListener("click", () => {
@@ -2568,6 +2571,7 @@ console.log("[Gem] recent-campaigns.js loaded");
         // email/bookmark-2 are already registered by Emarsys's own nav items.
         iconFallbacks: ["email", "bookmark-2", "opportunity", "home"],
         className: "gem-ui5-nav-item--recent",
+        svgHtml: gem.GEM_NAV_ICON_SVGS && gem.GEM_NAV_ICON_SVGS.recent,
         onActivate: () => toggleRecentPanel(),
       },
       navRoot

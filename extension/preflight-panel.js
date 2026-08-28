@@ -682,27 +682,7 @@ function initializePreflightPanel() {
         }
       });
 
-      const trigger = selector.querySelector('.e-selectnew[role="button"]');
-      if (trigger) {
-        let triggerPip = trigger.querySelector('.gem-lang-preflight-badge--trigger');
-        const currentLang = getSelectedLanguageValue();
-        const otherIssueCount = meta.reduce((sum, { value }) => {
-          if (value === currentLang) return sum;
-          return sum + (getLanguageAlertEntry(map, value).count > 0 ? 1 : 0);
-        }, 0);
-        if (otherIssueCount > 0) {
-          if (!triggerPip) {
-            triggerPip = document.createElement('span');
-            triggerPip.className = 'gem-lang-preflight-badge gem-lang-preflight-badge--trigger';
-            triggerPip.setAttribute('aria-hidden', 'true');
-            trigger.appendChild(triggerPip);
-          }
-          triggerPip.textContent = String(Math.min(99, otherIssueCount));
-          triggerPip.style.display = '';
-        } else if (triggerPip) {
-          triggerPip.remove();
-        }
-      }
+      selector.querySelectorAll('.gem-lang-preflight-badge--trigger').forEach((el) => el.remove());
     }
 
     document.querySelectorAll('.e-actionlist__item[role="option"]').forEach((item) => {
@@ -728,8 +708,10 @@ function initializePreflightPanel() {
   function refreshLanguagePickerPreflightBadges() {
     const campaignId = getCampaignIdFromUrl();
     if (!campaignId) {
+      cachedLanguageAlertMap = {};
       applyLanguagePickerPreflightBadges({});
       renderLanguageOverviewPanel();
+      updateAlertPip(0);
       return;
     }
     chrome.storage.local.get({ [PREFLIGHT_LANGUAGE_ALERTS_KEY]: {} }, (res) => {
@@ -739,6 +721,7 @@ function initializePreflightPanel() {
       cachedLanguageAlertMap = all[campaignId] || {};
       applyLanguagePickerPreflightBadges(cachedLanguageAlertMap);
       renderLanguageOverviewPanel();
+      refreshCampaignWideAlertPip(undefined, { persist: false });
     });
   }
 
@@ -775,6 +758,7 @@ function initializePreflightPanel() {
       chrome.storage.local.set({ [PREFLIGHT_LANGUAGE_ALERTS_KEY]: all }, () => {
         applyLanguagePickerPreflightBadges(cachedLanguageAlertMap);
         renderLanguageOverviewPanel();
+        refreshCampaignWideAlertPip();
       });
     });
   }
@@ -798,6 +782,7 @@ function initializePreflightPanel() {
       cachedLanguageAlertMap = all[campaignId] || {};
       applyLanguagePickerPreflightBadges(cachedLanguageAlertMap);
       renderLanguageOverviewPanel();
+      refreshCampaignWideAlertPip(undefined, { persist: false });
     });
   }
 
@@ -818,6 +803,37 @@ function initializePreflightPanel() {
     pip.style.display = '';
   }
 
+  function sumLanguagePreflightAlertCounts(campaignMap, currentLangOverride) {
+    const map = campaignMap && typeof campaignMap === 'object' ? campaignMap : {};
+    const currentLang = getSelectedLanguageValue();
+    const hasOverride = currentLangOverride != null;
+    const overrideCount = hasOverride ? Math.max(0, Number.parseInt(String(currentLangOverride), 10) || 0) : 0;
+    const meta = getLanguageOptionMeta();
+    const keys = meta.length ? meta.map((entry) => entry.value) : Object.keys(map);
+    const seen = new Set();
+    let sum = 0;
+    keys.forEach((value) => {
+      if (!value || seen.has(value)) return;
+      seen.add(value);
+      if (hasOverride && currentLang && value === currentLang) {
+        sum += overrideCount;
+        return;
+      }
+      sum += getLanguageAlertEntry(map, value).count;
+    });
+    if (hasOverride && currentLang && !seen.has(currentLang)) sum += overrideCount;
+    if (!keys.length && hasOverride) return overrideCount;
+    return sum;
+  }
+
+  function refreshCampaignWideAlertPip(currentLangOverride, options) {
+    const campaignWide = sumLanguagePreflightAlertCounts(cachedLanguageAlertMap, currentLangOverride);
+    if (!options || options.persist !== false) {
+      chrome.storage.local.set({ [PREFLIGHT_ALERT_COUNT_KEY]: campaignWide });
+    }
+    updateAlertPip(campaignWide);
+  }
+
   function persistAndUpdateOverallAlertPip() {
     const toggles = cachedPreflightIconPipToggles;
     const alertCount = Math.max(
@@ -828,9 +844,8 @@ function initializePreflightPanel() {
       (Number.parseInt(String(latestLinksAlertCount), 10) || 0) +
       (toggles.textAlerts ? (Number.parseInt(String(latestNotifyAlertCount), 10) || 0) : 0)
     );
-    chrome.storage.local.set({ [PREFLIGHT_ALERT_COUNT_KEY]: alertCount });
-    updateAlertPip(alertCount);
     persistLanguagePreflightAlertCount(alertCount);
+    refreshCampaignWideAlertPip(alertCount);
   }
 
   function updateSectionPip(pipEl, count) {
@@ -4129,6 +4144,9 @@ function initializePreflightPanel() {
     if (typeof window.gemDeactivateMagicFillPanel === 'function' && window.gemIsMagicFillActive?.()) {
       window.gemDeactivateMagicFillPanel();
     }
+    if (typeof window.gemDeactivateBlockTargetingPanel === 'function' && window.gemIsBlockTargetingActive?.()) {
+      window.gemDeactivateBlockTargetingPanel();
+    }
 
     navItem.setAttribute('status', 'active');
     const navItemDiv = navItem.querySelector('.e-verticalnavitem');
@@ -4432,6 +4450,24 @@ function initializePreflightPanel() {
       observer.observe(document.body, { childList: true, subtree: true });
     }
   }
+
+  window.gemGetPreflightLanguageSnapshot = function gemGetPreflightLanguageSnapshot() {
+    const meta = getLanguageOptionMeta();
+    const currentValue = getSelectedLanguageValue() || '';
+    const languages = meta.map(({ value, text }) => {
+      const entry = getLanguageAlertEntry(cachedLanguageAlertMap, value);
+      return {
+        value,
+        text,
+        count: entry.count,
+        updatedAt: entry.updatedAt,
+        current: value === currentValue,
+      };
+    });
+    const total = languages.reduce((sum, lang) => sum + lang.count, 0);
+    const current = languages.find((lang) => lang.current) || null;
+    return { languages, current, total };
+  };
 
   waitForVerticalNav();
   setupLanguagePreflightBadgeSync();

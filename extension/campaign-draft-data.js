@@ -81,19 +81,15 @@
     }
   }
 
-  // Only fields used from storage are _id and targeting.content.visibility
-  // (see campaign-block-targeting.js applyTargeting). Omit bulky block keys.
+  // Slim blocks for chrome.storage.local; keep template + full targeting for panel/overlay fallback.
   function slimBlockForDraftStorage(block) {
     if (!block || typeof block !== "object") return null;
     const id = block._id;
     if (id === undefined || id === null || String(id).trim() === "") return null;
     const out = { _id: id };
+    if (block.template != null) out.template = block.template;
     if (block.targeting) {
-      const visibility =
-        block.targeting.content && block.targeting.content.visibility != null
-          ? block.targeting.content.visibility
-          : "";
-      out.targeting = { content: { visibility } };
+      out.targeting = JSON.parse(JSON.stringify(block.targeting));
     }
     return out;
   }

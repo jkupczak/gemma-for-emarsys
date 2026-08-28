@@ -123,7 +123,7 @@ console.log("[Gem] nav-menu-utils.js loaded");
    * Prefer cloning an Emarsys item so the design-system CE upgrades cleanly,
    * and only use icon names already loaded on the page (unregistered SAP icons
    * render blank and shift collapsed hover text).
-   * @param {{ id: string, text: string, icon: string, iconFallbacks?: string[], onActivate: Function, className?: string, logoUrl?: string }} opts
+   * @param {{ id: string, text: string, icon: string, iconFallbacks?: string[], onActivate: Function, className?: string, logoUrl?: string, svgHtml?: string }} opts
    * @param {Element} [navRoot]
    */
   function buildUi5ActionItem(opts, navRoot) {
@@ -175,11 +175,106 @@ console.log("[Gem] nav-menu-utils.js loaded");
     } catch (_) {}
     requestAnimationFrame(refresh);
 
-    if (opts.logoUrl) {
+    if (opts.svgHtml) {
+      scheduleUi5SvgPatch(item, opts.svgHtml);
+    } else if (opts.logoUrl) {
       scheduleUi5LogoPatch(item, opts.logoUrl);
     }
 
     return item;
+  }
+
+  const GEM_NAV_ICON_SVGS = {
+    recent:
+      '<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor" aria-hidden="true"><path d="M574.5-774.5Q560-789 560-810t14.5-35.5Q589-860 610-860t35.5 14.5Q660-831 660-810t-14.5 35.5Q631-760 610-760t-35.5-14.5Zm0 660Q560-129 560-150t14.5-35.5Q589-200 610-200t35.5 14.5Q660-171 660-150t-14.5 35.5Q631-100 610-100t-35.5-14.5Zm160-520Q720-649 720-670t14.5-35.5Q749-720 770-720t35.5 14.5Q820-691 820-670t-14.5 35.5Q791-620 770-620t-35.5-14.5Zm0 380Q720-269 720-290t14.5-35.5Q749-340 770-340t35.5 14.5Q820-311 820-290t-14.5 35.5Q791-240 770-240t-35.5-14.5Zm60-190Q780-459 780-480t14.5-35.5Q809-530 830-530t35.5 14.5Q880-501 880-480t-14.5 35.5Q851-430 830-430t-35.5-14.5ZM480-80q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880v80q-134 0-227 93t-93 227q0 134 93 227t227 93v80Zm132-212L440-464v-216h80v184l148 148-56 56Z"/></svg>',
+    notes:
+      '<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor" aria-hidden="true"><path d="M120-240v-80h480v80H120Zm0-200v-80h720v80H120Zm0-200v-80h720v80H120Z"/></svg>',
+    settings:
+      '<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor" aria-hidden="true"><path d="m370-80-16-128q-13-5-24.5-12T307-235l-119 50L78-375l103-78q-1-7-1-13.5v-27q0-6.5 1-13.5L78-585l110-190 119 50q11-8 23-15t24-12l16-128h220l16 128q13 5 24.5 12t22.5 15l119-50 110 190-103 78q1 7 1 13.5v27q0 6.5-2 13.5l103 78-110 190-118-50q-11 8-23 15t-24 12L590-80H370Zm70-80h79l14-106q31-8 57.5-23.5T639-327l99 41 39-68-86-65q5-14 7-29.5t2-31.5q0-16-2-31.5t-7-29.5l86-65-39-68-99 42q-22-23-48.5-38.5T533-694l-13-106h-79l-14 106q-31 8-57.5 23.5T321-633l-99-41-39 68 86 64q-5 15-7 30t-2 32q0 16 2 31t7 30l-86 65 39 68 99-42q22 23 48.5 38.5T427-266l13 106Zm42-180q58 0 99-41t41-99q0-58-41-99t-99-41q-59 0-99.5 41T342-480q0 58 40.5 99t99.5 41Zm-2-140Z"/></svg>',
+  };
+
+  function applyLegacyNavSvg(rootEl, svgHtml) {
+    if (!rootEl || !svgHtml) return;
+    const icon = rootEl.querySelector(".e-icon") || rootEl.querySelector(".e-icon-wrapper");
+    if (!icon) return;
+    icon.innerHTML = svgHtml;
+    icon.classList.add("gem-nav-custom-svg");
+  }
+
+  function findNativeUi5NavIcon(root) {
+    if (!root) return null;
+    return (
+      root.querySelector("ui5-icon-ds-nav:not(.gem-ui5-nav-svg)") ||
+      root.querySelector("ui5-icon:not(.gem-ui5-nav-svg)") ||
+      root.querySelector(".ui5-sn-item-icon:not(.gem-ui5-nav-svg)")
+    );
+  }
+
+  function applyUi5SvgPatch(root, svgHtml) {
+    const iconEl = findNativeUi5NavIcon(root);
+    if (!iconEl) return false;
+
+    let wrap = root.querySelector(".gem-ui5-nav-svg");
+    if (!wrap) {
+      wrap = document.createElement("span");
+      wrap.className = "ui5-sn-item-icon gem-ui5-nav-svg";
+      wrap.setAttribute("aria-hidden", "true");
+      wrap.innerHTML = svgHtml;
+      Object.assign(wrap.style, {
+        width: "1.25rem",
+        height: "1.25rem",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: "0",
+        color: "inherit",
+      });
+      const svg = wrap.querySelector("svg");
+      if (svg) {
+        svg.setAttribute("width", "20");
+        svg.setAttribute("height", "20");
+        svg.style.display = "block";
+        svg.style.fill = "currentColor";
+      }
+      const parent = iconEl.parentNode;
+      if (parent) parent.insertBefore(wrap, iconEl);
+    }
+
+    try {
+      iconEl.style.setProperty("display", "none", "important");
+      iconEl.setAttribute("hidden", "");
+      iconEl.setAttribute("aria-hidden", "true");
+    } catch (_) {}
+
+    const logo = root.querySelector("img.gem-ui5-nav-logo");
+    if (logo) logo.style.display = "none";
+    return !!root.querySelector(".gem-ui5-nav-svg");
+  }
+
+  function scheduleUi5SvgPatch(item, svgHtml) {
+    if (!item || !svgHtml) return;
+    const tryPatch = (attempt) => {
+      try {
+        const root = item.shadowRoot;
+        if (!root) {
+          if (attempt < 40) setTimeout(() => tryPatch(attempt + 1), 50);
+          return;
+        }
+        if (!item._gemUi5SvgObserved) {
+          item._gemUi5SvgObserved = true;
+          try {
+            const mo = new MutationObserver(() => applyUi5SvgPatch(root, svgHtml));
+            mo.observe(root, { childList: true, subtree: true });
+          } catch (_) {}
+        }
+        if (!applyUi5SvgPatch(root, svgHtml) && attempt < 40) {
+          setTimeout(() => tryPatch(attempt + 1), 50);
+        }
+      } catch (_) {
+        if (attempt < 40) setTimeout(() => tryPatch(attempt + 1), 50);
+      }
+    };
+    tryPatch(0);
   }
 
   function scheduleUi5LogoPatch(item, logoUrl) {
@@ -191,10 +286,7 @@ console.log("[Gem] nav-menu-utils.js loaded");
           if (attempt < 40) setTimeout(() => tryPatch(attempt + 1), 50);
           return;
         }
-        const iconEl =
-          root.querySelector("ui5-icon") ||
-          root.querySelector(".ui5-sn-item-icon") ||
-          root.querySelector("[class*='icon']");
+        const iconEl = findNativeUi5NavIcon(root);
         if (!iconEl) {
           if (attempt < 40) setTimeout(() => tryPatch(attempt + 1), 50);
           return;
@@ -384,6 +476,9 @@ console.log("[Gem] nav-menu-utils.js loaded");
     collectEmarsysNavLinks,
     refreshUi5CollapsedOnGemmaItems,
     observeUi5Collapsed,
+    GEM_NAV_ICON_SVGS,
+    applyLegacyNavSvg,
+    scheduleUi5SvgPatch,
   };
 
   if (document.readyState === "loading") {

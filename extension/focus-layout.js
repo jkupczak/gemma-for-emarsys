@@ -264,68 +264,20 @@ function moveSelectorsBasedOnView(compactVersionsDiv, isFocusLayout) {
   // Handle version selector (should be first child)
   if (versionSelector) {
     if (isFocusLayout) {
-      // Move to compact area as first child
-      const existingPlaceholder = document.querySelector('[data-gem-version-selector-placeholder]');
-
-      if (!existingPlaceholder) {
-        // Create a placeholder to maintain layout
-        const placeholder = document.createElement('div');
-        placeholder.style.display = 'none';
-        placeholder.setAttribute('data-gem-version-selector-placeholder', 'true');
-
-        // Replace original with placeholder
-        versionSelector.parentNode.insertBefore(placeholder, versionSelector);
-        versionSelector.remove();
-        compactVersionsDiv.insertBefore(versionSelector, compactVersionsDiv.firstChild);
-
-        console.log('[Gem][FocusLayout] Moved version selector to compact versions (view change)');
-      }
-
-      // Show the compact versions div
+      ensureSelectorInCompact(compactVersionsDiv, versionSelector, 'data-gem-version-selector-placeholder', true);
       compactVersionsDiv.style.display = 'block';
     } else {
-      // Move back to original location
-      const placeholder = document.querySelector('[data-gem-version-selector-placeholder]');
-      if (placeholder && compactVersionsDiv.contains(versionSelector)) {
-        // Move back to original location
-        placeholder.parentNode.insertBefore(versionSelector, placeholder);
-        placeholder.remove();
-        console.log('[Gem][FocusLayout] Moved version selector back to original location (view change)');
-      }
+      restoreSelectorFromCompact(compactVersionsDiv, versionSelector, 'data-gem-version-selector-placeholder');
     }
   }
 
   // Handle multilanguage locale selector
   if (localeSelector) {
     if (isFocusLayout) {
-      // Move to compact area
-      const existingPlaceholder = document.querySelector('[data-gem-locale-selector-placeholder]');
-
-      if (!existingPlaceholder) {
-        // Create a placeholder to maintain layout
-        const placeholder = document.createElement('div');
-        placeholder.style.display = 'none';
-        placeholder.setAttribute('data-gem-locale-selector-placeholder', 'true');
-
-        // Replace original with placeholder
-        localeSelector.parentNode.insertBefore(placeholder, localeSelector);
-        localeSelector.remove();
-        compactVersionsDiv.appendChild(localeSelector);
-
-        console.log('[Gem][FocusLayout] Moved multilanguage locale selector to compact versions (view change)');
-      }
-
-      // Show the compact versions div
+      ensureSelectorInCompact(compactVersionsDiv, localeSelector, 'data-gem-locale-selector-placeholder', false);
       compactVersionsDiv.style.display = 'block';
     } else {
-      // Move back to original location
-      const placeholder = document.querySelector('[data-gem-locale-selector-placeholder]');
-      if (placeholder && compactVersionsDiv.contains(localeSelector)) {
-        // Move back to original location
-        placeholder.parentNode.insertBefore(localeSelector, placeholder);
-        placeholder.remove();
-        console.log('[Gem][FocusLayout] Moved multilanguage locale selector back to original location (view change)');
-      }
+      restoreSelectorFromCompact(compactVersionsDiv, localeSelector, 'data-gem-locale-selector-placeholder');
     }
   }
 
@@ -390,85 +342,160 @@ function setupFocusLayoutObserver(compactVersionsDiv) {
   console.log('[Gem][FocusLayout] Focus Layout observer set up');
 }
 
+function ensureSelectorInCompact(compactVersionsDiv, selector, placeholderAttr, asFirstChild) {
+  if (!compactVersionsDiv || !selector || compactVersionsDiv.contains(selector)) return;
+
+  let placeholder = document.querySelector(`[${placeholderAttr}]`);
+  if (!placeholder && selector.parentNode) {
+    placeholder = document.createElement('div');
+    placeholder.style.display = 'none';
+    placeholder.setAttribute(placeholderAttr, 'true');
+    selector.parentNode.insertBefore(placeholder, selector);
+  }
+
+  if (asFirstChild) {
+    compactVersionsDiv.insertBefore(selector, compactVersionsDiv.firstChild);
+  } else {
+    compactVersionsDiv.appendChild(selector);
+  }
+}
+
+function restoreSelectorFromCompact(compactVersionsDiv, selector, placeholderAttr) {
+  const placeholder = document.querySelector(`[${placeholderAttr}]`);
+  if (!placeholder || !selector || !compactVersionsDiv.contains(selector)) return;
+  placeholder.parentNode.insertBefore(selector, placeholder);
+  placeholder.remove();
+}
+
+function ensureCompactSelectors(compactVersionsDiv, isFocusLayout) {
+  if (!compactVersionsDiv) return;
+
+  const versionSelector = document.querySelector('cb-version-selector');
+  const localeSelector = document.querySelector('cb-multilanguage-locale-selector');
+
+  if (isFocusLayout) {
+    if (versionSelector) {
+      ensureSelectorInCompact(compactVersionsDiv, versionSelector, 'data-gem-version-selector-placeholder', true);
+      compactVersionsDiv.style.display = 'block';
+    }
+    if (localeSelector) {
+      ensureSelectorInCompact(compactVersionsDiv, localeSelector, 'data-gem-locale-selector-placeholder', false);
+      compactVersionsDiv.style.display = 'block';
+    }
+  } else {
+    if (versionSelector) {
+      restoreSelectorFromCompact(compactVersionsDiv, versionSelector, 'data-gem-version-selector-placeholder');
+    }
+    if (localeSelector) {
+      restoreSelectorFromCompact(compactVersionsDiv, localeSelector, 'data-gem-locale-selector-placeholder');
+    }
+  }
+
+  updateCompactVersionsActiveState(compactVersionsDiv, isFocusLayout);
+}
+
+function nodeIsOrContains(node, selector) {
+  if (!node || node.nodeType !== Node.ELEMENT_NODE) return false;
+  try {
+    return !!(node.matches?.(selector) || node.querySelector?.(selector));
+  } catch (_) {
+    return false;
+  }
+}
+
+function isVisibleLanguageSelector(languagesSelector) {
+  return !!(languagesSelector && languagesSelector.isConnected && !languagesSelector.classList.contains('e-hidden'));
+}
+
+function isVisibleVersionSelector(versionSelector) {
+  if (!versionSelector || !versionSelector.isConnected) return false;
+  const select = versionSelector.querySelector('select');
+  if (!select) return false;
+  return Array.from(select.options).filter((opt) => String(opt.value || '').trim()).length > 1;
+}
+
 function setupLanguagesSelectorObserver(compactVersionsDiv) {
-  console.log('[Gem][FocusLayout] Setting up languages selector observer');
+  console.log('[Gem][FocusLayout] Setting up compact selector observers');
 
-  // Watch for changes to vce-languages-selector class
-  const languagesObserver = new MutationObserver((mutations) => {
-    mutations.forEach((mutation) => {
-      if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
-        const isFocusLayout = isFocusLayoutActive();
-        updateCompactVersionsActiveState(compactVersionsDiv, isFocusLayout);
-      }
+  let languagesObserver = null;
+  let versionOptionsObserver = null;
+
+  const refresh = () => {
+    bindLanguagesClassObserver();
+    bindVersionOptionsObserver();
+    ensureCompactSelectors(compactVersionsDiv, isFocusLayoutActive());
+  };
+
+  const bindLanguagesClassObserver = () => {
+    const languagesSelector = document.querySelector('vce-languages-selector');
+    if (languagesObserver) {
+      try { languagesObserver.disconnect(); } catch (_) {}
+      languagesObserver = null;
+    }
+    if (!languagesSelector) return;
+    languagesObserver = new MutationObserver(refresh);
+    languagesObserver.observe(languagesSelector, {
+      attributes: true,
+      attributeFilter: ['class']
     });
-  });
+  };
 
-  // Also watch for vce-languages-selector being added/removed from DOM
-  const handleLanguagesSelectorDomChange = (mutations) => {
-    let needsUpdate = false;
-    mutations.forEach((mutation) => {
-      if (mutation.type === 'childList') {
-        mutation.addedNodes.forEach((node) => {
-          if (node.nodeType === Node.ELEMENT_NODE &&
-              (node.matches && node.matches('vce-languages-selector') ||
-               node.querySelector && node.querySelector('vce-languages-selector'))) {
-            needsUpdate = true;
-          }
-        });
-        mutation.removedNodes.forEach((node) => {
-          if (node.nodeType === Node.ELEMENT_NODE &&
-              (node.matches && node.matches('vce-languages-selector') ||
-               node.querySelector && node.querySelector('vce-languages-selector'))) {
-            needsUpdate = true;
-          }
-        });
+  const bindVersionOptionsObserver = () => {
+    const select = document.querySelector('cb-version-selector select');
+    if (versionOptionsObserver) {
+      try { versionOptionsObserver.disconnect(); } catch (_) {}
+      versionOptionsObserver = null;
+    }
+    if (!select) return;
+    versionOptionsObserver = new MutationObserver(refresh);
+    versionOptionsObserver.observe(select, { childList: true });
+  };
+
+  const handleSelectorDomChange = (mutations) => {
+    for (const mutation of mutations) {
+      if (mutation.type !== 'childList') continue;
+      const nodes = [...mutation.addedNodes, ...mutation.removedNodes];
+      const relevant = nodes.some((node) =>
+        nodeIsOrContains(node, 'vce-languages-selector') ||
+        nodeIsOrContains(node, 'cb-version-selector') ||
+        nodeIsOrContains(node, 'cb-multilanguage-locale-selector')
+      );
+      if (relevant) {
+        refresh();
+        return;
       }
-    });
-
-    if (needsUpdate) {
-      const isFocusLayout = isFocusLayoutActive();
-      updateCompactVersionsActiveState(compactVersionsDiv, isFocusLayout);
     }
   };
 
   if (typeof gemDomWatchSubscribe === 'function') {
-    gemDomWatchSubscribe(handleLanguagesSelectorDomChange);
+    gemDomWatchSubscribe(handleSelectorDomChange);
   } else {
-    const containerObserver = new MutationObserver(handleLanguagesSelectorDomChange);
+    const containerObserver = new MutationObserver(handleSelectorDomChange);
     containerObserver.observe(document.body, {
       childList: true,
       subtree: true
     });
   }
 
-  const languagesSelector = document.querySelector('vce-languages-selector');
-  if (languagesSelector) {
-    languagesObserver.observe(languagesSelector, {
-      attributes: true,
-      attributeFilter: ['class']
-    });
+  if (compactVersionsDiv) {
+    const compactObserver = new MutationObserver(refresh);
+    compactObserver.observe(compactVersionsDiv, { childList: true });
   }
 
-  console.log('[Gem][FocusLayout] Languages selector observer set up');
+  refresh();
+  console.log('[Gem][FocusLayout] Compact selector observers set up');
 }
 
 function updateCompactVersionsActiveState(compactVersionsDiv, isFocusLayout) {
+  if (!compactVersionsDiv) return;
   const languagesSelector = document.querySelector('vce-languages-selector');
   const versionSelector = document.querySelector('cb-version-selector');
-
-  // Check conditions for active class
   const shouldBeActive = isFocusLayout && (
-    (languagesSelector && !languagesSelector.classList.contains('e-hidden')) ||
-    versionSelector
+    isVisibleLanguageSelector(languagesSelector) ||
+    isVisibleVersionSelector(versionSelector)
   );
 
-  if (shouldBeActive) {
-    compactVersionsDiv.classList.add('active');
-    console.log('[Gem][FocusLayout] Added active class to compact versions');
-  } else {
-    compactVersionsDiv.classList.remove('active');
-    console.log('[Gem][FocusLayout] Removed active class from compact versions');
-  }
+  compactVersionsDiv.classList.toggle('active', shouldBeActive);
 }
 
 const NAV_PANEL_STORAGE_KEY = 'gemNavPanelWidth';

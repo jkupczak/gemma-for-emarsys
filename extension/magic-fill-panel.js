@@ -1203,6 +1203,9 @@ console.log('[Gem] magic-fill-panel.js loaded');
     if (typeof window.gemDeactivateFindReplacePanel === 'function' && window.gemIsFindReplaceActive?.()) {
       window.gemDeactivateFindReplacePanel();
     }
+    if (typeof window.gemDeactivateBlockTargetingPanel === 'function' && window.gemIsBlockTargetingActive?.()) {
+      window.gemDeactivateBlockTargetingPanel();
+    }
   }
 
   function activateMagicFillPanel() {

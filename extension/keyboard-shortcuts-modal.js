@@ -121,6 +121,8 @@
         ${section('Email Editor', [
           [`${mod}+S`, 'Save the current email'],
           [`${mod}+Shift+V`, 'Paste plain text (bypass Rich Paste formatting)'],
+          [`Hold ${window.GEM_IS_MAC ? 'Control+Option' : 'Ctrl+Alt'}`, 'Show campaign details overlay'],
+          ['Esc', 'Close the campaign details overlay'],
           ...getSnippetContextMenuShortcutRows(mod, requireMod)
         ])}
 

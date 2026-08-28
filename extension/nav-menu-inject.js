@@ -1,7 +1,6 @@
 console.log("[Gem] nav-menu-inject.js loaded");
 
 const ITEM_ID = "gem-nav-settings-item";
-const ICON_SRC = chrome.runtime.getURL("img/icon-with-transparency.png");
 
 function openGemmaSettings() {
   console.log("[Gem] Nav item clicked → opening settings");
@@ -26,12 +25,17 @@ function buildLegacySettingsItem() {
 
   li.innerHTML = `
     <button type="button" class="e-navigation__action" aria-expanded="false">
-      <e-icon class="e-navigation__action_icon" color="inherit" style="margin: 10px">
-        <img src="${ICON_SRC}" style="width: 36px;height: auto; filter: drop-shadow(2px 4px 6px rgb(34 26 72 / 0.35))">
+      <e-icon class="e-navigation__action_icon" color="inherit" icon="custom">
+        <div aria-hidden="true" class="e-icon-wrapper">
+          <div class="e-icon text-color-inherit gem-nav-custom-svg"></div>
+        </div>
       </e-icon>
       <span class="e-navigation__action_text">Gemma Settings</span>
     </button>
   `;
+  if (window.gemNavMenu) {
+    window.gemNavMenu.applyLegacyNavSvg(li, window.gemNavMenu.GEM_NAV_ICON_SVGS.settings);
+  }
 
   const btn = li.querySelector("button");
   if (btn) btn.addEventListener("click", openGemmaSettings);
@@ -44,11 +48,10 @@ function buildUi5SettingsItem(navRoot) {
     {
       id: ITEM_ID,
       text: "Gemma Settings",
-      // Prefer a loaded Emarsys icon; Gemma logo is patched into the shadow root.
       icon: "action-settings",
       iconFallbacks: ["sap-box", "puzzle", "curriculum", "home"],
       className: "gem-ui5-nav-item--settings",
-      logoUrl: ICON_SRC,
+      svgHtml: gem.GEM_NAV_ICON_SVGS && gem.GEM_NAV_ICON_SVGS.settings,
       onActivate: openGemmaSettings,
     },
     navRoot

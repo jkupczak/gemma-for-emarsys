@@ -1,16 +1,18 @@
 // campaign-block-targeting.js
 // Content script that marks e-block elements in the preview iframe with
-// targeting attributes when the campaign draft data includes targeting info.
-// Runs on page load (from storage) and on each draft save (from postMessage).
-// Re-applies automatically when Emarsys re-renders blocks.
+// targeting attributes when the campaign draft/handshake data includes targeting info.
+// Runs on page load (handshake cache first), on each draft save (postMessage),
+// and re-applies automatically when Emarsys re-renders blocks.
 // Also reacts to user edits in the Block targeting dialog.
 (function () {
   const IFRAME_SELECTOR = 'iframe.e-contentblocks-preview__iframe-desktop';
   const DRAFT_KEY_PREFIX = 'gemDraft_';
   const STYLE_ID = 'gem-block-targeting-styles';
   const SETTINGS_STYLE_ID = 'gem-block-targeting-settings-styles';
+  const SCROLL_HIGHLIGHT_STYLE_ID = 'gem-block-targeting-scroll-highlight';
   const BUTTON_GROUP_SELECTOR = 'cb-campaign-preview .e-buttongroup';
   const ANCHOR_SELECTOR = 'cb-highlight-editables-switch';
+  const SNAPSHOT_CACHED_SOURCE = 'gem-content-blocks-snapshot-cached';
 
   const STORAGE_PREVIEW_ENABLED = 'gemBlockTargetingPreviewEnabled';
   const STORAGE_VISIBILITY = 'gemBlockTargetingVisibility';
@@ -18,6 +20,9 @@
   let previewEnabled = true;
   let visibilityMode = 'always-show';
   let toolbarButtonEl = null;
+  let lastCampaignSnapshot = null;
+  let lastSelectedLanguage = null;
+  let dataChangeListeners = [];
 
   const TARGETING_CSS = `
 [e-blocks-container="true"] > [data-gem-has-block-targeting="true"][e-block] {
@@ -71,6 +76,10 @@
 [e-blocks-container="true"] > [data-gem-block-targeting-visibility="hide"][e-block]:after {
     background: color-mix(in srgb, #ab4458 40%, transparent);
 }
+[e-blocks-container="true"] > [data-gem-block-targeting-scroll-highlight="true"][e-block] {
+    outline: 3px solid color-mix(in srgb, var(--token-primary-400, #6366f1) 70%, transparent);
+    outline-offset: 2px;
+}
     `;
 
   const SETTINGS_OVERRIDE_CSS = `
@@ -94,11 +103,22 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
   let reapplyTimer = null;
   let isApplying = false;
   let pendingBlockId = null;
+  let languageWatchUnsub = null;
+  let lastLanguageValue = null;
+  const blockDisplayNameCache = new Map();
 
   function getCampaignIdFromUrl() {
     try {
       const match = window.location.search.match(/[?&]id=(\d+)/);
       return match ? match[1] : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function getSessionIdFromUrl() {
+    try {
+      return (new URL(window.location.href).searchParams.get('session_id') || '').trim();
     } catch (_) {
       return null;
     }
@@ -115,8 +135,321 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
     }
   }
 
+  function isIdFallbackBlockName(name) {
+    return /^Block [0-9a-f]{8}$/i.test(String(name || '').trim());
+  }
+
+  function rememberBlockDisplayName(blockId, name) {
+    const id = String(blockId || '').trim();
+    const label = String(name || '').trim();
+    if (!id || !label || isIdFallbackBlockName(label)) return;
+    blockDisplayNameCache.set(id, label);
+  }
+
+  function getCachedSnapshot(campaignIds) {
+    if (typeof window.gemGetCachedContentBlocksSnapshot !== 'function') return null;
+    const ids = (Array.isArray(campaignIds) ? campaignIds : [campaignIds])
+      .map((id) => String(id || '').trim())
+      .filter(Boolean);
+    const seen = new Set();
+    for (let i = 0; i < ids.length; i += 1) {
+      const id = ids[i];
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const snapshot = window.gemGetCachedContentBlocksSnapshot(id);
+      if (snapshot) return snapshot;
+    }
+    return null;
+  }
+
+  function isVisibilityOnlyTargeting(targeting) {
+    if (!targeting || typeof targeting !== 'object') return false;
+    const keys = Object.keys(targeting);
+    if (keys.length !== 1 || keys[0] !== 'content') return false;
+    const content = targeting.content;
+    if (!content || typeof content !== 'object') return false;
+    return Object.keys(content).every((key) => key === 'visibility');
+  }
+
+  function mergeBlockRecord(incoming, existing) {
+    if (!incoming) return existing || null;
+    if (!existing) return incoming;
+
+    const merged = Object.assign({}, incoming);
+    if (!merged.template && existing.template) {
+      merged.template = existing.template;
+    }
+
+    if (
+      isVisibilityOnlyTargeting(incoming.targeting)
+      && existing.targeting
+      && !isVisibilityOnlyTargeting(existing.targeting)
+    ) {
+      merged.targeting = JSON.parse(JSON.stringify(existing.targeting));
+      const visibility = incoming.targeting
+        && incoming.targeting.content
+        && incoming.targeting.content.visibility;
+      if (visibility != null) {
+        merged.targeting.content = merged.targeting.content || {};
+        merged.targeting.content.visibility = visibility;
+      }
+    }
+
+    return merged;
+  }
+
+  function mergeBlocksWithExisting(incomingBlocks) {
+    if (!Array.isArray(incomingBlocks)) return incomingBlocks;
+    if (!Array.isArray(lastBlocks) || !lastBlocks.length) return incomingBlocks;
+
+    const existingById = new Map();
+    lastBlocks.forEach((block) => {
+      if (block && block._id != null) existingById.set(String(block._id), block);
+    });
+
+    return incomingBlocks.map((block) => {
+      if (!block || block._id == null) return block;
+      return mergeBlockRecord(block, existingById.get(String(block._id)));
+    });
+  }
+
+  function snapshotMatchesCampaignPage(snapshot, urlCampaignId) {
+    const urlId = String(urlCampaignId || '').trim();
+    if (!urlId || !snapshot) return !!urlId;
+    const campaign = snapshot.campaign || snapshot;
+    if (!campaign || typeof campaign !== 'object') return false;
+    const candidates = [
+      campaign.suite_campaign_id,
+      campaign.id,
+      campaign.campaign_id,
+    ].map((value) => String(value || '').trim()).filter(Boolean);
+    return candidates.includes(urlId);
+  }
+
+  function getBlockVisibility(targeting) {
+    if (!targeting || !targeting.content) return '';
+    const visibility = targeting.content.visibility;
+    return visibility != null ? String(visibility) : '';
+  }
+
+  function countTargetedBlocks(blocks) {
+    if (!Array.isArray(blocks)) return 0;
+    return blocks.filter((block) => block && block.targeting).length;
+  }
+
+  function notifyDataChange() {
+    const payload = {
+      blocks: lastBlocks,
+      targetedCount: countTargetedBlocks(lastBlocks),
+      language: lastSelectedLanguage,
+    };
+    dataChangeListeners.forEach((cb) => {
+      try {
+        cb(payload);
+      } catch (_) {}
+    });
+    updateNavPipCount(payload.targetedCount);
+  }
+
+  function updateNavPipCount(count) {
+    if (typeof window.gemSetBlockTargetingNavPipCount === 'function') {
+      window.gemSetBlockTargetingNavPipCount(count);
+    }
+  }
+
+  function buildBlockTemplateIndex(snapshot) {
+    const campaign = snapshot && (snapshot.campaign || snapshot);
+    const templates = campaign
+      && campaign.template_resources
+      && campaign.template_resources.available_block_templates;
+    const index = new Map();
+    if (!Array.isArray(templates)) return index;
+    templates.forEach((template) => {
+      const id = String(template && template._id || '').trim();
+      if (id) index.set(id, template);
+    });
+    return index;
+  }
+
+  function getPreviewBlockName(blockId) {
+    const iframeDoc = getIframeDoc();
+    if (!iframeDoc || !blockId) return '';
+    const blockEl = iframeDoc.querySelector(`[e-block-id="${CSS.escape(blockId)}"]`);
+    if (!blockEl) return '';
+    const nameEl = blockEl.querySelector('[e-block-name], .e-blockname, .e-block-name');
+    return nameEl ? String(nameEl.textContent || '').trim() : '';
+  }
+
+  function resolveBlockName(block, templateIndex) {
+    const blockId = block && block._id ? String(block._id) : '';
+    const previewName = getPreviewBlockName(blockId);
+    if (previewName) {
+      rememberBlockDisplayName(blockId, previewName);
+      return previewName;
+    }
+
+    const cachedName = blockDisplayNameCache.get(blockId);
+    if (cachedName) return cachedName;
+
+    const templateId = String(block && block.template || '').trim();
+    if (templateId && templateIndex) {
+      const template = templateIndex.get(templateId);
+      const templateName = template && (template.name || template.title || template.label);
+      if (templateName) {
+        const label = String(templateName).trim();
+        rememberBlockDisplayName(blockId, label);
+        return label;
+      }
+    }
+
+    if (blockId) return `Block ${blockId.slice(0, 8)}`;
+    return 'Block';
+  }
+
+  function toTitleCase(text) {
+    const value = String(text || '').trim();
+    if (!value) return value;
+    return value.replace(/\b[a-z]/g, (char) => char.toUpperCase());
+  }
+
+  function formatTargetingRuleRow(key, label, value) {
+    if (String(key || '').toLowerCase() === 'type') {
+      return {
+        label: toTitleCase(label),
+        value: toTitleCase(value),
+      };
+    }
+    return { label, value };
+  }
+
+  function formatTargetingValue(value) {
+    if (value == null) return '';
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      return String(value);
+    }
+    if (Array.isArray(value)) {
+      return value.map((item) => formatTargetingValue(item)).filter(Boolean).join(', ');
+    }
+    if (typeof value === 'object') {
+      const preferred = value.name || value.label || value.title || value.id || value._id;
+      if (preferred != null && preferred !== value) {
+        return String(preferred);
+      }
+      const parts = [];
+      Object.keys(value).forEach((key) => {
+        if (key === 'content' || key === 'visibility') return;
+        const formatted = formatTargetingValue(value[key]);
+        if (formatted) parts.push(`${key}: ${formatted}`);
+      });
+      return parts.join('; ');
+    }
+    return '';
+  }
+
+  function collectTargetingRuleRows(targeting, prefix) {
+    const rows = [];
+    if (!targeting || typeof targeting !== 'object') return rows;
+
+    Object.keys(targeting).forEach((key) => {
+      if (key === 'content') return;
+      const value = targeting[key];
+      const label = prefix ? `${prefix} ${key}` : key;
+      if (value != null && typeof value === 'object' && !Array.isArray(value)) {
+        const nested = collectTargetingRuleRows(value, label);
+        if (nested.length) {
+          nested.forEach((row) => rows.push(row));
+        } else {
+          const formatted = formatTargetingValue(value);
+          if (formatted) rows.push(formatTargetingRuleRow(key, label, formatted));
+        }
+      } else {
+        const formatted = formatTargetingValue(value);
+        if (formatted) rows.push(formatTargetingRuleRow(key, label, formatted));
+      }
+    });
+
+    return rows;
+  }
+
+  function formatTargetingRules(targeting) {
+    const rows = [];
+    const visibility = getBlockVisibility(targeting);
+    if (visibility && visibility !== '\u2026') {
+      rows.push({
+        label: 'Visibility',
+        value: visibility === 'show' ? 'Show this block' : visibility === 'hide' ? 'Hide this block' : visibility,
+      });
+    } else if (visibility === '\u2026') {
+      rows.push({ label: 'Visibility', value: 'Unknown (pending save)' });
+    }
+    collectTargetingRuleRows(targeting).forEach((row) => rows.push(row));
+    return rows;
+  }
+
+  function getTargetedBlocksForPanel() {
+    if (!Array.isArray(lastBlocks)) return [];
+    const templateIndex = buildBlockTemplateIndex(lastCampaignSnapshot);
+    const iframeDoc = getIframeDoc();
+    let canvasOrder = [];
+    if (iframeDoc) {
+      canvasOrder = Array.from(iframeDoc.querySelectorAll('[e-block-id]'))
+        .map((el) => el.getAttribute('e-block-id'))
+        .filter(Boolean);
+    }
+
+    const targeted = lastBlocks
+      .map((block, modelIndex) => ({ block, modelIndex }))
+      .filter(({ block }) => block && block.targeting);
+
+    targeted.sort((a, b) => {
+      const aIdx = canvasOrder.indexOf(a.block._id);
+      const bIdx = canvasOrder.indexOf(b.block._id);
+      const aRank = aIdx >= 0 ? aIdx : 100000 + a.modelIndex;
+      const bRank = bIdx >= 0 ? bIdx : 100000 + b.modelIndex;
+      return aRank - bRank;
+    });
+
+    return targeted.map(({ block, modelIndex }, index) => {
+      const visibility = getBlockVisibility(block.targeting);
+      return {
+        _id: block._id,
+        name: resolveBlockName(block, templateIndex),
+        visibility,
+        targeting: block.targeting,
+        rules: formatTargetingRules(block.targeting),
+        index: canvasOrder.indexOf(block._id) >= 0 ? canvasOrder.indexOf(block._id) : modelIndex,
+        displayIndex: index + 1,
+      };
+    });
+  }
+
+  function extractBlocksFromSnapshot(snapshot, lang) {
+    if (!snapshot || !lang) return null;
+    const campaign = snapshot.campaign || snapshot;
+    const contents = campaign && campaign.contents;
+    if (!contents || !contents[lang]) return null;
+    const langEntry = contents[lang];
+    const blocks = langEntry.blocks || (Array.isArray(langEntry) ? langEntry : null);
+    if (!Array.isArray(blocks)) return null;
+    return blocks.map((block) => {
+      if (!block || block._id == null) return null;
+      const copy = { _id: block._id, template: block.template };
+      if (block.targeting) {
+        copy.targeting = JSON.parse(JSON.stringify(block.targeting));
+      }
+      return copy;
+    }).filter(Boolean);
+  }
+
+  function applyBlocksFromSource(blocks, snapshot, lang) {
+    if (!Array.isArray(blocks)) return false;
+    lastCampaignSnapshot = snapshot || lastCampaignSnapshot;
+    lastSelectedLanguage = lang || getSelectedLanguage();
+    applyTargeting(mergeBlocksWithExisting(blocks));
+    return true;
+  }
+
   // Capture the block ID when the user clicks the block-targeting toolbar button.
-  // This fires before the dialog appears, so we stash it in pendingBlockId.
   document.addEventListener('click', (e) => {
     const btn = e.target && e.target.closest && e.target.closest('[block-toolbar-button="block-targeting"]');
     if (!btn) return;
@@ -183,6 +516,9 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
     if (typeof window.gemSyncCompactEmailToolsFeatureMenuItems === 'function') {
       window.gemSyncCompactEmailToolsFeatureMenuItems();
     }
+    if (typeof window.gemSyncBlockTargetingPanelToggle === 'function') {
+      window.gemSyncBlockTargetingPanelToggle();
+    }
   }
 
   try {
@@ -201,7 +537,7 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
       updateToolbarButtonState();
       refreshPreviewSettingsInPreviewIframe();
       if (changes[STORAGE_PREVIEW_ENABLED] && previewEnabled) {
-        applyFromStorage();
+        applyTargetingData();
       }
     });
   } catch (_) {}
@@ -245,6 +581,7 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
     });
 
     updateToolbarButtonState();
+    updateNavPipCount(countTargetedBlocks(lastBlocks));
   }
 
   function waitForToolbarButtonSlot() {
@@ -265,7 +602,8 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
     if (!iframe || iframe._gemBtPreviewLoadBound) return;
     iframe._gemBtPreviewLoadBound = true;
     iframe.addEventListener('load', () => {
-      applyFromStorage();
+      applyTargetingData();
+      setTimeout(refreshPanelAfterPreviewNames, 300);
     });
   }
 
@@ -274,6 +612,7 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
     marked.forEach((el) => {
       el.removeAttribute('data-gem-has-block-targeting');
       el.removeAttribute('data-gem-block-targeting-visibility');
+      el.removeAttribute('data-gem-block-targeting-scroll-highlight');
     });
   }
 
@@ -282,19 +621,26 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
     lastBlocks = blocks;
 
     const iframe = document.querySelector(IFRAME_SELECTOR);
-    if (!iframe) return;
+    if (!iframe) {
+      notifyDataChange();
+      return;
+    }
 
     let iframeDoc;
     try {
       iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
     } catch (_) {
+      notifyDataChange();
       return;
     }
 
     injectCSS(iframeDoc);
 
     const container = iframeDoc.querySelector('[e-blocks-container]');
-    if (!container) return;
+    if (!container) {
+      notifyDataChange();
+      return;
+    }
 
     isApplying = true;
 
@@ -319,9 +665,7 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
 
       el.setAttribute('data-gem-has-block-targeting', 'true');
 
-      const visibility = block.targeting.content && block.targeting.content.visibility
-        ? block.targeting.content.visibility
-        : '';
+      const visibility = getBlockVisibility(block.targeting);
       el.setAttribute('data-gem-block-targeting-visibility', visibility);
       targetedCount++;
     });
@@ -331,9 +675,8 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
     console.log('[Gem][BlockTargeting] Applied targeting to', targetedCount, 'of', eBlocks.length, 'blocks.');
 
     watchContainer(container);
+    notifyDataChange();
   }
-
-  // --- MutationObserver on e-blocks-container to re-apply after Emarsys re-renders ---
 
   function scheduleReapply() {
     if (reapplyTimer) clearTimeout(reapplyTimer);
@@ -363,12 +706,6 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
     });
   }
 
-  // --- Update a single block's targeting in memory only ---
-  // Storage is intentionally NOT updated here. The next draft save will
-  // write the canonical data from Emarsys. If the user reloads without
-  // saving, the on-load path reads from storage and unsaved edits are
-  // naturally discarded.
-
   function updateBlockTargeting(blockId, targeting) {
     if (!lastBlocks) return;
 
@@ -383,8 +720,6 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
 
     applyTargeting(lastBlocks);
   }
-
-  // --- Watch for the Block targeting dialog ---
 
   function isBlockTargetingDialog(el) {
     if (!el || el.nodeType !== Node.ELEMENT_NODE) return false;
@@ -433,7 +768,6 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
     console.log('[Gem][BlockTargeting] Delegated click handler attached to dialog.');
   }
 
-  // Watch for Block targeting dialogs appearing in the DOM
   function watchForBlockTargetingDialog() {
     window.gemDomWatchSubscribe(function (mutations) {
       for (const mutation of mutations) {
@@ -466,9 +800,70 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
     });
   }
 
-  // --- On-load: read from storage, or fall back to toolbar hints ---
+  function readDraftStorage(campaignId, lang) {
+    return new Promise((resolve) => {
+      const storageKey = DRAFT_KEY_PREFIX + campaignId;
+      try {
+        chrome.storage.local.get(storageKey, (result) => {
+          const entry = result[storageKey];
+          if (entry && entry.contents && Array.isArray(entry.contents[lang])) {
+            resolve(entry.contents[lang]);
+          } else {
+            resolve(null);
+          }
+        });
+      } catch (_) {
+        resolve(null);
+      }
+    });
+  }
 
-  function applyFromStorage() {
+  async function resolveBlocksFromHandshake(campaignId, suiteCampaignId) {
+    if (!campaignId && !suiteCampaignId) return { blocks: null, snapshot: null };
+
+    let snapshot = getCachedSnapshot([campaignId, suiteCampaignId]);
+    if (!snapshot && campaignId && typeof window.gemWaitForContentBlocksSnapshot === 'function') {
+      snapshot = await window.gemWaitForContentBlocksSnapshot(campaignId, 2000);
+    }
+    if (!snapshot && typeof window.gemFetchContentBlocksSnapshot === 'function') {
+      const sessionId = getSessionIdFromUrl();
+      const fetchId = campaignId || suiteCampaignId;
+      if (sessionId && fetchId) {
+        const fetchResult = await window.gemFetchContentBlocksSnapshot(fetchId, sessionId);
+        if (fetchResult && fetchResult.ok) {
+          snapshot = fetchResult.campaign
+            ? { campaign: fetchResult.campaign }
+            : fetchResult.snapshot || null;
+        }
+      }
+    }
+
+    const lang = getSelectedLanguage();
+    const blocks = snapshot ? extractBlocksFromSnapshot(snapshot, lang) : null;
+    return { blocks, snapshot, lang };
+  }
+
+  async function applyTargetingDataAfterDraftSave(draftData) {
+    const campaignId = getCampaignIdFromUrl();
+    const suiteCampaignId = draftData && draftData.suiteCampaignId;
+    const lang = (draftData && draftData.selectedLanguage) || getSelectedLanguage();
+
+    if (lang && (campaignId || suiteCampaignId)) {
+      const snapshot = getCachedSnapshot([campaignId, suiteCampaignId]);
+      if (snapshot) {
+        lastCampaignSnapshot = snapshot;
+        const blocks = extractBlocksFromSnapshot(snapshot, lang);
+        if (blocks) {
+          applyBlocksFromSource(blocks, snapshot, lang);
+          return;
+        }
+      }
+    }
+
+    await applyTargetingData();
+  }
+
+  async function applyTargetingData() {
     const campaignId = getCampaignIdFromUrl();
     const lang = getSelectedLanguage();
 
@@ -477,15 +872,38 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
       return;
     }
 
-    const storageKey = DRAFT_KEY_PREFIX + campaignId;
-    chrome.storage.local.get(storageKey, (result) => {
-      const entry = result[storageKey];
-      if (entry && entry.contents && Array.isArray(entry.contents[lang])) {
-        applyTargeting(entry.contents[lang]);
-      } else {
-        applyFromToolbarHints();
+    try {
+      const handshakeResult = await resolveBlocksFromHandshake(campaignId);
+      if (handshakeResult.blocks) {
+        clearToolbarHintsObservers();
+        applyBlocksFromSource(handshakeResult.blocks, handshakeResult.snapshot, handshakeResult.lang);
+        return;
+      }
+    } catch (_) {}
+
+    const draftBlocks = await readDraftStorage(campaignId, lang);
+    if (draftBlocks) {
+      clearToolbarHintsObservers();
+      applyBlocksFromSource(draftBlocks, lastCampaignSnapshot, lang);
+      return;
+    }
+
+    applyFromToolbarHints();
+  }
+
+  function refreshPanelAfterPreviewNames() {
+    if (!Array.isArray(lastBlocks) || !lastBlocks.length) return;
+    let changed = false;
+    lastBlocks.forEach((block) => {
+      if (!block || block._id == null) return;
+      const previewName = getPreviewBlockName(String(block._id));
+      if (previewName) {
+        const prev = blockDisplayNameCache.get(String(block._id));
+        rememberBlockDisplayName(String(block._id), previewName);
+        if (prev !== previewName) changed = true;
       }
     });
+    if (changed) notifyDataChange();
   }
 
   let toolbarHintsUnsub = null;
@@ -595,7 +1013,20 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
 
     if (syntheticBlocks.length) {
       applyTargeting(syntheticBlocks);
+    } else {
+      notifyDataChange();
     }
+  }
+
+  function watchLanguageSelector() {
+    if (languageWatchUnsub) return;
+    lastLanguageValue = getSelectedLanguage();
+    languageWatchUnsub = window.gemDomWatchSubscribe(function () {
+      const current = getSelectedLanguage();
+      if (!current || current === lastLanguageValue) return;
+      lastLanguageValue = current;
+      applyTargetingData();
+    });
   }
 
   function waitForIframeBlocks() {
@@ -623,7 +1054,7 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
         const hasLang = getSelectedLanguage();
 
         if (container && hasBlocks && hasLang) {
-          applyFromStorage();
+          applyTargetingData();
           return;
         }
       } catch (_) {}
@@ -636,37 +1067,35 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
     check();
   }
 
-  // Kick off the on-load path
-  if (getCampaignIdFromUrl()) {
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', waitForIframeBlocks);
-    } else {
-      waitForIframeBlocks();
-    }
-  }
-
-  // --- Draft-save path: use data directly from the postMessage ---
-
   window.addEventListener('message', (e) => {
-    if (!e.data || e.data.type !== 'gem-draft-saved') return;
+    if (!e.data) return;
 
-    try {
-      const { selectedLanguage, blocksByLanguage } = e.data;
-      if (!selectedLanguage || !blocksByLanguage) return;
+    if (e.data.type === 'gem-draft-saved') {
+      try {
+        clearToolbarHintsObservers();
+        void applyTargetingDataAfterDraftSave(e.data);
+        setTimeout(refreshPanelAfterPreviewNames, 400);
+      } catch (_) {}
+      return;
+    }
 
-      const blocks = blocksByLanguage[selectedLanguage];
-      if (!Array.isArray(blocks)) return;
-
-      // Real data arrived; stop watching for toolbar hints
-      clearToolbarHintsObservers();
-
-      applyTargeting(blocks);
-    } catch (_) {}
+    if (e.data.source === SNAPSHOT_CACHED_SOURCE) {
+      const campaignId = getCampaignIdFromUrl();
+      const cachedId = String(e.data.campaignId || '').trim();
+      if (!cachedId) return;
+      if (campaignId && cachedId !== String(campaignId) && !snapshotMatchesCampaignPage(e.data.snapshot, campaignId)) {
+        return;
+      }
+      if (e.data.snapshot) {
+        lastCampaignSnapshot = e.data.snapshot;
+      }
+      applyTargetingData();
+      return;
+    }
   });
 
-  // --- Watch for Block targeting dialog interactions ---
-
   watchForBlockTargetingDialog();
+  watchLanguageSelector();
 
   loadBlockTargetingSettings(() => {
     waitForToolbarButtonSlot();
@@ -677,6 +1106,14 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
     attachPreviewIframeLoadListener();
   });
 
+  if (getCampaignIdFromUrl()) {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', waitForIframeBlocks);
+    } else {
+      waitForIframeBlocks();
+    }
+  }
+
   window.gemToggleBlockTargetingPreview = function gemToggleBlockTargetingPreview() {
     try {
       chrome.storage.sync.set({ [STORAGE_PREVIEW_ENABLED]: !previewEnabled });
@@ -685,6 +1122,57 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
 
   window.gemIsBlockTargetingPreviewEnabled = function gemIsBlockTargetingPreviewEnabled() {
     return previewEnabled;
+  };
+
+  window.gemGetTargetedBlocks = function gemGetTargetedBlocks() {
+    return getTargetedBlocksForPanel();
+  };
+
+  window.gemGetBlockTargetingCount = function gemGetBlockTargetingCount() {
+    return countTargetedBlocks(lastBlocks);
+  };
+
+  window.gemOnBlockTargetingDataChange = function gemOnBlockTargetingDataChange(callback) {
+    if (typeof callback !== 'function') return function () {};
+    dataChangeListeners.push(callback);
+    try {
+      callback({
+        blocks: lastBlocks,
+        targetedCount: countTargetedBlocks(lastBlocks),
+        language: lastSelectedLanguage,
+      });
+    } catch (_) {}
+    return function unsubscribe() {
+      dataChangeListeners = dataChangeListeners.filter((cb) => cb !== callback);
+    };
+  };
+
+  window.gemScrollPreviewToBlock = function gemScrollPreviewToBlock(blockId) {
+    const id = String(blockId || '').trim();
+    if (!id) return false;
+
+    const iframeDoc = getIframeDoc();
+    if (!iframeDoc) return false;
+
+    const blockEl = iframeDoc.querySelector(`[e-block-id="${CSS.escape(id)}"]`);
+    if (!blockEl) return false;
+
+    try {
+      blockEl.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+    } catch (_) {
+      blockEl.scrollIntoView(true);
+    }
+
+    blockEl.setAttribute('data-gem-block-targeting-scroll-highlight', 'true');
+    setTimeout(() => {
+      blockEl.removeAttribute('data-gem-block-targeting-scroll-highlight');
+    }, 1800);
+
+    return true;
+  };
+
+  window.gemFormatBlockTargetingRules = function gemFormatBlockTargetingRules(targeting) {
+    return formatTargetingRules(targeting);
   };
 
   console.log('[Gem][BlockTargeting] Initialized.');

@@ -24,6 +24,7 @@
       "#gem-welcome-modal",
       "#gem-compare-modal",
       "#gem-command-palette",
+      "#gem-campaign-details-overlay",
       "#gem-snippet-context-menu",
       "[data-gem-layer-z]"
     ];
@@ -58,6 +59,9 @@
 
       if (el.dataset && el.dataset.gemLayerRaised === "1") return true;
       if (id === "gem-keyboard-shortcuts-modal" || id === "gem-welcome-modal" || id === "gem-compare-modal" || id === "gem-command-palette") return true;
+      if (id === "gem-campaign-details-overlay") {
+        return cls && cls.contains("is-visible");
+      }
       if (id === "gem-snippet-context-menu") {
         return cls && cls.contains("gem-snippet-context-menu--open");
       }

@@ -2931,12 +2931,6 @@ function initializeSnippetsTab() {
   function createSnippetsTabHTML() {
     return `
 <cb-vertical-tab id="gem-snippets-tab" value="tooltips.snippets" icon="snippets">
-  <div style="
-      text-transform: uppercase;
-      text-align: center;
-      font-size: 10px;
-      letter-spacing: 1px;
-  ">Gemma</div>
   <e-verticalnav-item class="gem-e-verticalnav-item">
     <div class="e-verticalnavitem">
       <e-tooltip placement="right" content="Gemma Snippets" role="tooltip" aria-description="Gemma Snippets">
@@ -4118,6 +4112,9 @@ function initializeSnippetsTab() {
   function findSnippetsTabInsertAnchor() {
     const menu = document.querySelector('e-verticalnav-menu');
     if (!menu) return null;
+
+    const blockTargetingTab = menu.querySelector('#gem-block-targeting-tab');
+    if (blockTargetingTab) return blockTargetingTab;
 
     const personalizationSpan = menu.querySelector('span:has(#customTab_personaliztation)');
     if (personalizationSpan) return personalizationSpan;

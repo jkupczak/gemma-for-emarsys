@@ -38,3 +38,13 @@ e-validator-header .e-icon {
 .gem-esl-validator[data-state="unavailable"] {
   cursor: pointer;
 }
+
+cb-campaign-variables .e-cell-auto:has(> input.variable-value) {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+cb-campaign-variables .gem-esl-validator {
+  margin-top: 6px;
+}

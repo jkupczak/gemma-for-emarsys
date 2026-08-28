@@ -1302,6 +1302,9 @@ console.log('[Gem] find-replace-panel.js loaded');
     if (typeof window.gemDeactivateMagicFillPanel === 'function' && window.gemIsMagicFillActive?.()) {
       window.gemDeactivateMagicFillPanel();
     }
+    if (typeof window.gemDeactivateBlockTargetingPanel === 'function' && window.gemIsBlockTargetingActive?.()) {
+      window.gemDeactivateBlockTargetingPanel();
+    }
 
     navItem.setAttribute('status', 'active');
     const navItemDiv = navItem.querySelector('.e-verticalnavitem');

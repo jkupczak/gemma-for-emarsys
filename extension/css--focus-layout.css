@@ -601,7 +601,7 @@ html.gem-focus-layout cb-version-selector .e-selectnew {
     box-shadow: 0 0 0 2px var(--token-button-highlight-background);
     font-weight: bold !important;
     font-size: 16px !important;
-    color: var(--token-button-highlight-background) !important;
+    color: var(--token-button-highlight-text) !important;
 }
 html.gem-focus-layout cb-version-selector select {
     font-weight: bold !important;
@@ -769,8 +769,14 @@ html.gem-focus-layout cb-header cb-save-button {
     margin: 0 !important;
 }
 html.gem-focus-layout cb-multilanguage-locale-selector:has(.e-hidden) {
-    display: none;
-  }
+    display: none !important;
+}
+html.gem-focus-layout cb-version-selector:not(:has(option:nth-child(2))) {
+    display: none !important;
+}
+html.gem-focus-layout .gem-compact-email-versions.active:not(:has(cb-version-selector option:nth-child(2))):not(:has(vce-languages-selector:not(.e-hidden))) {
+    display: none !important;
+}
 
 html.gem-focus-layout cb-header cb-save-button button {
     font-weight: normal !important;
@@ -784,6 +790,7 @@ html.gem-focus-layout cb-header a.e-layout__back {
 html.gem-focus-layout main {
     & section.e-contentblocks-navigation_section:has(.e-verticalnav__content cb-campaign-variables),
     & section.e-contentblocks-navigation_section:has(.e-verticalnav__content gem-snippets),
+    & section.e-contentblocks-navigation_section:has(.e-verticalnav__content gem-block-targeting),
     & section.e-contentblocks-navigation_section:has(.e-verticalnav__content gem-find-replace),
     & section.e-contentblocks-navigation_section:has(.e-verticalnav__content cb-email-basics-tab),
     & section.e-contentblocks-navigation_section:has(.e-verticalnav__content cb-versions),

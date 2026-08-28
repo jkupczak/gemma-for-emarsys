@@ -469,6 +469,8 @@ const COMPACT_EMAIL_TOOLS_REVIEW_SCRIPTS_SVG = '<svg xmlns="http://www.w3.org/20
 
 const COMPACT_EMAIL_TOOLS_REVIEW_LINKS_SVG = '<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor"><path d="M318-120q-82 0-140-58t-58-140q0-40 15-76t43-64l134-133 56 56-134 134q-17 17-25.5 38.5T200-318q0 49 34.5 83.5T318-200q23 0 45-8.5t39-25.5l133-134 57 57-134 133q-28 28-64 43t-76 15Zm79-220-57-57 223-223 57 57-223 223Zm251-28-56-57 134-133q17-17 25-38t8-44q0-50-34-85t-84-35q-23 0-44.5 8.5T558-726L425-592l-57-56 134-134q28-28 64-43t76-15q82 0 139.5 58T839-641q0 39-14.5 75T782-502L648-368Z"/></svg>';
 
+const COMPACT_EMAIL_TOOLS_CAMPAIGN_DETAILS_SVG = '<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor"><path d="M440-280h80v-240h-80v240Zm40-320q17 0 28.5-11.5T520-640q0-17-11.5-28.5T480-680q-17 0-28.5 11.5T440-640q0 17 11.5 28.5T480-600Zm0 520q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Zm0-320Z"/></svg>';
+
 const COMPACT_EMAIL_TOOLS_DUPLICATE_SVG = '<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor"><path d="M560-320h80v-120h120v-80H640v-120h-80v120H440v80h120v120ZM240-140Q131-178 65.5-271.5T0-480q0-115 65.5-208.5T240-820v88q-74 35-117 103T80-480q0 81 43 149t117 103v88Zm219.5-8.5q-65.5-28.5-114-77t-77-114Q240-405 240-480t28.5-140.5q28.5-65.5 77-114t114-77Q525-840 600-840t140.5 28.5q65.5 28.5 114 77t77 114Q960-555 960-480t-28.5 140.5q-28.5 65.5-77 114t-114 77Q675-120 600-120t-140.5-28.5ZM600-480Zm0 280q117 0 198.5-81.5T880-480q0-117-81.5-198.5T600-760q-117 0-198.5 81.5T320-480q0 117 81.5 198.5T600-200Z"/></svg>';
 
 const COMPACT_EMAIL_TOOLS_SHARE_SVG = '<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor"><path d="M680-80q-50 0-85-35t-35-85q0-6 3-28L282-392q-16 15-37 23.5t-45 8.5q-50 0-85-35t-35-85q0-50 35-85t85-35q24 0 45 8.5t37 23.5l281-164q-2-7-2.5-13.5T560-760q0-50 35-85t85-35q50 0 85 35t35 85q0 50-35 85t-85 35q-24 0-45-8.5T598-672L317-508q2 7 2.5 13.5t.5 14.5q0 8-.5 14.5T317-452l281 164q16-15 37-23.5t45-8.5q50 0 85 35t35 85q0 50-35 85t-85 35Zm0-80q17 0 28.5-11.5T720-200q0-17-11.5-28.5T680-240q-17 0-28.5 11.5T640-200q0 17 11.5 28.5T680-160ZM200-440q17 0 28.5-11.5T240-480q0-17-11.5-28.5T200-520q-17 0-28.5 11.5T160-480q0 17 11.5 28.5T200-440Zm508.5-291.5Q720-743 720-760t-11.5-28.5Q697-800 680-800t-28.5 11.5Q640-777 640-760t11.5 28.5Q663-720 680-720t28.5-11.5ZM680-200ZM200-480Zm480-280Z"/></svg>';
@@ -802,6 +804,11 @@ window.gemRunCampaignMenuCommand = function gemRunCampaignMenuCommand(commandId)
       return true;
     case 'campaign:scheduling':
       navigateCompactEmailTool('scheduling');
+      return true;
+    case 'campaign:campaign-details':
+      if (typeof window.gemShowCampaignDetailsOverlay === 'function') {
+        window.gemShowCampaignDetailsOverlay({ sticky: true });
+      }
       return true;
     case 'campaign:duplicate':
       return runCompactEmailToolsDuplicateCommand(false);
@@ -1519,6 +1526,24 @@ function setupCompactEmailToolsOverflowMenu(dropdownContainer) {
     syncCompactEmailToolsFeatureMenuItems();
   });
 
+  const campaignDetailsItem = document.createElement('button');
+  campaignDetailsItem.type = 'button';
+  campaignDetailsItem.className = 'gem-campaign-menu-item';
+  campaignDetailsItem.setAttribute('role', 'menuitem');
+
+  const campaignDetailsLabel = document.createElement('span');
+  campaignDetailsLabel.className = 'gem-campaign-menu-item-label';
+  campaignDetailsLabel.textContent = 'Campaign Details';
+  campaignDetailsItem.appendChild(campaignDetailsLabel);
+  prependCompactEmailToolsMenuInlineSvgIcon(campaignDetailsItem, COMPACT_EMAIL_TOOLS_CAMPAIGN_DETAILS_SVG);
+  campaignDetailsItem.addEventListener('click', (e) => {
+    e.stopPropagation();
+    closeCompactEmailToolsMenu();
+    if (typeof window.gemShowCampaignDetailsOverlay === 'function') {
+      window.gemShowCampaignDetailsOverlay({ sticky: true });
+    }
+  });
+
   const duplicateItem = document.createElement('button');
   duplicateItem.type = 'button';
   duplicateItem.className = 'gem-campaign-menu-item';
@@ -1582,6 +1607,7 @@ function setupCompactEmailToolsOverflowMenu(dropdownContainer) {
   });
 
   navColumn.appendChild(navActionsDivider);
+  navColumn.appendChild(campaignDetailsItem);
   navColumn.appendChild(duplicateItem);
 
   trigger.addEventListener('click', (e) => toggleCompactEmailToolsMenuFromWrap(wrap, e));

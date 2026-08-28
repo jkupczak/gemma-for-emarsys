@@ -842,6 +842,54 @@ console.log('[Gem] esl-validator.js loaded');
     });
   }
 
+  function mountVariableInput(input) {
+    if (!input || input.nodeType !== Node.ELEMENT_NODE) return;
+    if (!input.matches || !input.matches('input[type="text"].variable-value')) return;
+    if (!input.closest || !input.closest('vce-variables-editor')) return;
+
+    const panel = input.closest('cb-campaign-variables') || input.closest('vce-variables-editor') || input;
+    const rawId = String(input.id || '').replace(/^variables-editor-input-/, '').trim();
+    const templateName = rawId || DEFAULT_TEMPLATE_NAME;
+
+    mountSession({
+      id: 'campaign-variable:' + (rawId || 'unnamed'),
+      host: input,
+      templateName: templateName,
+      getVisibilityRoot: function () {
+        return panel;
+      },
+      getAnchor: function () {
+        return input;
+      },
+      getText: function () {
+        return input.value || '';
+      },
+    });
+  }
+
+  function scanCampaignVariables(node) {
+    if (!node) return;
+
+    if (node.nodeType === Node.ELEMENT_NODE && node.matches?.('input[type="text"].variable-value')) {
+      mountVariableInput(node);
+      return;
+    }
+
+    if (typeof node.querySelector !== 'function') return;
+
+    const panel = node.nodeType === Node.ELEMENT_NODE && node.matches?.('cb-campaign-variables')
+      ? node
+      : node.querySelector('cb-campaign-variables');
+    const editor = panel
+      ? panel.querySelector('vce-variables-editor')
+      : (node.nodeType === Node.ELEMENT_NODE && node.matches?.('vce-variables-editor')
+        ? node
+        : node.querySelector('vce-variables-editor'));
+    if (!editor) return;
+
+    editor.querySelectorAll('input[type="text"].variable-value').forEach(mountVariableInput);
+  }
+
   function scanForLinkEditor(node, source) {
     if (!node || node.nodeType !== Node.ELEMENT_NODE) return;
 
@@ -924,6 +972,7 @@ console.log('[Gem] esl-validator.js loaded');
         ? node
         : node.querySelector?.('#gem-subject-line-token-modal');
     if (tokenModal) mountSubjectTokenModal(tokenModal);
+    scanCampaignVariables(node);
   }
 
   function scanDocument() {
@@ -946,6 +995,7 @@ console.log('[Gem] esl-validator.js loaded');
     if (snippetModal) mountSnippetModal(snippetModal);
     const tokenModal = document.getElementById('gem-subject-line-token-modal');
     if (tokenModal) mountSubjectTokenModal(tokenModal);
+    scanCampaignVariables(document);
   }
 
   function init() {

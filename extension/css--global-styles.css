@@ -116,8 +116,11 @@ ul.e-navigation__menu_list {
     display: flex;
     flex-direction: column;
 }
-#gem-nav-settings-item .e-icon-wrapper {
-    display: none !important;
+.e-navigation__action .gem-nav-custom-svg svg {
+    width: 1.25rem;
+    height: 1.25rem;
+    display: block;
+    fill: currentColor;
 }
 
 /* New Emarsys UI5 side navigation — Gemma items */

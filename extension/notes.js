@@ -23,12 +23,15 @@ function buildLegacyNotesNavItem() {
     <button type="button" class="e-navigation__action" menu-item-id="notes">
       <e-icon class="e-navigation__action_icon" color="inherit" icon="custom">
         <div aria-hidden="true" class="e-icon-wrapper">
-          <div class="e-icon text-color-inherit"></div>
+          <div class="e-icon text-color-inherit gem-nav-custom-svg"></div>
         </div>
       </e-icon>
       <span class="e-navigation__action_text">Gemma Notes</span>
     </button>
   `;
+  if (window.gemNavMenu) {
+    window.gemNavMenu.applyLegacyNavSvg(li, window.gemNavMenu.GEM_NAV_ICON_SVGS.notes);
+  }
 
   li.querySelector("button").addEventListener("click", toggleNotesPanel);
   return li;
@@ -44,6 +47,7 @@ function buildUi5NotesNavItem(navRoot) {
       // Emarsys only registers icons it ships; curriculum is already in the menu.
       iconFallbacks: ["curriculum", "business-card", "image-viewer", "home"],
       className: "gem-ui5-nav-item--notes",
+      svgHtml: gem.GEM_NAV_ICON_SVGS && gem.GEM_NAV_ICON_SVGS.notes,
       onActivate: toggleNotesPanel,
     },
     navRoot
