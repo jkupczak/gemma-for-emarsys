@@ -1,12 +1,13 @@
-// block-targeting-panel.js — Gemma Block Targeting vertical nav panel
+// block-targeting-panel.js — Gemma Block Visibility vertical nav panel
 (function () {
   'use strict';
 
   const TAB_ID = 'gem-block-targeting-tab';
   const PANEL_TAG = 'gem-block-targeting';
   const PIP_CLASS = 'gem-nav-count-pip';
-  const TARGETING_ICON_HTML =
-    '<e-icon icon="radio-checked"><div aria-hidden="true" class="e-icon-wrapper"><div class="e-icon">&#xF15E;</div></div></e-icon>';
+  const BLOCK_VISIBILITY_ICON_SVG =
+    (typeof window.gemBlockVisibilityIconSvg === 'string' && window.gemBlockVisibilityIconSvg) ||
+    '<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor" aria-hidden="true"><path d="M240-40H120q-33 0-56.5-23.5T40-120v-120h80v120h120v80Zm480 0v-80h120v-120h80v120q0 33-23.5 56.5T840-40H720ZM480-220q-120 0-217.5-71T120-480q45-118 142.5-189T480-740q120 0 217.5 71T840-480q-45 118-142.5 189T480-220Zm0-80q88 0 161-48t112-132q-39-84-112-132t-161-48q-88 0-161 48T207-480q39 84 112 132t161 48Zm0-40q58 0 99-41t41-99q0-58-41-99t-99-41q-58 0-99 41t-41 99q0 58 41 99t99 41Zm0-80q-25 0-42.5-17.5T420-480q0-25 17.5-42.5T480-540q25 0 42.5 17.5T540-480q0 25-17.5 42.5T480-420ZM40-720v-120q0-33 23.5-56.5T120-920h120v80H120v120H40Zm800 0v-120H720v-80h120q33 0 56.5 23.5T920-840v120h-80ZM480-480Z"/></svg>';
 
   let dataChangeUnsub = null;
 
@@ -108,9 +109,29 @@
     return 'Targeted';
   }
 
+  function renderCardChips(block) {
+    const chips = [];
+    if (block.visibility) {
+      chips.push(
+        `<span class="gem-bt-card-chip ${visibilityChipClass(block.visibility)}">${escapeHtml(visibilityChipLabel(block.visibility))}</span>`
+      );
+    }
+    if (block.hasMobileHide) {
+      chips.push(
+        '<span class="gem-bt-card-chip gem-bt-card-chip--mobile-hide">Hidden on Mobile</span>'
+      );
+    }
+    if (!chips.length) {
+      chips.push(
+        `<span class="gem-bt-card-chip gem-bt-card-chip--unknown">${escapeHtml('Visibility')}</span>`
+      );
+    }
+    return `<span class="gem-bt-card-chips">${chips.join('')}</span>`;
+  }
+
   function renderRuleRows(rules) {
     if (!Array.isArray(rules) || !rules.length) {
-      return '<div class="gem-bt-card-rule gem-bt-card-rule--empty">No additional targeting details.</div>';
+      return '<div class="gem-bt-card-rule gem-bt-card-rule--empty">No additional visibility details.</div>';
     }
     return rules.map((rule) => (
       '<div class="gem-bt-card-rule">' +
@@ -145,7 +166,7 @@
       `<button type="button" class="gem-bt-card" data-block-id="${escapeHtml(block._id)}" aria-label="Scroll to ${escapeHtml(block.name)}">` +
         '<div class="gem-bt-card-header">' +
           `<span class="gem-bt-card-name">${escapeHtml(block.name)}</span>` +
-          `<span class="gem-bt-card-chip ${visibilityChipClass(block.visibility)}">${escapeHtml(visibilityChipLabel(block.visibility))}</span>` +
+          renderCardChips(block) +
         '</div>' +
         `<div class="gem-bt-card-rules">${renderRuleRows(block.rules)}</div>` +
       '</button>'
@@ -203,12 +224,16 @@
   ">Gemma</div>
   <e-verticalnav-item class="gem-e-verticalnav-item">
     <div class="e-verticalnavitem">
-      <e-tooltip placement="right" content="Gemma Block Targeting" role="tooltip" aria-description="Gemma Block Targeting">
+      <e-tooltip placement="right" content="Gemma Block Visibility" role="tooltip" aria-description="Gemma Block Visibility">
         <div class="e-verticalnavitem__icon e-svgclickfix">
-          ${TARGETING_ICON_HTML}
+          <gem-e-icon icon="gem-block-visibility">
+            <div aria-hidden="true" class="e-icon-wrapper">
+              <div class="e-icon">${BLOCK_VISIBILITY_ICON_SVG}</div>
+            </div>
+          </gem-e-icon>
         </div>
       </e-tooltip>
-      <div class="e-verticalnavitem__value">Gemma Block Targeting</div>
+      <div class="e-verticalnavitem__value">Gemma Block Visibility</div>
     </div>
   </e-verticalnav-item>
 </cb-vertical-tab>
@@ -220,16 +245,16 @@
 <${PANEL_TAG} class="scrollable gem-block-targeting-panel">
   <div class="e-section">
     <div class="e-section__header">
-      <div class="e-section__title">Gemma Block Targeting</div>
+      <div class="e-section__title">Gemma Block Visibility</div>
       <div class="e-section__actions">
-        <button type="button" class="e-btn e-section__action" data-role="overlayToggleBtn" aria-pressed="true">Highlight Blocks</button>
+        <button type="button" class="e-btn e-section__action" data-role="overlayToggleBtn" aria-pressed="true">Highlight Visibility</button>
       </div>
     </div>
     <div class="e-section__content">
-      <p class="gem-bt-panel-help">Blocks in the active language with block targeting applied. Click a card to scroll to it in the preview.</p>
+      <p class="gem-bt-panel-help">Blocks in the active language with block targeting or mobile hide settings. Click a card to scroll to it in the preview.</p>
       <div class="gem-bt-card-list" data-role="cardList"></div>
       <div class="gem-bt-empty" data-role="emptyState" hidden>
-        No blocks with block targeting in this language.
+        No blocks with visibility settings in this language.
       </div>
     </div>
   </div>
@@ -273,10 +298,26 @@
     }
   }
 
+  function ensureBlockTargetingOverlayEnabled() {
+    if (typeof window.gemSetBlockTargetingPreviewEnabled === 'function') {
+      window.gemSetBlockTargetingPreviewEnabled(true);
+      return;
+    }
+    if (
+      typeof window.gemIsBlockTargetingPreviewEnabled === 'function' &&
+      !window.gemIsBlockTargetingPreviewEnabled() &&
+      typeof window.gemToggleBlockTargetingPreview === 'function'
+    ) {
+      window.gemToggleBlockTargetingPreview();
+    }
+  }
+
   function activateBlockTargetingPanel() {
     const navContent = document.querySelector('.e-verticalnav__content');
     const navItem = document.querySelector(`#${TAB_ID} e-verticalnav-item`);
     if (!navContent || !navItem) return;
+
+    ensureBlockTargetingOverlayEnabled();
 
     deactivateOtherGemmaPanels();
     deactivateSnippetsPanelIfActive();
@@ -384,5 +425,5 @@
     initBlockTargetingPanel();
   }
 
-  console.log('[Gem][BlockTargetingPanel] Initialized.');
+  console.log('[Gem][BlockVisibilityPanel] Initialized.');
 })();

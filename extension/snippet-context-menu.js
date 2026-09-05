@@ -7,6 +7,7 @@ console.log('[Gem] snippet-context-menu.js loaded');
   const MENU_ID = 'gem-snippet-context-menu';
   const RECENT_STORAGE_KEY = 'gemSnippetContextRecent';
   const TRIGGER_SETTING_KEY = 'gemSnippetContextMenuTrigger';
+  const INSERT_MODE_SETTING_KEY = 'gemSnippetContextInsertMode';
   const LEGACY_ENABLED_SETTING_KEY = 'gemSnippetContextMenuEnabled';
   const LEGACY_REQUIRE_MOD_SETTING_KEY = 'gemSnippetContextMenuRequireMod';
   const PREVIEW_IFRAME_SELECTOR = 'iframe.e-contentblocks-preview__iframe-desktop';
@@ -69,9 +70,28 @@ console.log('[Gem] snippet-context-menu.js loaded');
     return res?.[LEGACY_REQUIRE_MOD_SETTING_KEY] === true;
   }
 
+  function normalizeInsertMode(mode) {
+    return mode === 'plain' ? 'plain' : 'token';
+  }
+
+  function applyInsertModeToMenu() {
+    if (!menuEl) return;
+    const mode = normalizeInsertMode(insertMode);
+    menuEl.querySelectorAll('.gem-snippet-ctx-mode-btn').forEach((btn) => {
+      btn.classList.toggle('gem-snippet-ctx-mode-btn--active', btn.dataset.mode === mode);
+    });
+  }
+
+  function persistInsertMode(mode) {
+    insertMode = normalizeInsertMode(mode);
+    if (!chrome?.storage?.sync) return;
+    chrome.storage.sync.set({ [INSERT_MODE_SETTING_KEY]: insertMode });
+  }
+
   function loadSetting(callback) {
     if (!chrome?.storage?.sync) {
       menuRequireMod = false;
+      insertMode = 'token';
       if (callback) callback(true);
       return;
     }
@@ -79,9 +99,11 @@ console.log('[Gem] snippet-context-menu.js loaded');
       {
         [TRIGGER_SETTING_KEY]: 'right-click',
         [LEGACY_REQUIRE_MOD_SETTING_KEY]: false,
+        [INSERT_MODE_SETTING_KEY]: 'token',
       },
       (res) => {
         menuRequireMod = resolveMenuRequireModFromStorage(res);
+        insertMode = normalizeInsertMode(res[INSERT_MODE_SETTING_KEY]);
         if (callback) callback(true);
       }
     );
@@ -1084,10 +1106,8 @@ console.log('[Gem] snippet-context-menu.js loaded');
     menuEl.querySelectorAll('.gem-snippet-ctx-mode-btn').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
-        insertMode = btn.dataset.mode === 'plain' ? 'plain' : 'token';
-        menuEl.querySelectorAll('.gem-snippet-ctx-mode-btn').forEach((b) => {
-          b.classList.toggle('gem-snippet-ctx-mode-btn--active', b === btn);
-        });
+        persistInsertMode(btn.dataset.mode === 'plain' ? 'plain' : 'token');
+        applyInsertModeToMenu();
       });
     });
 
@@ -1864,7 +1884,6 @@ console.log('[Gem] snippet-context-menu.js loaded');
       window.gemSyncCodeMirrorContextSelection(ctx, ctx.cmInstance, ctx.cmEl);
     }
     activeCtx = ctx;
-    insertMode = 'token';
     menuAnchor = { x, y };
     menuPlacement = null;
 
@@ -1872,9 +1891,7 @@ console.log('[Gem] snippet-context-menu.js loaded');
     if (insertAsWrap) {
       insertAsWrap.hidden = !supportsInsertMode(ctx);
     }
-    menuEl.querySelectorAll('.gem-snippet-ctx-mode-btn').forEach((btn) => {
-      btn.classList.toggle('gem-snippet-ctx-mode-btn--active', btn.dataset.mode === 'token');
-    });
+    applyInsertModeToMenu();
     menuEl.querySelector('.gem-snippet-ctx-search').value = '';
 
     const clipboardSection = menuEl.querySelector('.gem-snippet-ctx-clipboard');
@@ -2119,7 +2136,6 @@ console.log('[Gem] snippet-context-menu.js loaded');
         window.gemSyncCodeMirrorContextSelection(ctx, ctx.cmInstance, ctx.cmEl);
       }
       activeCtx = ctx;
-      if (options.forceTokenMode) insertMode = 'token';
       insertMenuToken(item);
     });
   }
@@ -2137,7 +2153,7 @@ console.log('[Gem] snippet-context-menu.js loaded');
       if (typeof event.stopImmediatePropagation === 'function') {
         event.stopImmediatePropagation();
       }
-      insertTokenBySlot(digit, { ctx, forceTokenMode: true });
+      insertTokenBySlot(digit, { ctx });
       return;
     }
 
@@ -2162,7 +2178,7 @@ console.log('[Gem] snippet-context-menu.js loaded');
     if (typeof event.stopImmediatePropagation === 'function') {
       event.stopImmediatePropagation();
     }
-    insertTokenBySlot(digit, { useActiveCtx: true, forceTokenMode: true });
+    insertTokenBySlot(digit, { useActiveCtx: true });
   }
 
   function onContextMenu(event) {
@@ -2457,6 +2473,10 @@ console.log('[Gem] snippet-context-menu.js loaded');
         }
         if (changes[LEGACY_REQUIRE_MOD_SETTING_KEY]) {
           menuRequireMod = changes[LEGACY_REQUIRE_MOD_SETTING_KEY].newValue === true;
+        }
+        if (changes[INSERT_MODE_SETTING_KEY]) {
+          insertMode = normalizeInsertMode(changes[INSERT_MODE_SETTING_KEY].newValue);
+          if (menuOpen) applyInsertModeToMenu();
         }
         if (window.GEM_SHORTCUT_SLOTS_STORAGE_KEY && changes[window.GEM_SHORTCUT_SLOTS_STORAGE_KEY]) {
           loadManualShortcutMap(() => {

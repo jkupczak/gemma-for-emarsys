@@ -794,6 +794,70 @@ console.log('[Gem] esl-validator.js loaded');
     });
   }
 
+  function resolveImageAltTextDialog(startNode) {
+    if (!startNode || startNode.nodeType !== Node.ELEMENT_NODE) return null;
+    return (
+      startNode.closest('.gem-enhanced-image-properties-dialog') ||
+      startNode.closest('e-float-container')
+    );
+  }
+
+  function mountImageAltText(startNode) {
+    const dialog = resolveImageAltTextDialog(startNode);
+    const scope =
+      dialog ||
+      (startNode && startNode.nodeType === Node.ELEMENT_NODE ? startNode : null);
+    if (!scope || typeof scope.querySelector !== 'function') return;
+
+    const input = scope.querySelector('input.e-input[placeholder="Image alternative text"]');
+    if (!input) return;
+
+    const field = input.closest('.e-field');
+    if (!field) return;
+
+    const visRoot = dialog || field;
+
+    mountSession({
+      id: 'image-alt-text',
+      host: field,
+      getVisibilityRoot: function () {
+        return visRoot;
+      },
+      getAnchor: function () {
+        const currentInput = field.querySelector('input.e-input[placeholder="Image alternative text"]');
+        if (!currentInput) return field;
+        return currentInput.closest('.e-grid') || currentInput;
+      },
+      getText: function () {
+        const currentInput = field.querySelector('input.e-input[placeholder="Image alternative text"]');
+        return currentInput ? currentInput.value || '' : '';
+      },
+      getSubmitButtons: function () {
+        return Array.from(
+          visRoot.querySelectorAll('button.apply, .apply.e-btn, .e-btn.apply')
+        );
+      },
+    });
+  }
+
+  function scanForImageAltText(node) {
+    if (!node || node.nodeType !== Node.ELEMENT_NODE) return;
+
+    if (node.matches('.gem-enhanced-image-properties-dialog')) {
+      mountImageAltText(node);
+    }
+    if (node.matches('input.e-input[placeholder="Image alternative text"]')) {
+      mountImageAltText(node);
+    }
+
+    node.querySelectorAll('.gem-enhanced-image-properties-dialog').forEach((dialog) => {
+      mountImageAltText(dialog);
+    });
+    node.querySelectorAll('input.e-input[placeholder="Image alternative text"]').forEach((input) => {
+      mountImageAltText(input);
+    });
+  }
+
   function mountSnippetModal(modal) {
     const codeInput = modal.querySelector('#gem-snippet-code-input');
     if (!codeInput) return;
@@ -961,6 +1025,7 @@ console.log('[Gem] esl-validator.js loaded');
     if (node.matches?.('cb-preheader')) mountPreheader(node);
     if (node.id === 'gem-snippet-modal') mountSnippetModal(node);
     if (node.id === 'gem-subject-line-token-modal') mountSubjectTokenModal(node);
+    scanForImageAltText(node);
     const subject = node.querySelector?.('cb-personalizable-input-with-context#subject-line-input');
     if (subject) mountSubjectLine(subject);
     const preheader = node.querySelector?.('cb-preheader');
@@ -995,6 +1060,7 @@ console.log('[Gem] esl-validator.js loaded');
     if (snippetModal) mountSnippetModal(snippetModal);
     const tokenModal = document.getElementById('gem-subject-line-token-modal');
     if (tokenModal) mountSubjectTokenModal(tokenModal);
+    scanForImageAltText(document);
     scanCampaignVariables(document);
   }
 
@@ -1031,6 +1097,7 @@ console.log('[Gem] esl-validator.js loaded');
   }
 
   window.gemMountEslValidator = mountSession;
+  window.gemMountImageAltTextValidator = mountImageAltText;
   window.gemRenderEslValidatorHeader = renderValidatorHtml;
 
   if (document.readyState === 'loading') {

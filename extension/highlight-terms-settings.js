@@ -22,6 +22,12 @@
     return `rgba(${r}, ${g}, ${b}, 0.40)`;
   }
 
+  function normalizeHighlightMode(mode) {
+    if (mode === 'notify') return 'notify';
+    if (mode === 'disabled') return 'disabled';
+    return 'highlight';
+  }
+
   function normalizeHighlightTermData(termData) {
     if (typeof termData === 'string') {
       return {
@@ -34,7 +40,7 @@
     return {
       color: typeof data.color === 'string' ? data.color : 'rgba(255, 255, 0, 0.40)',
       isRegex: !!data.isRegex,
-      mode: data.mode === 'notify' ? 'notify' : 'highlight'
+      mode: normalizeHighlightMode(data.mode)
     };
   }
 
@@ -49,7 +55,7 @@
       updatedTerms[newTerm] = {
         color: newColor,
         isRegex: newIsRegex,
-        mode: newMode === 'notify' ? 'notify' : 'highlight'
+        mode: normalizeHighlightMode(newMode)
       };
       chrome.storage.sync.set({ highlightTerms: updatedTerms });
     });
@@ -82,6 +88,7 @@
         <select class="gem-highlight-term-mode" title="Choose term behavior">
           <option value="highlight" ${mode === 'highlight' ? 'selected' : ''}>Highlight</option>
           <option value="notify" ${mode === 'notify' ? 'selected' : ''}>Notify</option>
+          <option value="disabled" ${mode === 'disabled' ? 'selected' : ''}>Disabled</option>
         </select>
       </div>
       <button class="highlight-term-remove">×</button>
@@ -97,7 +104,7 @@
       const newTerm = textInput.value.trim();
       const newColor = colorInput.value;
       const newIsRegex = regexBtn.classList.contains('gem-settings-regex-toggle--active');
-      const newMode = modeSelect && modeSelect.value === 'notify' ? 'notify' : 'highlight';
+      const newMode = modeSelect ? normalizeHighlightMode(modeSelect.value) : 'highlight';
       if (newTerm) {
         updateHighlightTerm(term, newTerm, hexToRgba(newColor), newIsRegex, newMode);
         term = newTerm;
@@ -146,7 +153,7 @@
     const newTerm = textInput.value.trim();
     const newColor = hexToRgba(colorInput.value);
     const newIsRegex = regexBtn.classList.contains('gem-settings-regex-toggle--active');
-    const newMode = modeSelect.value === 'notify' ? 'notify' : 'highlight';
+    const newMode = normalizeHighlightMode(modeSelect.value);
 
     if (newTerm) {
       chrome.storage.sync.get({ highlightTerms: {} }, (settings) => {

@@ -601,7 +601,7 @@ html.gem-focus-layout cb-version-selector .e-selectnew {
     box-shadow: 0 0 0 2px var(--token-button-highlight-background);
     font-weight: bold !important;
     font-size: 16px !important;
-    color: var(--token-button-highlight-text) !important;
+    color: var(--token-text-default) !important;
 }
 html.gem-focus-layout cb-version-selector select {
     font-weight: bold !important;

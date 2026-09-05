@@ -78,6 +78,12 @@ body.gem-toolbar-convertEslToTokens-always-hide e-tooltip[e-button-id="gem-conve
     display: none !important;
 }
 
+/* Content Composer */
+body.gem-toolbar-contentComposer-always-hide e-tooltip[content="Content Composer"],
+body.gem-toolbar-contentComposer-always-hide e-tooltip[e-button-id="4fb263d5-d907-480c-a633-6028a5eb71e8"] {
+    display: none !important;
+}
+
 cb-header.e-layout__header h1 {
     font-size: 16px !important
 }

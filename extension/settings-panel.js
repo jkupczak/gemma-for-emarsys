@@ -8,6 +8,7 @@ function gemToast(message, opts = {}) {
 // Theme mode — applyGemThemeMode lives in theme-applier.js (loaded first)
 // ------------------------------------------------------------
 const GEM_DEBUG_LOGGING_KEY = "gemDebugLogging";
+const GEM_ALT_TEXT_PREVIEW_OVERLAY_ACTIVE_KEY = "gemAltTextPreviewOverlayActive";
 const GEM_THEME_MODE_LOCAL_KEY = "gemThemeMode";
 const GEM_THEME_MODE_STORAGE_KEY = GEM_THEME_MODE_LOCAL_KEY;
 const GEM_RECENT_IMAGES_STORAGE_KEY = 'gemRecentImages';
@@ -55,6 +56,8 @@ const GEM_COMPARE_LANGUAGES_MOBILE_WIDTH_KEY = 'gemCompareLanguagesMobileWidth';
 const GEM_CAMPAIGN_PREVIEW_TOOLBAR_VISIBLE_KEY = 'gemCampaignPreviewToolbarVisible';
 const GEM_CAMPAIGN_TAB_TITLE_REGEX_KEY = 'gemCampaignTabTitleRegex';
 const GEM_CAMPAIGN_TAB_TITLE_FORMAT_KEY = 'gemCampaignTabTitleFormat';
+const GEM_DUPLICATE_TAB_GUARD_KEY = 'gemDuplicateTabGuardEnabled';
+const GEM_STALE_TAB_GUARD_KEY = 'gemStaleTabGuardEnabled';
 const GEM_SNIPPET_CONTEXT_MENU_TRIGGER_KEY = 'gemSnippetContextMenuTrigger';
 const GEM_SNIPPET_CONTEXT_MENU_TRIGGER_DEFAULT = 'right-click';
 const GEM_SNIPPET_CONTEXT_MENU_ENABLED_KEY = 'gemSnippetContextMenuEnabled';
@@ -949,6 +952,34 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
         </div>
 
         <div class="gem-setting-section">
+          <h3>Campaign Tab Safety</h3>
+          <div class="gem-setting gem-setting-condensed">
+            <div class="gem-e-switch-wrapper">
+              <label for="opt-duplicate-tab-guard-enabled">Duplicate Tab Warnings</label>
+              <div class="gem-e-switch--fat e-switch">
+                <input type="checkbox" class="e-switch__input" id="opt-duplicate-tab-guard-enabled" checked>
+                <label class="e-switch__toggle" for="opt-duplicate-tab-guard-enabled"></label>
+              </div>
+            </div>
+            <p class="sub-label">
+              Warn when the same campaign is open in more than one browser tab, including a persistent banner, focus warnings when unsaved changes exist, and a confirmation before saving.
+            </p>
+          </div>
+          <div class="gem-setting gem-setting-condensed">
+            <div class="gem-e-switch-wrapper">
+              <label for="opt-stale-tab-guard-enabled">Stale Tab Warnings</label>
+              <div class="gem-e-switch--fat e-switch">
+                <input type="checkbox" class="e-switch__input" id="opt-stale-tab-guard-enabled" checked>
+                <label class="e-switch__toggle" for="opt-stale-tab-guard-enabled"></label>
+              </div>
+            </div>
+            <p class="sub-label">
+              Warn when a campaign tab is reopened after being closed and may show older content from memory. Browser back and forward navigation is not treated as stale.
+            </p>
+          </div>
+        </div>
+
+        <div class="gem-setting-section">
           <h3>Link Highlight Preview</h3>
           <div class="gem-setting gem-setting-condensed">
             <div class="gem-e-switch-wrapper">
@@ -1005,22 +1036,22 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
         </div>
 
         <div class="gem-setting-section">
-          <h3>Block Targeting Preview</h3>
+          <h3>Block Visibility Preview</h3>
           <div class="gem-setting gem-setting-condensed">
             <div class="gem-e-switch-wrapper">
-              <label for="opt-block-targeting-preview-enabled">Toggle Block Targeting Previews</label>
+              <label for="opt-block-targeting-preview-enabled">Toggle Block Visibility Previews</label>
               <div class="gem-e-switch--fat e-switch">
                 <input type="checkbox" class="e-switch__input" id="opt-block-targeting-preview-enabled" checked>
                 <label class="e-switch__toggle" for="opt-block-targeting-preview-enabled"></label>
               </div>
             </div>
             <p class="sub-label">
-              When enabled, blocks with targeting rules show a visual preview in the email canvas. You can also toggle this from the email preview toolbar.
+              When enabled, blocks with targeting rules or mobile hide settings show a visual preview in the email canvas. You can also toggle this from the email preview toolbar.
             </p>
           </div>
           <div class="gem-setting gem-setting-condensed">
             <div style="display: flex; gap: 12px; align-items: center;">
-              <label for="opt-block-targeting-visibility" style="flex: 1;">Block Targeting Visibility</label>
+              <label for="opt-block-targeting-visibility" style="flex: 1;">Block Visibility</label>
               <select id="opt-block-targeting-visibility" style="width: 150px;">
                 <option value="always-show" selected>Always Show</option>
                 <option value="show-on-hover">Show on Hover</option>
@@ -1210,6 +1241,16 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
               <option value="always-hide">Always Hide</option>
             </select>
           </div>
+
+          <div class="gem-setting gem-setting-condensed" style="display: flex; gap: 12px; align-items: center;">
+            <label for="opt-content-composer" style="flex: 1;">
+            <e-icon icon="ai"><div aria-hidden="true" class="e-icon-wrapper"><div class="e-icon"></div></div></e-icon>
+            Content Composer</label>
+            <select id="opt-content-composer" style="width: 150px;">
+              <option value="always-show">Always Show</option>
+              <option value="always-hide" selected>Always Hide</option>
+            </select>
+          </div>
         </div>
 
         <div class="gem-setting-section">
@@ -1340,7 +1381,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
           </div>
           <div class="gem-setting gem-setting-condensed">
             <p class="sub-label">
-              When enabled, blocks with targeting rules show a visual preview in the email canvas. You can also toggle this from the email preview toolbar.
+              When enabled, blocks with targeting rules or mobile hide settings show a visual preview in the email canvas. You can also toggle this from the email preview toolbar.
             </p>
           </div>
         </div>
@@ -1450,6 +1491,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
             <select id="new-term-mode" class="gem-highlight-term-mode" title="Choose term behavior">
               <option value="highlight" selected>Highlight</option>
               <option value="notify">Notify</option>
+              <option value="disabled">Disabled</option>
             </select>
             <button id="add-term-btn" class="e-btn e-btn-primary">Add</button>
           </div>
@@ -1845,6 +1887,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
         resetBlock: "always-show",
         convertEslToTokens: "always-show",
         swapKeywords: "always-show",
+        contentComposer: "always-hide",
         mobilePreviewWidth: 414,
         mobilePreviewScale: 0.5,
         mobileViewVisible: true,
@@ -1866,6 +1909,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
         gemLinkHighlightPreviewEnabled: true,
         gemLinkHighlightShowUrls: "hide-urls",
         gemAltTextPreviewEnabled: true,
+        [GEM_ALT_TEXT_PREVIEW_OVERLAY_ACTIVE_KEY]: true,
         gemAltTextVisibility: "always-show",
         gemBlockTargetingPreviewEnabled: true,
         gemBlockTargetingVisibility: "always-show",
@@ -1883,7 +1927,9 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
         [GEM_COMPARE_LANGUAGES_DESKTOP_WIDTH_KEY]: GEM_COMPARE_LANGUAGES_DEFAULT_DESKTOP_WIDTH,
         [GEM_COMPARE_LANGUAGES_MOBILE_WIDTH_KEY]: GEM_COMPARE_LANGUAGES_DEFAULT_MOBILE_WIDTH,
         [GEM_CAMPAIGN_TAB_TITLE_REGEX_KEY]: "",
-        [GEM_CAMPAIGN_TAB_TITLE_FORMAT_KEY]: ""
+        [GEM_CAMPAIGN_TAB_TITLE_FORMAT_KEY]: "",
+        [GEM_DUPLICATE_TAB_GUARD_KEY]: true,
+        [GEM_STALE_TAB_GUARD_KEY]: true
       }, (settings) => {
         syncThemeSwatchUI(settings[GEM_THEME_MODE_STORAGE_KEY]);
 
@@ -1907,6 +1953,10 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
           settings.convertEslToTokens;
         const swapKeywordsSelect = document.getElementById("opt-swap-keywords");
         if (swapKeywordsSelect) swapKeywordsSelect.value = settings.swapKeywords || "always-show";
+        const contentComposerSelect = document.getElementById("opt-content-composer");
+        if (contentComposerSelect) {
+          contentComposerSelect.value = settings.contentComposer || "always-hide";
+        }
 
         document.getElementById("opt-custom-paste-enabled").checked =
           settings[GEM_CUSTOM_PASTE_ENABLED_KEY] !== false;
@@ -1950,7 +2000,11 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
         applyFocusLayout(settings[GEM_FOCUS_LAYOUT_STORAGE_KEY] === true, focusLayoutType);
 
         const altTextEnabledEl = document.getElementById("opt-alt-text-preview-enabled");
-        if (altTextEnabledEl) altTextEnabledEl.checked = settings.gemAltTextPreviewEnabled !== false;
+        if (altTextEnabledEl) {
+          altTextEnabledEl.checked =
+            settings.gemAltTextPreviewEnabled !== false &&
+            settings[GEM_ALT_TEXT_PREVIEW_OVERLAY_ACTIVE_KEY] !== false;
+        }
 
         const linkHighlightEnabledEl = document.getElementById("opt-link-highlight-preview-enabled");
         if (linkHighlightEnabledEl) {
@@ -2016,6 +2070,15 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
           campaignTabTitleFormatEl.value = String(settings[GEM_CAMPAIGN_TAB_TITLE_FORMAT_KEY] || "");
         }
         syncCampaignTabTitleRegexValidity();
+
+        const duplicateTabGuardEl = document.getElementById("opt-duplicate-tab-guard-enabled");
+        if (duplicateTabGuardEl) {
+          duplicateTabGuardEl.checked = settings[GEM_DUPLICATE_TAB_GUARD_KEY] !== false;
+        }
+        const staleTabGuardEl = document.getElementById("opt-stale-tab-guard-enabled");
+        if (staleTabGuardEl) {
+          staleTabGuardEl.checked = settings[GEM_STALE_TAB_GUARD_KEY] !== false;
+        }
 
         const widthInput = document.getElementById("opt-mobile-preview-width");
         if (widthInput) widthInput.value = settings.mobilePreviewWidth || 414;
@@ -2124,6 +2187,8 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
               document.getElementById("opt-convert-esl-to-tokens")?.value ?? "always-show",
             swapKeywords:
               document.getElementById("opt-swap-keywords")?.value ?? "always-show",
+            contentComposer:
+              document.getElementById("opt-content-composer")?.value ?? "always-hide",
             [GEM_CUSTOM_PASTE_ENABLED_KEY]:
               document.getElementById("opt-custom-paste-enabled")?.checked ?? true,
             [GEM_CUSTOM_PASTE_ALLOW_BOLD_KEY]:
@@ -2156,6 +2221,8 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
             gemLinkHighlightShowUrls:
               document.getElementById("opt-link-highlight-show-urls")?.value ?? "hide-urls",
             gemAltTextPreviewEnabled:
+              document.getElementById("opt-alt-text-preview-enabled")?.checked ?? true,
+            [GEM_ALT_TEXT_PREVIEW_OVERLAY_ACTIVE_KEY]:
               document.getElementById("opt-alt-text-preview-enabled")?.checked ?? true,
             gemAltTextVisibility:
               document.getElementById("opt-alt-text-visibility")?.value ?? "always-show",
@@ -2190,7 +2257,11 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
             [GEM_CAMPAIGN_TAB_TITLE_REGEX_KEY]:
               String(document.getElementById("opt-campaign-tab-title-regex")?.value || "").trim(),
             [GEM_CAMPAIGN_TAB_TITLE_FORMAT_KEY]:
-              String(document.getElementById("opt-campaign-tab-title-format")?.value || "")
+              String(document.getElementById("opt-campaign-tab-title-format")?.value || ""),
+            [GEM_DUPLICATE_TAB_GUARD_KEY]:
+              document.getElementById("opt-duplicate-tab-guard-enabled")?.checked ?? true,
+            [GEM_STALE_TAB_GUARD_KEY]:
+              document.getElementById("opt-stale-tab-guard-enabled")?.checked ?? true
           };
 
           // Apply immediately + cache synchronously for next page load
@@ -2341,6 +2412,7 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
       "opt-reset-block",
       "opt-convert-esl-to-tokens",
       "opt-swap-keywords",
+      "opt-content-composer",
       "opt-enable-highlighting",
       "opt-enable-focus-layout",
       "opt-focus-layout-type",
@@ -2383,7 +2455,9 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
       "opt-compare-languages-desktop-width",
       "opt-compare-languages-mobile-width",
       "opt-campaign-tab-title-regex",
-      "opt-campaign-tab-title-format"
+      "opt-campaign-tab-title-format",
+      "opt-duplicate-tab-guard-enabled",
+      "opt-stale-tab-guard-enabled"
     ];
 
     settingsIds.forEach((id) => {
@@ -3359,6 +3433,24 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
     }
   };
 
+  window.toggleGemmaSettings = function (scrollTo) {
+    if (isOpen) {
+      closePanel();
+      return;
+    }
+    openPanel();
+    if (scrollTo) {
+      requestAnimationFrame(() => {
+        const target = panelEl && panelEl.querySelector('#gem-settings-' + scrollTo);
+        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    }
+  };
+
+  window.gemIsGemmaSettingsOpen = function () {
+    return isOpen;
+  };
+
   // ------------------------------------------------------------
   // Keyboard shortcut: ⌘+G / Ctrl+G opens the settings panel
   // ------------------------------------------------------------
@@ -3569,6 +3661,10 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
       const select = document.getElementById("opt-swap-keywords");
       if (select) select.value = changes.swapKeywords.newValue;
     }
+    if (changes.contentComposer) {
+      const select = document.getElementById("opt-content-composer");
+      if (select) select.value = changes.contentComposer.newValue;
+    }
 
     // Paste behavior settings (just keep UI in sync; loader reacts via its own onChanged)
     if (changes[GEM_CUSTOM_PASTE_ENABLED_KEY]) {
@@ -3637,6 +3733,22 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
     if (changes.gemBlockTargetingPreviewEnabled) {
       const el = document.getElementById("opt-block-targeting-preview-enabled");
       if (el) el.checked = changes.gemBlockTargetingPreviewEnabled.newValue !== false;
+    }
+    if (changes.gemAltTextPreviewEnabled || changes[GEM_ALT_TEXT_PREVIEW_OVERLAY_ACTIVE_KEY]) {
+      const altTextEnabledEl = document.getElementById("opt-alt-text-preview-enabled");
+      if (altTextEnabledEl) {
+        chrome.storage.sync.get(
+          {
+            gemAltTextPreviewEnabled: true,
+            [GEM_ALT_TEXT_PREVIEW_OVERLAY_ACTIVE_KEY]: true,
+          },
+          (result) => {
+            altTextEnabledEl.checked =
+              result.gemAltTextPreviewEnabled !== false &&
+              result[GEM_ALT_TEXT_PREVIEW_OVERLAY_ACTIVE_KEY] !== false;
+          }
+        );
+      }
     }
     if (changes.gemBlockTargetingVisibility) {
       const el = document.getElementById("opt-block-targeting-visibility");

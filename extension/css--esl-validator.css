@@ -48,3 +48,7 @@ cb-campaign-variables .e-cell-auto:has(> input.variable-value) {
 cb-campaign-variables .gem-esl-validator {
   margin-top: 6px;
 }
+
+.gem-enhanced-image-properties-dialog .e-field:has(input[placeholder="Image alternative text"]) .gem-esl-validator {
+  margin-top: 6px;
+}

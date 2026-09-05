@@ -16,6 +16,17 @@
 
   const STORAGE_PREVIEW_ENABLED = 'gemBlockTargetingPreviewEnabled';
   const STORAGE_VISIBILITY = 'gemBlockTargetingVisibility';
+  const MOBILE_BADGE_CLASS = 'gem-bv-mobile-badge';
+  const MOBILE_BADGE_ARIA_LABEL = 'Hidden on Mobile';
+  const MOBILE_BADGE_ICON = '\uF132';
+  const OVERLAY_LAYER_CLASS = 'gem-bv-overlay-layer';
+  const OVERLAY_ROOT_ATTR = 'data-gem-bv-overlay-root';
+  const TOOLBAR_BTN_BLOCK_TARGETING = 'block-targeting';
+  const TOOLBAR_BTN_HIDE_ON_MOBILE = 'hide-block-on-mobile';
+  const HIDE_ON_MOBILE_CLICK_BOUND_KEY = '_gemHideOnMobileClickBound';
+
+  const BLOCK_VISIBILITY_ICON_SVG =
+    '<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor" aria-hidden="true"><path d="M240-40H120q-33 0-56.5-23.5T40-120v-120h80v120h120v80Zm480 0v-80h120v-120h80v120q0 33-23.5 56.5T840-40H720ZM480-220q-120 0-217.5-71T120-480q45-118 142.5-189T480-740q120 0 217.5 71T840-480q-45 118-142.5 189T480-220Zm0-80q88 0 161-48t112-132q-39-84-112-132t-161-48q-88 0-161 48T207-480q39 84 112 132t161 48Zm0-40q58 0 99-41t41-99q0-58-41-99t-99-41q-58 0-99 41t-41 99q0 58 41 99t99 41Zm0-80q-25 0-42.5-17.5T420-480q0-25 17.5-42.5T480-540q25 0 42.5 17.5T540-480q0 25-17.5 42.5T480-420ZM40-720v-120q0-33 23.5-56.5T120-920h120v80H120v120H40Zm800 0v-120H720v-80h120q33 0 56.5 23.5T920-840v120h-80ZM480-480Z"/></svg>';
 
   let previewEnabled = true;
   let visibilityMode = 'always-show';
@@ -24,37 +35,86 @@
   let lastSelectedLanguage = null;
   let dataChangeListeners = [];
 
+  const OVERLAY_ROOT_SELECTOR = '[' + OVERLAY_ROOT_ATTR + '="true"]';
+
+  const VISIBILITY_OVERLAY_SELECTOR = OVERLAY_ROOT_SELECTOR;
+
+  const VISIBILITY_OVERLAY_BEFORE = OVERLAY_ROOT_SELECTOR + ':before';
+
+  const VISIBILITY_OVERLAY_AFTER = OVERLAY_ROOT_SELECTOR + ':after';
+
+  const VISIBILITY_OVERLAY_HOVER_BEFORE =
+    OVERLAY_ROOT_SELECTOR + ':hover:before, ' +
+    '[e-block]:hover > .' + OVERLAY_LAYER_CLASS + OVERLAY_ROOT_SELECTOR + ':before';
+
+  const VISIBILITY_OVERLAY_HOVER_AFTER =
+    OVERLAY_ROOT_SELECTOR + ':hover:after, ' +
+    '[e-block]:hover > .' + OVERLAY_LAYER_CLASS + OVERLAY_ROOT_SELECTOR + ':after';
+
+  const VISIBILITY_OVERLAY_MOBILE_BADGE = OVERLAY_ROOT_SELECTOR + ' .' + MOBILE_BADGE_CLASS;
+
+  const VISIBILITY_OVERLAY_HOVER_MOBILE_BADGE =
+    OVERLAY_ROOT_SELECTOR + ':hover .' + MOBILE_BADGE_CLASS + ', ' +
+    '[e-block]:hover > .' + OVERLAY_LAYER_CLASS + OVERLAY_ROOT_SELECTOR + ' .' + MOBILE_BADGE_CLASS;
+
   const TARGETING_CSS = `
-[e-blocks-container="true"] > [data-gem-has-block-targeting="true"][e-block] {
+[e-blocks-container] > [e-block][data-gem-hide-on-mobile="true"] {
+    position: relative;
+    overflow: visible;
+}
+
+html[data-gem-bt-preview="on"] [e-blocks-container] > [e-block][data-gem-hide-on-mobile="true"] > table.vce-hide-on-mobile,
+html[data-gem-bt-preview="on"] [e-blocks-container] > [e-block][data-gem-hide-on-mobile="true"] > table[e-block-id] {
+    display: table !important;
+    visibility: visible !important;
+    max-height: none !important;
+}
+
+.${OVERLAY_LAYER_CLASS} {
+    position: absolute;
+    pointer-events: none;
+    z-index: 999;
+}
+
+${OVERLAY_ROOT_SELECTOR}:not(.${OVERLAY_LAYER_CLASS}) {
     position: relative;
 }
 
-[e-blocks-container="true"] > [data-gem-has-block-targeting="true"][e-block]:before,
-[e-blocks-container="true"] > [data-gem-has-block-targeting="true"][e-block]:after {
+${VISIBILITY_OVERLAY_BEFORE},
+${VISIBILITY_OVERLAY_AFTER},
+.${MOBILE_BADGE_CLASS} {
     position: absolute;
     z-index: 999;
     pointer-events: none;
 }
-[e-blocks-container="true"] > [data-gem-has-block-targeting="true"][e-block]:before {
-    content: "";
 
+${OVERLAY_ROOT_SELECTOR}[data-gem-block-targeting-visibility]:before {
+    content: "";
     left: 0;
     top: 0;
-
     display: block;
-
     width: 100%;
     height: 100%;
     border-radius: 6px;
     box-shadow: inset 0 0 0 4px color-mix(in srgb, var(--token-primary-200) 40%, transparent);
 }
-[e-blocks-container="true"] > [data-gem-has-block-targeting="true"][e-block]:after {
-    content: attr(data-gem-block-targeting-visibility);
 
+${OVERLAY_ROOT_SELECTOR}[data-gem-hide-on-mobile="true"]:not([data-gem-block-targeting-visibility]):before {
+    content: "";
+    left: 0;
+    top: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: 6px;
+    box-shadow: inset 0 0 0 4px color-mix(in srgb, #ab4458 40%, transparent);
+}
+
+${OVERLAY_ROOT_SELECTOR}[data-gem-block-targeting-visibility]:after {
+    content: attr(data-gem-block-targeting-visibility);
     left: 4px;
     top: 4px;
-
-    font-size: 12px;
+    font-size: 10px;
     padding: 4px 6px 6px 4px;
     font-family: sans-serif;
     font-weight: bold;
@@ -62,38 +122,70 @@
     border-radius: 0 0 6px 0;
     text-transform: uppercase;
     background: color-mix(in srgb, var(--token-primary-200) 40%, transparent);
+}
 
-}
-[e-blocks-container="true"] > [data-gem-block-targeting-visibility="show"][e-block]:before {
-    box-shadow: inset 0 0 0 4px color-mix(in srgb, #44ab6d 40%, transparent);
-}
-[e-blocks-container="true"] > [data-gem-block-targeting-visibility="show"][e-block]:after {
-    background: color-mix(in srgb, #44ab6d 40%, transparent);
-}
-[e-blocks-container="true"] > [data-gem-block-targeting-visibility="hide"][e-block]:before {
-    box-shadow: inset 0 0 0 4px color-mix(in srgb, #ab4458 40%, transparent);
-}
-[e-blocks-container="true"] > [data-gem-block-targeting-visibility="hide"][e-block]:after {
+.${MOBILE_BADGE_CLASS} {
+    left: 4px;
+    top: 4px;
+    right: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 16px;
+    padding: 4px 6px 6px 4px;
+    font-family: sans-serif;
+    font-weight: bold;
+    letter-spacing: 0.5px;
+    border-radius: 0 0 6px 0;
     background: color-mix(in srgb, #ab4458 40%, transparent);
 }
-[e-blocks-container="true"] > [data-gem-block-targeting-scroll-highlight="true"][e-block] {
+
+${OVERLAY_ROOT_SELECTOR}[data-gem-block-targeting-visibility] .${MOBILE_BADGE_CLASS} {
+    top: 28px;
+}
+
+.${MOBILE_BADGE_CLASS} .gem-bv-mobile-badge-icon {
+    font-family: var(--token-icon-default-fontFamily);
+    font-size: 16px;
+    font-weight: 400;
+    line-height: 1;
+    color: #000;
+}
+
+${OVERLAY_ROOT_SELECTOR}[data-gem-block-targeting-visibility="show"]:before {
+    box-shadow: inset 0 0 0 4px color-mix(in srgb, #44ab6d 40%, transparent);
+}
+${OVERLAY_ROOT_SELECTOR}[data-gem-block-targeting-visibility="show"]:after {
+    background: color-mix(in srgb, #44ab6d 40%, transparent);
+}
+${OVERLAY_ROOT_SELECTOR}[data-gem-block-targeting-visibility="hide"]:before {
+    box-shadow: inset 0 0 0 4px color-mix(in srgb, #ab4458 40%, transparent);
+}
+${OVERLAY_ROOT_SELECTOR}[data-gem-block-targeting-visibility="hide"]:after {
+    background: color-mix(in srgb, #ab4458 40%, transparent);
+}
+[e-blocks-container] > [data-gem-block-targeting-scroll-highlight="true"][e-block],
+[e-blocks-container] > [e-block][data-gem-block-targeting-scroll-highlight="true"] > .${OVERLAY_LAYER_CLASS} {
     outline: 3px solid color-mix(in srgb, var(--token-primary-400, #6366f1) 70%, transparent);
     outline-offset: 2px;
 }
     `;
 
   const SETTINGS_OVERRIDE_CSS = `
-html[data-gem-bt-preview="off"] [e-blocks-container="true"] > [data-gem-has-block-targeting="true"][e-block]:before,
-html[data-gem-bt-preview="off"] [e-blocks-container="true"] > [data-gem-has-block-targeting="true"][e-block]:after {
+html[data-gem-bt-preview="off"] ${VISIBILITY_OVERLAY_BEFORE},
+html[data-gem-bt-preview="off"] ${VISIBILITY_OVERLAY_AFTER},
+html[data-gem-bt-preview="off"] ${VISIBILITY_OVERLAY_MOBILE_BADGE} {
     display: none !important;
 }
-html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks-container="true"] > [data-gem-has-block-targeting="true"][e-block]:before,
-html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks-container="true"] > [data-gem-has-block-targeting="true"][e-block]:after {
+html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] ${VISIBILITY_OVERLAY_BEFORE},
+html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] ${VISIBILITY_OVERLAY_AFTER},
+html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] ${VISIBILITY_OVERLAY_MOBILE_BADGE} {
     opacity: 0;
     transition: opacity 0.15s ease;
 }
-html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks-container="true"] > [data-gem-has-block-targeting="true"][e-block]:hover:before,
-html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks-container="true"] > [data-gem-has-block-targeting="true"][e-block]:hover:after {
+html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] ${VISIBILITY_OVERLAY_HOVER_BEFORE},
+html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] ${VISIBILITY_OVERLAY_HOVER_AFTER},
+html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] ${VISIBILITY_OVERLAY_HOVER_MOBILE_BADGE} {
     opacity: 1;
 }
     `;
@@ -105,6 +197,11 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
   let pendingBlockId = null;
   let languageWatchUnsub = null;
   let lastLanguageValue = null;
+  let boundPreviewIframe = null;
+  let previewContainerObserver = null;
+  let previewContainerObserved = null;
+  let previewRebuildApplyTimer = null;
+  let applyWhenReadyTimer = null;
   const blockDisplayNameCache = new Map();
 
   function getCampaignIdFromUrl() {
@@ -195,6 +292,20 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
       }
     }
 
+    if (incoming.hide_on_mobile === true) {
+      merged.hide_on_mobile = true;
+    } else if (incoming.hide_on_mobile === false) {
+      delete merged.hide_on_mobile;
+    }
+
+    if (Array.isArray(incoming.mobileHiddenFields)) {
+      if (incoming.mobileHiddenFields.length) {
+        merged.mobileHiddenFields = incoming.mobileHiddenFields.slice();
+      } else {
+        delete merged.mobileHiddenFields;
+      }
+    }
+
     return merged;
   }
 
@@ -226,21 +337,90 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
     return candidates.includes(urlId);
   }
 
+  function getHideOnMobileFlags(block) {
+    const flags = [];
+    if (!block || typeof block !== 'object') return flags;
+
+    if (block.hide_on_mobile === true) {
+      flags.push({ level: 'block', fieldKey: null });
+    }
+
+    if (Array.isArray(block.mobileHiddenFields)) {
+      block.mobileHiddenFields.forEach((fieldKey) => {
+        const key = String(fieldKey || '').trim();
+        if (key && !flags.some((flag) => flag.fieldKey === key)) {
+          flags.push({ level: 'field', fieldKey: key });
+        }
+      });
+    }
+
+    const content = block.content;
+    if (content && typeof content === 'object') {
+      Object.keys(content).forEach((fieldKey) => {
+        const fieldVal = content[fieldKey];
+        if (fieldVal && typeof fieldVal === 'object' && fieldVal.hide_on_mobile === true) {
+          if (!flags.some((flag) => flag.fieldKey === fieldKey)) {
+            flags.push({ level: 'field', fieldKey });
+          }
+        }
+      });
+    }
+
+    return flags;
+  }
+
+  function blockHasMobileHide(block) {
+    return getHideOnMobileFlags(block).length > 0;
+  }
+
+  function copyMobileVisibilityFields(copy, block) {
+    const flags = getHideOnMobileFlags(block);
+    if (!flags.length) return copy;
+    if (flags.some((flag) => flag.level === 'block')) {
+      copy.hide_on_mobile = true;
+    }
+    const fieldKeys = flags
+      .filter((flag) => flag.fieldKey)
+      .map((flag) => flag.fieldKey);
+    if (fieldKeys.length) {
+      copy.mobileHiddenFields = fieldKeys;
+    }
+    return copy;
+  }
+
   function getBlockVisibility(targeting) {
     if (!targeting || !targeting.content) return '';
     const visibility = targeting.content.visibility;
     return visibility != null ? String(visibility) : '';
   }
 
-  function countTargetedBlocks(blocks) {
+  function countVisibilityBlocks(blocks) {
     if (!Array.isArray(blocks)) return 0;
-    return blocks.filter((block) => block && block.targeting).length;
+    return blocks.filter((block) => block && (block.targeting || blockHasMobileHide(block))).length;
+  }
+
+  function countTargetedBlocks(blocks) {
+    return countVisibilityBlocks(blocks);
+  }
+
+  function formatMobileHideRules(block) {
+    const flags = getHideOnMobileFlags(block);
+    const rows = [];
+    if (flags.some((flag) => flag.level === 'block')) {
+      rows.push({ label: 'Mobile', value: 'Entire block' });
+    }
+    flags
+      .filter((flag) => flag.fieldKey)
+      .forEach((flag) => {
+        rows.push({ label: 'Mobile field', value: flag.fieldKey });
+      });
+    return rows;
   }
 
   function notifyDataChange() {
     const payload = {
       blocks: lastBlocks,
-      targetedCount: countTargetedBlocks(lastBlocks),
+      targetedCount: countVisibilityBlocks(lastBlocks),
       language: lastSelectedLanguage,
     };
     dataChangeListeners.forEach((cb) => {
@@ -278,6 +458,24 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
     if (!blockEl) return '';
     const nameEl = blockEl.querySelector('[e-block-name], .e-blockname, .e-block-name');
     return nameEl ? String(nameEl.textContent || '').trim() : '';
+  }
+
+  function getPreviewBlockOrder() {
+    const iframeDoc = getIframeDoc();
+    if (!iframeDoc) return [];
+
+    const container = iframeDoc.querySelector('[e-blocks-container]');
+    if (!container) return [];
+
+    const seen = new Set();
+    const order = [];
+    container.querySelectorAll(':scope > [e-block]').forEach((el) => {
+      const id = String(el.getAttribute('e-block-id') || '').trim();
+      if (!id || seen.has(id)) return;
+      seen.add(id);
+      order.push(id);
+    });
+    return order;
   }
 
   function resolveBlockName(block, templateIndex) {
@@ -386,40 +584,78 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
     return rows;
   }
 
-  function getTargetedBlocksForPanel() {
+  function getBlockVisibilityBlocksForPanel() {
     if (!Array.isArray(lastBlocks)) return [];
     const templateIndex = buildBlockTemplateIndex(lastCampaignSnapshot);
-    const iframeDoc = getIframeDoc();
-    let canvasOrder = [];
-    if (iframeDoc) {
-      canvasOrder = Array.from(iframeDoc.querySelectorAll('[e-block-id]'))
-        .map((el) => el.getAttribute('e-block-id'))
-        .filter(Boolean);
-    }
+    const canvasOrder = getPreviewBlockOrder();
+    const canvasRank = new Map();
+    canvasOrder.forEach((blockId, index) => {
+      canvasRank.set(String(blockId), index);
+    });
 
-    const targeted = lastBlocks
+    const visibleBlocks = lastBlocks
       .map((block, modelIndex) => ({ block, modelIndex }))
-      .filter(({ block }) => block && block.targeting);
+      .filter(({ block }) => block && (block.targeting || blockHasMobileHide(block)));
 
-    targeted.sort((a, b) => {
-      const aIdx = canvasOrder.indexOf(a.block._id);
-      const bIdx = canvasOrder.indexOf(b.block._id);
-      const aRank = aIdx >= 0 ? aIdx : 100000 + a.modelIndex;
-      const bRank = bIdx >= 0 ? bIdx : 100000 + b.modelIndex;
+    visibleBlocks.sort((a, b) => {
+      const aId = String(a.block._id);
+      const bId = String(b.block._id);
+      const aRank = canvasRank.has(aId) ? canvasRank.get(aId) : 100000 + a.modelIndex;
+      const bRank = canvasRank.has(bId) ? canvasRank.get(bId) : 100000 + b.modelIndex;
       return aRank - bRank;
     });
 
-    return targeted.map(({ block, modelIndex }, index) => {
-      const visibility = getBlockVisibility(block.targeting);
+    return visibleBlocks.map(({ block, modelIndex }, index) => {
+      const blockId = String(block._id);
+      const visibility = block.targeting ? getBlockVisibility(block.targeting) : null;
+      const mobileHiddenFields = getHideOnMobileFlags(block)
+        .filter((flag) => flag.fieldKey)
+        .map((flag) => flag.fieldKey);
+      const rules = block.targeting ? formatTargetingRules(block.targeting) : [];
+      formatMobileHideRules(block).forEach((row) => rules.push(row));
       return {
         _id: block._id,
         name: resolveBlockName(block, templateIndex),
         visibility,
+        hasMobileHide: blockHasMobileHide(block),
+        mobileHiddenFields,
         targeting: block.targeting,
-        rules: formatTargetingRules(block.targeting),
-        index: canvasOrder.indexOf(block._id) >= 0 ? canvasOrder.indexOf(block._id) : modelIndex,
+        rules,
+        index: canvasRank.has(blockId) ? canvasRank.get(blockId) : modelIndex,
         displayIndex: index + 1,
       };
+    });
+  }
+
+  function getTargetedBlocksForPanel() {
+    return getBlockVisibilityBlocksForPanel();
+  }
+
+  function getRawBlocksFromSnapshot(snapshot, lang) {
+    if (!snapshot || !lang) return null;
+    const campaign = snapshot.campaign || snapshot;
+    const contents = campaign && campaign.contents;
+    if (!contents || !contents[lang]) return null;
+    const langEntry = contents[lang];
+    return langEntry.blocks || (Array.isArray(langEntry) ? langEntry : null);
+  }
+
+  function enrichBlocksMobileVisibility(blocks, snapshot, lang) {
+    if (!Array.isArray(blocks)) return blocks;
+    const rawBlocks = getRawBlocksFromSnapshot(snapshot, lang);
+    if (!Array.isArray(rawBlocks)) return blocks;
+
+    const rawById = new Map();
+    rawBlocks.forEach((block) => {
+      if (block && block._id != null) rawById.set(String(block._id), block);
+    });
+
+    return blocks.map((block) => {
+      if (!block || block._id == null) return block;
+      const raw = rawById.get(String(block._id));
+      if (!raw) return block;
+      const copy = Object.assign({}, block);
+      return copyMobileVisibilityFields(copy, raw);
     });
   }
 
@@ -437,7 +673,7 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
       if (block.targeting) {
         copy.targeting = JSON.parse(JSON.stringify(block.targeting));
       }
-      return copy;
+      return copyMobileVisibilityFields(copy, block);
     }).filter(Boolean);
   }
 
@@ -445,13 +681,19 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
     if (!Array.isArray(blocks)) return false;
     lastCampaignSnapshot = snapshot || lastCampaignSnapshot;
     lastSelectedLanguage = lang || getSelectedLanguage();
-    applyTargeting(mergeBlocksWithExisting(blocks));
+    const merged = mergeBlocksWithExisting(blocks);
+    const enriched = enrichBlocksMobileVisibility(
+      merged,
+      snapshot || lastCampaignSnapshot,
+      lang || lastSelectedLanguage
+    );
+    applyTargeting(enriched);
     return true;
   }
 
   // Capture the block ID when the user clicks the block-targeting toolbar button.
   document.addEventListener('click', (e) => {
-    const btn = e.target && e.target.closest && e.target.closest('[block-toolbar-button="block-targeting"]');
+    const btn = e.target && e.target.closest && e.target.closest('[block-toolbar-button="' + TOOLBAR_BTN_BLOCK_TARGETING + '"]');
     if (!btn) return;
     pendingBlockId = btn.getAttribute('e-block-id') || null;
     if (pendingBlockId) {
@@ -459,19 +701,95 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
     }
   }, true);
 
+  function isToolbarButtonActive(btn) {
+    return !!(btn && btn.classList && btn.classList.contains('background-color-info'));
+  }
+
+  function ensureBlockRecord(blockId) {
+    const id = String(blockId || '').trim();
+    if (!id) return null;
+    if (!Array.isArray(lastBlocks)) lastBlocks = [];
+    let block = lastBlocks.find((entry) => entry && String(entry._id) === id);
+    if (!block) {
+      block = { _id: id };
+      lastBlocks.push(block);
+    }
+    return block;
+  }
+
+  function readMobileHideFromPreview(blockId) {
+    const iframeDoc = getIframeDoc();
+    if (!iframeDoc) return false;
+    const blockEl = iframeDoc.querySelector('[e-block-id="' + CSS.escape(String(blockId)) + '"][e-block]');
+    const table = findBlockContentTable(blockEl, blockId);
+    return !!(table && table.classList.contains('vce-hide-on-mobile'));
+  }
+
+  function readMobileHideState(blockId, btn) {
+    if (btn && btn.isConnected) {
+      return isToolbarButtonActive(btn);
+    }
+    return readMobileHideFromPreview(blockId);
+  }
+
+  function updateBlockMobileHide(blockId, hideOnMobile) {
+    const block = ensureBlockRecord(blockId);
+    if (!block) return;
+
+    if (hideOnMobile) {
+      block.hide_on_mobile = true;
+    } else {
+      delete block.hide_on_mobile;
+    }
+
+    console.log('[Gem][BlockVisibility] Updated hide_on_mobile for block:', blockId, '| active:', hideOnMobile);
+    applyTargeting(lastBlocks);
+  }
+
+  function scheduleMobileHideStateSync(blockId, btn) {
+    const sync = () => updateBlockMobileHide(blockId, readMobileHideState(blockId, btn));
+    requestAnimationFrame(sync);
+    setTimeout(sync, 150);
+  }
+
+  function handleHideOnMobileToolbarClick(e) {
+    const btn = e.target && e.target.closest && e.target.closest('[block-toolbar-button="' + TOOLBAR_BTN_HIDE_ON_MOBILE + '"]');
+    if (!btn) return;
+    const blockId = btn.getAttribute('e-block-id');
+    if (!blockId) return;
+    console.log('[Gem][BlockVisibility] Hide on mobile toolbar clicked for block:', blockId);
+    scheduleMobileHideStateSync(blockId, btn);
+  }
+
+  function wireHideOnMobileToolbarListener(doc) {
+    if (!doc || doc[HIDE_ON_MOBILE_CLICK_BOUND_KEY]) return;
+    doc[HIDE_ON_MOBILE_CLICK_BOUND_KEY] = true;
+    doc.addEventListener('click', handleHideOnMobileToolbarClick, true);
+  }
+
+  function wireAllHideOnMobileToolbarListeners() {
+    wireHideOnMobileToolbarListener(document);
+    const iframeDoc = getIframeDoc();
+    if (iframeDoc) wireHideOnMobileToolbarListener(iframeDoc);
+  }
+
   function injectCSS(iframeDoc) {
-    if (!iframeDoc.getElementById(STYLE_ID)) {
-      const style = iframeDoc.createElement('style');
+    let style = iframeDoc.getElementById(STYLE_ID);
+    if (!style) {
+      style = iframeDoc.createElement('style');
       style.id = STYLE_ID;
-      style.textContent = TARGETING_CSS;
       (iframeDoc.head || iframeDoc.documentElement).appendChild(style);
     }
-    if (!iframeDoc.getElementById(SETTINGS_STYLE_ID)) {
-      const settingsStyle = iframeDoc.createElement('style');
+    style.textContent = TARGETING_CSS;
+
+    let settingsStyle = iframeDoc.getElementById(SETTINGS_STYLE_ID);
+    if (!settingsStyle) {
+      settingsStyle = iframeDoc.createElement('style');
       settingsStyle.id = SETTINGS_STYLE_ID;
-      settingsStyle.textContent = SETTINGS_OVERRIDE_CSS;
       (iframeDoc.head || iframeDoc.documentElement).appendChild(settingsStyle);
     }
+    settingsStyle.textContent = SETTINGS_OVERRIDE_CSS;
+
     syncPreviewSettingsToIframeDoc(iframeDoc);
   }
 
@@ -550,10 +868,10 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
 
     const wrapper = document.createElement('e-tooltip');
     wrapper.setAttribute('placement', 'bottom');
-    wrapper.setAttribute('content', 'Block Targeting Preview');
+    wrapper.setAttribute('content', 'Block Visibility');
     wrapper.innerHTML =
-      '<button id="blockTargetingPreviewButton" type="button" class="e-btn e-btn-onlyicon e-svgclickfix" aria-description="" aria-label="Block Targeting Preview">' +
-        '<e-icon icon="radio-checked"><div aria-hidden="true" class="e-icon-wrapper"><div class="e-icon">&#xF15E;</div></div></e-icon>' +
+      '<button id="blockTargetingPreviewButton" type="button" class="e-btn e-btn-onlyicon e-svgclickfix" aria-description="" aria-label="Block Visibility">' +
+        '<e-icon icon="eye"><div aria-hidden="true" class="e-icon-wrapper"><div class="e-icon">&#xF0DD;</div></div></e-icon>' +
       '</button>';
 
     const linkBtn = document.getElementById('linkHighlightPreviewButton');
@@ -581,7 +899,7 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
     });
 
     updateToolbarButtonState();
-    updateNavPipCount(countTargetedBlocks(lastBlocks));
+    updateNavPipCount(countVisibilityBlocks(lastBlocks));
   }
 
   function waitForToolbarButtonSlot() {
@@ -597,23 +915,221 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
     });
   }
 
+  function resetContainerObserver() {
+    if (containerObserver) {
+      containerObserver.disconnect();
+      containerObserver = null;
+    }
+  }
+
+  function scheduleTryApplyWhenReady(iframe) {
+    const target = iframe || document.querySelector(IFRAME_SELECTOR);
+    if (!target) {
+      applyTargetingData();
+      return;
+    }
+    if (applyWhenReadyTimer) clearTimeout(applyWhenReadyTimer);
+    applyWhenReadyTimer = setTimeout(() => {
+      applyWhenReadyTimer = null;
+      tryApplyWhenReady(target);
+    }, 50);
+  }
+
+  function onPreviewLanguageOrContentChange() {
+    clearToolbarHintsObservers();
+    resetContainerObserver();
+    scheduleTryApplyWhenReady();
+  }
+
+  function bindPreviewContainerObserver() {
+    const container = document.querySelector('vce-iframes-container');
+    if (!container) return;
+    if (previewContainerObserved === container && previewContainerObserver) return;
+
+    if (previewContainerObserver) {
+      previewContainerObserver.disconnect();
+      previewContainerObserver = null;
+    }
+
+    previewContainerObserved = container;
+    previewContainerObserver = new MutationObserver((mutations) => {
+      const contentChanged = mutations.some(
+        (mutation) => mutation.type === 'attributes' && mutation.attributeName === 'content'
+      );
+      if (!contentChanged) return;
+
+      if (previewRebuildApplyTimer) clearTimeout(previewRebuildApplyTimer);
+      previewRebuildApplyTimer = setTimeout(() => {
+        previewRebuildApplyTimer = null;
+        onPreviewLanguageOrContentChange();
+      }, 100);
+    });
+
+    previewContainerObserver.observe(container, {
+      attributes: true,
+      attributeFilter: ['content'],
+    });
+  }
+
   function attachPreviewIframeLoadListener() {
     const iframe = document.querySelector(IFRAME_SELECTOR);
-    if (!iframe || iframe._gemBtPreviewLoadBound) return;
+    if (!iframe) return;
+
+    if (boundPreviewIframe && boundPreviewIframe !== iframe) {
+      boundPreviewIframe._gemBtPreviewLoadBound = false;
+    }
+
+    if (iframe._gemBtPreviewLoadBound) {
+      boundPreviewIframe = iframe;
+      return;
+    }
+
     iframe._gemBtPreviewLoadBound = true;
+    boundPreviewIframe = iframe;
     iframe.addEventListener('load', () => {
-      applyTargetingData();
+      scheduleTryApplyWhenReady(iframe);
+      wireHideOnMobileToolbarListener(iframe.contentDocument || iframe.contentWindow.document);
       setTimeout(refreshPanelAfterPreviewNames, 300);
     });
   }
 
-  function clearTargetingAttributes(container) {
-    const marked = container.querySelectorAll('[data-gem-has-block-targeting]');
-    marked.forEach((el) => {
-      el.removeAttribute('data-gem-has-block-targeting');
-      el.removeAttribute('data-gem-block-targeting-visibility');
-      el.removeAttribute('data-gem-block-targeting-scroll-highlight');
+  function ensureMobileBadge(blockEl) {
+    let badge = blockEl.querySelector('.' + MOBILE_BADGE_CLASS);
+    if (!badge) {
+      badge = blockEl.ownerDocument.createElement('span');
+      badge.className = MOBILE_BADGE_CLASS;
+      blockEl.appendChild(badge);
+    }
+    badge.setAttribute('aria-label', MOBILE_BADGE_ARIA_LABEL);
+    badge.innerHTML =
+      '<span class="gem-bv-mobile-badge-icon" aria-hidden="true">' +
+      MOBILE_BADGE_ICON +
+      '</span>';
+  }
+
+  function removeMobileBadge(blockEl) {
+    blockEl.querySelectorAll('.' + MOBILE_BADGE_CLASS).forEach((badge) => badge.remove());
+  }
+
+  function findBlockContentTable(blockEl, blockId) {
+    if (!blockEl) return null;
+    const id = String(blockId || '').trim();
+    if (id) {
+      const byId = blockEl.querySelector('table[e-block-id="' + CSS.escape(id) + '"]');
+      if (byId) return byId;
+    }
+    return blockEl.querySelector('table.vce-hide-on-mobile') || blockEl.querySelector('table[e-block-id]');
+  }
+
+  function disconnectOverlayGeometryObserver(blockEl) {
+    if (!blockEl || !blockEl._gemBvGeometryObs) return;
+    try {
+      blockEl._gemBvGeometryObs.disconnect();
+    } catch (_) {}
+    blockEl._gemBvGeometryObs = null;
+  }
+
+  function syncOverlayLayerGeometry(blockEl, layer, contentTable) {
+    if (!blockEl || !layer) return;
+
+    if (!contentTable) {
+      layer.style.display = 'none';
+      return;
+    }
+
+    const blockRect = blockEl.getBoundingClientRect();
+    const tableRect = contentTable.getBoundingClientRect();
+    if (tableRect.width <= 0 && tableRect.height <= 0) {
+      layer.style.display = 'none';
+      return;
+    }
+
+    layer.style.display = 'block';
+    layer.style.top = (tableRect.top - blockRect.top) + 'px';
+    layer.style.left = (tableRect.left - blockRect.left) + 'px';
+    layer.style.width = Math.max(tableRect.width, 1) + 'px';
+    layer.style.height = Math.max(tableRect.height, 1) + 'px';
+  }
+
+  function ensureOverlayLayer(blockEl, blockId) {
+    let layer = blockEl.querySelector(':scope > .' + OVERLAY_LAYER_CLASS);
+    if (!layer) {
+      layer = blockEl.ownerDocument.createElement('div');
+      layer.className = OVERLAY_LAYER_CLASS;
+      layer.setAttribute('aria-hidden', 'true');
+      blockEl.appendChild(layer);
+    }
+    return layer;
+  }
+
+  function removeOverlayLayer(blockEl) {
+    disconnectOverlayGeometryObserver(blockEl);
+    blockEl.querySelectorAll(':scope > .' + OVERLAY_LAYER_CLASS).forEach((layer) => {
+      clearOverlayRootAttributes(layer);
+      layer.remove();
     });
+  }
+
+  function observeOverlayLayerGeometry(blockEl, blockId, layer) {
+    disconnectOverlayGeometryObserver(blockEl);
+    const contentTable = findBlockContentTable(blockEl, blockId);
+    if (!layer || !contentTable || typeof ResizeObserver !== 'function') {
+      syncOverlayLayerGeometry(blockEl, layer, contentTable);
+      return;
+    }
+
+    const sync = () => syncOverlayLayerGeometry(blockEl, layer, contentTable);
+    sync();
+
+    const observer = new ResizeObserver(sync);
+    observer.observe(contentTable);
+    observer.observe(blockEl);
+    blockEl._gemBvGeometryObs = observer;
+  }
+
+  function clearOverlayRootAttributes(el) {
+    if (!el) return;
+    el.removeAttribute(OVERLAY_ROOT_ATTR);
+    el.removeAttribute('data-gem-has-block-targeting');
+    el.removeAttribute('data-gem-block-targeting-visibility');
+    el.removeAttribute('data-gem-hide-on-mobile');
+    el.removeAttribute('data-gem-block-targeting-scroll-highlight');
+    removeMobileBadge(el);
+  }
+
+  function applyOverlayRootAttributes(overlayEl, { hasTargeting, hasMobileHide, visibility }) {
+    overlayEl.setAttribute(OVERLAY_ROOT_ATTR, 'true');
+
+    if (hasTargeting) {
+      overlayEl.setAttribute('data-gem-has-block-targeting', 'true');
+    } else {
+      overlayEl.removeAttribute('data-gem-has-block-targeting');
+    }
+
+    const normalizedVisibility = visibility === 'show' || visibility === 'hide' ? visibility : '';
+    if (hasTargeting && normalizedVisibility) {
+      overlayEl.setAttribute('data-gem-block-targeting-visibility', normalizedVisibility);
+    } else {
+      overlayEl.removeAttribute('data-gem-block-targeting-visibility');
+    }
+
+    if (hasMobileHide) {
+      overlayEl.setAttribute('data-gem-hide-on-mobile', 'true');
+      ensureMobileBadge(overlayEl);
+    } else {
+      overlayEl.removeAttribute('data-gem-hide-on-mobile');
+      removeMobileBadge(overlayEl);
+    }
+  }
+
+  function clearVisibilityAttributes(container) {
+    container.querySelectorAll('[e-block]').forEach((el) => {
+      el.removeAttribute('data-gem-hide-on-mobile');
+      el.removeAttribute('data-gem-block-targeting-scroll-highlight');
+      removeOverlayLayer(el);
+      clearOverlayRootAttributes(el);
+    });
+    container.querySelectorAll('[' + OVERLAY_ROOT_ATTR + '="true"]').forEach(clearOverlayRootAttributes);
   }
 
   function applyTargeting(blocks) {
@@ -644,35 +1160,59 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
 
     isApplying = true;
 
-    clearTargetingAttributes(container);
+    clearVisibilityAttributes(container);
 
     const blockMap = new Map();
     for (const block of blocks) {
-      if (block && block._id) {
-        blockMap.set(block._id, block);
+      if (block && block._id != null) {
+        blockMap.set(String(block._id), block);
       }
     }
 
     const eBlocks = container.querySelectorAll('[e-block]');
-    let targetedCount = 0;
+    let visibilityCount = 0;
 
     eBlocks.forEach((el) => {
       const blockId = el.getAttribute('e-block-id');
       if (!blockId) return;
 
-      const block = blockMap.get(blockId);
-      if (!block || !block.targeting) return;
+      const block = blockMap.get(String(blockId));
+      const contentTable = findBlockContentTable(el, blockId);
+      const liveMobileHide = !!(contentTable && contentTable.classList.contains('vce-hide-on-mobile'));
+      const hasTargeting = !!(block && block.targeting);
+      const hasMobileHide = (block && blockHasMobileHide(block)) || liveMobileHide;
+      if (!hasTargeting && !hasMobileHide) return;
 
-      el.setAttribute('data-gem-has-block-targeting', 'true');
+      const visibility = hasTargeting ? getBlockVisibility(block.targeting) : '';
 
-      const visibility = getBlockVisibility(block.targeting);
-      el.setAttribute('data-gem-block-targeting-visibility', visibility);
-      targetedCount++;
+      if (hasMobileHide) {
+        el.setAttribute('data-gem-hide-on-mobile', 'true');
+        const layer = ensureOverlayLayer(el, blockId);
+        applyOverlayRootAttributes(layer, { hasTargeting, hasMobileHide, visibility });
+        observeOverlayLayerGeometry(el, blockId, layer);
+      } else {
+        applyOverlayRootAttributes(el, { hasTargeting, hasMobileHide, visibility });
+      }
+
+      visibilityCount++;
     });
 
     isApplying = false;
 
-    console.log('[Gem][BlockTargeting] Applied targeting to', targetedCount, 'of', eBlocks.length, 'blocks.');
+    console.log('[Gem][BlockVisibility] Applied visibility to', visibilityCount, 'of', eBlocks.length, 'blocks.');
+
+    if (visibilityCount > 0) {
+      const resyncLayers = () => {
+        container.querySelectorAll('[e-block][data-gem-hide-on-mobile="true"]').forEach((blockEl) => {
+          const blockId = blockEl.getAttribute('e-block-id');
+          const layer = blockEl.querySelector(':scope > .' + OVERLAY_LAYER_CLASS);
+          if (!layer || !blockId) return;
+          syncOverlayLayerGeometry(blockEl, layer, findBlockContentTable(blockEl, blockId));
+        });
+      };
+      requestAnimationFrame(resyncLayers);
+      setTimeout(resyncLayers, 150);
+    }
 
     watchContainer(container);
     notifyDataChange();
@@ -702,7 +1242,12 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ['data-gem-has-block-targeting', 'data-gem-block-targeting-visibility']
+      attributeFilter: [
+        'data-gem-has-block-targeting',
+        'data-gem-block-targeting-visibility',
+        'data-gem-hide-on-mobile',
+        OVERLAY_ROOT_ATTR,
+      ]
     });
   }
 
@@ -848,6 +1393,12 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
     const suiteCampaignId = draftData && draftData.suiteCampaignId;
     const lang = (draftData && draftData.selectedLanguage) || getSelectedLanguage();
 
+    if (lang && draftData && draftData.blocksByLanguage && Array.isArray(draftData.blocksByLanguage[lang])) {
+      const snapshot = getCachedSnapshot([campaignId, suiteCampaignId]) || lastCampaignSnapshot;
+      applyBlocksFromSource(draftData.blocksByLanguage[lang], snapshot, lang);
+      return;
+    }
+
     if (lang && (campaignId || suiteCampaignId)) {
       const snapshot = getCachedSnapshot([campaignId, suiteCampaignId]);
       if (snapshot) {
@@ -884,7 +1435,9 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
     const draftBlocks = await readDraftStorage(campaignId, lang);
     if (draftBlocks) {
       clearToolbarHintsObservers();
-      applyBlocksFromSource(draftBlocks, lastCampaignSnapshot, lang);
+      const snapshot = getCachedSnapshot(campaignId) || lastCampaignSnapshot;
+      if (snapshot) lastCampaignSnapshot = snapshot;
+      applyBlocksFromSource(draftBlocks, snapshot, lang);
       return;
     }
 
@@ -931,22 +1484,32 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
     }
   }
 
-  function findToolbarButtons() {
+  function findToolbarButtonsByType(buttonType) {
+    const selector = '[block-toolbar-button="' + buttonType + '"]';
     const iframeDoc = getIframeDoc();
     if (iframeDoc) {
-      const inIframe = iframeDoc.querySelectorAll('[block-toolbar-button="block-targeting"]');
+      const inIframe = iframeDoc.querySelectorAll(selector);
       if (inIframe.length) return inIframe;
     }
-    const inMain = document.querySelectorAll('[block-toolbar-button="block-targeting"]');
+    const inMain = document.querySelectorAll(selector);
     if (inMain.length) return inMain;
     return null;
+  }
+
+  function findToolbarButtons() {
+    return findToolbarButtonsByType(TOOLBAR_BTN_BLOCK_TARGETING);
+  }
+
+  function hasToolbarVisibilityButtons() {
+    return !!(findToolbarButtonsByType(TOOLBAR_BTN_BLOCK_TARGETING)
+      || findToolbarButtonsByType(TOOLBAR_BTN_HIDE_ON_MOBILE));
   }
 
   function applyFromToolbarHints() {
     console.log('[Gem][BlockTargeting][Debug] applyFromToolbarHints called.');
 
-    const immediate = findToolbarButtons();
-    console.log('[Gem][BlockTargeting][Debug] Immediate toolbar button count:', immediate ? immediate.length : 0);
+    const immediate = hasToolbarVisibilityButtons();
+    console.log('[Gem][BlockTargeting][Debug] Immediate toolbar visibility buttons found:', immediate);
 
     if (immediate) {
       scheduleToolbarBuild();
@@ -960,14 +1523,14 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
     const iframeDoc = getIframeDoc();
 
     toolbarHintsUnsub = window.gemDomWatchSubscribe(function () {
-      if (findToolbarButtons()) {
+      if (hasToolbarVisibilityButtons()) {
         scheduleToolbarBuild();
       }
     });
 
     if (iframeDoc) {
       toolbarHintsIframeObs = new MutationObserver(function () {
-        if (findToolbarButtons()) {
+        if (hasToolbarVisibilityButtons()) {
           scheduleToolbarBuild();
         }
       });
@@ -987,32 +1550,71 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
   function buildFromToolbar() {
     clearToolbarHintsObservers();
 
-    const toolbarBtns = findToolbarButtons();
-    console.log('[Gem][BlockTargeting][Debug] buildFromToolbar — toolbar button count:', toolbarBtns ? toolbarBtns.length : 0);
+    const targetingBtns = findToolbarButtonsByType(TOOLBAR_BTN_BLOCK_TARGETING);
+    const mobileHideBtns = findToolbarButtonsByType(TOOLBAR_BTN_HIDE_ON_MOBILE);
+    console.log('[Gem][BlockTargeting][Debug] buildFromToolbar — targeting buttons:',
+      targetingBtns ? targetingBtns.length : 0,
+      '| mobile-hide buttons:',
+      mobileHideBtns ? mobileHideBtns.length : 0);
 
-    if (!toolbarBtns) return;
+    if (!targetingBtns && !mobileHideBtns) return;
 
-    const syntheticBlocks = [];
+    const blockById = new Map();
 
-    toolbarBtns.forEach((btn) => {
-      const blockId = btn.getAttribute('e-block-id');
-      if (!blockId) return;
+    if (Array.isArray(lastBlocks)) {
+      lastBlocks.forEach((block) => {
+        if (block && block._id != null) {
+          blockById.set(String(block._id), Object.assign({}, block));
+        }
+      });
+    }
 
-      const hasTargeting = btn.classList.contains('background-color-info');
-      console.log('[Gem][BlockTargeting][Debug]   block:', blockId, '| background-color-info:', hasTargeting, '| classes:', btn.className);
+    function ensureSyntheticBlock(blockId) {
+      const id = String(blockId);
+      if (!blockById.has(id)) blockById.set(id, { _id: id });
+      return blockById.get(id);
+    }
 
-      const block = { _id: blockId };
-      if (hasTargeting) {
-        block.targeting = { content: { visibility: '\u2026' } };
-      }
-      syntheticBlocks.push(block);
-    });
+    if (targetingBtns) {
+      targetingBtns.forEach((btn) => {
+        const blockId = btn.getAttribute('e-block-id');
+        if (!blockId) return;
 
-    const targetedCount = syntheticBlocks.filter((b) => b.targeting).length;
-    console.log('[Gem][BlockTargeting][Debug] Synthetic blocks built:', syntheticBlocks.length, 'total,', targetedCount, 'with targeting.');
+        const hasTargeting = isToolbarButtonActive(btn);
+        console.log('[Gem][BlockTargeting][Debug]   block:', blockId, '| targeting active:', hasTargeting);
 
-    if (syntheticBlocks.length) {
-      applyTargeting(syntheticBlocks);
+        const block = ensureSyntheticBlock(blockId);
+        if (hasTargeting) {
+          block.targeting = block.targeting || { content: { visibility: '\u2026' } };
+        } else {
+          delete block.targeting;
+        }
+      });
+    }
+
+    if (mobileHideBtns) {
+      mobileHideBtns.forEach((btn) => {
+        const blockId = btn.getAttribute('e-block-id');
+        if (!blockId) return;
+
+        const hideOnMobile = isToolbarButtonActive(btn);
+        console.log('[Gem][BlockVisibility][Debug]   block:', blockId, '| hide on mobile active:', hideOnMobile);
+
+        const block = ensureSyntheticBlock(blockId);
+        if (hideOnMobile) {
+          block.hide_on_mobile = true;
+        } else {
+          delete block.hide_on_mobile;
+        }
+      });
+    }
+
+    const mergedBlocks = Array.from(blockById.values());
+    const visibilityCount = mergedBlocks.filter((block) => block.targeting || blockHasMobileHide(block)).length;
+    console.log('[Gem][BlockTargeting][Debug] Toolbar merge built:', mergedBlocks.length, 'total,', visibilityCount, 'with visibility flags.');
+
+    if (mergedBlocks.length) {
+      applyTargeting(mergedBlocks);
     } else {
       notifyDataChange();
     }
@@ -1025,7 +1627,7 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
       const current = getSelectedLanguage();
       if (!current || current === lastLanguageValue) return;
       lastLanguageValue = current;
-      applyTargetingData();
+      onPreviewLanguageOrContentChange();
     });
   }
 
@@ -1054,6 +1656,9 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
         const hasLang = getSelectedLanguage();
 
         if (container && hasBlocks && hasLang) {
+          if (previewEnabled) {
+            refreshPreviewSettingsInPreviewIframe();
+          }
           applyTargetingData();
           return;
         }
@@ -1096,14 +1701,18 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
 
   watchForBlockTargetingDialog();
   watchLanguageSelector();
+  wireAllHideOnMobileToolbarListeners();
 
   loadBlockTargetingSettings(() => {
     waitForToolbarButtonSlot();
   });
 
   attachPreviewIframeLoadListener();
+  bindPreviewContainerObserver();
   window.gemDomWatchSubscribe(function () {
     attachPreviewIframeLoadListener();
+    bindPreviewContainerObserver();
+    wireAllHideOnMobileToolbarListeners();
   });
 
   if (getCampaignIdFromUrl()) {
@@ -1115,8 +1724,18 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
   }
 
   window.gemToggleBlockTargetingPreview = function gemToggleBlockTargetingPreview() {
+    window.gemSetBlockTargetingPreviewEnabled(!previewEnabled);
+  };
+
+  window.gemSetBlockTargetingPreviewEnabled = function gemSetBlockTargetingPreviewEnabled(enabled) {
+    const next = enabled !== false;
+    if (previewEnabled === next) return;
+    previewEnabled = next;
+    updateToolbarButtonState();
+    refreshPreviewSettingsInPreviewIframe();
+    if (next) applyTargetingData();
     try {
-      chrome.storage.sync.set({ [STORAGE_PREVIEW_ENABLED]: !previewEnabled });
+      chrome.storage.sync.set({ [STORAGE_PREVIEW_ENABLED]: next });
     } catch (_) {}
   };
 
@@ -1125,12 +1744,18 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
   };
 
   window.gemGetTargetedBlocks = function gemGetTargetedBlocks() {
-    return getTargetedBlocksForPanel();
+    return getBlockVisibilityBlocksForPanel();
+  };
+
+  window.gemGetBlockVisibilityBlocks = function gemGetBlockVisibilityBlocks() {
+    return getBlockVisibilityBlocksForPanel();
   };
 
   window.gemGetBlockTargetingCount = function gemGetBlockTargetingCount() {
-    return countTargetedBlocks(lastBlocks);
+    return countVisibilityBlocks(lastBlocks);
   };
+
+  window.gemBlockVisibilityIconSvg = BLOCK_VISIBILITY_ICON_SVG;
 
   window.gemOnBlockTargetingDataChange = function gemOnBlockTargetingDataChange(callback) {
     if (typeof callback !== 'function') return function () {};
@@ -1138,7 +1763,7 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
     try {
       callback({
         blocks: lastBlocks,
-        targetedCount: countTargetedBlocks(lastBlocks),
+        targetedCount: countVisibilityBlocks(lastBlocks),
         language: lastSelectedLanguage,
       });
     } catch (_) {}
@@ -1154,18 +1779,31 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
     const iframeDoc = getIframeDoc();
     if (!iframeDoc) return false;
 
-    const blockEl = iframeDoc.querySelector(`[e-block-id="${CSS.escape(id)}"]`);
-    if (!blockEl) return false;
+    const wrapper =
+      iframeDoc.querySelector('[e-block-id="' + CSS.escape(id) + '"][e-block]') ||
+      iframeDoc.querySelector('[e-block-id="' + CSS.escape(id) + '"]');
+    if (!wrapper) return false;
+
+    const contentTable = findBlockContentTable(wrapper, id);
+    const scrollTarget = contentTable || wrapper;
 
     try {
-      blockEl.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+      scrollTarget.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
     } catch (_) {
-      blockEl.scrollIntoView(true);
+      scrollTarget.scrollIntoView(true);
     }
 
-    blockEl.setAttribute('data-gem-block-targeting-scroll-highlight', 'true');
+    wrapper.setAttribute('data-gem-block-targeting-scroll-highlight', 'true');
+    const layer = wrapper.querySelector(':scope > .' + OVERLAY_LAYER_CLASS);
+    if (layer) {
+      layer.setAttribute('data-gem-block-targeting-scroll-highlight', 'true');
+    }
+
     setTimeout(() => {
-      blockEl.removeAttribute('data-gem-block-targeting-scroll-highlight');
+      wrapper.removeAttribute('data-gem-block-targeting-scroll-highlight');
+      if (layer) {
+        layer.removeAttribute('data-gem-block-targeting-scroll-highlight');
+      }
     }, 1800);
 
     return true;
@@ -1175,5 +1813,5 @@ html[data-gem-bt-preview="on"][data-gem-bt-visibility="show-on-hover"] [e-blocks
     return formatTargetingRules(targeting);
   };
 
-  console.log('[Gem][BlockTargeting] Initialized.');
+  console.log('[Gem][BlockVisibility] Initialized.');
 })();

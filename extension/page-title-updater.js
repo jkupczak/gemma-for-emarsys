@@ -11,10 +11,19 @@ let saveButtonAttributeUnsub = null;
 /** @type {Element | null} */
 let saveButtonAttributeTarget = null;
 let hasUnsavedChanges = false;
+let draftLastSavedAt = null;
 let titleAnimationInterval = null;
 let animationState = 0; // 0 for 🔴, 1 for ⚫
+/** @type {number | null} 1-based duplicate-tab index while duplicates exist */
+let duplicateTabIndex = null;
 let campaignTabTitleRegexSource = "";
 let campaignTabTitleFormatSource = "";
+
+function getDuplicateTabPrefix(index) {
+  const n = Number(index);
+  if (!Number.isFinite(n) || n < 1) return '';
+  return `(${n}) `;
+}
 
 function compileCampaignTabTitleRegex(source) {
   const trimmed = String(source || "").trim();
@@ -93,10 +102,16 @@ function updatePageTitle(campaignName) {
     campaignTabTitleFormatSource
   );
 
-  // Add unsaved changes indicator if there are unsaved changes
+  let prefix = '';
   if (hasUnsavedChanges) {
     const emoji = animationState === 0 ? '🔴' : '⚫';
-    newTitle = `${emoji} ${newTitle}`;
+    prefix += `${emoji} `;
+  }
+  if (duplicateTabIndex != null) {
+    prefix += getDuplicateTabPrefix(duplicateTabIndex);
+  }
+  if (prefix) {
+    newTitle = `${prefix}${newTitle}`;
   }
 
   // Only update if the title would actually change
@@ -140,24 +155,74 @@ function stopTitleAnimation() {
 }
 
 // Function to check if there are unsaved changes (save button not disabled)
-function reportUnsavedDraftToBackground(unsaved) {
+function reportUnsavedDraftToBackground(unsaved, lastSavedAt) {
   try {
     if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage) {
-      chrome.runtime.sendMessage({ action: "gemReportUnsavedDraft", unsaved: !!unsaved });
+      chrome.runtime.sendMessage({
+        action: "gemReportUnsavedDraft",
+        unsaved: !!unsaved,
+        lastSavedAt: lastSavedAt != null ? lastSavedAt : undefined,
+      });
     }
   } catch (_) {}
 }
 
-function checkUnsavedChanges() {
-  const saveButton = document.querySelector('cb-draft-save-button button');
-  const isDisabled = saveButton && saveButton.hasAttribute('disabled');
+const DRAFT_SAVE_BUTTON_SELECTORS = 'cb-draft-save-button button, gem-cb-draft-save-button button';
 
-  const newHasUnsavedChanges = !isDisabled; // If not disabled, there are unsaved changes
+function getDraftSaveButton() {
+  return document.querySelector(DRAFT_SAVE_BUTTON_SELECTORS);
+}
 
-  if (newHasUnsavedChanges !== hasUnsavedChanges) {
+function isDraftSaveButtonDisabled(saveButton) {
+  if (!saveButton) return true;
+  if (saveButton.disabled) return true;
+  if (saveButton.hasAttribute('disabled')) return true;
+  if (saveButton.getAttribute('aria-disabled') === 'true') return true;
+  return false;
+}
+
+function isDraftSaveUnsaved() {
+  const saveButton = getDraftSaveButton();
+  if (!saveButton) return false;
+  return !isDraftSaveButtonDisabled(saveButton);
+}
+
+window.gemIsDraftSaveUnsaved = isDraftSaveUnsaved;
+window.gemGetDraftLastSavedAt = () => draftLastSavedAt;
+
+function getTabLastRefreshedAt() {
+  try {
+    const ts = Math.round(performance.timeOrigin || 0);
+    return Number.isFinite(ts) && ts > 0 ? ts : Date.now();
+  } catch (_) {
+    return Date.now();
+  }
+}
+
+window.gemGetTabLastRefreshedAt = getTabLastRefreshedAt;
+
+window.gemSetDuplicateTabIndex = function setDuplicateTabIndex(index) {
+  const next =
+    index != null && Number.isFinite(Number(index)) && Number(index) >= 1
+      ? Number(index)
+      : null;
+  if (next === duplicateTabIndex) return;
+  duplicateTabIndex = next;
+  if (currentCampaignName) updatePageTitle(currentCampaignName);
+};
+
+function checkUnsavedChanges(options) {
+  const newHasUnsavedChanges = isDraftSaveUnsaved();
+  const forceReport = !!(options && options.forceReport);
+
+  if (!newHasUnsavedChanges && hasUnsavedChanges) {
+    draftLastSavedAt = Date.now();
+  }
+
+  if (newHasUnsavedChanges !== hasUnsavedChanges || forceReport) {
     console.log(`[Gem] Unsaved changes state changed: ${hasUnsavedChanges} → ${newHasUnsavedChanges}`);
     hasUnsavedChanges = newHasUnsavedChanges;
-    reportUnsavedDraftToBackground(newHasUnsavedChanges);
+    reportUnsavedDraftToBackground(newHasUnsavedChanges, draftLastSavedAt);
 
     // Start or stop animation based on unsaved changes state
     if (newHasUnsavedChanges) {
@@ -268,21 +333,21 @@ function bindSaveButtonDisabledWatch(saveButton) {
 }
 
 function attachSaveButtonWatchIfPresent() {
-  const saveButton = document.querySelector(SAVE_BUTTON_SELECTOR);
+  const saveButton = getDraftSaveButton();
   if (!saveButton) return;
   bindSaveButtonDisabledWatch(saveButton);
-  checkUnsavedChanges();
+  checkUnsavedChanges({ forceReport: true });
 }
 
 function onSaveButtonFound(saveButton) {
   console.log("[Gem] Save button appeared in DOM, monitoring state");
   bindSaveButtonDisabledWatch(saveButton);
-  checkUnsavedChanges();
+  checkUnsavedChanges({ forceReport: true });
 }
 
 function monitorSaveButton() {
   checkUnsavedChanges();
-  reportUnsavedDraftToBackground(hasUnsavedChanges);
+  reportUnsavedDraftToBackground(hasUnsavedChanges, draftLastSavedAt);
   attachSaveButtonWatchIfPresent();
 
   if (saveButtonDomUnsub) {
@@ -407,6 +472,45 @@ function bindCampaignTabTitleRegexWatcher() {
   });
 }
 
+const GEM_DRAFT_STORAGE_PREFIX = 'gemDraft_';
+
+function getCampaignIdFromPageUrl() {
+  try {
+    const match = window.location.search.match(/[?&]id=(\d+)/);
+    return match ? match[1] : '';
+  } catch (_) {
+    return '';
+  }
+}
+
+function seedDraftLastSavedFromStorage(extraSuiteCampaignId) {
+  if (!/contentBlocks(?:\/|%2F)campaign/i.test(window.location.href)) return;
+  const campaignId = getCampaignIdFromPageUrl();
+  if (!campaignId && !extraSuiteCampaignId) return;
+  if (!chrome?.storage?.local) return;
+
+  const keys = [];
+  if (campaignId) keys.push(`${GEM_DRAFT_STORAGE_PREFIX}${campaignId}`);
+  const suiteId = String(extraSuiteCampaignId || '').trim();
+  if (suiteId && !keys.includes(`${GEM_DRAFT_STORAGE_PREFIX}${suiteId}`)) {
+    keys.push(`${GEM_DRAFT_STORAGE_PREFIX}${suiteId}`);
+  }
+  if (!keys.length) return;
+
+  chrome.storage.local.get(keys, (res) => {
+    if (draftLastSavedAt) return;
+    for (let i = 0; i < keys.length; i += 1) {
+      const entry = res && res[keys[i]];
+      const ts = entry && (entry.saved_at || 0);
+      if (ts) {
+        draftLastSavedAt = ts;
+        reportUnsavedDraftToBackground(hasUnsavedChanges, draftLastSavedAt);
+        return;
+      }
+    }
+  });
+}
+
 // Initialize the page title updater
 function initializePageTitleUpdater() {
   console.log("[Gem] Initializing page title updater");
@@ -417,6 +521,27 @@ function initializePageTitleUpdater() {
   bindCampaignTabTitleRegexWatcher();
   loadCampaignTabTitleRegex(() => {
     monitorCampaignName();
+  });
+
+  seedDraftLastSavedFromStorage();
+  window.addEventListener('message', (event) => {
+    if (!event.data) return;
+    if (event.data.type === 'gem-draft-saved') {
+      draftLastSavedAt = Date.now();
+      hasUnsavedChanges = false;
+      reportUnsavedDraftToBackground(false, draftLastSavedAt);
+      stopTitleAnimation();
+      if (currentCampaignName) updatePageTitle(currentCampaignName);
+      return;
+    }
+    if (event.data.source === 'gem-content-blocks-snapshot-cached') {
+      const snapshot = event.data.snapshot;
+      const campaign = snapshot && (snapshot.campaign || snapshot);
+      const suiteId = campaign && campaign.suite_campaign_id != null
+        ? String(campaign.suite_campaign_id)
+        : '';
+      seedDraftLastSavedFromStorage(suiteId);
+    }
   });
 
   // Start monitoring save button for unsaved changes indicator
@@ -438,8 +563,12 @@ if (document.readyState === 'loading') {
 if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.onMessage) {
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (!msg || msg.action !== "gemQueryUnsavedDraft") return;
-    const saveButton = document.querySelector("cb-draft-save-button button");
-    const isDisabled = saveButton && saveButton.hasAttribute("disabled");
-    sendResponse({ ok: true, unsaved: !isDisabled });
+    sendResponse({
+      ok: true,
+      unsaved: isDraftSaveUnsaved(),
+      lastSavedAt: draftLastSavedAt,
+      lastRefreshedAt: getTabLastRefreshedAt(),
+    });
+    return true;
   });
 }

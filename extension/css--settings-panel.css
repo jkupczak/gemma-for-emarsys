@@ -21,6 +21,10 @@
   border-radius:6px;
 }
 
+#gem-settings-panel input.highlight-term-text {
+  padding-right: 44px;
+}
+
 #gem-settings-panel input[type="hidden"] {
   border: none;
   padding: 0;

@@ -102,12 +102,12 @@
       </div>
       <div class="gem-welcome-modal__body gem-scrollable" style="max-height: 70vh; overflow-y: auto;">
         <p style="margin: 0 0 20px 0; color: var(--token-font-muted, #666); font-size: 13px; line-height: 1.45;">
-          Shortcuts work in the email editor and most Gemma panels. Opening Gemma Recent Campaigns, Gemma Notes, or Gemma Settings with a shortcut will close the other panel if it is already open.
+          Shortcuts work in the email editor and most Gemma panels. Opening Gemma Campaigns, Gemma Notes, or Gemma Settings with a shortcut will close the other panel if it is already open.
         </p>
 
         ${section('Panels &amp; Navigation', [
           [`${mod}+G`, 'Open or close Gemma Settings'],
-          [`${mod}+/`, 'Open or close Gemma Recent Campaigns'],
+          [`${mod}+/`, 'Open or close Gemma Campaigns'],
           [`${mod}+;`, 'Open or close Gemma Notes'],
           [`${mod}+P`, 'Open or close Gemma Command Palette'],
           [`${mod}+Shift+P`, 'Open or close Gemma Command Palette'],

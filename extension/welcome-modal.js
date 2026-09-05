@@ -28,7 +28,7 @@ function createWelcomeModalHTML() {
               <b>Keyword Swapping</b> You can now quickly swap keywords you define with your own custom snippets. Click the swap icon <span class="gem-e-icon">&#xF0DE;</span> in the content block toolbar, the preheader box, or the subject line to swap matching keywords with their corresponding snippets.
             </li>
             <li>
-              <b>Block Targeting Previews</b> Quickly see at a glance whether a block is targeting a specific audience or not with handy overlays that wrap around your blocks. You can also toggle this from the email preview toolbar.
+              <b>Block Visibility Previews</b> Quickly see at a glance whether a block is targeting a specific audience or hidden on mobile with handy overlays that wrap around your blocks. You can also toggle this from the email preview toolbar.
             </li>
             <li><b>Rich Paste</b> Bold? Italics? You got it! Normally styled text that you copy and paste into your emails are reformatted to plain text. But not anymore! Gemma preserves bold, italics, underlines, links and more when copying and pasting from outside sources, or even from one content block to another. Press ${typeof window.GEM_MOD_KEY !== 'undefined' ? window.GEM_MOD_KEY : 'CTRL'}+Shift+V to paste plain text instead.</li>
             <li><b>Image Picker</b> When adding an image to your email you'll now get a preview of it right next to the image editor. Browse Recent Images, Favorite Images, or the embedded Media Database without opening a separate popup. Image Details shows aspect ratio, suggested width, last seen, and last used times.</li>

@@ -9,6 +9,7 @@ console.log("[Gem] recent-campaigns.js loaded");
   const RECENT_SCHEMA_VERSION = 1;
   const RECENT_NAV_ID = "gem-nav-recent-campaigns-item";
   const NOTES_NAV_ID = "gem-nav-notes-item";
+  const COMMANDS_NAV_ID = "gem-nav-commands-item";
   const SETTINGS_NAV_ID = "gem-nav-settings-item";
   const RECENT_PANEL_ID = "gem-recent-campaigns-panel";
   const RECENT_BACKDROP_ID = "gem-recent-campaigns-backdrop";
@@ -2541,13 +2542,13 @@ console.log("[Gem] recent-campaigns.js loaded");
     li.className = "e-navigation__menu_list_item";
     li.id = RECENT_NAV_ID;
     li.innerHTML = `
-      <button type="button" class="e-navigation__action" aria-haspopup="true" aria-expanded="false" menu-item-id="recent_campaigns_new_main" tracking-id="recent_campaigns_new_main" aria-label="Gemma Recent Campaigns">
+      <button type="button" class="e-navigation__action" aria-haspopup="true" aria-expanded="false" menu-item-id="recent_campaigns_new_main" tracking-id="recent_campaigns_new_main" aria-label="Gemma Campaigns">
         <e-icon class="e-navigation__action_icon" color="inherit" icon="custom">
           <div aria-hidden="true" class="e-icon-wrapper">
             <div class="e-icon text-color-inherit gem-nav-custom-svg"></div>
           </div>
         </e-icon>
-        <span class="e-navigation__action_text">Recent Campaigns</span>
+        <span class="e-navigation__action_text">Gemma Campaigns</span>
       </button>
     `;
     if (window.gemNavMenu) {
@@ -2566,7 +2567,7 @@ console.log("[Gem] recent-campaigns.js loaded");
     const item = gem.buildUi5ActionItem(
       {
         id: RECENT_NAV_ID,
-        text: "Gemma Recent Campaigns",
+        text: "Gemma Campaigns",
         icon: "history",
         // email/bookmark-2 are already registered by Emarsys's own nav items.
         iconFallbacks: ["email", "bookmark-2", "opportunity", "home"],
@@ -2601,10 +2602,10 @@ console.log("[Gem] recent-campaigns.js loaded");
       <div class="gem-recent-campaigns-panel-main">
         <div class="gem-recent-campaigns-panel-header">
           <span class="gem-recent-campaigns-panel-title">
-            Gemma Recent Campaigns
+            Gemma Campaigns
             <span class="gem-shortcut-hint gem-shortcut-hint--on-surface">${getRecentCampaignsShortcutLabel()}</span>
           </span>
-          <button type="button" class="gem-recent-campaigns-panel-close" aria-label="Close Recent Campaigns panel">✕</button>
+          <button type="button" class="gem-recent-campaigns-panel-close" aria-label="Close Gemma Campaigns panel">✕</button>
         </div>
         <div class="gem-recent-campaigns-panel-content gem-scrollable">
           <div class="gem-recent-campaigns-active-tab-slot"></div>
@@ -2862,15 +2863,15 @@ console.log("[Gem] recent-campaigns.js loaded");
     const recentItem = buildRecentNavItem(flavor || "legacy", host);
     const gem = window.gemNavMenu;
     if (gem) {
-      gem.insertRecentRelative(host, recentItem, NOTES_NAV_ID, SETTINGS_NAV_ID);
+      gem.insertRecentRelative(host, recentItem, NOTES_NAV_ID, SETTINGS_NAV_ID, COMMANDS_NAV_ID);
       return;
     }
+    const commandsItem = host.querySelector(`#${COMMANDS_NAV_ID}`);
     const notesItem = host.querySelector(`#${NOTES_NAV_ID}`);
     const settingsItem = host.querySelector(`#${SETTINGS_NAV_ID}`);
-    if (notesItem && settingsItem && notesItem.nextSibling === settingsItem) {
-      host.insertBefore(recentItem, settingsItem);
-    } else if (settingsItem) {
-      host.insertBefore(recentItem, settingsItem);
+    const insertBefore = commandsItem || settingsItem;
+    if (insertBefore) {
+      host.insertBefore(recentItem, insertBefore);
     } else {
       host.appendChild(recentItem);
     }

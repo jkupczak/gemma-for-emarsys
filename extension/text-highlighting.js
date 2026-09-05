@@ -4,6 +4,12 @@ console.log("[Gem] text-highlighting.js loaded");
 let PLACEHOLDERS = [];
 const GEM_TEXT_HIGHLIGHTS_RENDERED_EVENT = "gem:text-highlights-rendered";
 
+function normalizeHighlightMode(mode) {
+  if (mode === 'notify') return 'notify';
+  if (mode === 'disabled') return 'disabled';
+  return 'highlight';
+}
+
 function normalizeHighlightTermData(termData) {
   if (typeof termData === 'string') {
     return {
@@ -16,7 +22,7 @@ function normalizeHighlightTermData(termData) {
   return {
     color: typeof data.color === 'string' ? data.color : 'rgba(255, 255, 0, 0.40)',
     isRegex: !!data.isRegex,
-    mode: data.mode === 'notify' ? 'notify' : 'highlight'
+    mode: normalizeHighlightMode(data.mode)
   };
 }
 
@@ -34,6 +40,35 @@ function compileRegex(pattern) {
 
 const TARGET_IFRAME_SELECTOR =
   ".e-contentblocks-preview__iframe.e-contentblocks-preview__iframe-desktop";
+const PREHEADER_TEXTAREA_SELECTOR = "cb-preheader textarea";
+
+const TEXTAREA_MIRROR_STYLE_PROPS = [
+  "direction",
+  "borderTopWidth",
+  "borderRightWidth",
+  "borderBottomWidth",
+  "borderLeftWidth",
+  "borderStyle",
+  "paddingTop",
+  "paddingRight",
+  "paddingBottom",
+  "paddingLeft",
+  "fontStyle",
+  "fontVariant",
+  "fontWeight",
+  "fontStretch",
+  "fontSize",
+  "fontSizeAdjust",
+  "lineHeight",
+  "fontFamily",
+  "textAlign",
+  "textTransform",
+  "textIndent",
+  "textDecoration",
+  "letterSpacing",
+  "wordSpacing",
+  "tabSize"
+];
 
 // Default highlight terms for first-time users (none).
 const DEFAULT_HIGHLIGHT_TERMS = {};
@@ -69,7 +104,8 @@ function loadHighlightConfig() {
             isRegex: normalized.isRegex,
             regex: normalized.isRegex ? compileRegex(term) : null
           };
-        });
+        })
+        .filter((entry) => entry.mode !== 'disabled');
 
       console.log("[Gem] Loaded highlight configuration:", highlightTerms);
 
@@ -89,7 +125,6 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
       console.warn("[Gem] Chrome storage API not available - extension context may be invalidated");
       return;
     }
-    let needsReinit = false;
 
     if (changes.enableHighlighting) {
       if (changes.enableHighlighting.newValue) {
@@ -113,13 +148,11 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
             isRegex: normalized.isRegex,
             regex: normalized.isRegex ? compileRegex(term) : null
           };
-        });
+        })
+        .filter((entry) => entry.mode !== 'disabled');
       console.log("[Gem] Highlight terms updated, re-highlighting...");
 
-      // Re-highlight existing content
-      if (currentIframe) {
-        debounce(() => highlightMatchesInIframe(currentIframe));
-      }
+      debounceNamed("all", refreshAllHighlights);
     }
   }
 });
@@ -130,13 +163,18 @@ loadHighlightConfig();
 // ---------------------------------------------
 
 let overlayContainer = null;
+let pageOverlayContainer = null;
+let textareaMirror = null;
 let iframeMutationObserver = null;
 let lifecycleUnsub = null;
-let debounceTimer = null;
+let preheaderLifecycleUnsub = null;
 let currentIframe = null;
+let currentPreheaderTextarea = null;
 let textHighlightsPaused = false;
 let scrollHandler = null;
 let resizeHandler = null;
+let pageViewportHandler = null;
+const debounceTimers = {};
 
 window.gemPauseTextHighlights = function () {
   textHighlightsPaused = true;
@@ -145,26 +183,116 @@ window.gemPauseTextHighlights = function () {
 
 window.gemResumeTextHighlights = function () {
   textHighlightsPaused = false;
-  if (currentIframe && currentIframe.isConnected) {
-    debounce(() => highlightMatchesInIframe(currentIframe));
-  }
+  debounceNamed("all", refreshAllHighlights);
 };
 
-// Simple debounce helper
-function debounce(fn, delay = 150) {
-  clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(fn, delay);
+function debounceNamed(key, fn, delay = 150) {
+  clearTimeout(debounceTimers[key]);
+  debounceTimers[key] = setTimeout(fn, delay);
 }
 
-// Completely remove overlays (container stays or is recreated as needed)
-function clearOverlays() {
+function refreshAllHighlights() {
+  if (textHighlightsPaused) return;
+  if (currentIframe && currentIframe.isConnected) {
+    highlightMatchesInIframe(currentIframe);
+  }
+  highlightMatchesInPreheader();
+}
+
+function notifyHighlightsRendered(overlayCount) {
+  window.dispatchEvent(new CustomEvent(GEM_TEXT_HIGHLIGHTS_RENDERED_EVENT, {
+    detail: {
+      overlayCount: overlayCount || 0,
+      ts: Date.now()
+    }
+  }));
+}
+
+function createHighlightBox(doc, rect, color, offsetX, offsetY, position) {
+  const box = doc.createElement("div");
+  box.className = "gem-text-highlight";
+  Object.assign(box.style, {
+    position: position || "absolute",
+    left: (rect.left + offsetX - 1) + "px",
+    top: (rect.top + offsetY - 1) + "px",
+    width: rect.width + "px",
+    height: rect.height + "px",
+    background: color,
+    boxShadow: "0 0 0 1px rgb(0 0 0 / 0.1), inset 0 0 0 1px rgb(0 0 0 / 0.3)",
+    borderRadius: "4px",
+    padding: "2px 1px",
+    pointerEvents: "none"
+  });
+  return box;
+}
+
+function forEachHighlightMatch(raw, onMatch) {
+  if (!raw) return;
+
+  for (const placeholder of PLACEHOLDERS) {
+    const { termLower, color, isRegex, regex } = placeholder;
+
+    if (isRegex && regex) {
+      let match;
+      while ((match = regex.exec(raw)) !== null) {
+        const startIndex = match.index;
+        const matchLength = match[0].length;
+        if (matchLength > 0) onMatch(startIndex, matchLength, color);
+        if (matchLength === 0) regex.lastIndex++;
+      }
+      regex.lastIndex = 0;
+      continue;
+    }
+
+    if (!termLower) continue;
+    const termLen = termLower.length;
+    if (!termLen) continue;
+
+    const lowerRaw = raw.toLowerCase();
+    let startIndex = 0;
+    while (true) {
+      const index = lowerRaw.indexOf(termLower, startIndex);
+      if (index === -1) break;
+      onMatch(index, termLen, color);
+      startIndex = index + termLen;
+    }
+  }
+}
+
+function intersectVisibleRect(rect, clipRect) {
+  const left = Math.max(rect.left, clipRect.left);
+  const top = Math.max(rect.top, clipRect.top);
+  const right = Math.min(rect.right, clipRect.right);
+  const bottom = Math.min(rect.bottom, clipRect.bottom);
+  if (right <= left || bottom <= top) return null;
+  return {
+    left: left,
+    top: top,
+    right: right,
+    bottom: bottom,
+    width: right - left,
+    height: bottom - top
+  };
+}
+
+function clearIframeOverlays() {
   if (overlayContainer) {
     overlayContainer.remove();
     overlayContainer = null;
   }
 }
 
-// Ensure we have a single overlay container in the given document
+function clearPageOverlays() {
+  if (pageOverlayContainer) {
+    pageOverlayContainer.innerHTML = "";
+  }
+}
+
+function clearOverlays() {
+  clearIframeOverlays();
+  clearPageOverlays();
+}
+
 function ensureOverlayContainer(doc) {
   if (textHighlightsPaused) return null;
 
@@ -188,6 +316,130 @@ function ensureOverlayContainer(doc) {
 
   doc.body.appendChild(overlayContainer);
   return overlayContainer;
+}
+
+function ensurePageOverlayContainer() {
+  if (textHighlightsPaused) return null;
+
+  if (pageOverlayContainer && pageOverlayContainer.isConnected) {
+    return pageOverlayContainer;
+  }
+
+  pageOverlayContainer = document.createElement("div");
+  pageOverlayContainer.id = "gem-text-highlight-page-container";
+  Object.assign(pageOverlayContainer.style, {
+    position: "fixed",
+    left: "0",
+    top: "0",
+    width: "100%",
+    height: "100%",
+    pointerEvents: "none",
+    zIndex: "999999"
+  });
+  (document.documentElement || document.body).appendChild(pageOverlayContainer);
+  return pageOverlayContainer;
+}
+
+function ensureTextareaMirror() {
+  if (textareaMirror && textareaMirror.isConnected) return textareaMirror;
+
+  textareaMirror = document.createElement("div");
+  textareaMirror.id = "gem-text-highlight-textarea-mirror";
+  textareaMirror.setAttribute("aria-hidden", "true");
+  Object.assign(textareaMirror.style, {
+    position: "fixed",
+    opacity: "0",
+    pointerEvents: "none",
+    zIndex: "-1"
+  });
+  (document.documentElement || document.body).appendChild(textareaMirror);
+  return textareaMirror;
+}
+
+function syncTextareaMirror(textarea) {
+  const mirror = ensureTextareaMirror();
+  const cs = window.getComputedStyle(textarea);
+  const rect = textarea.getBoundingClientRect();
+
+  TEXTAREA_MIRROR_STYLE_PROPS.forEach((prop) => {
+    try {
+      mirror.style[prop] = cs[prop];
+    } catch (_) {}
+  });
+
+  Object.assign(mirror.style, {
+    position: "fixed",
+    left: rect.left + "px",
+    top: rect.top + "px",
+    width: rect.width + "px",
+    height: rect.height + "px",
+    boxSizing: "border-box",
+    overflow: "hidden",
+    whiteSpace: "pre-wrap",
+    wordWrap: "break-word",
+    overflowWrap: "break-word",
+    opacity: "0",
+    pointerEvents: "none"
+  });
+
+  mirror.textContent = textarea.value || "";
+  mirror.scrollTop = textarea.scrollTop;
+  mirror.scrollLeft = textarea.scrollLeft;
+  return mirror;
+}
+
+function highlightMatchesInPreheader() {
+  if (textHighlightsPaused) return;
+
+  const textarea = currentPreheaderTextarea && currentPreheaderTextarea.isConnected
+    ? currentPreheaderTextarea
+    : document.querySelector(PREHEADER_TEXTAREA_SELECTOR);
+
+  const container = ensurePageOverlayContainer();
+  if (!container) return;
+  container.innerHTML = "";
+
+  if (!textarea) {
+    notifyHighlightsRendered(0);
+    return;
+  }
+
+  const raw = String(textarea.value || "");
+  if (!raw || !PLACEHOLDERS.length) {
+    notifyHighlightsRendered(0);
+    return;
+  }
+
+  const mirror = syncTextareaMirror(textarea);
+  const textNode = mirror.firstChild;
+  if (!textNode || textNode.nodeType !== Node.TEXT_NODE) {
+    notifyHighlightsRendered(0);
+    return;
+  }
+
+  const clipRect = textarea.getBoundingClientRect();
+  let overlayCount = 0;
+
+  forEachHighlightMatch(raw, (startIndex, matchLength, color) => {
+    const endIndex = Math.min(startIndex + matchLength, textNode.nodeValue.length);
+    if (endIndex <= startIndex) return;
+
+    const range = document.createRange();
+    range.setStart(textNode, startIndex);
+    range.setEnd(textNode, endIndex);
+
+    const rects = range.getClientRects();
+    for (const rect of rects) {
+      const visible = intersectVisibleRect(rect, clipRect);
+      if (!visible || !visible.width || !visible.height) continue;
+      container.appendChild(createHighlightBox(document, visible, color, 0, 0, "fixed"));
+      overlayCount += 1;
+    }
+
+    range.detach();
+  });
+
+  notifyHighlightsRendered(overlayCount);
 }
 
 // MAIN highlight function
@@ -229,105 +481,27 @@ function highlightMatchesInIframe(iframe) {
   let textNode;
   while ((textNode = walker.nextNode())) {
     const raw = textNode.nodeValue;
+    const maxLen = raw.length;
 
-    for (const placeholder of PLACEHOLDERS) {
-      const { term, termLower, color, isRegex, regex } = placeholder;
+    forEachHighlightMatch(raw, (startIndex, matchLength, color) => {
+      const endIndex = Math.min(startIndex + matchLength, maxLen);
+      if (endIndex <= startIndex) return;
 
-      if (isRegex && regex) {
-        // Handle regex matching
-        let match;
-        while ((match = regex.exec(raw)) !== null) {
-          const startIndex = match.index;
-          const matchLength = match[0].length;
+      const range = doc.createRange();
+      range.setStart(textNode, startIndex);
+      range.setEnd(textNode, endIndex);
 
-          // Create range for this match
-          const range = doc.createRange();
-          range.setStart(textNode, startIndex);
-          range.setEnd(textNode, startIndex + matchLength);
-
-          const rects = range.getClientRects();
-          for (const rect of rects) {
-            if (!rect.width || !rect.height) continue;
-
-            const box = doc.createElement("div");
-            box.className = "gem-text-highlight";
-            Object.assign(box.style, {
-              position: "absolute",
-              left: (rect.left + scrollX - 1) + "px",
-              top: (rect.top + scrollY - 1) + "px",
-              width: rect.width + "px",
-              height: rect.height + "px",
-              background: color,
-              boxShadow: "0 0 0 1px rgb(0 0 0 / 0.1), inset 0 0 0 1px rgb(0 0 0 / 0.3)",
-              borderRadius: "4px",
-              padding: "2px 1px",
-              pointerEvents: "none"
-            });
-
-            container.appendChild(box);
-          }
-
-          range.detach();
-
-          // Prevent infinite loops with zero-width matches
-          if (matchLength === 0) {
-            regex.lastIndex++;
-          }
-        }
-
-        // Reset regex lastIndex for next text node
-        regex.lastIndex = 0;
-
-      } else if (termLower) {
-        // Handle plain text matching (case-insensitive)
-        const termLen = termLower.length;
-        if (!termLen) continue;
-
-        let startIndex = 0;
-        while (true) {
-          const index = raw.toLowerCase().indexOf(termLower, startIndex);
-          if (index === -1) break;
-
-          const range = doc.createRange();
-          range.setStart(textNode, index);
-          range.setEnd(textNode, index + termLen);
-
-          const rects = range.getClientRects();
-          for (const rect of rects) {
-            if (!rect.width || !rect.height) continue;
-
-            const box = doc.createElement("div");
-            box.className = "gem-text-highlight";
-            Object.assign(box.style, {
-              position: "absolute",
-              left: (rect.left + scrollX - 1) + "px",
-              top: (rect.top + scrollY - 1) + "px",
-              width: rect.width + "px",
-              height: rect.height + "px",
-              background: color,
-              boxShadow: "0 0 0 1px rgb(0 0 0 / 0.1), inset 0 0 0 1px rgb(0 0 0 / 0.3)",
-              borderRadius: "4px",
-              padding: "2px 1px",
-              pointerEvents: "none"
-            });
-
-            container.appendChild(box);
-          }
-
-          range.detach();
-          startIndex = index + termLen;
-        }
+      const rects = range.getClientRects();
+      for (const rect of rects) {
+        if (!rect.width || !rect.height) continue;
+        container.appendChild(createHighlightBox(doc, rect, color, scrollX, scrollY, "absolute"));
       }
-    }
+
+      range.detach();
+    });
   }
 
-  // Notify other modules (e.g., Preflight text analysis) that visible highlight overlays changed.
-  window.dispatchEvent(new CustomEvent(GEM_TEXT_HIGHLIGHTS_RENDERED_EVENT, {
-    detail: {
-      overlayCount: container.childElementCount || 0,
-      ts: Date.now()
-    }
-  }));
+  notifyHighlightsRendered(container.childElementCount || 0);
 }
 
 function removeViewportListeners() {
@@ -352,13 +526,73 @@ function attachViewportListeners(iframe) {
 
   const onViewportChange = () => {
     if (iframe !== currentIframe || textHighlightsPaused) return;
-    debounce(() => highlightMatchesInIframe(iframe));
+    debounceNamed("iframe", () => highlightMatchesInIframe(iframe));
   };
 
   scrollHandler = onViewportChange;
   resizeHandler = onViewportChange;
   win.addEventListener('scroll', scrollHandler, { passive: true });
   win.addEventListener('resize', resizeHandler);
+}
+
+function removePageViewportListeners() {
+  if (!pageViewportHandler) return;
+  window.removeEventListener("scroll", pageViewportHandler, true);
+  window.removeEventListener("resize", pageViewportHandler);
+  pageViewportHandler = null;
+}
+
+function attachPageViewportListeners() {
+  if (pageViewportHandler) return;
+  pageViewportHandler = () => {
+    if (textHighlightsPaused) return;
+    debounceNamed("preheader", highlightMatchesInPreheader);
+  };
+  window.addEventListener("scroll", pageViewportHandler, true);
+  window.addEventListener("resize", pageViewportHandler);
+}
+
+function unbindPreheader() {
+  if (currentPreheaderTextarea) {
+    currentPreheaderTextarea.removeEventListener("input", onPreheaderInput);
+    currentPreheaderTextarea.removeEventListener("scroll", onPreheaderInput);
+  }
+  currentPreheaderTextarea = null;
+  clearPageOverlays();
+}
+
+function onPreheaderInput() {
+  debounceNamed("preheader", highlightMatchesInPreheader);
+}
+
+function bindToPreheader(textarea) {
+  if (!textarea) {
+    unbindPreheader();
+    return;
+  }
+  if (currentPreheaderTextarea === textarea) return;
+
+  unbindPreheader();
+  currentPreheaderTextarea = textarea;
+  textarea.addEventListener("input", onPreheaderInput);
+  textarea.addEventListener("scroll", onPreheaderInput, { passive: true });
+  highlightMatchesInPreheader();
+}
+
+function watchPreheaderLifecycle() {
+  if (preheaderLifecycleUnsub) {
+    preheaderLifecycleUnsub();
+    preheaderLifecycleUnsub = null;
+  }
+
+  const sync = () => {
+    const textarea = document.querySelector(PREHEADER_TEXTAREA_SELECTOR);
+    if (textarea) bindToPreheader(textarea);
+    else if (currentPreheaderTextarea) unbindPreheader();
+  };
+
+  sync();
+  preheaderLifecycleUnsub = window.gemDomWatchSubscribe(sync);
 }
 
 // Observe DOM until iframe appears with a ready document + body
@@ -394,7 +628,7 @@ function isGemElement(el) {
 function isInsideGemOverlay(node) {
   let el = node.nodeType === 1 ? node : node.parentElement;
   while (el) {
-    if (el.id && el.id.startsWith("gem-")) return true;
+    if (isGemElement(el)) return true;
     el = el.parentElement;
   }
   return false;
@@ -410,7 +644,7 @@ function bindToIframe(iframe) {
   attachViewportListeners(iframe);
 
   // Initial highlight
-  debounce(() => highlightMatchesInIframe(iframe));
+  debounceNamed("iframe", () => highlightMatchesInIframe(iframe));
 
   // Rehighlight on DOM changes inside iframe
   if (iframeMutationObserver) {
@@ -448,7 +682,7 @@ function bindToIframe(iframe) {
     }
 
     // Real change → rehighlight (debounced)
-    debounce(() => highlightMatchesInIframe(iframe));
+    debounceNamed("iframe", () => highlightMatchesInIframe(iframe));
   });
 
   iframeMutationObserver.observe(doc.body, {
@@ -471,7 +705,7 @@ function watchIframeLifecycle() {
 
     if (!iframe && currentIframe) {
       currentIframe = null;
-      clearOverlays();
+      clearIframeOverlays();
       if (iframeMutationObserver) {
         iframeMutationObserver.disconnect();
         iframeMutationObserver = null;
@@ -487,17 +721,21 @@ function watchIframeLifecycle() {
 
 // Initialize highlighting functionality
 function initializeHighlighting() {
-  // Start lifecycle watching + wait for first iframe
   watchIframeLifecycle();
   waitForIframeReady(bindToIframe);
+  attachPageViewportListeners();
+  watchPreheaderLifecycle();
 }
 
 // Disable highlighting functionality
 function disableHighlighting() {
-  // Disconnect observers
   if (lifecycleUnsub) {
     lifecycleUnsub();
     lifecycleUnsub = null;
+  }
+  if (preheaderLifecycleUnsub) {
+    preheaderLifecycleUnsub();
+    preheaderLifecycleUnsub = null;
   }
   if (iframeMutationObserver) {
     iframeMutationObserver.disconnect();
@@ -505,12 +743,22 @@ function disableHighlighting() {
   }
 
   removeViewportListeners();
+  removePageViewportListeners();
+  unbindPreheader();
+  if (textareaMirror) {
+    textareaMirror.remove();
+    textareaMirror = null;
+  }
+  if (pageOverlayContainer) {
+    pageOverlayContainer.remove();
+    pageOverlayContainer = null;
+  }
 
-  // Clear current overlays
   clearOverlays();
 
-  // Reset state
   currentIframe = null;
-  clearTimeout(debounceTimer);
-  debounceTimer = null;
+  Object.keys(debounceTimers).forEach((key) => {
+    clearTimeout(debounceTimers[key]);
+    delete debounceTimers[key];
+  });
 }

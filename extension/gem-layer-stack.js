@@ -22,6 +22,10 @@
       ".gem-recent-campaigns-backdrop",
       "#gem-keyboard-shortcuts-modal",
       "#gem-welcome-modal",
+      "#gem-stale-tab-modal",
+      "#gem-duplicate-tab-activation-modal",
+      "#gem-duplicate-tab-save-modal",
+      "#gem-stale-tab-save-modal",
       "#gem-compare-modal",
       "#gem-command-palette",
       "#gem-campaign-details-overlay",
@@ -58,7 +62,7 @@
       }
 
       if (el.dataset && el.dataset.gemLayerRaised === "1") return true;
-      if (id === "gem-keyboard-shortcuts-modal" || id === "gem-welcome-modal" || id === "gem-compare-modal" || id === "gem-command-palette") return true;
+      if (id === "gem-keyboard-shortcuts-modal" || id === "gem-welcome-modal" || id === "gem-stale-tab-modal" || id === "gem-duplicate-tab-activation-modal" || id === "gem-duplicate-tab-save-modal" || id === "gem-stale-tab-save-modal" || id === "gem-compare-modal" || id === "gem-command-palette") return true;
       if (id === "gem-campaign-details-overlay") {
         return cls && cls.contains("is-visible");
       }

@@ -62,10 +62,19 @@ function injectNotesNavItem(host, flavor) {
   const item =
     flavor === "ui5" && gem ? buildUi5NotesNavItem(host) : buildLegacyNotesNavItem();
   if (gem) {
-    gem.insertRelativeToSettings(host, item, "gem-nav-settings-item");
+    const recentItem = host.querySelector("#gem-nav-recent-campaigns-item");
+    if (recentItem) {
+      host.insertBefore(item, recentItem);
+    } else {
+      gem.insertBeforeCommandsOrSettings(host, item, "gem-nav-commands-item", "gem-nav-settings-item");
+    }
   } else {
+    const recentItem = host.querySelector("#gem-nav-recent-campaigns-item");
+    const commandsItem = host.querySelector("#gem-nav-commands-item");
     const settingsItem = host.querySelector("#gem-nav-settings-item");
-    if (settingsItem) host.insertBefore(item, settingsItem);
+    const insertBefore = recentItem || commandsItem || settingsItem;
+    if (insertBefore) host.insertBefore(item, insertBefore);
+    else host.appendChild(item);
   }
 }
 

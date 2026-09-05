@@ -82,6 +82,24 @@
   }
 
   // Slim blocks for chrome.storage.local; keep template + full targeting for panel/overlay fallback.
+  function getHideOnMobileFlagsFromBlock(block) {
+    const flags = [];
+    if (!block || typeof block !== "object") return flags;
+    if (block.hide_on_mobile === true) {
+      flags.push({ level: "block", fieldKey: null });
+    }
+    const content = block.content;
+    if (content && typeof content === "object") {
+      Object.keys(content).forEach((fieldKey) => {
+        const fieldVal = content[fieldKey];
+        if (fieldVal && typeof fieldVal === "object" && fieldVal.hide_on_mobile === true) {
+          flags.push({ level: "field", fieldKey });
+        }
+      });
+    }
+    return flags;
+  }
+
   function slimBlockForDraftStorage(block) {
     if (!block || typeof block !== "object") return null;
     const id = block._id;
@@ -90,6 +108,16 @@
     if (block.template != null) out.template = block.template;
     if (block.targeting) {
       out.targeting = JSON.parse(JSON.stringify(block.targeting));
+    }
+    const flags = getHideOnMobileFlagsFromBlock(block);
+    if (flags.some((flag) => flag.level === "block")) {
+      out.hide_on_mobile = true;
+    }
+    const fieldKeys = flags
+      .filter((flag) => flag.fieldKey)
+      .map((flag) => flag.fieldKey);
+    if (fieldKeys.length) {
+      out.mobileHiddenFields = fieldKeys;
     }
     return out;
   }

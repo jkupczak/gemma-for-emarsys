@@ -558,41 +558,44 @@ function initializeKeywordSwap() {
   // ------------------------------------------------------------
 
   function initializeSubjectLineKeywordSwap() {
-    const existingSubjectInput = document.querySelector('cb-personalizable-input-with-context#subject-line-input');
-    if (existingSubjectInput && !existingSubjectInput._gemSubjectKeywordSwapInitialized) {
-      setupSubjectLineKeywordSwap(existingSubjectInput);
-    }
+    trySetupSubjectLineKeywordSwap();
 
-    window.gemDomWatchSubscribe(function (mutations) {
-      mutations.forEach(function (mutation) {
-        mutation.addedNodes.forEach(function (node) {
-          if (node.nodeType === Node.ELEMENT_NODE) {
-            const subjectInput = node.matches && node.matches('cb-personalizable-input-with-context#subject-line-input') ? node :
-                                node.querySelector && node.querySelector('cb-personalizable-input-with-context#subject-line-input');
-
-            if (subjectInput && !subjectInput._gemSubjectKeywordSwapInitialized) {
-              setupSubjectLineKeywordSwap(subjectInput);
-            }
-          }
-        });
-      });
+    window.gemDomWatchSubscribe(function () {
+      trySetupSubjectLineKeywordSwap();
     });
 
     console.log("[Gem][KeywordSwap] Subject line keyword swap handler initialized");
   }
 
+  function trySetupSubjectLineKeywordSwap() {
+    const subjectInput = document.querySelector('cb-personalizable-input-with-context#subject-line-input');
+    if (subjectInput) setupSubjectLineKeywordSwap(subjectInput);
+  }
+
+  function findSubjectLineGeneratorTooltip(subjectInput) {
+    const generatorButton = subjectInput.querySelector('button[aria-label="Subject Line Generator"]');
+    if (!generatorButton) return null;
+    return generatorButton.closest('e-tooltip') || generatorButton;
+  }
+
   function setupSubjectLineKeywordSwap(subjectInput) {
     if (subjectInput._gemSubjectKeywordSwapInitialized) return;
-    subjectInput._gemSubjectKeywordSwapInitialized = true;
+    if (subjectInput.querySelector('.gem-subject-swap-keywords-btn')) {
+      subjectInput._gemSubjectKeywordSwapInitialized = true;
+      return;
+    }
 
-    const toolbar = subjectInput.querySelector('vce-code-editor-toolbar');
-    if (!toolbar) return;
+    const generatorTooltip = findSubjectLineGeneratorTooltip(subjectInput);
+    if (!generatorTooltip || !generatorTooltip.parentNode) return;
+
+    subjectInput._gemSubjectKeywordSwapInitialized = true;
 
     // Create the keyword swap button using the same style as other toolbar buttons
     const swapButton = document.createElement('e-tooltip');
     swapButton.setAttribute('content', 'Swap Keywords');
     swapButton.setAttribute('role', 'tooltip');
     swapButton.setAttribute('aria-description', 'Swap Keywords');
+    swapButton.className = 'gem-subject-swap-keywords-btn';
 
     const buttonWrapper = document.createElement('button');
     buttonWrapper.className = 'e-btn e-btn-onlyicon e-inputgroup__item';
@@ -607,16 +610,12 @@ function initializeKeywordSwap() {
       </gem-e-icon>
     `;
 
-    // Add click handler
     buttonWrapper.addEventListener('click', () => {
       performSubjectLineKeywordSwap(subjectInput);
     });
 
-    // Add the button to the tooltip
     swapButton.appendChild(buttonWrapper);
-
-    // Add as the first child of the toolbar
-    toolbar.insertBefore(swapButton, toolbar.firstChild);
+    generatorTooltip.parentNode.insertBefore(swapButton, generatorTooltip);
 
     console.log("[Gem][KeywordSwap] Subject line keyword swap button added");
   }

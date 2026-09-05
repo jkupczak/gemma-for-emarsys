@@ -95,7 +95,7 @@ window.gemUpdateMobilePreviewToggleUi = updateMobilePreviewToggleUi;
 
 const PREVIEW_LONG_WORD_THRESHOLD = 20;
 const SANITIZED_PREVIEW_GEM_REMOVE_SELECTORS =
-  "#gem-text-highlight-container, #gem-alt-text-overlay-container, #gem-link-highlight-overlay-container, #gem-link-highlight-styles, #gem-block-targeting-styles, #gem-block-targeting-settings-styles";
+  "#gem-text-highlight-container, #gem-alt-text-overlay-container, #gem-link-highlight-overlay-container, #gem-link-highlight-styles, #gem-block-targeting-styles, #gem-block-targeting-settings-styles, .gem-bv-overlay-layer, .gem-bv-mobile-badge";
 const SANITIZED_PREVIEW_VCE_REMOVE_SELECTORS = [
   "e-vce-borderer",
   "e-vce-borderer-element",

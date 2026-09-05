@@ -29,7 +29,7 @@ console.log('[Gem] command-palette.js loaded');
     { id: 'campaign:mobile-sidepanel', label: 'Mobile Sidepanel', sectionId: 'campaign-editor', sectionTitle: 'Campaign Editor' },
     { id: 'campaign:highlight-links', label: 'Highlight Links', sectionId: 'campaign-editor', sectionTitle: 'Campaign Editor' },
     { id: 'campaign:highlight-alt-text', label: 'Highlight ALT Text', sectionId: 'campaign-editor', sectionTitle: 'Campaign Editor' },
-    { id: 'campaign:highlight-targeting', label: 'Highlight Targeting', sectionId: 'campaign-editor', sectionTitle: 'Campaign Editor' },
+    { id: 'campaign:highlight-targeting', label: 'Highlight Visibility', sectionId: 'campaign-editor', sectionTitle: 'Campaign Editor' },
     { id: 'campaign:highlight-editables', label: 'Highlight Editables', sectionId: 'campaign-editor', sectionTitle: 'Campaign Editor' },
     { id: 'campaign:send-a-test', label: 'Send a Test', sectionId: 'campaign-collaborate', sectionTitle: 'Collaborate' },
     { id: 'campaign:share-link', label: 'Share Campaign Link', sectionId: 'campaign-collaborate', sectionTitle: 'Collaborate' },
@@ -38,7 +38,7 @@ console.log('[Gem] command-palette.js loaded');
 
   const GEMMA_FUNCTION_DEFS = [
     { id: 'gemma:notes', label: 'Gemma Notes', sectionId: 'gemma-functions', sectionTitle: 'Gemma Functions' },
-    { id: 'gemma:recent-campaigns', label: 'Gemma Recent Campaigns', sectionId: 'gemma-functions', sectionTitle: 'Gemma Functions' },
+    { id: 'gemma:recent-campaigns', label: 'Gemma Campaigns', sectionId: 'gemma-functions', sectionTitle: 'Gemma Functions' },
     { id: 'gemma:settings', label: 'Gemma Settings', sectionId: 'gemma-functions', sectionTitle: 'Gemma Functions' },
   ];
 
@@ -51,7 +51,7 @@ console.log('[Gem] command-palette.js loaded');
     { tabId: 'versionsTab', label: 'Versions', sectionId: 'panels', sectionTitle: 'Campaign Panels' },
     { tabId: 'localesTab', label: 'Languages', sectionId: 'panels', sectionTitle: 'Campaign Panels' },
     { tabId: 'customTab_personaliztation', label: 'Personalization', sectionId: 'panels', sectionTitle: 'Campaign Panels' },
-    { tabId: 'gem-block-targeting-tab', label: 'Gemma Block Targeting', sectionId: 'gemma-campaign-panels', sectionTitle: 'Gemma Campaign Panels' },
+    { tabId: 'gem-block-targeting-tab', label: 'Gemma Block Visibility', sectionId: 'gemma-campaign-panels', sectionTitle: 'Gemma Campaign Panels' },
     { tabId: 'gem-snippets-tab', label: 'Gemma Snippets', sectionId: 'gemma-campaign-panels', sectionTitle: 'Gemma Campaign Panels' },
     { tabId: 'gem-find-replace-tab', label: 'Gemma Find and Replace', sectionId: 'gemma-campaign-panels', sectionTitle: 'Gemma Campaign Panels' },
     { tabId: 'gem-magic-fill-tab', label: 'Gemma Magic Fill', sectionId: 'gemma-campaign-panels', sectionTitle: 'Gemma Campaign Panels' },
@@ -822,6 +822,26 @@ console.log('[Gem] command-palette.js loaded');
     renderCommandList();
   }
 
+  function getPaletteShortcutLabel() {
+    return typeof window.gemModCombo === 'function' ? window.gemModCombo('P') : 'CTRL+P';
+  }
+
+  function updatePaletteShortcutHint() {
+    if (!paletteEl) return;
+    const hint = paletteEl.querySelector('.gem-command-palette__palette-shortcut');
+    if (hint) hint.textContent = getPaletteShortcutLabel();
+  }
+
+  function syncPaletteShortcutHintVisibility() {
+    if (!paletteEl) return;
+    const wrap = paletteEl.querySelector('.gem-command-palette__palette-shortcut-wrap');
+    const searchInput = paletteEl.querySelector('.gem-command-palette__search');
+    if (!wrap || !searchInput) return;
+    const hidden = searchInput.value.length > 0;
+    wrap.classList.toggle('gem-command-palette__palette-shortcut-wrap--hidden', hidden);
+    wrap.setAttribute('aria-hidden', hidden ? 'true' : 'false');
+  }
+
   function ensurePalette() {
     if (paletteEl) return paletteEl;
 
@@ -831,7 +851,13 @@ console.log('[Gem] command-palette.js loaded');
     paletteEl.innerHTML = `
       <div class="gem-welcome-modal__panel gem-command-palette__panel" role="dialog" aria-modal="true" aria-label="Command Palette">
         <div class="gem-command-palette__search-wrap">
-          <input type="search" class="gem-command-palette__search" placeholder="Search commands…" autocomplete="off" spellcheck="false" />
+          <div class="gem-command-palette__search-field">
+            <input type="search" class="gem-command-palette__search" placeholder="Search commands…" autocomplete="off" spellcheck="false" />
+            <div class="gem-command-palette__palette-shortcut-wrap" aria-hidden="false">
+              <span class="gem-command-palette__palette-shortcut-label">Toggle palette</span>
+              <kbd class="gem-command-palette__row-shortcut gem-command-palette__palette-shortcut"></kbd>
+            </div>
+          </div>
         </div>
         <div class="gem-command-palette__list gem-scrollable"></div>
       </div>
@@ -844,10 +870,12 @@ console.log('[Gem] command-palette.js loaded');
     const searchInput = paletteEl.querySelector('.gem-command-palette__search');
     searchInput.addEventListener('input', () => {
       searchByPageUrl.set(getPageSearchKey(), searchInput.value);
+      syncPaletteShortcutHintVisibility();
       renderCommandList();
     });
 
     document.body.appendChild(paletteEl);
+    updatePaletteShortcutHint();
     return paletteEl;
   }
 
@@ -878,6 +906,8 @@ console.log('[Gem] command-palette.js loaded');
     const finishOpen = () => {
       buildAllCommands();
       renderCommandList();
+      updatePaletteShortcutHint();
+      syncPaletteShortcutHintVisibility();
 
       if (typeof window.gemLayerRaise === 'function') {
         window.gemLayerRaise(paletteEl, { tier: 'modal' });
@@ -1024,6 +1054,9 @@ console.log('[Gem] command-palette.js loaded');
   window.gemIsCommandPaletteOpen = function gemIsCommandPaletteOpen() {
     return paletteOpen;
   };
+
+  window.gemToggleCommandPalette = togglePalette;
+  window.gemOpenCommandPalette = openPalette;
 
   window.gemGetAssignablePaletteCommands = getAssignablePaletteCommands;
   window.gemIsPaletteCommandAvailableOnPage = gemIsPaletteCommandAvailableOnPage;

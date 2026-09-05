@@ -39,6 +39,7 @@ function initializePreflightPanel() {
   let boundPreviewIframeLoadHandler = null;
   let imageHoverTooltipEl = null;
   let highlightDrivenTextRefreshTimer = null;
+  let textAnalysisRefreshGeneration = 0;
   let latestImageAlertCount = 0;
   let latestAccessibilityMissingAltCount = 0;
   let latestLinkTitlesAlertCount = 0;
@@ -3469,6 +3470,12 @@ function initializePreflightPanel() {
       .replace(/'/g, '&#39;');
   }
 
+  function normalizeHighlightMode(mode) {
+    if (mode === 'notify') return 'notify';
+    if (mode === 'disabled') return 'disabled';
+    return 'highlight';
+  }
+
   function normalizeHighlightTermData(termData) {
     if (typeof termData === 'string') {
       return {
@@ -3479,8 +3486,14 @@ function initializePreflightPanel() {
     const data = termData && typeof termData === 'object' ? termData : {};
     return {
       isRegex: !!data.isRegex,
-      mode: data.mode === 'notify' ? 'notify' : 'highlight'
+      mode: normalizeHighlightMode(data.mode)
     };
+  }
+
+  function countActiveHighlightRules(terms) {
+    return Object.values(terms).reduce((count, termData) => {
+      return normalizeHighlightTermData(termData).mode === 'disabled' ? count : count + 1;
+    }, 0);
   }
 
   function loadHighlightTermsFromStorage() {
@@ -3506,7 +3519,7 @@ function initializePreflightPanel() {
           const terms = (res && res.highlightTerms && typeof res.highlightTerms === 'object') ? res.highlightTerms : {};
           resolve({
             enabled: !!res.enableHighlighting,
-            totalRules: Object.keys(terms).length
+            totalRules: countActiveHighlightRules(terms)
           });
         });
       } catch (_) {
@@ -3598,12 +3611,33 @@ function initializePreflightPanel() {
     }
   }
 
+  function isGemOverlayElement(el) {
+    if (!el || el.nodeType !== 1) return false;
+    if (el.id && el.id.startsWith('gem-')) return true;
+    if (el.classList) {
+      for (const cls of el.classList) {
+        if (cls.startsWith('gem-')) return true;
+      }
+    }
+    return false;
+  }
+
+  function isInsideGemOverlay(node) {
+    let el = node.nodeType === 1 ? node : node.parentElement;
+    while (el) {
+      if (isGemOverlayElement(el)) return true;
+      el = el.parentElement;
+    }
+    return false;
+  }
+
   async function analyzeTextInPreviewDoc(doc) {
     if (!doc || !doc.body) {
       return { totalMatches: 0, totalNotifyMatches: 0, notifyRows: [] };
     }
     const highlightTerms = await loadHighlightTermsFromStorage();
-    const normalizedTerms = Object.entries(highlightTerms).map(([term, termData]) => {
+    const normalizedTerms = Object.entries(highlightTerms)
+      .map(([term, termData]) => {
       const normalized = normalizeHighlightTermData(termData);
       return {
         term,
@@ -3612,7 +3646,8 @@ function initializePreflightPanel() {
         termLower: normalized.isRegex ? null : String(term || '').toLowerCase(),
         regex: normalized.isRegex ? compileHighlightRegex(term) : null
       };
-    });
+    })
+      .filter((entry) => entry.mode !== 'disabled');
     if (!normalizedTerms.length) {
       return { totalMatches: 0, totalNotifyMatches: 0, notifyRows: [] };
     }
@@ -3620,27 +3655,10 @@ function initializePreflightPanel() {
     const notifyCountsByNormalized = new Map();
     let totalMatches = 0;
     let totalNotifyMatches = 0;
-    const walker = doc.createTreeWalker(
-      doc.body,
-      NodeFilter.SHOW_TEXT,
-      {
-        acceptNode(node) {
-          if (!node || !node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
-          const parentTag = node.parentElement && node.parentElement.tagName
-            ? node.parentElement.tagName.toUpperCase()
-            : '';
-          if (parentTag === 'SCRIPT' || parentTag === 'STYLE' || parentTag === 'NOSCRIPT') {
-            return NodeFilter.FILTER_REJECT;
-          }
-          return NodeFilter.FILTER_ACCEPT;
-        }
-      }
-    );
 
-    let textNode;
-    while ((textNode = walker.nextNode())) {
-      const raw = String(textNode.nodeValue || '');
-      if (!raw) continue;
+    function recordMatchesInText(rawText) {
+      const raw = String(rawText || '');
+      if (!raw) return;
       const lowerRaw = raw.toLowerCase();
       normalizedTerms.forEach((entry) => {
         if (entry.isRegex) {
@@ -3687,6 +3705,34 @@ function initializePreflightPanel() {
       });
     }
 
+    const walker = doc.createTreeWalker(
+      doc.body,
+      NodeFilter.SHOW_TEXT,
+      {
+        acceptNode(node) {
+          if (!node || !node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
+          if (isInsideGemOverlay(node)) return NodeFilter.FILTER_REJECT;
+          const parentTag = node.parentElement && node.parentElement.tagName
+            ? node.parentElement.tagName.toUpperCase()
+            : '';
+          if (parentTag === 'SCRIPT' || parentTag === 'STYLE' || parentTag === 'NOSCRIPT') {
+            return NodeFilter.FILTER_REJECT;
+          }
+          return NodeFilter.FILTER_ACCEPT;
+        }
+      }
+    );
+
+    let textNode;
+    while ((textNode = walker.nextNode())) {
+      recordMatchesInText(textNode.nodeValue);
+    }
+
+    const preheaderTextarea = document.querySelector('cb-preheader textarea');
+    if (preheaderTextarea) {
+      recordMatchesInText(preheaderTextarea.value);
+    }
+
     const notifyRows = Array.from(notifyCountsByNormalized.values())
       .sort((a, b) => {
         if ((b.count || 0) !== (a.count || 0)) return (b.count || 0) - (a.count || 0);
@@ -3696,9 +3742,9 @@ function initializePreflightPanel() {
   }
 
   async function refreshTextAnalysisFromCurrentPreview(options = {}) {
+    const scanToken = ++textAnalysisRefreshGeneration;
     const usage = await loadTextHighlightingUsageState();
-    latestNotifyAlertCount = 0;
-    persistAndUpdateOverallAlertPip();
+    if (scanToken !== textAnalysisRefreshGeneration) return;
 
     if (options.updatePanelUi && isPreflightActive()) {
       const els = getPreflightPanelEls();
@@ -3707,7 +3753,17 @@ function initializePreflightPanel() {
         if (els.textAnalysisResultsWrap) {
           els.textAnalysisResultsWrap.style.display = usage.enabled ? '' : 'none';
         }
-        if (!usage.enabled || !usage.totalRules) {
+      }
+    }
+
+    if (!usage.enabled || !usage.totalRules) {
+      const hadNotifyAlerts = latestNotifyAlertCount > 0;
+      latestNotifyAlertCount = 0;
+      latestTextAnalysisSnapshot = { totalMatches: 0, totalNotifyMatches: 0, notifyRows: [] };
+      if (hadNotifyAlerts) persistAndUpdateOverallAlertPip();
+      if (options.updatePanelUi && isPreflightActive()) {
+        const els = getPreflightPanelEls();
+        if (els && els.panel) {
           const textMatchesTotalEl = els.panel.querySelector('[data-metric="textMatchesTotal"]');
           const textNotifyMatchesTotalEl = els.panel.querySelector('[data-metric="textNotifyMatchesTotal"]');
           if (textMatchesTotalEl) textMatchesTotalEl.textContent = '0';
@@ -3715,20 +3771,24 @@ function initializePreflightPanel() {
           if (els.notifyMatchesWrap) els.notifyMatchesWrap.style.display = 'none';
           updateTextAnalysisSectionPip(0);
           maybeApplyPreflightSectionCollapseByAlerts();
-          return;
         }
       }
+      return;
     }
-
-    if (!usage.enabled || !usage.totalRules) return;
 
     const iframe = document.querySelector(PREVIEW_IFRAME_SELECTOR);
     const doc = iframe && iframe.contentDocument ? iframe.contentDocument : null;
     if (!doc || !doc.documentElement) return;
+
     const textAnalysis = await analyzeTextInPreviewDoc(doc);
+    if (scanToken !== textAnalysisRefreshGeneration) return;
+
+    const prevNotifyCount = latestNotifyAlertCount;
     latestTextAnalysisSnapshot = textAnalysis;
     latestNotifyAlertCount = textAnalysis.totalNotifyMatches || 0;
-    persistAndUpdateOverallAlertPip();
+    if (latestNotifyAlertCount !== prevNotifyCount) {
+      persistAndUpdateOverallAlertPip();
+    }
 
     if (!options.updatePanelUi || !isPreflightActive()) return;
     const panel = document.querySelector(PRELIGHT_PANEL_TAG);

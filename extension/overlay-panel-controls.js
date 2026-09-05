@@ -1498,7 +1498,7 @@ function setupCompactEmailToolsOverflowMenu(dropdownContainer) {
     syncCompactEmailToolsFeatureMenuItems();
   });
 
-  const targetingPreviewItem = makeCompactEmailToolsToggleMenuItem('Highlight Targeting', {
+  const targetingPreviewItem = makeCompactEmailToolsToggleMenuItem('Highlight Visibility', {
     withIndicator: true,
     indicatorOnLeft: true,
     dataAttr: 'data-gem-targeting-preview-toggle'
@@ -4628,6 +4628,10 @@ function initializeOverlayPanelControls() {
 
       actionCell.appendChild(swapButton);
       row.appendChild(actionCell);
+
+      if (typeof window.gemMountImageAltTextValidator === 'function') {
+        window.gemMountImageAltTextValidator(modal);
+      }
     }
 
     function setImageWidthInput(modal, width) {

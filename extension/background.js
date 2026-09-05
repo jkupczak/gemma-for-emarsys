@@ -6,12 +6,186 @@
 try { importScripts('debug-logging-gate.js'); } catch (_) {}
 
 console.log("[Gem] Background script loading...");
-let recentCampaignOpenTabsCache = { byCampaignId: {}, openCampaignUrls: {}, openCampaignKeys: {} };
+let recentCampaignOpenTabsCache = {
+  byCampaignId: {},
+  openCampaignUrls: {},
+  openCampaignKeys: {},
+  tabsByCampaignId: {},
+};
 /** @type {Record<string, boolean>} tab id string -> unsaved draft state */
 let recentCampaignUnsavedByTabId = {};
+/** @type {Record<string, number>} tab id string -> last local save timestamp (ms) */
+let recentCampaignLastSavedByTabId = {};
+/** @type {Record<string, { campaignId: string, openedAt: number }>} tab id -> campaign tenure */
+let recentCampaignTabTenureByTabId = {};
+const CAMPAIGN_TAB_TENURE_SESSION_KEY = 'gemCampaignTabTenureByTabId';
+let campaignTabTenureLoaded = false;
 let rcTabsRefreshTimer = null;
 const RC_TABS_REFRESH_DEBOUNCE_MS = 300;
 const EMARSYS_TAB_URL_PATTERN = 'https://*.emarsys.net/*';
+const CLOSED_CAMPAIGN_SESSION_PREFIX = 'gemClosedCampaign_';
+const CLOSED_CAMPAIGN_TTL_MS = 5 * 60 * 1000;
+/** @type {Record<string, string>} tab id string -> last known URL */
+let tabUrlByTabId = {};
+
+function bgIsCampaignEditorUrl(url) {
+  const tabUrl = String(url || '');
+  return /contentBlocks(?:\/|%2F)campaign/i.test(tabUrl) && !/gemStripped=true/i.test(tabUrl);
+}
+
+function markClosedCampaignEditorTab(url) {
+  const campaignId = String(rcGetCampaignIdFromTabUrl(url) || '').trim();
+  if (!campaignId || !bgIsCampaignEditorUrl(url)) return;
+  try {
+    chrome.storage.session.set({ [CLOSED_CAMPAIGN_SESSION_PREFIX + campaignId]: Date.now() });
+  } catch (_) {}
+}
+
+function persistCampaignTabTenure() {
+  try {
+    chrome.storage.session.set({ [CAMPAIGN_TAB_TENURE_SESSION_KEY]: recentCampaignTabTenureByTabId });
+  } catch (_) {}
+}
+
+function ensureCampaignTabTenureLoaded(callback) {
+  if (campaignTabTenureLoaded) {
+    callback();
+    return;
+  }
+  try {
+    chrome.storage.session.get(CAMPAIGN_TAB_TENURE_SESSION_KEY, (res) => {
+      const stored = res && res[CAMPAIGN_TAB_TENURE_SESSION_KEY];
+      recentCampaignTabTenureByTabId =
+        stored && typeof stored === 'object' ? { ...stored } : {};
+      campaignTabTenureLoaded = true;
+      callback();
+    });
+  } catch (_) {
+    campaignTabTenureLoaded = true;
+    callback();
+  }
+}
+
+function updateCampaignTabTenure(tabId, url) {
+  const key = String(tabId);
+  const campaignId = String(rcGetCampaignIdFromTabUrl(url) || '').trim();
+
+  if (!bgIsCampaignEditorUrl(url) || !campaignId) {
+    if (recentCampaignTabTenureByTabId[key]) {
+      delete recentCampaignTabTenureByTabId[key];
+      persistCampaignTabTenure();
+    }
+    return;
+  }
+
+  const existing = recentCampaignTabTenureByTabId[key];
+  if (existing && existing.campaignId === campaignId) return;
+
+  recentCampaignTabTenureByTabId[key] = { campaignId, openedAt: Date.now() };
+  persistCampaignTabTenure();
+}
+
+function getTabCampaignOpenedAt(tabId, campaignId) {
+  const entry = recentCampaignTabTenureByTabId[String(tabId)];
+  const id = String(campaignId || '').trim();
+  if (!entry || !id || entry.campaignId !== id) return null;
+  const openedAt = Number(entry.openedAt);
+  return Number.isFinite(openedAt) && openedAt > 0 ? openedAt : null;
+}
+
+function attachOpenedAtToTabState(tabState, campaignId) {
+  const map = tabState && typeof tabState === 'object' ? tabState : {};
+  Object.keys(map).forEach((key) => {
+    const entry = map[key];
+    if (!entry || typeof entry !== 'object') return;
+    entry.openedAt = getTabCampaignOpenedAt(key, campaignId);
+  });
+  return map;
+}
+
+function enrichOtherTabsWithTitles(otherTabIds, tabStateMap, callback) {
+  const ids = Array.isArray(otherTabIds) ? otherTabIds : [];
+  if (!ids.length) {
+    callback([]);
+    return;
+  }
+  const otherTabs = new Array(ids.length);
+  let pending = ids.length;
+  ids.forEach((tid, index) => {
+    chrome.tabs.get(tid, (tab) => {
+      const key = String(tid);
+      const state = tabStateMap && tabStateMap[key] ? tabStateMap[key] : {};
+      otherTabs[index] = {
+        tabId: tid,
+        title: (tab && tab.title) || 'Campaign tab',
+        unsaved: !!state.unsaved,
+        lastSavedAt: state.lastSavedAt || null,
+        lastRefreshedAt: state.lastRefreshedAt || null,
+        openedAt: state.openedAt || null,
+      };
+      pending -= 1;
+      if (pending === 0) callback(otherTabs);
+    });
+  });
+}
+
+function enrichAllCampaignTabs(allTabIds, tabStateMap, currentTabId, callback) {
+  const ids = Array.isArray(allTabIds) ? allTabIds : [];
+  if (!ids.length) {
+    callback([]);
+    return;
+  }
+  const allTabs = new Array(ids.length);
+  let pending = ids.length;
+  ids.forEach((tid, index) => {
+    chrome.tabs.get(tid, (tab) => {
+      const key = String(tid);
+      const state = tabStateMap && tabStateMap[key] ? tabStateMap[key] : {};
+      allTabs[index] = {
+        tabId: tid,
+        title: (tab && tab.title) || 'Campaign tab',
+        unsaved: !!state.unsaved,
+        lastSavedAt: state.lastSavedAt || null,
+        lastRefreshedAt: state.lastRefreshedAt || null,
+        openedAt: state.openedAt || null,
+        isActive: currentTabId != null && tid === currentTabId,
+      };
+      pending -= 1;
+      if (pending === 0) {
+        allTabs.sort((a, b) => {
+          const aTs = Math.max(Number(a.lastSavedAt) || 0, Number(a.lastRefreshedAt) || 0);
+          const bTs = Math.max(Number(b.lastSavedAt) || 0, Number(b.lastRefreshedAt) || 0);
+          return bTs - aTs;
+        });
+        callback(allTabs);
+      }
+    });
+  });
+}
+
+function normalizeTabEditorStateMap(raw) {
+  const map = {};
+  if (!raw || typeof raw !== 'object') return map;
+  Object.keys(raw).forEach((key) => {
+    const entry = raw[key];
+    if (entry && typeof entry === 'object') {
+      map[key] = {
+        unsaved: !!entry.unsaved,
+        lastSavedAt: entry.lastSavedAt != null ? Number(entry.lastSavedAt) || null : null,
+        lastRefreshedAt: entry.lastRefreshedAt != null ? Number(entry.lastRefreshedAt) || null : null,
+        openedAt: entry.openedAt != null ? Number(entry.openedAt) || null : null,
+      };
+      return;
+    }
+    map[key] = {
+      unsaved: !!entry,
+      lastSavedAt: recentCampaignLastSavedByTabId[key] || null,
+      lastRefreshedAt: null,
+      openedAt: null,
+    };
+  });
+  return map;
+}
 
 function bgHrefPreserveQuerySlashes(href) {
   const raw = String(href || '');
@@ -176,9 +350,9 @@ function bgLog(...args) {
   try { console.log("[Gem][BG]", ...args); } catch (e) {}
 }
 
-/** Ask each campaign editor tab whether the draft save button shows unsaved work (see page-title-updater.js). */
-function queryTabsUnsavedDraftState(tabIds, callback) {
-  const tabUnsaved = {};
+/** Ask each campaign editor tab for draft save state (see page-title-updater.js). */
+function queryTabsCampaignEditorState(tabIds, callback) {
+  const tabState = {};
   const unique = Array.from(
     new Set(
       (Array.isArray(tabIds) ? tabIds : [])
@@ -192,15 +366,39 @@ function queryTabsUnsavedDraftState(tabIds, callback) {
   }
   let pending = unique.length;
   unique.forEach((tabId) => {
+    const key = String(tabId);
     chrome.tabs.sendMessage(tabId, { action: "gemQueryUnsavedDraft" }, (res) => {
       if (chrome.runtime.lastError) {
-        tabUnsaved[String(tabId)] = false;
+        tabState[key] = {
+          unsaved: !!recentCampaignUnsavedByTabId[key],
+          lastSavedAt: recentCampaignLastSavedByTabId[key] || null,
+          lastRefreshedAt: null,
+        };
       } else {
-        tabUnsaved[String(tabId)] = !!(res && res.ok && res.unsaved);
+        const unsaved = !!(res && res.ok && res.unsaved);
+        const lastSavedAt =
+          res && res.lastSavedAt != null
+            ? Number(res.lastSavedAt) || null
+            : recentCampaignLastSavedByTabId[key] || null;
+        const lastRefreshedAt =
+          res && res.lastRefreshedAt != null ? Number(res.lastRefreshedAt) || null : null;
+        tabState[key] = { unsaved, lastSavedAt, lastRefreshedAt };
+        recentCampaignUnsavedByTabId[key] = unsaved;
+        if (lastSavedAt) recentCampaignLastSavedByTabId[key] = lastSavedAt;
       }
       pending -= 1;
-      if (pending <= 0) callback(tabUnsaved);
+      if (pending <= 0) callback(tabState);
     });
+  });
+}
+
+function queryTabsUnsavedDraftState(tabIds, callback) {
+  queryTabsCampaignEditorState(tabIds, (tabState) => {
+    const tabUnsaved = {};
+    Object.keys(tabState).forEach((key) => {
+      tabUnsaved[key] = !!tabState[key].unsaved;
+    });
+    callback(tabUnsaved);
   });
 }
 
@@ -392,10 +590,174 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return rcGetCampaignMatchKey(url, knownId);
   }
 
+  if (action === "getDuplicateCampaignTabs") {
+    const campaignId = String(msg.campaignId || "").trim();
+    const currentTabId = sender && sender.tab && sender.tab.id != null ? sender.tab.id : null;
+    if (!campaignId) {
+      sendResponse({ ok: false, reason: "missing_campaign_id" });
+      return;
+    }
+
+    function buildDuplicateResponse(allTabIds, tabStateMap) {
+      const uniqueTabIds = Array.from(
+        new Set(
+          (Array.isArray(allTabIds) ? allTabIds : [])
+            .map((n) => Number(n))
+            .filter((n) => Number.isFinite(n) && n > 0)
+        )
+      );
+      const otherTabIds = uniqueTabIds.filter((tid) => currentTabId == null || tid !== currentTabId);
+      const hasDuplicates = otherTabIds.length > 0;
+      const stateMap = normalizeTabEditorStateMap(tabStateMap);
+      const tabUnsaved = {};
+      Object.keys(stateMap).forEach((key) => {
+        tabUnsaved[key] = !!stateMap[key].unsaved;
+      });
+      const anyUnsaved = uniqueTabIds.some((tid) => !!tabUnsaved[String(tid)]);
+      const preferredOtherTabId =
+        otherTabIds.find((tid) => !!tabUnsaved[String(tid)]) ??
+        otherTabIds.slice().sort((a, b) => {
+          const aTs = Number(stateMap[String(a)] && stateMap[String(a)].lastSavedAt) || 0;
+          const bTs = Number(stateMap[String(b)] && stateMap[String(b)].lastSavedAt) || 0;
+          return bTs - aTs;
+        })[0] ??
+        null;
+
+      enrichAllCampaignTabs(uniqueTabIds, stateMap, currentTabId, (allTabs) => {
+        enrichOtherTabsWithTitles(otherTabIds, stateMap, (otherTabs) => {
+          sendResponse({
+            ok: true,
+            hasDuplicates,
+            totalTabs: uniqueTabIds.length,
+            currentTabId,
+            otherTabIds,
+            otherTabs,
+            allTabs,
+            preferredOtherTabId,
+            tabUnsaved,
+            anyUnsaved,
+          });
+        });
+      });
+    }
+
+    function finishFromTabIds(allTabIds) {
+      const tabIdSet = new Set(
+        (Array.isArray(allTabIds) ? allTabIds : [])
+          .map((n) => Number(n))
+          .filter((n) => Number.isFinite(n) && n > 0)
+      );
+      const tabIds = Array.from(tabIdSet);
+      if (!tabIds.length) {
+        buildDuplicateResponse([], {});
+        return;
+      }
+      ensureCampaignTabTenureLoaded(() => {
+        tabIds.forEach((tid) => {
+          const url = tabUrlByTabId[String(tid)];
+          if (url) updateCampaignTabTenure(tid, url);
+        });
+        queryTabsCampaignEditorState(tabIds, (queried) => {
+          attachOpenedAtToTabState(queried, campaignId);
+          buildDuplicateResponse(tabIds, queried);
+        });
+      });
+    }
+
+    const cachedTabIds = recentCampaignOpenTabsCache.tabsByCampaignId
+      && recentCampaignOpenTabsCache.tabsByCampaignId[campaignId];
+    if (Array.isArray(cachedTabIds) && cachedTabIds.length) {
+      finishFromTabIds(cachedTabIds);
+      return true;
+    }
+
+    chrome.tabs.query({}, (tabs) => {
+      const tabIds = (Array.isArray(tabs) ? tabs : [])
+        .filter((tab) => {
+          const tabUrl = String(tab && tab.url ? tab.url : "");
+          if (!tabUrl || !/https?:\/\/([^/]+\.)?emarsys\.net\//i.test(tabUrl)) return false;
+          const id = String(rcGetCampaignIdFromTabUrl(tabUrl) || "").trim();
+          return id === campaignId && tab.id != null;
+        })
+        .map((tab) => tab.id);
+      finishFromTabIds(tabIds);
+    });
+    return true;
+  }
+
+  if (action === "checkCampaignTabClosedReopen") {
+    const campaignId = String(msg.campaignId || "").trim();
+    if (!campaignId) {
+      sendResponse({ ok: false, reason: "missing_campaign_id" });
+      return;
+    }
+    const key = CLOSED_CAMPAIGN_SESSION_PREFIX + campaignId;
+    try {
+      chrome.storage.session.get(key, (res) => {
+        const closedAt = res && res[key];
+        const wasClosedReopen =
+          !!closedAt && Date.now() - Number(closedAt) < CLOSED_CAMPAIGN_TTL_MS;
+        chrome.storage.session.remove(key, () => {
+          sendResponse({ ok: true, wasClosedReopen });
+        });
+      });
+    } catch (_) {
+      sendResponse({ ok: true, wasClosedReopen: false });
+    }
+    return true;
+  }
+
+  if (action === "closeSenderTab") {
+    const tabId = sender && sender.tab && sender.tab.id != null ? sender.tab.id : null;
+    if (tabId == null) {
+      sendResponse({ ok: false, reason: "missing_tab" });
+      return;
+    }
+    chrome.tabs.remove(tabId, () => {
+      if (chrome.runtime.lastError) {
+        sendResponse({ ok: false, reason: chrome.runtime.lastError.message || "remove_failed" });
+        return;
+      }
+      sendResponse({ ok: true });
+    });
+    return true;
+  }
+
+  if (action === "closeCampaignTab") {
+    const tabId = Number(msg.tabId);
+    const campaignId = String(msg.campaignId || "").trim();
+    if (!Number.isFinite(tabId) || tabId <= 0) {
+      sendResponse({ ok: false, reason: "missing_tab" });
+      return;
+    }
+    chrome.tabs.get(tabId, (tab) => {
+      if (chrome.runtime.lastError || !tab) {
+        sendResponse({ ok: false, reason: "tab_not_found" });
+        return;
+      }
+      if (campaignId) {
+        const tabCampaignId = String(rcGetCampaignIdFromTabUrl(tab && tab.url) || "").trim();
+        if (tabCampaignId !== campaignId) {
+          sendResponse({ ok: false, reason: "campaign_mismatch" });
+          return;
+        }
+      }
+      chrome.tabs.remove(tabId, () => {
+        if (chrome.runtime.lastError) {
+          sendResponse({ ok: false, reason: chrome.runtime.lastError.message || "remove_failed" });
+          return;
+        }
+        sendResponse({ ok: true });
+      });
+    });
+    return true;
+  }
+
   if (action === "getOpenCampaignTabs") {
     const byCampaignId = { ...(recentCampaignOpenTabsCache.byCampaignId || {}) };
     const openCampaignUrls = { ...(recentCampaignOpenTabsCache.openCampaignUrls || {}) };
     const openCampaignKeys = { ...(recentCampaignOpenTabsCache.openCampaignKeys || {}) };
+    const tabsByCampaignId = { ...(recentCampaignOpenTabsCache.tabsByCampaignId || {}) };
     const tabIdSet = new Set();
     Object.values(byCampaignId).forEach((tid) => {
       if (tid != null) tabIdSet.add(tid);
@@ -405,6 +767,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     });
     Object.values(openCampaignKeys).forEach((tid) => {
       if (tid != null) tabIdSet.add(tid);
+    });
+    Object.values(tabsByCampaignId).forEach((tabIds) => {
+      if (!Array.isArray(tabIds)) return;
+      tabIds.forEach((tid) => {
+        if (tid != null) tabIdSet.add(tid);
+      });
     });
     const tabIds = Array.from(tabIdSet);
     const tabUnsaved = {};
@@ -423,6 +791,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         byCampaignId,
         openCampaignUrls,
         openCampaignKeys,
+        tabsByCampaignId,
         tabUnsaved
       });
       return;
@@ -437,6 +806,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         byCampaignId,
         openCampaignUrls,
         openCampaignKeys,
+        tabsByCampaignId,
         tabUnsaved
       });
     });
@@ -446,7 +816,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (action === "gemReportUnsavedDraft") {
     const tabId = sender && sender.tab && sender.tab.id != null ? sender.tab.id : null;
     if (tabId != null) {
-      recentCampaignUnsavedByTabId[String(tabId)] = !!msg.unsaved;
+      const key = String(tabId);
+      const unsaved = !!msg.unsaved;
+      recentCampaignUnsavedByTabId[key] = unsaved;
+      if (msg.lastSavedAt != null) {
+        const ts = Number(msg.lastSavedAt);
+        if (Number.isFinite(ts) && ts > 0) {
+          recentCampaignLastSavedByTabId[key] = ts;
+        }
+      }
     }
     return;
   }
@@ -503,6 +881,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   if (action === "focusCampaignTab") {
     const campaignId = String(msg.campaignId || "").trim();
+    const preferredTabId = msg.preferredTabId != null ? Number(msg.preferredTabId) : null;
     if (!campaignId) {
       sendResponse({ ok: false, reason: "missing_campaign_id" });
       return;
@@ -522,6 +901,25 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           callback({ ok: true, mode: "focused", tabId });
         });
       });
+    }
+
+    if (
+      Number.isFinite(preferredTabId)
+      && preferredTabId > 0
+      && preferredTabId !== currentTabId
+    ) {
+      focusTabById(preferredTabId, sendResponse);
+      return true;
+    }
+
+    const cachedTabIds = recentCampaignOpenTabsCache.tabsByCampaignId
+      && recentCampaignOpenTabsCache.tabsByCampaignId[campaignId];
+    if (Array.isArray(cachedTabIds) && cachedTabIds.length) {
+      const otherTabId = cachedTabIds.find((tid) => tid != null && tid !== currentTabId);
+      if (otherTabId != null) {
+        focusTabById(otherTabId, sendResponse);
+        return true;
+      }
     }
 
     const cachedTabId = recentCampaignOpenTabsCache.byCampaignId[campaignId];
@@ -549,6 +947,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     const campaignId = String(msg.campaignId || '').trim();
     if (!campaignId) { sendResponse({ ok: true, open: false }); return; }
     const currentTabId = sender && sender.tab && sender.tab.id != null ? sender.tab.id : null;
+    const cachedTabIds = recentCampaignOpenTabsCache.tabsByCampaignId
+      && recentCampaignOpenTabsCache.tabsByCampaignId[campaignId];
+    if (Array.isArray(cachedTabIds)) {
+      const open = cachedTabIds.some((tid) => tid != null && tid !== currentTabId);
+      sendResponse({ ok: true, open });
+      return;
+    }
     const cachedTabId = recentCampaignOpenTabsCache.byCampaignId[campaignId];
     if (cachedTabId != null && cachedTabId !== currentTabId) {
       sendResponse({ ok: true, open: true });
@@ -1097,26 +1502,35 @@ function broadcastRecentCampaignOpenTabsUpdated() {
 }
 
 function refreshRecentCampaignOpenTabsCache() {
-  chrome.tabs.query({}, (tabs) => {
-    const byCampaignId = {};
-    const openCampaignUrls = {};
-    const openCampaignKeys = {};
-    (Array.isArray(tabs) ? tabs : []).forEach((tab) => {
-      const tabUrl = String(tab && tab.url ? tab.url : '');
-      if (!tabUrl || !/https?:\/\/([^/]+\.)?emarsys\.net\//i.test(tabUrl)) return;
-      const id = rcGetCampaignIdFromTabUrl(tabUrl);
-      const normalizedUrl = rcGetNormalizedCampaignUrl(tabUrl);
-      const matchKey = rcGetCampaignMatchKey(tabUrl, id);
-      if (tab.id == null) return;
-      if (id && !byCampaignId[id]) byCampaignId[id] = tab.id;
-      if (normalizedUrl) openCampaignUrls[normalizedUrl] = tab.id;
-      if (matchKey) openCampaignKeys[matchKey] = tab.id;
+  ensureCampaignTabTenureLoaded(() => {
+    chrome.tabs.query({}, (tabs) => {
+      const byCampaignId = {};
+      const openCampaignUrls = {};
+      const openCampaignKeys = {};
+      const tabsByCampaignId = {};
+      (Array.isArray(tabs) ? tabs : []).forEach((tab) => {
+        const tabUrl = String(tab && tab.url ? tab.url : '');
+        if (!tabUrl || !/https?:\/\/([^/]+\.)?emarsys\.net\//i.test(tabUrl)) return;
+        const id = rcGetCampaignIdFromTabUrl(tabUrl);
+        const normalizedUrl = rcGetNormalizedCampaignUrl(tabUrl);
+        const matchKey = rcGetCampaignMatchKey(tabUrl, id);
+        if (tab.id == null) return;
+        if (tabUrl) tabUrlByTabId[String(tab.id)] = tabUrl;
+        updateCampaignTabTenure(tab.id, tabUrl);
+        if (id) {
+          if (!tabsByCampaignId[id]) tabsByCampaignId[id] = [];
+          if (!tabsByCampaignId[id].includes(tab.id)) tabsByCampaignId[id].push(tab.id);
+          if (!byCampaignId[id]) byCampaignId[id] = tab.id;
+        }
+        if (normalizedUrl) openCampaignUrls[normalizedUrl] = tab.id;
+        if (matchKey) openCampaignKeys[matchKey] = tab.id;
+      });
+      const next = { byCampaignId, openCampaignUrls, openCampaignKeys, tabsByCampaignId };
+      const prev = JSON.stringify(recentCampaignOpenTabsCache || {});
+      const curr = JSON.stringify(next);
+      recentCampaignOpenTabsCache = next;
+      if (prev !== curr) broadcastRecentCampaignOpenTabsUpdated();
     });
-    const next = { byCampaignId, openCampaignUrls, openCampaignKeys };
-    const prev = JSON.stringify(recentCampaignOpenTabsCache || {});
-    const curr = JSON.stringify(next);
-    recentCampaignOpenTabsCache = next;
-    if (prev !== curr) broadcastRecentCampaignOpenTabsUpdated();
   });
 }
 
@@ -1128,8 +1542,15 @@ function scheduleRefreshRecentCampaignOpenTabsCache() {
   }, RC_TABS_REFRESH_DEBOUNCE_MS);
 }
 
-chrome.tabs.onUpdated.addListener((_tabId, changeInfo) => {
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (tab && tab.url) {
+    tabUrlByTabId[String(tabId)] = tab.url;
+  }
   if (changeInfo.url !== undefined || changeInfo.status === 'complete') {
+    const url = String((tab && tab.url) || tabUrlByTabId[String(tabId)] || '');
+    ensureCampaignTabTenureLoaded(() => {
+      if (url) updateCampaignTabTenure(tabId, url);
+    });
     scheduleRefreshRecentCampaignOpenTabsCache();
   }
 });
@@ -1138,6 +1559,14 @@ chrome.windows.onFocusChanged.addListener(() => scheduleRefreshRecentCampaignOpe
 scheduleRefreshRecentCampaignOpenTabsCache();
 
 chrome.tabs.onRemoved.addListener((tabId) => {
+  const url = tabUrlByTabId[String(tabId)];
+  delete tabUrlByTabId[String(tabId)];
+  if (url) markClosedCampaignEditorTab(url);
   delete recentCampaignUnsavedByTabId[String(tabId)];
+  delete recentCampaignLastSavedByTabId[String(tabId)];
+  if (recentCampaignTabTenureByTabId[String(tabId)]) {
+    delete recentCampaignTabTenureByTabId[String(tabId)];
+    persistCampaignTabTenure();
+  }
   scheduleRefreshRecentCampaignOpenTabsCache();
 });

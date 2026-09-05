@@ -26,7 +26,8 @@ function initializeContentBlockToolbar() {
       'saveToReuse',
       'resetBlock',
       'convertEslToTokens',
-      'swapKeywords'
+      'swapKeywords',
+      'contentComposer'
     ];
 
     const hasToolbarChange = toolbarSettings.some(setting =>
@@ -91,7 +92,8 @@ function applyToolbarSettingsAsClasses() {
     saveToReuse: "always-show",
     resetBlock: "always-show",
     convertEslToTokens: "always-show",
-    swapKeywords: "always-show"
+    swapKeywords: "always-show",
+    contentComposer: "always-hide"
   }, (settings) => {
     console.log("[Gem] Applying toolbar settings as CSS classes:", settings);
 
