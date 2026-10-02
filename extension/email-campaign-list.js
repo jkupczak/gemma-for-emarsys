@@ -1075,9 +1075,12 @@
       url.searchParams.set("r", "contentBlocks/campaign");
       url.searchParams.set("id", campaignId);
       if (sid) url.searchParams.set("session_id", sid);
-      return typeof window.gemHrefPreserveQuerySlashes === "function"
+      const href = typeof window.gemHrefPreserveQuerySlashes === "function"
         ? window.gemHrefPreserveQuerySlashes(url)
         : url.toString().replace(/\?[^#]*/, (query) => query.replace(/%2F/gi, "/"));
+      return typeof window.gemWithEmailBasicsHash === "function"
+        ? window.gemWithEmailBasicsHash(href)
+        : href;
     }
 
     function buildSettingsUrl() {
@@ -1179,28 +1182,27 @@
     duplicateItem.addEventListener("click", (e) => {
       e.stopPropagation();
       if (duplicateItem.disabled || duplicateItem.dataset.gemState === "busy") return;
-      if (typeof window.gemDuplicateCampaign !== "function") return;
-
-      duplicateItem.disabled = true;
-      duplicateItem.dataset.gemState = "busy";
-      dupSpinner.hidden = false;
+      if (typeof window.gemRunCampaignDuplicateWithDialog !== "function") return;
 
       const sessionId = getListPageSessionId();
-      window.gemDuplicateCampaign(campaignId, sessionId).then((res) => {
-        if (!res || !res.ok || res.newCampaignId == null) {
-          duplicateItem.disabled = false;
-          delete duplicateItem.dataset.gemState;
-          dupSpinner.hidden = true;
-          showDuplicateCampaignError(res);
-          return;
-        }
-        const newUrl = new URL("/campaignmanager.php", window.location.origin);
-        if (sessionId) newUrl.searchParams.set("session_id", sessionId);
-        newUrl.searchParams.set("action", "details");
-        newUrl.searchParams.set("camp_id", String(res.newCampaignId));
-        newUrl.searchParams.set("step", "camp3");
-        newUrl.searchParams.set("sec", String(Date.now()));
-        window.location.assign(newUrl.toString());
+
+      function resetDuplicateItem() {
+        duplicateItem.disabled = false;
+        delete duplicateItem.dataset.gemState;
+        dupSpinner.hidden = true;
+      }
+
+      window.gemRunCampaignDuplicateWithDialog({
+        campaignId,
+        sessionId,
+        includeCamp3Step: true,
+        onBeforeStart: () => {
+          duplicateItem.disabled = true;
+          duplicateItem.dataset.gemState = "busy";
+          dupSpinner.hidden = false;
+          closeCampaignListRowMenu();
+        },
+        onSettled: resetDuplicateItem,
       });
     });
     menu.appendChild(duplicateItem);

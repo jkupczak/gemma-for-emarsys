@@ -1194,6 +1194,10 @@ gem-preflight .gem-preflight-settings-btn.e-btn {
     box-shadow: 0 0 0 2px var(--token-box-default-background, #fff);
 }
 
+vce-languages-selector.e-hidden {
+    display: inline-block !important;
+}
+
 vce-languages-selector .e-selectnew[role="button"] {
     position: relative;
 }
@@ -2134,8 +2138,25 @@ cb-header.e-layout__header .gem-compact-email-tools-menu-wrap--header {
 }
 
 cb-header.e-layout__header .gem-compact-email-tools-menu-wrap--header .gem-campaign-menu-trigger {
-  width: 36px;
+  width: auto;
   height: 36px;
+  padding: 0 14px 0 10px;
+  gap: 8px;
+  justify-content: flex-start;
+}
+
+cb-header.e-layout__header .gem-compact-email-tools-menu-wrap--header .gem-campaign-menu-trigger h1.e-layout__title {
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  border: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 14px;
+  font-weight: normal;
+  line-height: 20px;
+  pointer-events: none;
 }
 
 cb-header.e-layout__header .gem-compact-email-tools-menu-wrap--header .gem-campaign-menu-trigger::before {

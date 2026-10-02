@@ -41,6 +41,15 @@ function compileRegex(pattern) {
 const TARGET_IFRAME_SELECTOR =
   ".e-contentblocks-preview__iframe.e-contentblocks-preview__iframe-desktop";
 const PREHEADER_TEXTAREA_SELECTOR = "cb-preheader textarea";
+const PREHEADER_WRAP_CLASS = "gem-preheader-highlight-wrap";
+const PREHEADER_SHELL_CLASS = "gem-text-highlight-preheader-shell";
+const PREHEADER_SHELL_ID = "gem-text-highlight-preheader-shell";
+const LANGUAGE_SELECTOR = "vce-languages-selector";
+const LOCALE_SELECTOR = "cb-multilanguage-locale-selector";
+const PREVIEW_CONTAINER_SELECTOR = "vce-iframes-container";
+const PREHEADER_BURST_INTERVAL_MS = 100;
+const PREHEADER_BURST_MS = 2000;
+const PREHEADER_FOCUS_SYNC_MS = 100;
 
 const TEXTAREA_MIRROR_STYLE_PROPS = [
   "direction",
@@ -163,17 +172,43 @@ loadHighlightConfig();
 // ---------------------------------------------
 
 let overlayContainer = null;
-let pageOverlayContainer = null;
+let preheaderOverlayShell = null;
+let preheaderOverlayWrap = null;
 let textareaMirror = null;
 let iframeMutationObserver = null;
 let lifecycleUnsub = null;
 let preheaderLifecycleUnsub = null;
+let lastPreheaderValue = null;
+let currentPreheaderHost = null;
+let preheaderHostInputHandler = null;
+let preheaderBurstTimer = null;
+let preheaderBurstStopTimer = null;
+let preheaderLanguageObserver = null;
+let preheaderLanguageSelectorObserver = null;
+let preheaderPreviewObserver = null;
+let preheaderLanguageWatchUnsub = null;
+let preheaderLanguageSetupScheduled = false;
+let preheaderLanguageClickHandler = null;
+let preheaderHostObserver = null;
+let preheaderValueHookTarget = null;
+let lastPreheaderLanguageValue = null;
 let currentIframe = null;
 let currentPreheaderTextarea = null;
 let textHighlightsPaused = false;
 let scrollHandler = null;
 let resizeHandler = null;
 let pageViewportHandler = null;
+let preheaderScrollRaf = null;
+let preheaderEditWatchInstalled = false;
+let preheaderFocusSyncTimer = null;
+let preheaderHighlightRefreshRaf = null;
+let preheaderDocumentInputHandler = null;
+let preheaderDocumentBeforeInputHandler = null;
+let preheaderDocumentPasteHandler = null;
+let preheaderDocumentCutHandler = null;
+let preheaderDocumentKeyupHandler = null;
+let preheaderDocumentFocusInHandler = null;
+let preheaderDocumentFocusOutHandler = null;
 const debounceTimers = {};
 
 window.gemPauseTextHighlights = function () {
@@ -199,6 +234,137 @@ function refreshAllHighlights() {
   highlightMatchesInPreheader();
 }
 
+function isPreheaderTextareaElement(el) {
+  return !!(
+    el &&
+    el.nodeType === Node.ELEMENT_NODE &&
+    el.matches &&
+    el.matches(PREHEADER_TEXTAREA_SELECTOR)
+  );
+}
+
+function queuePreheaderHighlightRefresh() {
+  if (textHighlightsPaused) return;
+  if (preheaderHighlightRefreshRaf) return;
+  preheaderHighlightRefreshRaf = requestAnimationFrame(() => {
+    preheaderHighlightRefreshRaf = null;
+    highlightMatchesInPreheader();
+  });
+}
+
+function handlePreheaderTextareaEdit(target) {
+  if (!isPreheaderTextareaElement(target)) return;
+  const host = target.closest("cb-preheader");
+  if (target !== currentPreheaderTextarea || host !== currentPreheaderHost) {
+    bindToPreheader(target);
+    return;
+  }
+  queuePreheaderHighlightRefresh();
+}
+
+function tickPreheaderFocusSync() {
+  const textarea = currentPreheaderTextarea;
+  if (!textarea || !textarea.isConnected || document.activeElement !== textarea) {
+    stopPreheaderFocusSync();
+    return;
+  }
+  const value = String(textarea.value || "");
+  if (value === lastPreheaderValue) return;
+  highlightMatchesInPreheader();
+}
+
+function startPreheaderFocusSync(textarea) {
+  stopPreheaderFocusSync();
+  if (!textarea) return;
+  tickPreheaderFocusSync();
+  preheaderFocusSyncTimer = setInterval(tickPreheaderFocusSync, PREHEADER_FOCUS_SYNC_MS);
+}
+
+function stopPreheaderFocusSync() {
+  if (!preheaderFocusSyncTimer) return;
+  clearInterval(preheaderFocusSyncTimer);
+  preheaderFocusSyncTimer = null;
+}
+
+function installPreheaderEditWatch() {
+  if (preheaderEditWatchInstalled) return;
+  preheaderEditWatchInstalled = true;
+
+  preheaderDocumentInputHandler = (event) => handlePreheaderTextareaEdit(event.target);
+  preheaderDocumentBeforeInputHandler = (event) => handlePreheaderTextareaEdit(event.target);
+  preheaderDocumentPasteHandler = (event) => handlePreheaderTextareaEdit(event.target);
+  preheaderDocumentCutHandler = (event) => handlePreheaderTextareaEdit(event.target);
+  preheaderDocumentKeyupHandler = (event) => {
+    if (event.key === "Enter" || event.key.length === 1) {
+      handlePreheaderTextareaEdit(event.target);
+    }
+  };
+  preheaderDocumentFocusInHandler = (event) => {
+    if (!isPreheaderTextareaElement(event.target)) return;
+    bindToPreheader(event.target);
+    startPreheaderFocusSync(event.target);
+  };
+  preheaderDocumentFocusOutHandler = (event) => {
+    if (!isPreheaderTextareaElement(event.target)) return;
+    stopPreheaderFocusSync();
+    queuePreheaderHighlightRefresh();
+  };
+
+  document.addEventListener("input", preheaderDocumentInputHandler, true);
+  document.addEventListener("beforeinput", preheaderDocumentBeforeInputHandler, true);
+  document.addEventListener("paste", preheaderDocumentPasteHandler, true);
+  document.addEventListener("cut", preheaderDocumentCutHandler, true);
+  document.addEventListener("keyup", preheaderDocumentKeyupHandler, true);
+  document.addEventListener("focusin", preheaderDocumentFocusInHandler, true);
+  document.addEventListener("focusout", preheaderDocumentFocusOutHandler, true);
+}
+
+function removePreheaderEditWatch() {
+  if (!preheaderEditWatchInstalled) return;
+  preheaderEditWatchInstalled = false;
+  stopPreheaderFocusSync();
+  if (preheaderHighlightRefreshRaf) {
+    cancelAnimationFrame(preheaderHighlightRefreshRaf);
+    preheaderHighlightRefreshRaf = null;
+  }
+  if (preheaderDocumentInputHandler) {
+    document.removeEventListener("input", preheaderDocumentInputHandler, true);
+    preheaderDocumentInputHandler = null;
+  }
+  if (preheaderDocumentBeforeInputHandler) {
+    document.removeEventListener("beforeinput", preheaderDocumentBeforeInputHandler, true);
+    preheaderDocumentBeforeInputHandler = null;
+  }
+  if (preheaderDocumentPasteHandler) {
+    document.removeEventListener("paste", preheaderDocumentPasteHandler, true);
+    preheaderDocumentPasteHandler = null;
+  }
+  if (preheaderDocumentCutHandler) {
+    document.removeEventListener("cut", preheaderDocumentCutHandler, true);
+    preheaderDocumentCutHandler = null;
+  }
+  if (preheaderDocumentKeyupHandler) {
+    document.removeEventListener("keyup", preheaderDocumentKeyupHandler, true);
+    preheaderDocumentKeyupHandler = null;
+  }
+  if (preheaderDocumentFocusInHandler) {
+    document.removeEventListener("focusin", preheaderDocumentFocusInHandler, true);
+    preheaderDocumentFocusInHandler = null;
+  }
+  if (preheaderDocumentFocusOutHandler) {
+    document.removeEventListener("focusout", preheaderDocumentFocusOutHandler, true);
+    preheaderDocumentFocusOutHandler = null;
+  }
+}
+
+function clearPreheaderHighlightBoxesInWrap(wrap) {
+  if (!wrap) return;
+  wrap.querySelectorAll(`.${PREHEADER_SHELL_CLASS}`).forEach((shell) => {
+    shell.innerHTML = "";
+  });
+  wrap.querySelectorAll(".gem-text-highlight").forEach((box) => box.remove());
+}
+
 function notifyHighlightsRendered(overlayCount) {
   window.dispatchEvent(new CustomEvent(GEM_TEXT_HIGHLIGHTS_RENDERED_EVENT, {
     detail: {
@@ -215,6 +381,24 @@ function createHighlightBox(doc, rect, color, offsetX, offsetY, position) {
     position: position || "absolute",
     left: (rect.left + offsetX - 1) + "px",
     top: (rect.top + offsetY - 1) + "px",
+    width: rect.width + "px",
+    height: rect.height + "px",
+    background: color,
+    boxShadow: "0 0 0 1px rgb(0 0 0 / 0.1), inset 0 0 0 1px rgb(0 0 0 / 0.3)",
+    borderRadius: "4px",
+    padding: "2px 1px",
+    pointerEvents: "none"
+  });
+  return box;
+}
+
+function createLocalHighlightBox(doc, rect, color) {
+  const box = doc.createElement("div");
+  box.className = "gem-text-highlight";
+  Object.assign(box.style, {
+    position: "absolute",
+    left: (rect.left - 1) + "px",
+    top: (rect.top - 1) + "px",
     width: rect.width + "px",
     height: rect.height + "px",
     background: color,
@@ -282,15 +466,104 @@ function clearIframeOverlays() {
   }
 }
 
-function clearPageOverlays() {
-  if (pageOverlayContainer) {
-    pageOverlayContainer.innerHTML = "";
+function isPreheaderTextareaVisible(textarea) {
+  if (!textarea || !textarea.isConnected) return false;
+  const rect = textarea.getBoundingClientRect();
+  return rect.width > 0 || rect.height > 0;
+}
+
+function resolvePreheaderTextarea() {
+  const active = document.activeElement;
+  if (
+    active &&
+    active.nodeType === Node.ELEMENT_NODE &&
+    active.matches &&
+    active.matches(PREHEADER_TEXTAREA_SELECTOR)
+  ) {
+    return active;
   }
+
+  if (
+    currentPreheaderTextarea &&
+    currentPreheaderTextarea.isConnected &&
+    isPreheaderTextareaVisible(currentPreheaderTextarea)
+  ) {
+    return currentPreheaderTextarea;
+  }
+
+  const textareas = document.querySelectorAll(PREHEADER_TEXTAREA_SELECTOR);
+  for (const textarea of textareas) {
+    if (isPreheaderTextareaVisible(textarea)) return textarea;
+  }
+
+  return textareas[0] || null;
+}
+
+function findPreheaderWrap(textarea) {
+  if (textarea) {
+    const wrap = textarea.closest(`.${PREHEADER_WRAP_CLASS}`);
+    if (wrap) {
+      preheaderOverlayWrap = wrap;
+      return wrap;
+    }
+  }
+  if (preheaderOverlayWrap && preheaderOverlayWrap.isConnected) {
+    return preheaderOverlayWrap;
+  }
+  return null;
+}
+
+function removeExtraPreheaderOverlayShells(wrap, keepShell) {
+  if (!wrap) return;
+  wrap.querySelectorAll(`.${PREHEADER_SHELL_CLASS}`).forEach((shell) => {
+    if (shell !== keepShell) shell.remove();
+  });
+}
+
+function reconcilePreheaderOverlayShell(wrap) {
+  if (!wrap) return null;
+
+  const shells = wrap.querySelectorAll(`.${PREHEADER_SHELL_CLASS}`);
+  let shell = shells[0] || null;
+
+  if (
+    preheaderOverlayShell &&
+    preheaderOverlayShell.isConnected &&
+    preheaderOverlayShell.parentElement === wrap
+  ) {
+    shell = preheaderOverlayShell;
+  }
+
+  removeExtraPreheaderOverlayShells(wrap, shell);
+  preheaderOverlayShell = shell;
+  return shell;
+}
+
+function clearPreheaderOverlayShells(wrap) {
+  if (wrap && wrap.isConnected) {
+    wrap.querySelectorAll(`.${PREHEADER_SHELL_CLASS}`).forEach((shell) => shell.remove());
+  }
+  preheaderOverlayShell = null;
+}
+
+function clearPreheaderOverlays() {
+  const wrap = findPreheaderWrap(currentPreheaderTextarea);
+  clearPreheaderOverlayShells(wrap);
+
+  if (wrap && wrap.isConnected) {
+    const textarea = wrap.querySelector("textarea");
+    const parent = wrap.parentNode;
+    if (textarea && parent) {
+      parent.insertBefore(textarea, wrap);
+    }
+    wrap.remove();
+  }
+  preheaderOverlayWrap = null;
 }
 
 function clearOverlays() {
   clearIframeOverlays();
-  clearPageOverlays();
+  clearPreheaderOverlays();
 }
 
 function ensureOverlayContainer(doc) {
@@ -318,26 +591,57 @@ function ensureOverlayContainer(doc) {
   return overlayContainer;
 }
 
-function ensurePageOverlayContainer() {
-  if (textHighlightsPaused) return null;
+function ensurePreheaderHighlightWrap(textarea) {
+  if (!textarea || !textarea.parentNode) return null;
 
-  if (pageOverlayContainer && pageOverlayContainer.isConnected) {
-    return pageOverlayContainer;
+  const existingWrap = textarea.closest(`.${PREHEADER_WRAP_CLASS}`);
+  if (existingWrap) {
+    preheaderOverlayWrap = existingWrap;
+    return existingWrap;
   }
 
-  pageOverlayContainer = document.createElement("div");
-  pageOverlayContainer.id = "gem-text-highlight-page-container";
-  Object.assign(pageOverlayContainer.style, {
-    position: "fixed",
+  const wrap = document.createElement("div");
+  wrap.className = PREHEADER_WRAP_CLASS;
+  Object.assign(wrap.style, {
+    position: "relative",
+    display: "block",
+    width: "100%"
+  });
+
+  const parent = textarea.parentNode;
+  parent.insertBefore(wrap, textarea);
+  wrap.appendChild(textarea);
+  preheaderOverlayWrap = wrap;
+  return wrap;
+}
+
+function ensurePreheaderOverlayShell(textarea) {
+  if (textHighlightsPaused) return null;
+
+  const wrap = ensurePreheaderHighlightWrap(textarea);
+  if (!wrap) return null;
+
+  let shell = reconcilePreheaderOverlayShell(wrap);
+  if (shell && shell.isConnected && shell.parentElement === wrap) {
+    return shell;
+  }
+
+  shell = document.createElement("div");
+  shell.id = PREHEADER_SHELL_ID;
+  shell.className = PREHEADER_SHELL_CLASS;
+  Object.assign(shell.style, {
+    position: "absolute",
     left: "0",
     top: "0",
     width: "100%",
     height: "100%",
-    pointerEvents: "none",
-    zIndex: "999999"
+    overflow: "hidden",
+    pointerEvents: "none"
   });
-  (document.documentElement || document.body).appendChild(pageOverlayContainer);
-  return pageOverlayContainer;
+  wrap.appendChild(shell);
+  removeExtraPreheaderOverlayShells(wrap, shell);
+  preheaderOverlayShell = shell;
+  return shell;
 }
 
 function ensureTextareaMirror() {
@@ -388,36 +692,54 @@ function syncTextareaMirror(textarea) {
   return mirror;
 }
 
-function highlightMatchesInPreheader() {
-  if (textHighlightsPaused) return;
+function resolvePreheaderOverlayShell(textarea) {
+  if (!textarea) return null;
+  ensurePreheaderOverlayShell(textarea);
+  const wrap = textarea.closest(`.${PREHEADER_WRAP_CLASS}`);
+  if (!wrap) return preheaderOverlayShell;
 
-  const textarea = currentPreheaderTextarea && currentPreheaderTextarea.isConnected
-    ? currentPreheaderTextarea
-    : document.querySelector(PREHEADER_TEXTAREA_SELECTOR);
-
-  const container = ensurePageOverlayContainer();
-  if (!container) return;
-  container.innerHTML = "";
-
-  if (!textarea) {
-    notifyHighlightsRendered(0);
-    return;
+  const shells = wrap.querySelectorAll(`.${PREHEADER_SHELL_CLASS}`);
+  const shell = shells.length ? shells[shells.length - 1] : preheaderOverlayShell;
+  if (shell) {
+    removeExtraPreheaderOverlayShells(wrap, shell);
+    preheaderOverlayShell = shell;
   }
+  return shell;
+}
+
+function rebuildPreheaderHighlightBoxes(textarea, opts = {}) {
+  const notify = opts.notify !== false;
+  const shell = resolvePreheaderOverlayShell(textarea);
+  if (!textarea || !shell) {
+    if (notify) notifyHighlightsRendered(0);
+    return 0;
+  }
+
+  clearPreheaderHighlightBoxesInWrap(textarea.closest(`.${PREHEADER_WRAP_CLASS}`));
+  shell.innerHTML = "";
 
   const raw = String(textarea.value || "");
   if (!raw || !PLACEHOLDERS.length) {
-    notifyHighlightsRendered(0);
-    return;
+    if (notify) notifyHighlightsRendered(0);
+    return 0;
   }
 
   const mirror = syncTextareaMirror(textarea);
   const textNode = mirror.firstChild;
   if (!textNode || textNode.nodeType !== Node.TEXT_NODE) {
-    notifyHighlightsRendered(0);
-    return;
+    if (notify) notifyHighlightsRendered(0);
+    return 0;
   }
 
-  const clipRect = textarea.getBoundingClientRect();
+  const shellRect = shell.getBoundingClientRect();
+  const clipRect = {
+    left: 0,
+    top: 0,
+    right: shellRect.width,
+    bottom: shellRect.height,
+    width: shellRect.width,
+    height: shellRect.height
+  };
   let overlayCount = 0;
 
   forEachHighlightMatch(raw, (startIndex, matchLength, color) => {
@@ -430,16 +752,388 @@ function highlightMatchesInPreheader() {
 
     const rects = range.getClientRects();
     for (const rect of rects) {
-      const visible = intersectVisibleRect(rect, clipRect);
+      const local = {
+        left: rect.left - shellRect.left,
+        top: rect.top - shellRect.top,
+        right: rect.right - shellRect.left,
+        bottom: rect.bottom - shellRect.top,
+        width: rect.width,
+        height: rect.height
+      };
+      const visible = intersectVisibleRect(local, clipRect);
       if (!visible || !visible.width || !visible.height) continue;
-      container.appendChild(createHighlightBox(document, visible, color, 0, 0, "fixed"));
+      shell.appendChild(createLocalHighlightBox(document, visible, color));
       overlayCount += 1;
     }
 
     range.detach();
   });
 
-  notifyHighlightsRendered(overlayCount);
+  if (notify) notifyHighlightsRendered(overlayCount);
+  return overlayCount;
+}
+
+function rememberPreheaderValue(textarea) {
+  lastPreheaderValue = textarea ? String(textarea.value || "") : null;
+}
+
+function highlightMatchesInPreheader() {
+  if (textHighlightsPaused) return;
+
+  const textarea = resolvePreheaderTextarea();
+
+  if (!textarea) {
+    clearPreheaderOverlays();
+    lastPreheaderValue = null;
+    notifyHighlightsRendered(0);
+    return;
+  }
+
+  if (textarea !== currentPreheaderTextarea) {
+    bindToPreheader(textarea);
+    return;
+  }
+
+  ensurePreheaderOverlayShell(textarea);
+  rebuildPreheaderHighlightBoxes(textarea, { notify: true });
+  rememberPreheaderValue(textarea);
+}
+
+function syncPreheaderHighlightState() {
+  const textarea = resolvePreheaderTextarea();
+  if (!textarea) {
+    if (currentPreheaderTextarea) unbindPreheader();
+    lastPreheaderValue = null;
+    return;
+  }
+
+  const host = textarea.closest("cb-preheader");
+  if (textarea !== currentPreheaderTextarea || host !== currentPreheaderHost) {
+    bindToPreheader(textarea);
+    return;
+  }
+
+  const value = String(textarea.value || "");
+  const valueChanged = value !== lastPreheaderValue;
+  const shell = resolvePreheaderOverlayShell(textarea);
+  const shellMissing = !shell || !shell.isConnected;
+
+  if (valueChanged || shellMissing) {
+    debounceNamed("preheader", highlightMatchesInPreheader);
+  }
+}
+
+function invalidatePreheaderCachedValue() {
+  lastPreheaderValue = null;
+}
+
+function getPreheaderLanguageOptions(selector) {
+  if (!selector) return [];
+  return Array.from(selector.querySelectorAll("e-select-option"));
+}
+
+function getSelectedPreheaderLanguageValue(options) {
+  for (const opt of options) {
+    if (!opt || opt.nodeType !== Node.ELEMENT_NODE) continue;
+    const attr = opt.getAttribute && opt.getAttribute("selected");
+    const selected =
+      attr === "true" ||
+      attr === "selected" ||
+      (attr === "" && opt.hasAttribute && opt.hasAttribute("selected")) ||
+      (typeof opt.selected === "boolean" && opt.selected);
+    if (selected) {
+      return opt.getAttribute("value") || opt.id || String(opt.textContent || "").trim();
+    }
+  }
+  return null;
+}
+
+function stopPreheaderBurstSync() {
+  if (preheaderBurstTimer) {
+    clearInterval(preheaderBurstTimer);
+    preheaderBurstTimer = null;
+  }
+  if (preheaderBurstStopTimer) {
+    clearTimeout(preheaderBurstStopTimer);
+    preheaderBurstStopTimer = null;
+  }
+}
+
+function syncPreheaderBurstTick() {
+  if (textHighlightsPaused) return;
+
+  const textarea = resolvePreheaderTextarea();
+  if (!textarea) return;
+
+  const host = textarea.closest("cb-preheader");
+  if (textarea !== currentPreheaderTextarea || host !== currentPreheaderHost) {
+    bindToPreheader(textarea);
+    return;
+  }
+
+  const value = String(textarea.value || "");
+  const shell = resolvePreheaderOverlayShell(textarea);
+  if (value === lastPreheaderValue && shell && shell.isConnected) return;
+
+  highlightMatchesInPreheader();
+}
+
+function startPreheaderBurstSync() {
+  stopPreheaderBurstSync();
+  syncPreheaderBurstTick();
+  preheaderBurstTimer = setInterval(syncPreheaderBurstTick, PREHEADER_BURST_INTERVAL_MS);
+  preheaderBurstStopTimer = setTimeout(stopPreheaderBurstSync, PREHEADER_BURST_MS);
+}
+
+function requestPreheaderContentRefresh() {
+  if (textHighlightsPaused) return;
+  invalidatePreheaderCachedValue();
+  startPreheaderBurstSync();
+}
+
+function onPreheaderPreviewContentChange() {
+  if (textHighlightsPaused) return;
+  requestPreheaderContentRefresh();
+}
+
+function readSelectedLanguageValue(selector) {
+  if (!selector) return null;
+  const options = getPreheaderLanguageOptions(selector);
+  if (options.length < 2) return null;
+  return getSelectedPreheaderLanguageValue(options);
+}
+
+function notePreheaderLanguageSelectionChange() {
+  let selectedValue = null;
+  for (const selectorName of [LANGUAGE_SELECTOR, LOCALE_SELECTOR]) {
+    const selector = document.querySelector(selectorName);
+    const value = readSelectedLanguageValue(selector);
+    if (value) {
+      selectedValue = value;
+      break;
+    }
+  }
+  if (!selectedValue || selectedValue === lastPreheaderLanguageValue) return;
+  lastPreheaderLanguageValue = selectedValue;
+  requestPreheaderContentRefresh();
+}
+
+function handlePreheaderLanguageSelectionChange() {
+  notePreheaderLanguageSelectionChange();
+}
+
+function attachPreheaderLanguageObserversForSelector(selectorName) {
+  const selector = document.querySelector(selectorName);
+  if (!selector) return;
+
+  const options = getPreheaderLanguageOptions(selector);
+  if (!lastPreheaderLanguageValue) {
+    const selectedValue = getSelectedPreheaderLanguageValue(options);
+    if (selectedValue) lastPreheaderLanguageValue = selectedValue;
+  }
+
+  if (!preheaderLanguageSelectorObserver) {
+    preheaderLanguageSelectorObserver = new MutationObserver(() => {
+      schedulePreheaderLanguageWatchSetup();
+    });
+  }
+  preheaderLanguageSelectorObserver.observe(selector, { childList: true, subtree: true });
+
+  if (!options.length) return;
+
+  if (!preheaderLanguageObserver) {
+    preheaderLanguageObserver = new MutationObserver((mutations) => {
+      const relevant = mutations.some(
+        (mutation) => mutation.type === "attributes" && mutation.attributeName === "selected"
+      );
+      if (relevant) handlePreheaderLanguageSelectionChange();
+    });
+  }
+  options.forEach((opt) => {
+    preheaderLanguageObserver.observe(opt, { attributes: true, attributeFilter: ["selected"] });
+  });
+}
+
+function attachPreheaderLanguageClickListener() {
+  if (preheaderLanguageClickHandler) return;
+  preheaderLanguageClickHandler = (event) => {
+    const target = event && event.target;
+    if (!target || !target.closest) return;
+    const option = target.closest("e-select-option");
+    if (!option) return;
+    if (!option.closest(LANGUAGE_SELECTOR) && !option.closest(LOCALE_SELECTOR)) return;
+    requestPreheaderContentRefresh();
+  };
+  document.addEventListener("click", preheaderLanguageClickHandler, true);
+}
+
+function detachPreheaderLanguageClickListener() {
+  if (!preheaderLanguageClickHandler) return;
+  document.removeEventListener("click", preheaderLanguageClickHandler, true);
+  preheaderLanguageClickHandler = null;
+}
+
+function detachPreheaderLanguageObservers() {
+  if (preheaderLanguageObserver) {
+    preheaderLanguageObserver.disconnect();
+    preheaderLanguageObserver = null;
+  }
+  if (preheaderLanguageSelectorObserver) {
+    preheaderLanguageSelectorObserver.disconnect();
+    preheaderLanguageSelectorObserver = null;
+  }
+  if (preheaderPreviewObserver) {
+    preheaderPreviewObserver.disconnect();
+    preheaderPreviewObserver = null;
+  }
+}
+
+function attachPreheaderLanguageObservers() {
+  detachPreheaderLanguageObservers();
+  attachPreheaderLanguageObserversForSelector(LANGUAGE_SELECTOR);
+  attachPreheaderLanguageObserversForSelector(LOCALE_SELECTOR);
+  attachPreheaderLanguageClickListener();
+}
+
+function attachPreheaderPreviewObserver() {
+  const container = document.querySelector(PREVIEW_CONTAINER_SELECTOR);
+  if (!container) return;
+
+  if (preheaderPreviewObserver) {
+    preheaderPreviewObserver.disconnect();
+    preheaderPreviewObserver = null;
+  }
+
+  preheaderPreviewObserver = new MutationObserver((mutations) => {
+    const changed = mutations.some(
+      (mutation) => mutation.type === "attributes" && mutation.attributeName === "content"
+    );
+    if (changed) onPreheaderPreviewContentChange();
+  });
+  preheaderPreviewObserver.observe(container, { attributes: true, attributeFilter: ["content"] });
+}
+
+function setupPreheaderLanguageWatch() {
+  attachPreheaderLanguageObservers();
+  attachPreheaderPreviewObserver();
+}
+
+function schedulePreheaderLanguageWatchSetup() {
+  if (preheaderLanguageSetupScheduled) return;
+  preheaderLanguageSetupScheduled = true;
+  requestAnimationFrame(() => {
+    preheaderLanguageSetupScheduled = false;
+    setupPreheaderLanguageWatch();
+  });
+}
+
+function watchPreheaderLanguageChanges() {
+  if (preheaderLanguageWatchUnsub) {
+    preheaderLanguageWatchUnsub();
+    preheaderLanguageWatchUnsub = null;
+  }
+
+  setupPreheaderLanguageWatch();
+  if (typeof window.gemDomWatchSubscribe === "function") {
+    preheaderLanguageWatchUnsub = window.gemDomWatchSubscribe(schedulePreheaderLanguageWatchSetup);
+  }
+}
+
+function stopPreheaderLanguageWatch() {
+  stopPreheaderBurstSync();
+  if (preheaderLanguageWatchUnsub) {
+    preheaderLanguageWatchUnsub();
+    preheaderLanguageWatchUnsub = null;
+  }
+  detachPreheaderLanguageObservers();
+  detachPreheaderLanguageClickListener();
+  lastPreheaderLanguageValue = null;
+}
+
+function attachPreheaderHostObserver(host) {
+  detachPreheaderHostObserver();
+  if (!host) return;
+  preheaderHostObserver = new MutationObserver(() => {
+    syncPreheaderHighlightState();
+  });
+  preheaderHostObserver.observe(host, { childList: true, subtree: true });
+}
+
+function detachPreheaderHostObserver() {
+  if (!preheaderHostObserver) return;
+  preheaderHostObserver.disconnect();
+  preheaderHostObserver = null;
+}
+
+function attachPreheaderValueHook(textarea) {
+  detachPreheaderValueHook();
+  if (!textarea) return;
+
+  const proto = HTMLTextAreaElement.prototype;
+  const desc = Object.getOwnPropertyDescriptor(proto, "value");
+  if (!desc || typeof desc.get !== "function" || typeof desc.set !== "function") return;
+
+  preheaderValueHookTarget = textarea;
+  const nativeGet = desc.get;
+  const nativeSet = desc.set;
+
+  Object.defineProperty(textarea, "value", {
+    configurable: true,
+    enumerable: desc.enumerable,
+    get() {
+      return nativeGet.call(this);
+    },
+    set(next) {
+      const prev = nativeGet.call(this);
+      nativeSet.call(this, next);
+      if (String(prev ?? "") !== String(next ?? "")) {
+        queuePreheaderHighlightRefresh();
+      }
+    }
+  });
+}
+
+function detachPreheaderValueHook() {
+  if (!preheaderValueHookTarget) return;
+  const textarea = preheaderValueHookTarget;
+  preheaderValueHookTarget = null;
+
+  const desc = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value");
+  if (!desc) return;
+  try {
+    Object.defineProperty(textarea, "value", {
+      configurable: true,
+      enumerable: desc.enumerable,
+      get: function () {
+        return desc.get.call(this);
+      },
+      set: function (next) {
+        desc.set.call(this, next);
+      }
+    });
+  } catch (_) {
+    try {
+      delete textarea.value;
+    } catch (_) {}
+  }
+}
+
+function attachPreheaderHostListeners(host) {
+  detachPreheaderHostListeners();
+  if (!host) return;
+  currentPreheaderHost = host;
+  preheaderHostInputHandler = onPreheaderInput;
+  host.addEventListener("input", preheaderHostInputHandler, true);
+  host.addEventListener("change", preheaderHostInputHandler, true);
+}
+
+function detachPreheaderHostListeners() {
+  if (currentPreheaderHost && preheaderHostInputHandler) {
+    currentPreheaderHost.removeEventListener("input", preheaderHostInputHandler, true);
+    currentPreheaderHost.removeEventListener("change", preheaderHostInputHandler, true);
+  }
+  currentPreheaderHost = null;
+  preheaderHostInputHandler = null;
 }
 
 // MAIN highlight function
@@ -537,9 +1231,29 @@ function attachViewportListeners(iframe) {
 
 function removePageViewportListeners() {
   if (!pageViewportHandler) return;
-  window.removeEventListener("scroll", pageViewportHandler, true);
   window.removeEventListener("resize", pageViewportHandler);
   pageViewportHandler = null;
+}
+
+function schedulePreheaderTextareaRebuild() {
+  if (textHighlightsPaused) return;
+  if (preheaderScrollRaf) return;
+  preheaderScrollRaf = requestAnimationFrame(() => {
+    preheaderScrollRaf = null;
+    const textarea = resolvePreheaderTextarea();
+    if (!textarea || !textarea.isConnected) return;
+    if (textarea !== currentPreheaderTextarea) {
+      bindToPreheader(textarea);
+      return;
+    }
+    ensurePreheaderOverlayShell(textarea);
+    const shell = resolvePreheaderOverlayShell(textarea);
+    if (!shell || !shell.isConnected) {
+      highlightMatchesInPreheader();
+      return;
+    }
+    rebuildPreheaderHighlightBoxes(textarea, { notify: false });
+  });
 }
 
 function attachPageViewportListeners() {
@@ -548,21 +1262,32 @@ function attachPageViewportListeners() {
     if (textHighlightsPaused) return;
     debounceNamed("preheader", highlightMatchesInPreheader);
   };
-  window.addEventListener("scroll", pageViewportHandler, true);
   window.addEventListener("resize", pageViewportHandler);
 }
 
-function unbindPreheader() {
-  if (currentPreheaderTextarea) {
-    currentPreheaderTextarea.removeEventListener("input", onPreheaderInput);
-    currentPreheaderTextarea.removeEventListener("scroll", onPreheaderInput);
-  }
-  currentPreheaderTextarea = null;
-  clearPageOverlays();
+function detachPreheaderTextareaListeners() {
+  if (!currentPreheaderTextarea) return;
+  currentPreheaderTextarea.removeEventListener("input", onPreheaderInput);
+  currentPreheaderTextarea.removeEventListener("change", onPreheaderInput);
+  currentPreheaderTextarea.removeEventListener("scroll", onPreheaderTextareaScroll);
+  detachPreheaderValueHook();
 }
 
-function onPreheaderInput() {
-  debounceNamed("preheader", highlightMatchesInPreheader);
+function unbindPreheader() {
+  detachPreheaderTextareaListeners();
+  detachPreheaderHostListeners();
+  detachPreheaderHostObserver();
+  currentPreheaderTextarea = null;
+  lastPreheaderValue = null;
+  clearPreheaderOverlays();
+}
+
+function onPreheaderInput(event) {
+  handlePreheaderTextareaEdit(event && event.target);
+}
+
+function onPreheaderTextareaScroll() {
+  schedulePreheaderTextareaRebuild();
 }
 
 function bindToPreheader(textarea) {
@@ -570,12 +1295,29 @@ function bindToPreheader(textarea) {
     unbindPreheader();
     return;
   }
-  if (currentPreheaderTextarea === textarea) return;
 
-  unbindPreheader();
+  const host = textarea.closest("cb-preheader");
+  if (currentPreheaderTextarea === textarea && currentPreheaderHost === host) return;
+
+  if (currentPreheaderTextarea) {
+    detachPreheaderTextareaListeners();
+    detachPreheaderHostListeners();
+    detachPreheaderHostObserver();
+  } else {
+    const orphanWrap = textarea.closest(`.${PREHEADER_WRAP_CLASS}`);
+    if (orphanWrap) {
+      preheaderOverlayWrap = orphanWrap;
+      clearPreheaderOverlayShells(orphanWrap);
+    }
+  }
+
   currentPreheaderTextarea = textarea;
+  attachPreheaderHostListeners(host);
+  attachPreheaderHostObserver(host);
+  attachPreheaderValueHook(textarea);
   textarea.addEventListener("input", onPreheaderInput);
-  textarea.addEventListener("scroll", onPreheaderInput, { passive: true });
+  textarea.addEventListener("change", onPreheaderInput);
+  textarea.addEventListener("scroll", onPreheaderTextareaScroll, { passive: true });
   highlightMatchesInPreheader();
 }
 
@@ -586,9 +1328,7 @@ function watchPreheaderLifecycle() {
   }
 
   const sync = () => {
-    const textarea = document.querySelector(PREHEADER_TEXTAREA_SELECTOR);
-    if (textarea) bindToPreheader(textarea);
-    else if (currentPreheaderTextarea) unbindPreheader();
+    syncPreheaderHighlightState();
   };
 
   sync();
@@ -724,6 +1464,8 @@ function initializeHighlighting() {
   watchIframeLifecycle();
   waitForIframeReady(bindToIframe);
   attachPageViewportListeners();
+  installPreheaderEditWatch();
+  watchPreheaderLanguageChanges();
   watchPreheaderLifecycle();
 }
 
@@ -737,6 +1479,8 @@ function disableHighlighting() {
     preheaderLifecycleUnsub();
     preheaderLifecycleUnsub = null;
   }
+  stopPreheaderLanguageWatch();
+  removePreheaderEditWatch();
   if (iframeMutationObserver) {
     iframeMutationObserver.disconnect();
     iframeMutationObserver = null;
@@ -744,14 +1488,14 @@ function disableHighlighting() {
 
   removeViewportListeners();
   removePageViewportListeners();
+  if (preheaderScrollRaf) {
+    cancelAnimationFrame(preheaderScrollRaf);
+    preheaderScrollRaf = null;
+  }
   unbindPreheader();
   if (textareaMirror) {
     textareaMirror.remove();
     textareaMirror = null;
-  }
-  if (pageOverlayContainer) {
-    pageOverlayContainer.remove();
-    pageOverlayContainer = null;
   }
 
   clearOverlays();

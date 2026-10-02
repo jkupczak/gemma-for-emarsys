@@ -68,6 +68,23 @@
 
       window.gemIsDebugLoggingEnabled = () => !!state.enabled;
 
+      window.gemEnableCampaignMenuDebug = (enabled) => {
+        const on = enabled !== false;
+        try {
+          if (on) localStorage.setItem('gemDebugCampaignMenu', '1');
+          else localStorage.removeItem('gemDebugCampaignMenu');
+        } catch (_) {}
+        try {
+          window.dispatchEvent(new CustomEvent('gem:campaign-menu-debug:request-set', {
+            detail: { enabled: on },
+          }));
+        } catch (_) {}
+        console.error(
+          `[CampaignMenuDebug] ${on ? 'ON' : 'OFF'} — filter DevTools console by "CampaignMenuDebug"`
+        );
+        return on;
+      };
+
       window.addEventListener('gem:debug-logging:state', (event) => {
         const detail = event && event.detail ? event.detail : {};
         applyEnabled(!!detail.enabled);

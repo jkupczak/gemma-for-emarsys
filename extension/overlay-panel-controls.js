@@ -7,6 +7,7 @@ console.log("[Gem] overlay-panel-controls.js loaded");
 /** @type {{ wrap: HTMLElement, trigger: HTMLButtonElement, menu: HTMLElement } | null} */
 let openCompactEmailToolsMenu = null;
 let compactEmailToolsMenuListenersInstalled = false;
+let compactEmailToolsSuppressTriggerClick = false;
 /** @type {HTMLElement | null} */
 let compactEmailToolsOverflowMenuWrap = null;
 /** @type {HTMLElement | null} */
@@ -19,6 +20,83 @@ let compactEmailToolsSendTestObserver = null;
 let compactEmailToolsSendTestTimeout = null;
 let compactEmailToolsCampaignPreviewToolbarStorageListenerInstalled = false;
 let compactEmailToolsOutsideCloseSuppressed = false;
+
+// Campaign menu debugging — uses console.error so logs bypass debug-logging-gate.js.
+// Enable from DevTools (page context): gemEnableCampaignMenuDebug(true)
+// Or: localStorage.setItem('gemDebugCampaignMenu', '1'); location.reload();
+function isCampaignMenuDebugEnabled() {
+  try {
+    if (window.gemDebugCampaignMenu === true) return true;
+    return localStorage.getItem('gemDebugCampaignMenu') === '1';
+  } catch (_) {
+    return window.gemDebugCampaignMenu === true;
+  }
+}
+
+function describeCampaignMenuNode(node) {
+  if (!node || !node.tagName) return String(node);
+  const id = node.id ? `#${node.id}` : '';
+  const classes = node.classList && node.classList.length
+    ? `.${Array.from(node.classList).slice(0, 6).join('.')}`
+    : '';
+  return `${node.tagName.toLowerCase()}${id}${classes}`;
+}
+
+function logCampaignMenuDebug(event, detail) {
+  if (!isCampaignMenuDebugEnabled()) return;
+  const payload = detail && typeof detail === 'object' ? detail : { detail };
+  console.error(`[CampaignMenuDebug][${event}]`, payload);
+}
+
+function logCampaignMenuPointerContext(e, label) {
+  if (!isCampaignMenuDebugEnabled()) return;
+  let elementFromPoint = null;
+  try {
+    elementFromPoint = document.elementFromPoint(e.clientX, e.clientY);
+  } catch (_) {}
+  const menu = openCompactEmailToolsMenu && openCompactEmailToolsMenu.menu;
+  const trigger = openCompactEmailToolsMenu && openCompactEmailToolsMenu.trigger;
+  logCampaignMenuDebug(label, {
+    type: e.type,
+    phase: e.eventPhase,
+    button: e.button,
+    client: { x: e.clientX, y: e.clientY },
+    target: describeCampaignMenuNode(e.target),
+    elementFromPoint: describeCampaignMenuNode(elementFromPoint),
+    menuOpen: !!openCompactEmailToolsMenu,
+    menuHitByCoords: menu ? pointerEventHitsElement(e, menu) : false,
+    triggerHitByCoords: trigger ? pointerEventHitsElement(e, trigger) : false,
+    targetInMenu: !!(menu && e.target && menu.contains(e.target)),
+    targetInTrigger: !!(trigger && e.target && trigger.contains(e.target)),
+    composedPath: typeof e.composedPath === 'function'
+      ? e.composedPath().slice(0, 8).map(describeCampaignMenuNode)
+      : [],
+  });
+}
+
+window.gemEnableCampaignMenuDebug = function gemEnableCampaignMenuDebug(enabled) {
+  const on = enabled !== false;
+  window.gemDebugCampaignMenu = on;
+  try {
+    if (on) localStorage.setItem('gemDebugCampaignMenu', '1');
+    else localStorage.removeItem('gemDebugCampaignMenu');
+  } catch (_) {}
+  console.error(
+    `[CampaignMenuDebug] ${on ? 'ON' : 'OFF'} — interact with the campaign menu; filter console by CampaignMenuDebug`
+  );
+  return on;
+};
+
+window.addEventListener('gem:campaign-menu-debug:request-set', (event) => {
+  const detail = event && event.detail ? event.detail : {};
+  window.gemEnableCampaignMenuDebug(!!detail.enabled);
+});
+
+if (isCampaignMenuDebugEnabled()) {
+  console.error(
+    '[CampaignMenuDebug] Active (gemDebugCampaignMenu). Disable with gemEnableCampaignMenuDebug(false).'
+  );
+}
 
 function escapeCompactToolsHtml(text) {
   return String(text || '')
@@ -670,21 +748,63 @@ function getCompactEmailToolsMenuAnchor(wrap) {
 
 function setCompactEmailToolsMenuExpanded(wrap, expanded) {
   const trigger = wrap.querySelector('.gem-campaign-menu-trigger');
-  const title = wrap.querySelector('.gem-compact-email-tools-page-title');
-  const value = expanded ? 'true' : 'false';
-  if (trigger) trigger.setAttribute('aria-expanded', value);
-  if (title) title.setAttribute('aria-expanded', value);
+  if (trigger) trigger.setAttribute('aria-expanded', expanded ? 'true' : 'false');
 }
 
-function toggleCompactEmailToolsMenuFromWrap(wrap, e) {
-  e.stopPropagation();
-  const menu = wrap.querySelector('.gem-campaign-menu');
-  if (!menu) return;
-  if (menu.classList.contains('gem-campaign-menu--open')) {
-    closeCompactEmailToolsMenu();
-  } else {
+function isCompactEmailToolsMenuOpenForWrap(wrap) {
+  const menu = wrap && wrap.querySelector('.gem-campaign-menu');
+  if (!menu) return false;
+  return menu.classList.contains('gem-campaign-menu--open')
+    || (openCompactEmailToolsMenu && openCompactEmailToolsMenu.wrap === wrap);
+}
+
+function pointerEventHitsElement(e, el) {
+  if (!el || !el.isConnected) return false;
+  const rect = el.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return false;
+  const x = e.clientX;
+  const y = e.clientY;
+  return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+}
+
+function bindCampaignMenuTriggerToggle(wrap, trigger) {
+  trigger.addEventListener('pointerdown', (e) => {
+    if (isCampaignMenuDebugEnabled() && isCompactEmailToolsMenuOpenForWrap(wrap)) {
+      logCampaignMenuPointerContext(e, 'trigger-pointerdown');
+    }
+    if (e.button !== 0) return;
+    if (!isCompactEmailToolsMenuOpenForWrap(wrap)) return;
+    const menu = wrap.querySelector('.gem-campaign-menu');
+    if (menu && pointerEventHitsElement(e, menu)) {
+      logCampaignMenuDebug('trigger-pointerdown-ignored', { reason: 'coords inside menu' });
+      return;
+    }
+    if (menu && e.target && menu.contains(e.target)) {
+      logCampaignMenuDebug('trigger-pointerdown-ignored', { reason: 'target inside menu' });
+      return;
+    }
+    logCampaignMenuDebug('trigger-pointerdown-close', { reason: 'toggle close on trigger' });
+    e.preventDefault();
+    e.stopPropagation();
+    closeCompactEmailToolsMenu('trigger-pointerdown');
+    compactEmailToolsSuppressTriggerClick = true;
+  }, true);
+
+  trigger.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (compactEmailToolsSuppressTriggerClick) {
+      logCampaignMenuDebug('trigger-click-suppressed', {});
+      compactEmailToolsSuppressTriggerClick = false;
+      return;
+    }
+    if (isCompactEmailToolsMenuOpenForWrap(wrap)) {
+      logCampaignMenuDebug('trigger-click-ignored', { reason: 'menu already open' });
+      return;
+    }
+    logCampaignMenuDebug('trigger-click-open', {});
     openCompactEmailToolsMenuAt(wrap);
-  }
+  });
 }
 
 function setupCompactEmailToolsFeatureMenuSync() {
@@ -730,8 +850,8 @@ window.gemSyncCompactEmailToolsPreviewMenuItems = syncCompactEmailToolsPreviewMe
 window.gemSyncCompactEmailToolsSendTestMenuItem = syncCompactEmailToolsSendTestMenuItem;
 window.gemSyncCompactEmailToolsNavMenuItems = syncCompactEmailToolsNavMenuItems;
 
-function runCompactEmailToolsDuplicateCommand(openInBackground) {
-  if (typeof window.gemDuplicateCampaign !== 'function') {
+function runCompactEmailToolsDuplicateCommand(_openInBackground) {
+  if (typeof window.gemRunCampaignDuplicateWithDialog !== 'function') {
     if (window.gemShowToast) {
       window.gemShowToast('Duplicate is unavailable on this page.', { type: 'error' });
     }
@@ -747,50 +867,13 @@ function runCompactEmailToolsDuplicateCommand(openInBackground) {
   }
 
   const sessionId = getCompactToolsSessionId();
-  window.gemDuplicateCampaign(campaignId, sessionId).then((res) => {
-    if (!res || !res.ok || res.newCampaignId == null) {
-      const reason = res && res.reason ? res.reason : 'unknown';
-      if (window.gemShowToast) {
-        window.gemShowToast(
-          reason === 'no_auth_token'
-            ? 'Could not obtain auth token. Try refreshing the page.'
-            : `Duplicate failed (${reason}).`,
-          { type: 'error' }
-        );
-      }
-      return;
-    }
-
-    try {
-      const url = new URL('/campaignmanager.php', window.location.origin);
-      if (sessionId) url.searchParams.set('session_id', sessionId);
-      url.searchParams.set('action', 'details');
-      url.searchParams.set('camp_id', String(res.newCampaignId));
-      const urlString = url.toString();
-
-      if (openInBackground) {
-        try {
-          chrome.runtime.sendMessage({ action: 'openInNewTab', url: urlString, active: false });
-        } catch (_) {
-          window.open(urlString, '_blank');
-        }
-        return;
-      }
-
-      try {
-        chrome.runtime.sendMessage({ action: 'openInNewTab', url: urlString, active: true });
-      } catch (_) {
-        window.open(urlString, '_blank');
-      }
-    } catch (err) {
-      console.error('[Gem] Duplicate navigation failed:', err);
-      if (window.gemShowToast) {
-        window.gemShowToast('Duplicate succeeded but navigation failed.', { type: 'error' });
-      }
-    }
+  return window.gemRunCampaignDuplicateWithDialog({
+    campaignId,
+    sessionId,
+    onBeforeStart: () => {
+      closeCompactEmailToolsMenu();
+    },
   });
-
-  return true;
 }
 
 window.gemRunCampaignMenuCommand = function gemRunCampaignMenuCommand(commandId) {
@@ -898,7 +981,9 @@ window.gemRunCampaignMenuCommand = function gemRunCampaignMenuCommand(commandId)
 };
 
 async function copyRichTextCampaignLink() {
-  const url = window.location.href;
+  const url = typeof window.gemWithEmailBasicsHash === 'function'
+    ? window.gemWithEmailBasicsHash(window.location.href)
+    : window.location.href;
   const name = getCompactToolsCampaignName() || 'Campaign';
   const plain = name ? `${name} - ${url}` : url;
   const html = `<a href="${escapeCompactToolsHtml(url)}">${escapeCompactToolsHtml(name)}</a>`;
@@ -1003,9 +1088,16 @@ function waitForTestEmailDialogThenCloseMenu() {
   }, 30000);
 }
 
-function closeCompactEmailToolsMenu() {
+function closeCompactEmailToolsMenu(reason) {
   resetCompactEmailToolsSendTestPending();
-  if (!openCompactEmailToolsMenu) return;
+  if (!openCompactEmailToolsMenu) {
+    logCampaignMenuDebug('close-skipped', { reason: reason || 'unknown', detail: 'no open menu ref' });
+    return;
+  }
+  logCampaignMenuDebug('close', {
+    reason: reason || 'unspecified',
+    stack: isCampaignMenuDebugEnabled() ? new Error().stack : undefined,
+  });
   const { wrap, menu } = openCompactEmailToolsMenu;
   menu.classList.remove('gem-campaign-menu--open', 'gem-campaign-menu--floating');
   menu.style.removeProperty('top');
@@ -1029,7 +1121,7 @@ function positionCompactEmailToolsMenu(wrap, menu) {
     top = anchorRect.top - menuRect.height - gap;
   }
   if (wrap.classList.contains('gem-compact-email-tools-menu-wrap--header')) {
-    left = 96;
+    left = 88;
   } else if (isCompactEmailToolsFocusLayoutActive()) {
     left = anchorRect.left;
     left = Math.min(left, window.innerWidth - menuRect.width - 8);
@@ -1058,11 +1150,39 @@ function openCompactEmailToolsMenuAt(wrap) {
   syncCompactEmailToolsNavMenuItems();
   positionCompactEmailToolsMenu(wrap, menu);
   openCompactEmailToolsMenu = { wrap, trigger, menu };
+  if (isCampaignMenuDebugEnabled()) {
+    const menuRect = menu.getBoundingClientRect();
+    const triggerRect = trigger.getBoundingClientRect();
+    const triggerGroup = wrap.querySelector('.gem-compact-email-tools-menu-trigger-group');
+    const groupRect = triggerGroup ? triggerGroup.getBoundingClientRect() : null;
+    logCampaignMenuDebug('open', {
+      menuRect: menuRect && {
+        top: menuRect.top,
+        left: menuRect.left,
+        width: menuRect.width,
+        height: menuRect.height,
+      },
+      triggerRect: {
+        top: triggerRect.top,
+        left: triggerRect.left,
+        width: triggerRect.width,
+        height: triggerRect.height,
+      },
+      triggerGroupRect: groupRect && {
+        top: groupRect.top,
+        left: groupRect.left,
+        width: groupRect.width,
+        height: groupRect.height,
+      },
+      menuZIndex: menu && window.getComputedStyle(menu).zIndex,
+      triggerGroupZIndex: triggerGroup && window.getComputedStyle(triggerGroup).zIndex,
+    });
+  }
 }
 
-function duplicateCompactEmailToolsCampaign(duplicateBtn, clickEvent) {
+function duplicateCompactEmailToolsCampaign(duplicateBtn, _clickEvent) {
   if (duplicateBtn.disabled || duplicateBtn.dataset.gemDuplicateState === 'busy') return;
-  if (typeof window.gemDuplicateCampaign !== 'function') {
+  if (typeof window.gemRunCampaignDuplicateWithDialog !== 'function') {
     if (window.gemShowToast) {
       window.gemShowToast('Duplicate is unavailable on this page.', { type: 'error' });
     }
@@ -1077,15 +1197,8 @@ function duplicateCompactEmailToolsCampaign(duplicateBtn, clickEvent) {
     return;
   }
 
-  const openInBackground = !!(clickEvent && (clickEvent.ctrlKey || clickEvent.metaKey));
   const sessionId = getCompactToolsSessionId();
-
-  duplicateBtn.disabled = true;
-  duplicateBtn.dataset.gemDuplicateState = 'busy';
-  duplicateBtn.classList.add('gem-campaign-menu-item--duplicating');
-  duplicateBtn.setAttribute('aria-busy', 'true');
   const spinner = duplicateBtn.querySelector('.gem-recent-campaign-duplicate-spinner');
-  if (spinner) spinner.hidden = false;
 
   function resetBtn() {
     duplicateBtn.disabled = false;
@@ -1095,60 +1208,71 @@ function duplicateCompactEmailToolsCampaign(duplicateBtn, clickEvent) {
     if (spinner) spinner.hidden = true;
   }
 
-  window.gemDuplicateCampaign(campaignId, sessionId).then((res) => {
-    if (!res || !res.ok || res.newCampaignId == null) {
-      resetBtn();
-      const reason = res && res.reason ? res.reason : 'unknown';
-      if (window.gemShowToast) {
-        window.gemShowToast(
-          reason === 'no_auth_token'
-            ? 'Could not obtain auth token. Try refreshing the page.'
-            : `Duplicate failed (${reason}).`,
-          { type: 'error' }
-        );
-      }
-      return;
-    }
-
-    try {
-      const url = new URL('/campaignmanager.php', window.location.origin);
-      if (sessionId) url.searchParams.set('session_id', sessionId);
-      url.searchParams.set('action', 'details');
-      url.searchParams.set('camp_id', String(res.newCampaignId));
-      const urlString = url.toString();
-
-      if (openInBackground) {
-        resetBtn();
-        closeCompactEmailToolsMenu();
-        try {
-          chrome.runtime.sendMessage({ action: 'openInNewTab', url: urlString, active: false });
-        } catch (_) {
-          window.open(urlString, '_blank');
-        }
-        return;
-      }
-
-      resetBtn();
+  window.gemRunCampaignDuplicateWithDialog({
+    campaignId,
+    sessionId,
+    onBeforeStart: () => {
+      duplicateBtn.disabled = true;
+      duplicateBtn.dataset.gemDuplicateState = 'busy';
+      duplicateBtn.classList.add('gem-campaign-menu-item--duplicating');
+      duplicateBtn.setAttribute('aria-busy', 'true');
+      if (spinner) spinner.hidden = false;
       closeCompactEmailToolsMenu();
-      try {
-        chrome.runtime.sendMessage({ action: 'openInNewTab', url: urlString, active: true });
-      } catch (_) {
-        window.open(urlString, '_blank');
-      }
-    } catch (_) {
-      resetBtn();
-      if (window.gemShowToast) {
-        window.gemShowToast('Duplicate succeeded but navigation failed.', { type: 'error' });
-      }
-    }
+    },
+    onSettled: resetBtn,
   });
 }
 
-function syncCompactEmailToolsOverflowMenuPlacement() {
+function compactEmailToolsOverflowWrapNeedsPlacementMove(wrap) {
+  if (!wrap) return false;
+  const isFocusLayout = isCompactEmailToolsFocusLayoutActive();
+  if (isFocusLayout) {
+    if (wrap.classList.contains('gem-compact-email-tools-menu-wrap--header')) return true;
+    if (compactEmailToolsDropdownContainer && wrap.parentElement !== compactEmailToolsDropdownContainer) {
+      return true;
+    }
+    return false;
+  }
+  if (!wrap.classList.contains('gem-compact-email-tools-menu-wrap--header')) return true;
+  const back = document.querySelector('.e-layout__back');
+  if (back && back.nextElementSibling !== wrap) return true;
+  return false;
+}
+
+function htmlClassMutationAffectsOverflowMenuPlacement(mutations) {
+  for (const mutation of mutations) {
+    if (mutation.attributeName !== 'class') continue;
+    const oldVal = mutation.oldValue || '';
+    const newVal =
+      mutation.target && mutation.target.className ? String(mutation.target.className) : '';
+    const focusBefore = /\bgem-focus-layout\b/.test(oldVal);
+    const focusAfter = /\bgem-focus-layout\b/.test(newVal);
+    if (focusBefore !== focusAfter) return true;
+    const fullBefore = /\bgem-focus-layout:full\b/.test(oldVal);
+    const fullAfter = /\bgem-focus-layout:full\b/.test(newVal);
+    if (fullBefore !== fullAfter) return true;
+  }
+  return false;
+}
+
+function syncCompactEmailToolsOverflowMenuPlacement(options) {
+  const force = !!(options && options.force);
   const wrap = compactEmailToolsOverflowMenuWrap;
   if (!wrap) return;
 
-  closeCompactEmailToolsMenu();
+  const needsMove = compactEmailToolsOverflowWrapNeedsPlacementMove(wrap);
+  if (!force && !needsMove) {
+    placeHeaderActionsAfterMenuTrigger(document.querySelector('.gem-compact-email-header-actions'));
+    return;
+  }
+
+  const menuWasOpen = !!openCompactEmailToolsMenu;
+  logCampaignMenuDebug('placement-sync', {
+    force,
+    needsMove,
+    menuWasOpen,
+    focusLayout: isCompactEmailToolsFocusLayoutActive(),
+  });
 
   const isFocusLayout = isCompactEmailToolsFocusLayoutActive();
 
@@ -1157,13 +1281,22 @@ function syncCompactEmailToolsOverflowMenuPlacement() {
     if (compactEmailToolsDropdownContainer && wrap.parentElement !== compactEmailToolsDropdownContainer) {
       compactEmailToolsDropdownContainer.prepend(wrap);
     }
-    return;
+  } else {
+    wrap.classList.add('gem-compact-email-tools-menu-wrap--header');
+    const back = document.querySelector('.e-layout__back');
+    if (back && back.nextElementSibling !== wrap) {
+      back.insertAdjacentElement('afterend', wrap);
+    }
   }
 
-  wrap.classList.add('gem-compact-email-tools-menu-wrap--header');
-  const back = document.querySelector('.e-layout__back');
-  if (back && back.nextElementSibling !== wrap) {
-    back.insertAdjacentElement('afterend', wrap);
+  placeHeaderActionsAfterMenuTrigger(document.querySelector('.gem-compact-email-header-actions'));
+
+  if (menuWasOpen && openCompactEmailToolsMenu) {
+    const { menu } = openCompactEmailToolsMenu;
+    if (menu && menu.isConnected && menu.classList.contains('gem-campaign-menu--open')) {
+      positionCompactEmailToolsMenu(wrap, menu);
+      logCampaignMenuDebug('placement-sync-repositioned-open-menu', {});
+    }
   }
 }
 
@@ -1171,29 +1304,26 @@ function setupCompactEmailToolsOverflowMenuPlacementWatcher() {
   if (setupCompactEmailToolsOverflowMenuPlacementWatcher._started) return;
   setupCompactEmailToolsOverflowMenuPlacementWatcher._started = true;
 
-  const sync = () => syncCompactEmailToolsOverflowMenuPlacement();
+  const syncFromHtmlClass = (mutations) => {
+    if (!htmlClassMutationAffectsOverflowMenuPlacement(mutations)) return;
+    syncCompactEmailToolsOverflowMenuPlacement();
+  };
+
+  waitForElement('.e-layout__back', () => {
+    syncCompactEmailToolsOverflowMenuPlacement({ force: true });
+  });
 
   if (typeof gemDomWatchObserveAttributes === 'function') {
-    gemDomWatchObserveAttributes(document.body, (mutations) => {
-      for (const mutation of mutations) {
-        if (mutation.attributeName === 'class') {
-          sync();
-          break;
-        }
-      }
-    }, ['class']);
+    gemDomWatchObserveAttributes(document.documentElement, syncFromHtmlClass, ['class']);
   } else {
     new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
-          sync();
-          break;
-        }
-      }
-    }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+      syncFromHtmlClass(mutations);
+    }).observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class'],
+      attributeOldValue: true,
+    });
   }
-
-  waitForElement('.e-layout__back', sync);
 }
 
 function setupCompactEmailToolsOverflowMenu(dropdownContainer) {
@@ -1217,15 +1347,6 @@ function setupCompactEmailToolsOverflowMenu(dropdownContainer) {
   trigger.setAttribute('aria-haspopup', 'menu');
   trigger.setAttribute('aria-expanded', 'false');
   trigger.setAttribute('aria-label', 'Email tools options');
-
-  const pageTitle = document.createElement('span');
-  pageTitle.className = 'gem-compact-email-tools-page-title';
-  pageTitle.textContent = 'Content Creation';
-  pageTitle.setAttribute('role', 'button');
-  pageTitle.setAttribute('tabindex', '0');
-  pageTitle.setAttribute('aria-haspopup', 'menu');
-  pageTitle.setAttribute('aria-expanded', 'false');
-  pageTitle.setAttribute('aria-label', 'Email tools options');
 
   const menu = document.createElement('div');
   menu.className = 'gem-campaign-menu';
@@ -1610,17 +1731,9 @@ function setupCompactEmailToolsOverflowMenu(dropdownContainer) {
   navColumn.appendChild(campaignDetailsItem);
   navColumn.appendChild(duplicateItem);
 
-  trigger.addEventListener('click', (e) => toggleCompactEmailToolsMenuFromWrap(wrap, e));
-  pageTitle.addEventListener('click', (e) => toggleCompactEmailToolsMenuFromWrap(wrap, e));
-  pageTitle.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      toggleCompactEmailToolsMenuFromWrap(wrap, e);
-    }
-  });
+  bindCampaignMenuTriggerToggle(wrap, trigger);
 
   triggerGroup.appendChild(trigger);
-  triggerGroup.appendChild(pageTitle);
   wrap.appendChild(triggerGroup);
   wrap.appendChild(menu);
   compactEmailToolsOverflowMenuWrap = wrap;
@@ -1647,15 +1760,190 @@ function setupCompactEmailToolsOverflowMenu(dropdownContainer) {
       if (!openCompactEmailToolsMenu) return;
       if (isCompactEmailToolsSendTestPending()) return;
       if (compactEmailToolsOutsideCloseSuppressed) return;
-      if (openCompactEmailToolsMenu.wrap.contains(e.target)) return;
-      closeCompactEmailToolsMenu();
+      const target = e.target;
+      const { wrap, menu } = openCompactEmailToolsMenu;
+      const checks = {
+        closestMenu: !!(menu && target && target.closest && target.closest('.gem-campaign-menu') === menu),
+        menuHitByCoords: !!(menu && pointerEventHitsElement(e, menu)),
+        closestTrigger: !!(target && target.closest && target.closest('button.gem-campaign-menu-trigger')),
+        menuContainsTarget: !!(menu && menu.contains(target)),
+        wrapContainsTarget: !!(wrap && wrap.contains(target)),
+      };
+      if (isCampaignMenuDebugEnabled()) {
+        logCampaignMenuPointerContext(e, 'document-outside-pointerdown');
+        logCampaignMenuDebug('document-outside-decision', checks);
+      }
+      if (checks.closestMenu) return;
+      if (checks.menuHitByCoords) return;
+      if (checks.closestTrigger) return;
+      if (checks.menuContainsTarget) return;
+      if (checks.wrapContainsTarget) return;
+      logCampaignMenuDebug('document-outside-close', checks);
+      closeCompactEmailToolsMenu('document-outside-pointerdown');
     };
-    document.addEventListener('click', handleCompactEmailToolsOutsidePointer);
-    document.addEventListener('mousedown', handleCompactEmailToolsOutsidePointer);
+    document.addEventListener('pointerdown', handleCompactEmailToolsOutsidePointer, true);
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') closeCompactEmailToolsMenu();
+      if (e.key === 'Escape') closeCompactEmailToolsMenu('escape-key');
     });
+
+    document.addEventListener(
+      'pointerdown',
+      (e) => {
+        if (!openCompactEmailToolsMenu || !isCampaignMenuDebugEnabled()) return;
+        const { menu } = openCompactEmailToolsMenu;
+        if (!menu || !menu.classList.contains('gem-campaign-menu--open')) return;
+        if (!menu.contains(e.target) && !pointerEventHitsElement(e, menu)) return;
+        logCampaignMenuPointerContext(e, 'menu-surface-pointerdown');
+      },
+      false
+    );
+
+    document.addEventListener(
+      'click',
+      (e) => {
+        if (!isCampaignMenuDebugEnabled()) return;
+        const item = e.target && e.target.closest && e.target.closest('.gem-campaign-menu-item');
+        if (!item) return;
+        logCampaignMenuDebug('menu-item-click', {
+          label: item.querySelector('.gem-campaign-menu-item-label')?.textContent || item.textContent,
+          disabled: item.disabled,
+          defaultPrevented: e.defaultPrevented,
+          eventPhase: e.eventPhase,
+        });
+      },
+      true
+    );
   }
+}
+
+function placeHeaderActionsAfterMenuTrigger(headerActionsDiv) {
+  if (!headerActionsDiv) return;
+
+  if (!isCompactEmailToolsFocusLayoutActive()) {
+    const home = document.querySelector('.gem-compact-email-tools');
+    if (home && headerActionsDiv.parentElement !== home) {
+      home.appendChild(headerActionsDiv);
+    }
+    const menu = headerActionsDiv.querySelector('.gem-focus-save-menu');
+    const moreButton = headerActionsDiv.querySelector('.gem-focus-save-split__more');
+    if (menu) menu.hidden = true;
+    if (moreButton) moreButton.setAttribute('aria-expanded', 'false');
+    return;
+  }
+
+  const trigger = document.querySelector('button.gem-campaign-menu-trigger');
+  if (trigger && trigger.parentNode) {
+    if (trigger.nextElementSibling !== headerActionsDiv) {
+      trigger.insertAdjacentElement('afterend', headerActionsDiv);
+    }
+    return;
+  }
+  waitForElement('button.gem-campaign-menu-trigger', () => {
+    placeHeaderActionsAfterMenuTrigger(headerActionsDiv);
+  });
+}
+
+function setupFocusSaveSplitMenu(headerActionsDiv, saveButtonElement, finishButtonElement) {
+  const split = document.createElement('div');
+  split.className = 'gem-focus-save-split';
+
+  const moreButton = document.createElement('button');
+  moreButton.type = 'button';
+  moreButton.className = 'gem-focus-save-split__more';
+  moreButton.setAttribute('aria-haspopup', 'menu');
+  moreButton.setAttribute('aria-expanded', 'false');
+  moreButton.setAttribute('aria-label', 'More save options');
+  moreButton.innerHTML = `
+    <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true">
+      <path d="M2.2 4.4 L6 8.1 L9.8 4.4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path>
+    </svg>
+  `.trim();
+
+  const menu = document.createElement('div');
+  menu.className = 'gem-focus-save-menu';
+  menu.setAttribute('role', 'menu');
+  menu.hidden = true;
+
+  function makeItem(label) {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'gem-focus-save-menu__item';
+    item.setAttribute('role', 'menuitem');
+    item.textContent = label;
+    return item;
+  }
+
+  const finishItem = makeItem('Finish Editing');
+  const shareItem = makeItem('Share Link');
+  const duplicateItem = makeItem('Duplicate');
+  const duplicateSpinner = document.createElement('span');
+  duplicateSpinner.className = 'gem-recent-campaign-duplicate-spinner';
+  duplicateSpinner.setAttribute('aria-hidden', 'true');
+  duplicateSpinner.hidden = true;
+  duplicateItem.appendChild(duplicateSpinner);
+
+  menu.appendChild(finishItem);
+  menu.appendChild(shareItem);
+  menu.appendChild(duplicateItem);
+
+  function closeMenu() {
+    menu.hidden = true;
+    moreButton.setAttribute('aria-expanded', 'false');
+  }
+
+  function openMenu() {
+    const finishButton = finishButtonElement.querySelector('button');
+    finishItem.disabled = !!(finishButtonElement.hidden || !finishButton || finishButton.disabled);
+    menu.hidden = false;
+    moreButton.setAttribute('aria-expanded', 'true');
+    menu.style.visibility = 'hidden';
+    const splitRect = split.getBoundingClientRect();
+    const menuRect = menu.getBoundingClientRect();
+    let left = splitRect.right - menuRect.width;
+    left = Math.max(8, Math.min(left, window.innerWidth - menuRect.width - 8));
+    menu.style.top = `${Math.round(splitRect.bottom + 4)}px`;
+    menu.style.left = `${Math.round(left)}px`;
+    menu.style.visibility = '';
+  }
+
+  moreButton.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (menu.hidden) openMenu();
+    else closeMenu();
+  });
+
+  finishItem.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (finishItem.disabled) return;
+    closeMenu();
+    const finishButton = finishButtonElement.querySelector('button');
+    if (finishButton) finishButton.click();
+  });
+
+  shareItem.addEventListener('click', (e) => {
+    e.stopPropagation();
+    closeMenu();
+    void copyRichTextCampaignLink();
+  });
+
+  duplicateItem.addEventListener('click', (e) => {
+    e.stopPropagation();
+    duplicateCompactEmailToolsCampaign(duplicateItem, e);
+  });
+
+  document.addEventListener('click', (e) => {
+    if (menu.hidden) return;
+    if (split.contains(e.target) || menu.contains(e.target)) return;
+    closeMenu();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeMenu();
+  });
+
+  headerActionsDiv.insertBefore(split, saveButtonElement);
+  split.appendChild(saveButtonElement);
+  split.appendChild(moreButton);
+  split.appendChild(menu);
 }
 
 function initializeCompactEmailTools() {
@@ -1734,6 +2022,8 @@ function initializeCompactEmailTools() {
     headerActionsDiv.appendChild(saveButtonElement);
     headerActionsDiv.appendChild(finishButtonElement);
     compactToolsDiv.appendChild(headerActionsDiv);
+    setupFocusSaveSplitMenu(headerActionsDiv, saveButtonElement, finishButtonElement);
+    placeHeaderActionsAfterMenuTrigger(headerActionsDiv);
 
     // Add click handler to our save button
     const ourSaveButton = saveButtonElement.querySelector('button');

@@ -5,73 +5,144 @@ function getHeaderTitle() {
   return document.querySelector('h1.e-layout__title');
 }
 
-function ensureCampaignMenuColumnsWrapped(menu) {
-  if (!menu) return null;
-  try {
-    let columns = menu.querySelector(':scope > .gem-campaign-menu-columns');
-    if (columns) return columns;
-
-    const existingColumns = Array.from(
-      menu.querySelectorAll(':scope > .gem-compact-email-tools-menu-column')
-    );
-    if (!existingColumns.length) return null;
-
-    columns = document.createElement('div');
-    columns.className = 'gem-campaign-menu-columns';
-    menu.insertBefore(columns, existingColumns[0]);
-    existingColumns.forEach((col) => columns.appendChild(col));
-    return columns;
-  } catch (_) {
-    return null;
-  }
-}
-
-function placeHeaderTitleInCampaignMenu(headerTitle) {
-  if (!headerTitle) return false;
-  const menu = document.querySelector('.gem-campaign-menu');
-  if (!menu) return false;
-
-  const columns = ensureCampaignMenuColumnsWrapped(menu);
-  if (
-    headerTitle.parentElement === menu &&
-    columns &&
-    headerTitle.nextElementSibling === columns
-  ) {
-    return true;
-  }
-
-  if (columns) {
-    menu.insertBefore(headerTitle, columns);
-  } else {
-    menu.insertBefore(headerTitle, menu.firstChild);
-  }
-  return true;
-}
-
-function ensureHeaderTitleInCampaignMenu(headerTitle) {
-  if (!headerTitle || !isFocusLayoutActive()) return;
-  if (placeHeaderTitleInCampaignMenu(headerTitle)) return;
-
-  waitForElement('.gem-campaign-menu', () => {
-    const title = getHeaderTitle();
-    if (title && isFocusLayoutActive()) {
-      placeHeaderTitleInCampaignMenu(title);
-    }
+function stripCampaignNameActions(root) {
+  if (!root || !root.querySelectorAll) return;
+  root.querySelectorAll('.gem-header-copy-icon, .gem-header-edit-icon').forEach((el) => {
+    el.remove();
   });
 }
 
-function getCompactVersionsInsertPoint(navSection) {
-  if (!navSection) return null;
-  const compactTools = navSection.querySelector('.gem-compact-email-tools');
-  if (compactTools) return compactTools.nextSibling;
-  return navSection.firstChild;
+function restoreHeaderTitleFromCampaignMenu(headerTitle) {
+  const placeholder = document.querySelector('[data-gem-header-title-placeholder]');
+  if (!headerTitle || !placeholder || !placeholder.parentNode) return;
+  if (headerTitle.nextSibling === placeholder) return;
+  placeholder.parentNode.insertBefore(headerTitle, placeholder);
+  placeholder.remove();
 }
 
-function ensureCompactVersionsPosition(navSection, compactVersionsDiv) {
-  if (!navSection || !compactVersionsDiv || !navSection.contains(compactVersionsDiv)) return;
+function placeCampaignNameInMenuTrigger(nameEl) {
+  const trigger = document.querySelector('button.gem-campaign-menu-trigger');
+  if (!nameEl || !trigger) return false;
+
+  stripCampaignNameActions(nameEl);
+  stripCampaignNameActions(getHeaderTitle());
+
+  if (nameEl.parentElement === trigger) return true;
+
+  if (!document.querySelector('[data-gem-campaign-name-placeholder]') && nameEl.parentNode) {
+    const placeholder = document.createElement('span');
+    placeholder.hidden = true;
+    placeholder.setAttribute('data-gem-campaign-name-placeholder', 'true');
+    nameEl.parentNode.insertBefore(placeholder, nameEl);
+  }
+
+  trigger.appendChild(nameEl);
+  return true;
+}
+
+function restoreCampaignNameFromMenuTrigger() {
+  const nameEl = document.querySelector('cb-campaign-name');
+  const placeholder = document.querySelector('[data-gem-campaign-name-placeholder]');
+  stripCampaignNameActions(nameEl);
+  if (!nameEl || !placeholder || !placeholder.parentNode) return;
+  placeholder.parentNode.insertBefore(nameEl, placeholder);
+  placeholder.remove();
+}
+
+function restoreHeaderTitleFromMenuTrigger() {
+  const title = getHeaderTitle();
+  const placeholder = document.querySelector('[data-gem-standard-title-placeholder]');
+  if (!title || !placeholder || !placeholder.parentNode) return;
+  if (!title.closest('button.gem-campaign-menu-trigger')) return;
+  placeholder.parentNode.insertBefore(title, placeholder);
+  placeholder.remove();
+}
+
+function placeHeaderTitleInMenuTrigger(title) {
+  const trigger = document.querySelector('button.gem-campaign-menu-trigger');
+  if (!title || !trigger || isFocusLayoutActive()) return false;
+
+  stripCampaignNameActions(title);
+  if (title.parentElement === trigger) return true;
+
+  if (!document.querySelector('[data-gem-standard-title-placeholder]') && title.parentNode) {
+    const placeholder = document.createElement('span');
+    placeholder.hidden = true;
+    placeholder.setAttribute('data-gem-standard-title-placeholder', 'true');
+    title.parentNode.insertBefore(placeholder, title);
+  }
+
+  trigger.appendChild(title);
+  return true;
+}
+
+function ensureHeaderTitleInMenuTrigger() {
+  if (isFocusLayoutActive()) return;
+  restoreCampaignNameFromMenuTrigger();
+
+  const title = getHeaderTitle();
+  const trigger = document.querySelector('button.gem-campaign-menu-trigger');
+  if (title && trigger) {
+    placeHeaderTitleInMenuTrigger(title);
+    return;
+  }
+
+  const missing = title ? 'button.gem-campaign-menu-trigger' : 'h1.e-layout__title';
+  waitForElement(missing, () => {
+    if (isFocusLayoutActive()) return;
+    const headerTitle = getHeaderTitle();
+    const menuTrigger = document.querySelector('button.gem-campaign-menu-trigger');
+    if (headerTitle && menuTrigger) {
+      placeHeaderTitleInMenuTrigger(headerTitle);
+      return;
+    }
+    ensureHeaderTitleInMenuTrigger();
+  });
+}
+
+function ensureCampaignNameInMenuTrigger() {
+  if (!isFocusLayoutActive()) return;
+  restoreHeaderTitleFromMenuTrigger();
+  restoreHeaderTitleFromCampaignMenu(getHeaderTitle());
+
+  const nameEl = document.querySelector('cb-campaign-name');
+  const trigger = document.querySelector('button.gem-campaign-menu-trigger');
+  if (nameEl && trigger) {
+    placeCampaignNameInMenuTrigger(nameEl);
+    return;
+  }
+
+  const missing = nameEl ? 'button.gem-campaign-menu-trigger' : 'cb-campaign-name';
+  waitForElement(missing, () => {
+    if (!isFocusLayoutActive()) return;
+    const name = document.querySelector('cb-campaign-name');
+    const menuTrigger = document.querySelector('button.gem-campaign-menu-trigger');
+    if (name && menuTrigger) {
+      placeCampaignNameInMenuTrigger(name);
+      return;
+    }
+    ensureCampaignNameInMenuTrigger();
+  });
+}
+
+function placeCompactVersionsRow(navSection, compactVersionsDiv) {
+  if (!navSection || !compactVersionsDiv) return;
+
+  let row = navSection.querySelector(':scope > .gem-compact-email-versions-row');
+  if (!row) {
+    row = document.createElement('div');
+    row.className = 'gem-compact-email-versions-row';
+  }
+
   const compactTools = navSection.querySelector('.gem-compact-email-tools');
-  if (compactTools && compactVersionsDiv.previousElementSibling === compactTools) return;
-  navSection.insertBefore(compactVersionsDiv, getCompactVersionsInsertPoint(navSection));
+  const anchor = compactTools ? compactTools.nextSibling : navSection.firstChild;
+  if (row.parentElement !== navSection || (compactTools && row.previousElementSibling !== compactTools)) {
+    navSection.insertBefore(row, anchor === row ? null : anchor);
+  }
+
+  if (compactVersionsDiv.parentElement !== row) {
+    row.insertBefore(compactVersionsDiv, row.firstChild);
+  }
 }
 
 function initializeFocusLayout() {
@@ -91,25 +162,9 @@ function initializeFocusLayout() {
     const isFocusLayout = isFocusLayoutActive();
 
     // Handle header title movement (only when expanded)
-    if (headerTitle && navSection && isFocusLayout) {
-      const existingTitlePlaceholder = document.querySelector('[data-gem-header-title-placeholder]');
-
-      if (!existingTitlePlaceholder) {
-        const placeholder = document.createElement('div');
-        placeholder.style.display = 'none';
-        placeholder.setAttribute('data-gem-header-title-placeholder', 'true');
-
-        headerTitle.parentNode.insertBefore(placeholder, headerTitle);
-        headerTitle.remove();
-        ensureHeaderTitleInCampaignMenu(headerTitle);
-
-        console.log('[Gem][FocusLayout] Moved header title into campaign menu (Focus Layout)');
-      } else if (!document.querySelector('.gem-campaign-menu')?.contains(headerTitle)) {
-        ensureHeaderTitleInCampaignMenu(headerTitle);
-        console.log('[Gem][FocusLayout] Re-attached header title to campaign menu');
-      } else {
-        ensureHeaderTitleInCampaignMenu(headerTitle);
-      }
+    if (headerTitle && navSection) {
+      if (isFocusLayout) ensureCampaignNameInMenuTrigger();
+      else ensureHeaderTitleInMenuTrigger();
     }
 
     // Check for version selector and multilanguage locale selector and move them to our compact area (only in Focus Layout)
@@ -204,11 +259,7 @@ function initializeFocusLayout() {
       compactVersionsDiv.style.display = 'none';
     }
 
-    if (!navSection.contains(compactVersionsDiv)) {
-      navSection.insertBefore(compactVersionsDiv, getCompactVersionsInsertPoint(navSection));
-    } else {
-      ensureCompactVersionsPosition(navSection, compactVersionsDiv);
-    }
+    placeCompactVersionsRow(navSection, compactVersionsDiv);
 
     // Set up observers for view changes and selector visibility
     setupFocusLayoutObserver(compactVersionsDiv);
@@ -231,33 +282,16 @@ function moveSelectorsBasedOnView(compactVersionsDiv, isFocusLayout) {
   // Handle header title
   if (headerTitle && navSection) {
     if (isFocusLayout) {
-      const existingPlaceholder = document.querySelector('[data-gem-header-title-placeholder]');
-
-      if (!existingPlaceholder) {
-        const placeholder = document.createElement('div');
-        placeholder.style.display = 'none';
-        placeholder.setAttribute('data-gem-header-title-placeholder', 'true');
-
-        headerTitle.parentNode.insertBefore(placeholder, headerTitle);
-        headerTitle.remove();
-        ensureHeaderTitleInCampaignMenu(headerTitle);
-
-        console.log('[Gem][FocusLayout] Moved header title into campaign menu (view change)');
-      }
-
-      ensureHeaderTitleInCampaignMenu(headerTitle);
+      ensureCampaignNameInMenuTrigger();
     } else {
-      // Move back to original location
+      restoreCampaignNameFromMenuTrigger();
+      restoreHeaderTitleFromCampaignMenu(headerTitle);
       const placeholder = document.querySelector('[data-gem-header-title-placeholder]');
-      if (placeholder) {
-        // Check if h1 is not in its original location (not immediately before the placeholder)
-        if (headerTitle.nextSibling !== placeholder) {
-          // Move back to original location
-          placeholder.parentNode.insertBefore(headerTitle, placeholder);
-          placeholder.remove();
-          console.log('[Gem][FocusLayout] Moved header title back to original location (view change)');
-        }
+      if (placeholder && headerTitle.nextSibling !== placeholder && placeholder.parentNode) {
+        placeholder.parentNode.insertBefore(headerTitle, placeholder);
+        placeholder.remove();
       }
+      ensureHeaderTitleInMenuTrigger();
     }
   }
 
@@ -289,8 +323,8 @@ function moveSelectorsBasedOnView(compactVersionsDiv, isFocusLayout) {
     compactVersionsDiv.style.display = 'none';
   }
 
-  if (isFocusLayout && navSection) {
-    ensureCompactVersionsPosition(navSection, compactVersionsDiv);
+  if (navSection) {
+    placeCompactVersionsRow(navSection, compactVersionsDiv);
   }
 }
 
@@ -404,7 +438,7 @@ function nodeIsOrContains(node, selector) {
 }
 
 function isVisibleLanguageSelector(languagesSelector) {
-  return !!(languagesSelector && languagesSelector.isConnected && !languagesSelector.classList.contains('e-hidden'));
+  return !!(languagesSelector && languagesSelector.isConnected);
 }
 
 function isVisibleVersionSelector(versionSelector) {
@@ -955,19 +989,11 @@ function initializeNavPanelResize(navSection) {
 
 
 window.gemSyncFocusLayoutCampaignMenuTitle = function gemSyncFocusLayoutCampaignMenuTitle() {
-  if (!isFocusLayoutActive()) return;
-  const headerTitle = getHeaderTitle();
-  if (!headerTitle) return;
-
-  const existingPlaceholder = document.querySelector('[data-gem-header-title-placeholder]');
-  if (!existingPlaceholder && headerTitle.parentNode) {
-    const placeholder = document.createElement('div');
-    placeholder.style.display = 'none';
-    placeholder.setAttribute('data-gem-header-title-placeholder', 'true');
-    headerTitle.parentNode.insertBefore(placeholder, headerTitle);
+  if (isFocusLayoutActive()) {
+    ensureCampaignNameInMenuTrigger();
+    return;
   }
-
-  ensureHeaderTitleInCampaignMenu(headerTitle);
+  ensureHeaderTitleInMenuTrigger();
 };
 
 // Initialize when DOM is ready

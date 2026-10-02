@@ -313,11 +313,71 @@ console.log('[Gem] command-palette.js loaded');
 
   function focusOrOpenCampaign(campaignId, targetUrl) {
     if (!chrome?.runtime?.sendMessage) return;
+    const url = withCurrentSessionId(targetUrl || resolveCampaignUrlBase(campaignId));
     chrome.runtime.sendMessage({
       action: 'focusOrOpenCampaignTab',
       campaignId: String(campaignId || '').trim(),
-      targetUrl: withCurrentSessionId(targetUrl || resolveCampaignUrlBase(campaignId)),
+      targetUrl: typeof window.gemWithEmailBasicsHash === 'function'
+        ? window.gemWithEmailBasicsHash(url)
+        : url,
     });
+  }
+
+  function isModifiedNavigationClick(event) {
+    return !!(event && (event.metaKey || event.ctrlKey));
+  }
+
+  function openHrefInNewTab(href, active = false) {
+    const url = withCurrentSessionId(String(href || '').trim());
+    if (!url) return;
+    try {
+      if (chrome?.runtime?.sendMessage) {
+        chrome.runtime.sendMessage({ action: 'openInNewTab', url, active });
+        return;
+      }
+    } catch (_) {}
+    window.open(url, '_blank');
+  }
+
+  function resolveCampaignUrlFromCommandId(commandId) {
+    const id = String(commandId || '').trim();
+    if (id.startsWith('recent-search:')) {
+      const campaignId = id.slice('recent-search:'.length);
+      const item =
+        recentCampaignItems.find((entry) => String(entry.id || '').trim() === campaignId)
+        || otherRecentItems.find((entry) => String(entry.id || '').trim() === campaignId);
+      return item?.urlBase ? String(item.urlBase).trim() : resolveCampaignUrlBase(campaignId);
+    }
+    if (id.startsWith('open-campaign:')) {
+      const campaignId = id.slice('open-campaign:'.length);
+      const item = recentCampaignItems.find((entry) => String(entry.id || '').trim() === campaignId);
+      return item?.urlBase ? String(item.urlBase).trim() : resolveCampaignUrlBase(campaignId);
+    }
+    return '';
+  }
+
+  function runPaletteCommand(cmd, event) {
+    if (!cmd || typeof cmd.run !== 'function') return;
+
+    const commandId = String(cmd.id || '');
+    if (isModifiedNavigationClick(event)) {
+      if (commandId.startsWith('nav:')) {
+        openHrefInNewTab(commandId.slice(4), false);
+        return;
+      }
+      if (commandId.startsWith('recent-search:') || commandId.startsWith('open-campaign:')) {
+        const campaignUrl = resolveCampaignUrlFromCommandId(commandId);
+        openHrefInNewTab(
+          typeof window.gemWithEmailBasicsHash === 'function'
+            ? window.gemWithEmailBasicsHash(campaignUrl)
+            : campaignUrl,
+          false
+        );
+        return;
+      }
+    }
+
+    cmd.run();
   }
 
   function activateVerticalNavTab(tabId) {
@@ -565,26 +625,10 @@ console.log('[Gem] command-palette.js loaded');
 
   function buildEmarsysNavCommands() {
     const commands = [];
-    let links =
+    const links =
       typeof window.gemNavMenu?.collectEmarsysNavLinks === "function"
         ? window.gemNavMenu.collectEmarsysNavLinks()
         : [];
-
-    if (!links.length) {
-      // Fallback: legacy menu only (utils not loaded yet / nav not ready).
-      links = [];
-      document.querySelectorAll('.e-navigation__menu_list > li').forEach((li) => {
-        const titleEl = li.querySelector('.e-navigation__action_text');
-        const sectionTitle = titleEl ? String(titleEl.textContent || '').trim() : '';
-        if (!sectionTitle) return;
-        li.querySelectorAll('.e-navigation__submenu a.e-navigation__submenu_action').forEach((link) => {
-          const label = String(link.textContent || '').replace(/\s+/g, ' ').trim();
-          const href = String(link.getAttribute('href') || link.href || '').trim();
-          if (!label || !href || /^javascript:/i.test(href)) return;
-          links.push({ sectionTitle, label, href });
-        });
-      });
-    }
 
     links.forEach(({ sectionTitle, label, href }) => {
       let absoluteUrl = href;
@@ -793,7 +837,7 @@ console.log('[Gem] command-palette.js loaded');
         if (!cmd) return;
         closePalette();
         try {
-          cmd.run();
+          runPaletteCommand(cmd, e);
         } catch (err) {
           console.error('[Gem] Command palette run failed:', err);
         }

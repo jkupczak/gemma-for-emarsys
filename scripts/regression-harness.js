@@ -311,7 +311,7 @@ runCheck('body dirty path keeps Emarsys focus nudge for Save', () => {
   );
 });
 
-runCheck('main nav injectors support legacy and UI5 menus', () => {
+runCheck('main nav injectors target UI5 side navigation only', () => {
   const manifest = readFile('extension/manifest.json');
   assert(manifest.includes('nav-menu-utils.js'), 'manifest must load nav-menu-utils.js');
   assert(
@@ -321,21 +321,25 @@ runCheck('main nav injectors support legacy and UI5 menus', () => {
 
   const utils = readFile('extension/nav-menu-utils.js');
   assert(utils.includes('ui5-side-navigation-ds-nav'));
-  assert(utils.includes('e-navigation__menu_list'));
+  assert(!utils.includes('e-navigation__menu_list'), 'nav-menu-utils must not reference legacy menu');
   assert(utils.includes('buildUi5ActionItem'));
   assert(utils.includes('collectEmarsysNavLinks'));
 
   const inject = readFile('extension/nav-menu-inject.js');
-  assert(inject.includes('buildUi5SettingsItem') && inject.includes('buildLegacySettingsItem'));
+  assert(inject.includes('buildUi5SettingsItem'));
+  assert(!inject.includes('buildLegacySettingsItem'), 'nav-menu-inject must not build legacy items');
 
   const notes = readFile('extension/notes.js');
-  assert(notes.includes('buildUi5NotesNavItem') && notes.includes('buildLegacyNotesNavItem'));
+  assert(notes.includes('buildUi5NotesNavItem'));
+  assert(!notes.includes('buildLegacyNotesNavItem'), 'notes must not build legacy nav item');
 
   const recent = readFile('extension/recent-campaigns.js');
-  assert(recent.includes('buildUi5RecentNavItem') && recent.includes('buildLegacyRecentNavItem'));
+  assert(recent.includes('buildUi5RecentNavItem'));
+  assert(!recent.includes('buildLegacyRecentNavItem'), 'recent-campaigns must not build legacy nav item');
 
   const palette = readFile('extension/command-palette.js');
   assert(palette.includes('gemNavMenu.collectEmarsysNavLinks') || palette.includes('collectEmarsysNavLinks'));
+  assert(!palette.includes('e-navigation__menu_list'), 'command palette must not scrape legacy menu');
 });
 
 runCheck('personalization tokens prefetch once per campaign page load', () => {

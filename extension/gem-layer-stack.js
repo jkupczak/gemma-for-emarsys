@@ -22,6 +22,7 @@
       ".gem-recent-campaigns-backdrop",
       "#gem-keyboard-shortcuts-modal",
       "#gem-welcome-modal",
+      "#gem-campaign-duplicate-dialog",
       "#gem-stale-tab-modal",
       "#gem-duplicate-tab-activation-modal",
       "#gem-duplicate-tab-save-modal",
@@ -61,8 +62,12 @@
         return cls.contains("gem-recent-campaigns-backdrop--open");
       }
 
+      if (id === "gem-campaign-duplicate-dialog") {
+        if (el.hidden || el.getAttribute("aria-hidden") === "true") return false;
+      }
+
       if (el.dataset && el.dataset.gemLayerRaised === "1") return true;
-      if (id === "gem-keyboard-shortcuts-modal" || id === "gem-welcome-modal" || id === "gem-stale-tab-modal" || id === "gem-duplicate-tab-activation-modal" || id === "gem-duplicate-tab-save-modal" || id === "gem-stale-tab-save-modal" || id === "gem-compare-modal" || id === "gem-command-palette") return true;
+      if (id === "gem-keyboard-shortcuts-modal" || id === "gem-welcome-modal" || id === "gem-campaign-duplicate-dialog" || id === "gem-stale-tab-modal" || id === "gem-duplicate-tab-activation-modal" || id === "gem-duplicate-tab-save-modal" || id === "gem-stale-tab-save-modal" || id === "gem-compare-modal" || id === "gem-command-palette") return true;
       if (id === "gem-campaign-details-overlay") {
         return cls && cls.contains("is-visible");
       }

@@ -10,14 +10,24 @@
 
 resize handles need a new :after element that is 100% height and colored purple on hover
 
-Command Palette needs a button shortcut somewhere so that its not accessible by just the keyboard shortcut
+Left and right arrows that we've added need to standardize to an SVG
 
-Clicking on a token in the CodeMirror powered subject line should select it, not immediately open the edit snippet dialog. Here is what selecting a token in the MCE Editor looks like in Emarsys for comparison.
+Email Campaigns panel needs to not decrease in width because the preview panel was opened
 
------------------------------------------
------------------------------------------
------------------------------------------
------------------------------------------
+Preview panel header needs to not show the campaign name, instead we need to use this area for new preview controls like Zoom level, desktop/mobile toggle, dimensions input, and actions like Open and Duplicate.
+
+The info panel on the left needs better styling on the email thats currently being previewed.
+
+Start logging the total images found in an email for the purposes of search and sorting here.
+
+Allow users to tag email campaigns with custom strings, for example "Plain Text". These tags can be toggled on and off when viewing the list of emails. They can be considered when the user searches, filters, or sorts.
+
+If Email Category is available from the API get, log that too. Otherwise, grab it if/when the user sees it on the details page of the campaign. Again, use it as a search/filter/sortable detail and let users toggle it on and off.
+
+Let users toggle the language listings on and off.
+
+Clicking an email on the left pane while the preview is open should open that email in the preview. Disable title clicking to open the email itself. Only the overflow menu click should work as it normally does.
+
 
 ------------------------------------------------------------
 ------------------------------------------------------------

@@ -4,7 +4,7 @@ Chrome extension for the Emarsys email builder: mobile preview, text highlightin
 
 ## Features
 
-- **Gemma Settings nav entry**: Injected into `ul.e-navigation__menu_list`; opens the settings panel.  
+- **Gemma Settings nav entry**: Injected into `e-side-navigation`; opens the settings panel.  
 - **Mobile Preview**: Cloned mobile view with toggle and persisted visibility.  
 - **Text Highlighting**: User-configurable terms/colors (regex supported) with live updates.  
 - **Color Swatches**: Up to 8 custom colors injected into the TinyMCE picker.  

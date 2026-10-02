@@ -1,12 +1,9 @@
 console.log("[Gem] nav-menu-utils.js loaded");
 
 /**
- * Dual-menu helpers for Emarsys main navigation.
- * Legacy: e-navigation / ul.e-navigation__menu_list
- * New:    e-side-navigation / ui5-side-navigation-ds-nav
+ * Helpers for Emarsys UI5 main navigation (e-side-navigation / ui5-side-navigation-ds-nav).
  */
 (function () {
-  const LEGACY_NAV_SELECTOR = "ul.e-navigation__menu_list";
   const UI5_HOST_SELECTOR = "e-side-navigation";
   const UI5_ROOT_SELECTOR = "ui5-side-navigation-ds-nav";
   const UI5_ITEM_TAG = "ui5-side-navigation-item-ds-nav";
@@ -16,19 +13,8 @@ console.log("[Gem] nav-menu-utils.js loaded");
       if (root.querySelector(UI5_ROOT_SELECTOR) || root.querySelector(UI5_HOST_SELECTOR)) {
         return "ui5";
       }
-      if (root.querySelector(LEGACY_NAV_SELECTOR) || root.querySelector("e-navigation")) {
-        return "legacy";
-      }
     } catch (_) {}
     return null;
-  }
-
-  function getLegacyNavLists(root = document) {
-    try {
-      return Array.from(root.querySelectorAll(LEGACY_NAV_SELECTOR));
-    } catch (_) {
-      return [];
-    }
   }
 
   function getUi5NavRoots(root = document) {
@@ -39,12 +25,9 @@ console.log("[Gem] nav-menu-utils.js loaded");
     }
   }
 
-  /** Prefer UI5 when present; otherwise legacy lists. */
   function getNavHosts(root = document) {
-    const ui5 = getUi5NavRoots(root);
-    if (ui5.length) return { flavor: "ui5", hosts: ui5 };
-    const legacy = getLegacyNavLists(root);
-    if (legacy.length) return { flavor: "legacy", hosts: legacy };
+    const hosts = getUi5NavRoots(root);
+    if (hosts.length) return { flavor: "ui5", hosts };
     return { flavor: null, hosts: [] };
   }
 
@@ -187,14 +170,6 @@ console.log("[Gem] nav-menu-utils.js loaded");
     settings:
       '<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor" aria-hidden="true"><path d="m370-80-16-128q-13-5-24.5-12T307-235l-119 50L78-375l103-78q-1-7-1-13.5v-27q0-6.5 1-13.5L78-585l110-190 119 50q11-8 23-15t24-12l16-128h220l16 128q13 5 24.5 12t22.5 15l119-50 110 190-103 78q1 7 1 13.5v27q0 6.5-2 13.5l103 78-110 190-118-50q-11 8-23 15t-24 12L590-80H370Zm70-80h79l14-106q31-8 57.5-23.5T639-327l99 41 39-68-86-65q5-14 7-29.5t2-31.5q0-16-2-31.5t-7-29.5l86-65-39-68-99 42q-22-23-48.5-38.5T533-694l-13-106h-79l-14 106q-31 8-57.5 23.5T321-633l-99-41-39 68 86 64q-5 15-7 30t-2 32q0 16 2 31t7 30l-86 65 39 68 99-42q22 23 48.5 38.5T427-266l13 106Zm42-180q58 0 99-41t41-99q0-58-41-99t-99-41q-59 0-99.5 41T342-480q0 58 40.5 99t99.5 41Zm-2-140Z"/></svg>',
   };
-
-  function applyLegacyNavSvg(rootEl, svgHtml) {
-    if (!rootEl || !svgHtml) return;
-    const icon = rootEl.querySelector(".e-icon") || rootEl.querySelector(".e-icon-wrapper");
-    if (!icon) return;
-    icon.innerHTML = svgHtml;
-    icon.classList.add("gem-nav-custom-svg");
-  }
 
   function findNativeUi5NavIcon(root) {
     if (!root) return null;
@@ -372,18 +347,14 @@ console.log("[Gem] nav-menu-utils.js loaded");
     if (!node || node.nodeType !== 1) return false;
     try {
       if (
-        node.matches?.(LEGACY_NAV_SELECTOR) ||
         node.matches?.(UI5_ROOT_SELECTOR) ||
-        node.matches?.(UI5_HOST_SELECTOR) ||
-        node.matches?.("e-navigation")
+        node.matches?.(UI5_HOST_SELECTOR)
       ) {
         return true;
       }
       return !!(
-        node.querySelector?.(LEGACY_NAV_SELECTOR) ||
         node.querySelector?.(UI5_ROOT_SELECTOR) ||
-        node.querySelector?.(UI5_HOST_SELECTOR) ||
-        node.querySelector?.("e-navigation")
+        node.querySelector?.(UI5_HOST_SELECTOR)
       );
     } catch (_) {
       return false;
@@ -391,23 +362,11 @@ console.log("[Gem] nav-menu-utils.js loaded");
   }
 
   /**
-   * Collect Emarsys nav links for the command palette (legacy + UI5).
+   * Collect Emarsys nav links for the command palette (UI5 side navigation).
    * @returns {{ sectionTitle: string, label: string, href: string }[]}
    */
   function collectEmarsysNavLinks() {
     const out = [];
-
-    document.querySelectorAll(`${LEGACY_NAV_SELECTOR} > li`).forEach((li) => {
-      const titleEl = li.querySelector(".e-navigation__action_text");
-      const sectionTitle = titleEl ? String(titleEl.textContent || "").trim() : "";
-      if (!sectionTitle) return;
-      li.querySelectorAll(".e-navigation__submenu a.e-navigation__submenu_action").forEach((link) => {
-        const label = String(link.textContent || "").replace(/\s+/g, " ").trim();
-        const href = String(link.getAttribute("href") || link.href || "").trim();
-        if (!label || !href || /^javascript:/i.test(href)) return;
-        out.push({ sectionTitle, label, href });
-      });
-    });
 
     const pushUi5SubLinks = (sectionTitle, parentEl) => {
       if (!sectionTitle || !parentEl) return;
@@ -478,12 +437,10 @@ console.log("[Gem] nav-menu-utils.js loaded");
   }
 
   window.gemNavMenu = {
-    LEGACY_NAV_SELECTOR,
     UI5_HOST_SELECTOR,
     UI5_ROOT_SELECTOR,
     UI5_ITEM_TAG,
     getNavFlavor,
-    getLegacyNavLists,
     getUi5NavRoots,
     getNavHosts,
     syncUi5CollapsedAttrs,
@@ -499,7 +456,6 @@ console.log("[Gem] nav-menu-utils.js loaded");
     refreshUi5CollapsedOnGemmaItems,
     observeUi5Collapsed,
     GEM_NAV_ICON_SVGS,
-    applyLegacyNavSvg,
     scheduleUi5SvgPatch,
   };
 

@@ -12,26 +12,66 @@
   const STORAGE_SHOW_URLS_KEY = 'gemLinkHighlightShowUrls';
   const LABEL_MIN_WIDTH_PX = 100;
 
+  const SVG_LINK_EDITABLE =
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" aria-hidden="true">' +
+    '<path fill="currentColor" d="M318-120q-82 0-140-58t-58-140q0-40 15-76t43-64l134-133 56 56-134 134q-17 17-25.5 38.5T200-318q0 49 34.5 83.5T318-200q23 0 45-8.5t39-25.5l133-134 57 57-134 133q-28 28-64 43t-76 15Zm79-220-57-57 223-223 57 57-223 223Zm251-28-56-57 134-133q17-17 25-38t8-44q0-50-34-85t-84-35q-23 0-44.5 8.5T558-726L425-592l-57-56 134-134q28-28 64-43t76-15q82 0 139.5 58T839-641q0 39-14.5 75T782-502L648-368Z"/>' +
+    '</svg>';
+
+  const SVG_LINK_LOCKED =
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" aria-hidden="true">' +
+    '<path fill="currentColor" d="M240-80q-33 0-56.5-23.5T160-160v-400q0-33 23.5-56.5T240-640h40v-80q0-83 58.5-141.5T480-920q83 0 141.5 58.5T680-720v80h40q33 0 56.5 23.5T800-560v400q0 33-23.5 56.5T720-80H240Zm0-80h480v-400H240v400Zm296.5-143.5Q560-327 560-360t-23.5-56.5Q513-440 480-440t-56.5 23.5Q400-393 400-360t23.5 56.5Q447-280 480-280t56.5-23.5ZM360-640h240v-80q0-50-35-85t-85-35q-50 0-85 35t-35 85v80ZM240-160v-400 400Z"/>' +
+    '</svg>';
+
   const LINK_HIGHLIGHT_CSS = `
 .gem-link-highlight-overlay {
-  background: rgba(37, 99, 235, 0.12);
-  box-shadow: inset 0 0 0 2px rgba(37, 99, 235, 0.55);
   border-radius: 2px;
-  overflow: hidden;
+  overflow: visible;
   display: flex;
   align-items: center;
   justify-content: center;
 }
+.gem-link-highlight-overlay--editable {
+  background: rgba(37, 99, 235, 0.12);
+  box-shadow: inset 0 0 0 2px rgba(37, 99, 235, 0.55);
+}
+.gem-link-highlight-overlay--locked {
+  background: rgba(147, 197, 253, 0.14);
+  box-shadow: inset 0 0 0 2px rgba(147, 197, 253, 0.48);
+}
 .gem-link-highlight-pip {
   position: absolute;
-  top: 2px;
-  right: 2px;
-  width: 8px;
-  height: 8px;
+  top: -5px;
+  right: -5px;
+  width: 12px;
+  height: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  /* filter: drop-shadow(0 0 1px rgba(255, 255, 255, 0.85)); */
   border-radius: 999px;
-  background: rgba(37, 99, 235, 0.95);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.85);
+  padding: 2px;
 }
+.gem-link-highlight-pip svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.gem-link-highlight-pip.gem-link-highlight-pip--editable {
+  background: rgb(37, 99, 235);
+}
+.gem-link-highlight-pip--editable {
+  color: #fff;
+}
+
+.gem-link-highlight-pip.gem-link-highlight-pip--locked  {
+  background: rgb(147, 197, 253);
+}
+.gem-link-highlight-pip--locked {
+  color: #fff;
+}
+
 .gem-link-highlight-label {
   color: #fff;
   font-size: 10px;
@@ -44,8 +84,13 @@
   max-height: 100%;
   overflow: hidden;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.75);
-  background: rgba(37, 99, 235, 0.72);
   border-radius: 2px;
+}
+.gem-link-highlight-label--editable {
+  background: rgba(37, 99, 235, 0.72);
+}
+.gem-link-highlight-label--locked {
+  background: rgba(147, 197, 253, 0.68);
 }
   `.trim();
 
@@ -326,6 +371,23 @@
     return anchor._gemLinkHighlightId;
   }
 
+  function isEditableAnchor(anchor) {
+    if (!anchor) return false;
+    try {
+      if (anchor.closest('[e-editable]')) return true;
+      if (anchor.querySelector('[e-editable]')) return true;
+    } catch (_) {}
+    return false;
+  }
+
+  function createLinkHighlightPip(doc, editable) {
+    const pip = doc.createElement('span');
+    pip.className = 'gem-link-highlight-pip gem-link-highlight-pip--' + (editable ? 'editable' : 'locked');
+    pip.setAttribute('aria-hidden', 'true');
+    pip.innerHTML = editable ? SVG_LINK_EDITABLE : SVG_LINK_LOCKED;
+    return pip;
+  }
+
   function renderOverlays(iframe) {
     const doc = iframe.contentDocument;
     if (!doc || !doc.body) return;
@@ -348,9 +410,13 @@
       const rect = anchor.getBoundingClientRect();
       if (!rect.width || !rect.height) return;
 
+      const editable = isEditableAnchor(anchor);
+      const variant = editable ? 'editable' : 'locked';
+
       const overlay = doc.createElement('div');
-      overlay.className = 'gem-link-highlight-overlay';
+      overlay.className = 'gem-link-highlight-overlay gem-link-highlight-overlay--' + variant;
       overlay.setAttribute('data-gem-link-id', getAnchorId(anchor));
+      overlay.setAttribute('data-gem-link-editable', editable ? 'true' : 'false');
       Object.assign(overlay.style, {
         position: 'absolute',
         left: (rect.left + scrollX) + 'px',
@@ -361,14 +427,11 @@
         boxSizing: 'border-box',
       });
 
-      const pip = doc.createElement('span');
-      pip.className = 'gem-link-highlight-pip';
-      pip.setAttribute('aria-hidden', 'true');
-      overlay.appendChild(pip);
+      overlay.appendChild(createLinkHighlightPip(doc, editable));
 
       if (showUrls && rect.width >= LABEL_MIN_WIDTH_PX) {
         const label = doc.createElement('span');
-        label.className = 'gem-link-highlight-label';
+        label.className = 'gem-link-highlight-label gem-link-highlight-label--' + variant;
         label.textContent = truncateHref(href);
         overlay.appendChild(label);
       }

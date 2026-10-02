@@ -159,6 +159,8 @@ function initializeHeaderCopyIcon() {
       header.dataset.gemHeaderCopyHandlersBound = 'true';
       // Add hover listeners
       header.addEventListener('mouseenter', () => {
+        if (document.documentElement.classList.contains('gem-focus-layout')) return;
+        if (header.closest('button.gem-campaign-menu-trigger')) return;
         addCopyIconToHeader(header);
       });
 

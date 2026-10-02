@@ -15,28 +15,6 @@ let notesSaveTimeout = null;
 
 // ── Nav button ──────────────────────────────────────────────────────────
 
-function buildLegacyNotesNavItem() {
-  const li = document.createElement("li");
-  li.className = "e-navigation__menu_list_item";
-  li.id = GEM_NOTES_NAV_ID;
-  li.innerHTML = `
-    <button type="button" class="e-navigation__action" menu-item-id="notes">
-      <e-icon class="e-navigation__action_icon" color="inherit" icon="custom">
-        <div aria-hidden="true" class="e-icon-wrapper">
-          <div class="e-icon text-color-inherit gem-nav-custom-svg"></div>
-        </div>
-      </e-icon>
-      <span class="e-navigation__action_text">Gemma Notes</span>
-    </button>
-  `;
-  if (window.gemNavMenu) {
-    window.gemNavMenu.applyLegacyNavSvg(li, window.gemNavMenu.GEM_NAV_ICON_SVGS.notes);
-  }
-
-  li.querySelector("button").addEventListener("click", toggleNotesPanel);
-  return li;
-}
-
 function buildUi5NotesNavItem(navRoot) {
   const gem = window.gemNavMenu;
   const item = gem.buildUi5ActionItem(
@@ -56,36 +34,24 @@ function buildUi5NotesNavItem(navRoot) {
   return item;
 }
 
-function injectNotesNavItem(host, flavor) {
+function injectNotesNavItem(host) {
   if (!host || host.querySelector(`#${GEM_NOTES_NAV_ID}`)) return;
   const gem = window.gemNavMenu;
-  const item =
-    flavor === "ui5" && gem ? buildUi5NotesNavItem(host) : buildLegacyNotesNavItem();
-  if (gem) {
-    const recentItem = host.querySelector("#gem-nav-recent-campaigns-item");
-    if (recentItem) {
-      host.insertBefore(item, recentItem);
-    } else {
-      gem.insertBeforeCommandsOrSettings(host, item, "gem-nav-commands-item", "gem-nav-settings-item");
-    }
+  if (!gem) return;
+  const item = buildUi5NotesNavItem(host);
+  const recentItem = host.querySelector("#gem-nav-recent-campaigns-item");
+  if (recentItem) {
+    host.insertBefore(item, recentItem);
   } else {
-    const recentItem = host.querySelector("#gem-nav-recent-campaigns-item");
-    const commandsItem = host.querySelector("#gem-nav-commands-item");
-    const settingsItem = host.querySelector("#gem-nav-settings-item");
-    const insertBefore = recentItem || commandsItem || settingsItem;
-    if (insertBefore) host.insertBefore(item, insertBefore);
-    else host.appendChild(item);
+    gem.insertBeforeCommandsOrSettings(host, item, "gem-nav-commands-item", "gem-nav-settings-item");
   }
 }
 
 function scanForNav(root = document) {
   const gem = window.gemNavMenu;
-  if (!gem) {
-    root.querySelectorAll("nav .e-navigation__menu_list").forEach((nav) => injectNotesNavItem(nav, "legacy"));
-    return;
-  }
-  const { flavor, hosts } = gem.getNavHosts(root);
-  hosts.forEach((host) => injectNotesNavItem(host, flavor));
+  if (!gem) return;
+  const { hosts } = gem.getNavHosts(root);
+  hosts.forEach((host) => injectNotesNavItem(host));
 }
 
 function observeNav() {
@@ -95,26 +61,17 @@ function observeNav() {
         if (node.nodeType !== 1) continue;
 
         if (node.id === "gem-nav-settings-item") {
-          const gem = window.gemNavMenu;
-          const host =
-            node.closest?.("ul.e-navigation__menu_list") ||
-            node.closest?.("ui5-side-navigation-ds-nav");
+          const host = node.closest?.("ui5-side-navigation-ds-nav");
           if (host) {
-            const flavor = host.matches?.("ui5-side-navigation-ds-nav") ? "ui5" : "legacy";
-            injectNotesNavItem(host, flavor);
-          } else if (gem) {
+            injectNotesNavItem(host);
+          } else if (window.gemNavMenu) {
             scanForNav(document);
           }
         } else if (node.querySelectorAll) {
           const settingsItems = node.querySelectorAll("#gem-nav-settings-item");
           settingsItems.forEach((si) => {
-            const host =
-              si.closest("ul.e-navigation__menu_list") ||
-              si.closest("ui5-side-navigation-ds-nav");
-            if (host) {
-              const flavor = host.matches?.("ui5-side-navigation-ds-nav") ? "ui5" : "legacy";
-              injectNotesNavItem(host, flavor);
-            }
+            const host = si.closest("ui5-side-navigation-ds-nav");
+            if (host) injectNotesNavItem(host);
           });
           scanForNav(node);
           if (window.gemNavMenu?.isNavRelatedNode(node)) scanForNav(document);

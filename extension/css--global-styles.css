@@ -111,19 +111,8 @@ html.FLIPPER-theme-eveningHorizon {
 }
 
 /* GLobal Styles */
-ul.e-navigation__menu_list {
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-}
-.e-navigation__action .gem-nav-custom-svg svg {
-    width: 1.25rem;
-    height: 1.25rem;
-    display: block;
-    fill: currentColor;
-}
 
-/* New Emarsys UI5 side navigation — Gemma items */
+/* Emarsys UI5 side navigation — Gemma items */
 #gem-nav-notes-item.gem-ui5-nav-item,
 ui5-side-navigation-item-ds-nav#gem-nav-notes-item {
     margin-top: auto;
@@ -140,21 +129,9 @@ ui5-side-navigation-item-ds-nav#gem-nav-notes-item {
 
 
 /* Gemma Themed Navigation Menu */
-.e-navigation__panel > nav.e-navigation__menu {
-    background-image: linear-gradient(to top, var(--token-static-600) 0%, color-mix(in srgb, var(--token-static-600) 15%, transparent) 15%, transparent 30%);
-    transition: background-image 2s ease-out;
-}
-
 e-side-navigation ui5-side-navigation-ds-nav {
     background-image: linear-gradient(to top, var(--token-static-600) 0%, color-mix(in srgb, var(--token-static-600) 15%, transparent) 12%, transparent 28%);
     padding-bottom: 0.5rem;
-}
-
-html.FLIPPER-theme-eveningHorizon .e-navigation__panel #gem-nav-settings-item .e-navigation__action_text {
-    text-shadow: 1px 1px 5px rgb(0 0 0 / 0.5);
-}
-.e-navigation__panel .e-navigation__action:not(:hover):not(:focus-visible) {
-    background: transparent !important;
 }
 
 .gem-e-btn-primary {
@@ -450,29 +427,11 @@ span.gem-e-icon {
     margin-top: auto;
 }
 
-#gem-nav-recent-campaigns-item .gem-recent-campaign-language-filters {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin: 8px 0 14px;
-}
-
 .gem-recent-campaigns-panel .gem-recent-campaign-language-filters {
     display: flex;
     flex-wrap: wrap;
     gap: 4px;
     margin: 8px 0 14px;
-}
-
-#gem-nav-recent-campaigns-item .gem-recent-campaign-filter-chip {
-    border: 1px solid var(--token-box-default-border);
-    border-radius: 999px;
-    background: var(--token-box-default-background);
-    color: var(--token-font-default);
-    font-size: 12px;
-    line-height: 1.1;
-    padding: 4px 8px;
-    cursor: pointer;
 }
 
 .gem-recent-campaigns-panel .gem-recent-campaign-filter-chip {
@@ -486,33 +445,11 @@ span.gem-e-icon {
     cursor: pointer;
 }
 
-#gem-nav-recent-campaigns-item .gem-recent-campaign-filter-chip--active {
-    background: var(--token-blue-100, #dbeafe);
-    border-color: var(--token-blue-400, #60a5fa);
-    color: var(--token-blue-900, #1e3a8a);
-}
-
 .gem-recent-campaigns-panel .gem-recent-campaign-filter-chip--active {
     background: var(--token-blue-100, #dbeafe);
     border-color: var(--token-blue-400, #60a5fa);
     color: var(--token-blue-900, #1e3a8a);
     box-shadow: 0 0 10px 0 var(--token-blue-400, #60a5fa);
-}
-
-#gem-nav-recent-campaigns-item .gem-recent-campaign-row {
-    width: 100%;
-    color: var(--token-font-default);
-    padding: 8px 0;
-    margin: 8px 0;
-    text-align: left;
-    cursor: default;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    position:relative;
-}
-#gem-nav-recent-campaigns-item .gem-recent-campaign-row:last-child {
-    margin-bottom: 0;
 }
 
 .gem-recent-campaigns-panel .gem-recent-campaign-row {
@@ -610,11 +547,6 @@ span.gem-e-icon {
     gap: 4px;
 }
 
-#gem-nav-recent-campaigns-item .gem-recent-campaign-row + .gem-recent-campaign-row {
-    border-top: 1px solid var(--token-box-default-border);
-    padding-top: 16px;
-}
-
 .gem-recent-campaigns-panel .gem-recent-campaign-row {
     border-top: 1px solid var(--token-box-default-border);
     padding: 16px 0;
@@ -639,14 +571,6 @@ span.gem-e-icon {
     border-top: none !important;
 }
 
-#gem-nav-recent-campaigns-item .gem-recent-campaign-title-row {
-    display: flex;
-    align-items: center;
-    justify-content: flex-start;
-    gap: 8px;
-    position: relative;
-}
-
 .gem-recent-campaigns-panel .gem-recent-campaign-title-row {
     display: flex;
     align-items: center;
@@ -655,38 +579,10 @@ span.gem-e-icon {
     position: relative;
 }
 
-#gem-nav-recent-campaigns-item .gem-recent-campaign-title {
-    font-weight: 700;
-    font-size: 12px;
-    line-height: 1.35;
-}
-
 .gem-recent-campaigns-panel .gem-recent-campaign-title {
     font-weight: 700;
     font-size: 15px;
     line-height: 1.35;
-}
-
-#gem-nav-recent-campaigns-item .e-navigation__submenu {
-    width: 760px;
-    max-width: 760px;
-    overflow: hidden;
-    padding-right:0px;
-}
-
-#gem-nav-recent-campaigns-item .gem-recent-campaign-title-link {
-    border: 0;
-    padding: 0;
-    background: transparent;
-    color: inherit;
-    text-align: left;
-    cursor: pointer;
-    text-decoration: underline;
-    text-underline-offset: 2px;
-    word-break: break-all;
-    text-decoration: none !important;
-    font-size: 14px !important;
-    margin: 0 0 4px 0;
 }
 
 .gem-recent-campaigns-panel .gem-recent-campaign-title-link {
@@ -716,22 +612,6 @@ span.gem-e-icon {
     margin: 0;
     font-weight: normal;
 }
-
-/* 
-#gem-nav-recent-campaigns-item .gem-recent-campaign-open-chip {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-
-    width: fit-content;
-    padding: 0 7px;
-    border-radius: 999px;
-    background: var(--token-green-200, #bbf7d0);
-    color: var(--token-green-900, #14532d);
-    font-weight: 700;
-    flex-shrink: 0;
-    margin-bottom: 4px;
-} */
 
 .gem-recent-campaigns-panel .gem-recent-campaign-open-chip {
     display: inline-flex;
@@ -786,31 +666,12 @@ span.gem-e-icon {
 color-mix(in srgb, var(--token-gray-100, #dbeafe) 25%, transparent);
 }
 
-#gem-nav-recent-campaigns-item .gem-recent-campaign-subject,
-#gem-nav-recent-campaigns-item .gem-recent-campaign-last-viewed,
-#gem-nav-recent-campaigns-item .gem-recent-campaigns-empty {
-    font-size: 13px;
-    line-height: 1.35;
-    opacity: 0.75;
-}
-
 .gem-recent-campaigns-panel .gem-recent-campaign-subject,
 .gem-recent-campaigns-panel .gem-recent-campaign-last-viewed,
 .gem-recent-campaigns-panel .gem-recent-campaigns-empty {
     font-size: 13px;
     line-height: 1.35;
     opacity: 0.75;
-}
-
-#gem-nav-recent-campaigns-item .gem-recent-campaigns-list {
-    overflow-y: scroll;
-    height: stretch;
-}
-
-#gem-nav-recent-campaigns-item .gem-recent-campaign-subject {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
 }
 
 .gem-recent-campaigns-panel .gem-recent-campaign-subject {
@@ -878,7 +739,6 @@ color-mix(in srgb, var(--token-gray-100, #dbeafe) 25%, transparent);
     box-shadow: 0 0 0 1px color-mix(in srgb, #ea580c 55%, #000);
 }
 
-#gem-nav-recent-campaigns-item .gem-recent-campaign-languages,
 .gem-recent-campaigns-panel .gem-recent-campaign-languages {
     display: flex;
     flex-wrap: wrap;
@@ -887,7 +747,6 @@ color-mix(in srgb, var(--token-gray-100, #dbeafe) 25%, transparent);
     margin-top: 2px;
 }
 
-#gem-nav-recent-campaigns-item .gem-recent-campaign-lang-chip,
 .gem-recent-campaigns-panel .gem-recent-campaign-lang-chip {
     display: inline-flex;
     align-items: center;
@@ -902,7 +761,6 @@ color-mix(in srgb, var(--token-gray-100, #dbeafe) 25%, transparent);
     font-weight: 500;
 }
 
-#gem-nav-recent-campaigns-item .gem-recent-campaign-version-chip,
 .gem-recent-campaigns-panel .gem-recent-campaign-version-chip {
     display: inline-flex;
     align-items: center;
@@ -922,7 +780,6 @@ color-mix(in srgb, var(--token-gray-100, #dbeafe) 25%, transparent);
     opacity: 0.82;
 }
 
-#gem-nav-recent-campaigns-item .gem-recent-campaign-version-chips,
 .gem-recent-campaigns-panel .gem-recent-campaign-version-chips {
     display: inline-flex;
     align-items: center;
@@ -930,7 +787,6 @@ color-mix(in srgb, var(--token-gray-100, #dbeafe) 25%, transparent);
     flex-shrink: 0;
 }
 
-#gem-nav-recent-campaigns-item .gem-recent-campaign-version-chip--link,
 .gem-recent-campaigns-panel .gem-recent-campaign-version-chip--link {
     border: 1px solid color-mix(in srgb, var(--token-box-default-border, #ccc) 55%, transparent);
     background: color-mix(in srgb, var(--token-box-default-border, #ccc) 55%, transparent);
@@ -939,18 +795,15 @@ color-mix(in srgb, var(--token-gray-100, #dbeafe) 25%, transparent);
     padding: 0 6px;
 }
 
-#gem-nav-recent-campaigns-item .gem-recent-campaign-version-chip--link:hover,
 .gem-recent-campaigns-panel .gem-recent-campaign-version-chip--link:hover {
     background: color-mix(in srgb, var(--token-primary-100, #dbeafe) 70%, transparent);
     border-color: color-mix(in srgb, var(--token-primary-200, #bfdbfe) 80%, transparent);
 }
 
-#gem-nav-recent-campaigns-item .gem-recent-campaign-version-chip--backfilled,
 .gem-recent-campaigns-panel .gem-recent-campaign-version-chip--backfilled {
     opacity: 0.58;
 }
 
-#gem-nav-recent-campaigns-item .gem-recent-campaign-version-chip--open,
 .gem-recent-campaigns-panel .gem-recent-campaign-version-chip--open {
     background: color-mix(in srgb, var(--token-green-200, #bbf7d0) 85%, transparent);
     border-color: color-mix(in srgb, var(--token-green-600, #16a34a) 45%, transparent);
@@ -962,7 +815,6 @@ color-mix(in srgb, var(--token-gray-100, #dbeafe) 25%, transparent);
     background: rgba(0 0 0 / 0.25);
 }
 
-#gem-nav-recent-campaigns-item .gem-recent-campaign-lang-chip--empty,
 .gem-recent-campaigns-panel .gem-recent-campaign-lang-chip--empty {
     font-style: italic;
     font-weight: 400;
@@ -1464,20 +1316,97 @@ color-mix(in srgb, var(--token-gray-100, #dbeafe) 25%, transparent);
     to { transform: rotate(360deg); }
 }
 
-#gem-nav-recent-campaigns-item .gem-overflow-menu-wrap--hover-only,
+/* Campaign duplicate progress dialog */
+.gem-campaign-duplicate-dialog {
+    position: fixed;
+    inset: 0;
+    /* z-index assigned via gemLayerRaise when visible */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    box-sizing: border-box;
+}
+
+.gem-campaign-duplicate-dialog[hidden] {
+    display: none !important;
+}
+
+.gem-campaign-duplicate-dialog__scrim {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    pointer-events: auto;
+}
+
+.gem-campaign-duplicate-dialog__panel {
+    position: relative;
+    z-index: 1;
+    width: min(420px, calc(100vw - 48px));
+    background: var(--token-box-default-background, #ffffff);
+    color: var(--token-font-default, #111);
+    border: 1px solid var(--token-box-default-border, rgba(0, 0, 0, 0.12));
+    border-radius: 12px;
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.35);
+    padding: 20px 20px 24px;
+}
+
+.gem-campaign-duplicate-dialog__close {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    line-height: 1;
+}
+
+.gem-campaign-duplicate-dialog__body {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    padding-top: 4px;
+}
+
+.gem-campaign-duplicate-dialog__status {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding-right: 28px;
+}
+
+.gem-campaign-duplicate-dialog__message {
+    margin: 0;
+    font-size: 15px;
+    line-height: 1.45;
+}
+
+.gem-campaign-duplicate-dialog__status-spinner {
+    margin-top: 3px;
+    width: 14px;
+    height: 14px;
+}
+
+.gem-campaign-duplicate-dialog__status-spinner[hidden] {
+    display: none;
+}
+
+.gem-campaign-duplicate-dialog__actions {
+    display: flex;
+    justify-content: flex-start;
+}
+
+.gem-campaign-duplicate-dialog__open-link {
+    text-decoration: none;
+}
+
 .gem-recent-campaigns-panel .gem-overflow-menu-wrap--hover-only {
     opacity: 0;
     pointer-events: none;
 }
 
-#gem-nav-recent-campaigns-item .gem-overflow-menu-wrap--hover-only:has(.gem-overflow-menu--open),
 .gem-recent-campaigns-panel .gem-overflow-menu-wrap--hover-only:has(.gem-overflow-menu--open) {
     opacity: 1;
     pointer-events: auto;
 }
 
-#gem-nav-recent-campaigns-item .gem-recent-campaign-row:hover .gem-overflow-menu-wrap--hover-only,
-#gem-nav-recent-campaigns-item .gem-recent-campaign-row:focus-within .gem-overflow-menu-wrap--hover-only,
 .gem-recent-campaigns-panel .gem-recent-campaign-row:hover .gem-overflow-menu-wrap--hover-only,
 .gem-recent-campaigns-panel .gem-recent-campaign-row:focus-within .gem-overflow-menu-wrap--hover-only {
     opacity: 1;

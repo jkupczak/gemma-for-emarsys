@@ -101,7 +101,17 @@
       + hash;
   }
 
+  /** Opens the Email Basics panel on campaign editor load. Replaces any existing hash. */
+  function gemWithEmailBasicsHash(href) {
+    const raw = String(href || '').trim();
+    if (!raw) return raw;
+    const hashIdx = raw.indexOf('#');
+    const withoutHash = hashIdx === -1 ? raw : raw.slice(0, hashIdx);
+    return `${withoutHash}#/email-basics`;
+  }
+
   window.gemHrefPreserveQuerySlashes = gemHrefPreserveQuerySlashes;
+  window.gemWithEmailBasicsHash = gemWithEmailBasicsHash;
   window.gemIsGemStrippedCampaignUrl = gemIsGemStrippedCampaignUrl;
 
   window.gemIsGemStrippedEmbedIframe = function gemIsGemStrippedEmbedIframe(iframe) {

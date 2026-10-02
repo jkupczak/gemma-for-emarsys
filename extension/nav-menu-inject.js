@@ -27,57 +27,6 @@ function toggleCommandPaletteFromNav() {
   }
 }
 
-function buildLegacyCommandsItem() {
-  const li = document.createElement("li");
-  li.className = "e-navigation__menu_list_item";
-  li.id = COMMANDS_ITEM_ID;
-
-  li.innerHTML = `
-    <button type="button" class="e-navigation__action" aria-expanded="false">
-      <e-icon class="e-navigation__action_icon" color="inherit" icon="custom">
-        <div aria-hidden="true" class="e-icon-wrapper">
-          <div class="e-icon text-color-inherit gem-nav-custom-svg"></div>
-        </div>
-      </e-icon>
-      <span class="e-navigation__action_text">Gemma Commands</span>
-    </button>
-  `;
-  if (window.gemNavMenu) {
-    window.gemNavMenu.applyLegacyNavSvg(li, window.gemNavMenu.GEM_NAV_ICON_SVGS.commands);
-  }
-
-  const btn = li.querySelector("button");
-  if (btn) btn.addEventListener("click", toggleCommandPaletteFromNav);
-  li._gemCommandsNavWired = true;
-  return li;
-}
-
-function buildLegacySettingsItem() {
-  const li = document.createElement("li");
-  li.className = "e-navigation__menu_list_item";
-  li.id = SETTINGS_ITEM_ID;
-  li.style.marginBottom = "20px";
-
-  li.innerHTML = `
-    <button type="button" class="e-navigation__action" aria-expanded="false">
-      <e-icon class="e-navigation__action_icon" color="inherit" icon="custom">
-        <div aria-hidden="true" class="e-icon-wrapper">
-          <div class="e-icon text-color-inherit gem-nav-custom-svg"></div>
-        </div>
-      </e-icon>
-      <span class="e-navigation__action_text">Gemma Settings</span>
-    </button>
-  `;
-  if (window.gemNavMenu) {
-    window.gemNavMenu.applyLegacyNavSvg(li, window.gemNavMenu.GEM_NAV_ICON_SVGS.settings);
-  }
-
-  const btn = li.querySelector("button");
-  if (btn) btn.addEventListener("click", toggleGemmaSettingsFromNav);
-  li._gemSettingsNavWired = true;
-  return li;
-}
-
 function buildUi5CommandsItem(navRoot) {
   const gem = window.gemNavMenu;
   const item = gem.buildUi5ActionItem(
@@ -122,94 +71,75 @@ function buildUi5SettingsItem(navRoot) {
   return item;
 }
 
-function wireCommandsItem(host, flavor) {
+function wireCommandsItem(host) {
   const el = host.querySelector(`#${COMMANDS_ITEM_ID}`);
   if (!el || el._gemCommandsNavWired) return;
   el._gemCommandsNavWired = true;
-  if (flavor === "ui5") {
-    const gem = window.gemNavMenu;
-    const activate = (event) => {
-      clearUi5NavSelection(event && event.currentTarget);
-      toggleCommandPaletteFromNav();
-    };
-    if (gem && typeof gem.bindUi5NavActivate === "function") {
-      gem.bindUi5NavActivate(el, activate);
-    } else {
-      el.addEventListener("click", activate);
-      el.addEventListener("ui5-click", activate);
-    }
-    return;
+  const gem = window.gemNavMenu;
+  const activate = (event) => {
+    clearUi5NavSelection(event && event.currentTarget);
+    toggleCommandPaletteFromNav();
+  };
+  if (gem && typeof gem.bindUi5NavActivate === "function") {
+    gem.bindUi5NavActivate(el, activate);
+  } else {
+    el.addEventListener("click", activate);
+    el.addEventListener("ui5-click", activate);
   }
-  const btn = el.querySelector("button");
-  if (btn) btn.addEventListener("click", toggleCommandPaletteFromNav);
 }
 
-function wireSettingsItem(host, flavor) {
+function wireSettingsItem(host) {
   const el = host.querySelector(`#${SETTINGS_ITEM_ID}`);
   if (!el || el._gemSettingsNavWired) return;
   el._gemSettingsNavWired = true;
-  if (flavor === "ui5") {
-    const gem = window.gemNavMenu;
-    const activate = (event) => {
-      clearUi5NavSelection(event && event.currentTarget);
-      toggleGemmaSettingsFromNav();
-    };
-    if (gem && typeof gem.bindUi5NavActivate === "function") {
-      gem.bindUi5NavActivate(el, activate);
-    } else {
-      el.addEventListener("click", activate);
-      el.addEventListener("ui5-click", activate);
-    }
-    return;
+  const gem = window.gemNavMenu;
+  const activate = (event) => {
+    clearUi5NavSelection(event && event.currentTarget);
+    toggleGemmaSettingsFromNav();
+  };
+  if (gem && typeof gem.bindUi5NavActivate === "function") {
+    gem.bindUi5NavActivate(el, activate);
+  } else {
+    el.addEventListener("click", activate);
+    el.addEventListener("ui5-click", activate);
   }
-  const btn = el.querySelector("button");
-  if (btn) btn.addEventListener("click", toggleGemmaSettingsFromNav);
 }
 
-function insertSettingsItem(host, flavor) {
+function insertSettingsItem(host) {
   if (!host || host.querySelector(`#${SETTINGS_ITEM_ID}`)) return;
   const gem = window.gemNavMenu;
-  const item =
-    flavor === "ui5" && gem ? buildUi5SettingsItem(host) : buildLegacySettingsItem();
-  host.appendChild(item);
+  if (!gem) return;
+  host.appendChild(buildUi5SettingsItem(host));
 }
 
-function insertCommandsItem(host, flavor) {
+function insertCommandsItem(host) {
   if (!host || host.querySelector(`#${COMMANDS_ITEM_ID}`)) return;
   const settingsItem = host.querySelector(`#${SETTINGS_ITEM_ID}`);
   if (!settingsItem) return;
 
   const gem = window.gemNavMenu;
-  const item =
-    flavor === "ui5" && gem ? buildUi5CommandsItem(host) : buildLegacyCommandsItem();
-
-  if (gem) {
-    gem.insertRelativeToSettings(host, item, SETTINGS_ITEM_ID);
-  } else {
-    host.insertBefore(item, settingsItem);
-  }
+  if (!gem) return;
+  const item = buildUi5CommandsItem(host);
+  gem.insertRelativeToSettings(host, item, SETTINGS_ITEM_ID);
 }
 
-function insertItems(host, flavor) {
-  insertSettingsItem(host, flavor);
-  insertCommandsItem(host, flavor);
-  wireSettingsItem(host, flavor);
-  wireCommandsItem(host, flavor);
+function insertItems(host) {
+  insertSettingsItem(host);
+  insertCommandsItem(host);
+  wireSettingsItem(host);
+  wireCommandsItem(host);
 }
 
 function scanAndInsert(root = document) {
   const gem = window.gemNavMenu;
-  if (!gem) {
-    document.querySelectorAll("ul.e-navigation__menu_list").forEach((nav) => insertItems(nav, "legacy"));
-    return;
-  }
-  const { flavor, hosts } = gem.getNavHosts(root === document ? document : root);
+  if (!gem) return;
+  const { hosts } = gem.getNavHosts(root === document ? document : root);
   if (!hosts.length && root !== document) {
     const again = gem.getNavHosts(document);
-    again.hosts.forEach((host) => insertItems(host, again.flavor));
+    again.hosts.forEach((host) => insertItems(host));
     return;
   }
-  hosts.forEach((host) => insertItems(host, flavor));
+  hosts.forEach((host) => insertItems(host));
 }
 
 function observe() {
@@ -223,15 +153,14 @@ function observe() {
           node.id === SETTINGS_ITEM_ID ||
           node.id === COMMANDS_ITEM_ID ||
           gem?.isNavRelatedNode(node) ||
-          node.matches?.("ul.e-navigation__menu_list, ui5-side-navigation-ds-nav, e-side-navigation, e-navigation")
+          node.matches?.("ui5-side-navigation-ds-nav, e-side-navigation")
         ) {
           needed = true;
           return;
         }
         if (
           node.querySelectorAll &&
-          (node.querySelector("ul.e-navigation__menu_list") ||
-            node.querySelector("ui5-side-navigation-ds-nav") ||
+          (node.querySelector("ui5-side-navigation-ds-nav") ||
             node.querySelector("e-side-navigation") ||
             node.querySelector(`#${SETTINGS_ITEM_ID}`))
         ) {

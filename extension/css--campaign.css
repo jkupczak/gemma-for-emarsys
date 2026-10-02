@@ -267,24 +267,56 @@ vce-languages-list > div.e-stretch {
 
 /* Link highlight preview overlays (classes injected into desktop preview iframe by link-highlight-preview.js) */
 .gem-link-highlight-overlay {
-    background: rgba(37, 99, 235, 0.12);
-    box-shadow: inset 0 0 0 2px rgba(37, 99, 235, 0.55);
     border-radius: 2px;
-    overflow: hidden;
+    overflow: visible;
     display: flex;
     align-items: center;
     justify-content: center;
 }
 
+.gem-link-highlight-overlay--editable {
+    background: rgba(37, 99, 235, 0.12);
+    box-shadow: inset 0 0 0 2px rgba(37, 99, 235, 0.55);
+}
+
+.gem-link-highlight-overlay--locked {
+    background: rgba(147, 197, 253, 0.14);
+    box-shadow: inset 0 0 0 2px rgba(147, 197, 253, 0.48);
+}
+
 .gem-link-highlight-pip {
     position: absolute;
-    top: 2px;
-    right: 2px;
-    width: 8px;
-    height: 8px;
+    top: -5px;
+    right: -5px;
+    width: 12px;
+    height: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
     border-radius: 999px;
-    background: rgba(37, 99, 235, 0.95);
-    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.85);
+    padding: 2px;
+    /* filter: drop-shadow(0 0 1px rgba(255, 255, 255, 0.85)); */
+}
+
+.gem-link-highlight-pip svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+.gem-link-highlight-pip.gem-link-highlight-pip--editable {
+    background: rgb(37, 99, 235);
+}
+.gem-link-highlight-pip--editable {
+    color: #fff;
+}
+
+.gem-link-highlight-pip.gem-link-highlight-pip--locked  {
+    background: rgb(147, 197, 253);
+}
+.gem-link-highlight-pip--locked {
+    color: #fff;
 }
 
 .gem-link-highlight-label {
@@ -299,8 +331,15 @@ vce-languages-list > div.e-stretch {
     max-height: 100%;
     overflow: hidden;
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.75);
-    background: rgba(37, 99, 235, 0.72);
     border-radius: 2px;
+}
+
+.gem-link-highlight-label--editable {
+    background: rgba(37, 99, 235, 0.72);
+}
+
+.gem-link-highlight-label--locked {
+    background: rgba(147, 197, 253, 0.68);
 }
 
 
@@ -1338,6 +1377,37 @@ html.gem-duplicate-tab-banner-visible body {
     line-height: 1.3;
 }
 
+.gem-compact-email-tools-menu-wrap {
+    border: 1px solid var(--token-box-default-border, rgba(0, 0, 0, 0.16));
+    border-radius: 5px;
+}
+.gem-compact-email-tools-menu-wrap:has(.gem-campaign-menu-trigger:hover):hover {
+    border-color: var(--token-button-highlight-background) !important;
+}
+
+.gem-compact-email-tools-menu-wrap .gem-campaign-menu-trigger {
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    padding: 4px 12px 4px 8px;
+    line-height: 1.3;
+    padding: 0;
+    height: 48px;
+    max-height: 48px;
+    min-height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    color: var(--token-icon-default-text, inherit);
+    border-radius: 0;
+    transition: opacity 0.12s ease;
+    flex-shrink: 0;
+    gap: 8px;
+    text-align: left;
+    word-break: break-all;
+}
+
+
 .gem-duplicate-tab-switch-option:hover,
 .gem-duplicate-tab-switch-option:focus-visible {
     background: rgba(255, 255, 255, 0.08);
@@ -1587,4 +1657,11 @@ cb-personalizable-input-with-context#subject-line-input {
         overflow-x: hidden !important;
         overflow-y: hidden !important;
     }
+}
+
+/* Add padding to the top of the variables editor grid to align with the header */
+/* this is needed because we added ESL validation to the right column. EMarsys does not expect that column to ever be taller than the label in the first column so their default alignment does not work. */
+vce-variables-editor .e-grid-vertical_center.e-grid {
+    align-items: flex-start !important;
+    padding-top: 6px !important;
 }

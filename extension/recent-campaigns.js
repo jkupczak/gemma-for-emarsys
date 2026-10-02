@@ -331,6 +331,22 @@ console.log("[Gem] recent-campaigns.js loaded");
     return null;
   }
 
+  function focusAlreadyOpenCampaignTab(item) {
+    const campaignId = String(item && item.id ? item.id : "").trim();
+    if (!campaignId) return;
+    const preferredTabId = getOpenTabIdForItem(item);
+    chrome.runtime.sendMessage({
+      action: "focusCampaignTab",
+      campaignId,
+      preferredTabId: preferredTabId != null ? preferredTabId : undefined
+    });
+  }
+
+  function shouldFocusAlreadyOpenTab(showSwitchToTab, clickEvent) {
+    if (!showSwitchToTab) return false;
+    return !(clickEvent && (clickEvent.ctrlKey || clickEvent.metaKey));
+  }
+
   function readDraftSaveButtonUnsavedFromDom() {
     try {
       const saveButton = document.querySelector(DRAFT_SAVE_BUTTON_SELECTOR);
@@ -417,7 +433,9 @@ console.log("[Gem] recent-campaigns.js loaded");
     }
 
     if (versionTarget && versionTarget.type === "group") {
-      appendVersionGroupChips(noticesRow, versionTarget.siblings);
+      appendVersionGroupChips(noticesRow, versionTarget.siblings, {
+        switchToOpenTab: opts.showSwitchToTab === true
+      });
     } else if (versionTarget && versionTarget.item) {
       appendCampaignVersionChip(noticesRow, versionTarget.item);
     }
@@ -1081,8 +1099,9 @@ console.log("[Gem] recent-campaigns.js loaded");
 
   function openRecentCampaignFromPanel(item, clickEvent) {
     if (!item) return;
+    const url = withCurrentSessionId(item.urlBase);
     openRecentCampaignNavigation(
-      withCurrentSessionId(item.urlBase),
+      typeof window.gemWithEmailBasicsHash === "function" ? window.gemWithEmailBasicsHash(url) : url,
       item.id,
       clickEvent
     );
@@ -1133,8 +1152,9 @@ console.log("[Gem] recent-campaigns.js loaded");
     noticesRow.appendChild(chip);
   }
 
-  function appendVersionGroupChips(noticesRow, siblings) {
+  function appendVersionGroupChips(noticesRow, siblings, chipOpts) {
     if (!noticesRow) return;
+    const switchToOpenTab = !!(chipOpts && chipOpts.switchToOpenTab);
     const wrap = document.createElement("div");
     wrap.className = "gem-recent-campaign-version-chips";
     (Array.isArray(siblings) ? siblings : []).forEach((sibling) => {
@@ -1146,13 +1166,18 @@ console.log("[Gem] recent-campaigns.js loaded");
       if (sibling.versionBackfilled) {
         chip.classList.add("gem-recent-campaign-version-chip--backfilled");
       }
-      if (getOpenMatchDetails(sibling).isOpen) {
+      const siblingIsOpen = getOpenMatchDetails(sibling).isOpen;
+      if (siblingIsOpen) {
         chip.classList.add("gem-recent-campaign-version-chip--open");
       }
       chip.textContent = letter;
-      chip.setAttribute("aria-label", `Open Version ${letter}`);
+      chip.setAttribute("aria-label", siblingIsOpen && switchToOpenTab ? `Switch to Version ${letter}` : `Open Version ${letter}`);
       chip.addEventListener("click", (e) => {
         e.stopPropagation();
+        if (switchToOpenTab && siblingIsOpen && shouldFocusAlreadyOpenTab(true, e)) {
+          focusAlreadyOpenCampaignTab(sibling);
+          return;
+        }
         openRecentCampaignFromPanel(sibling, e);
       });
       wrap.appendChild(chip);
@@ -1549,7 +1574,10 @@ console.log("[Gem] recent-campaigns.js loaded");
   }
 
   async function copyRichTextCampaignLinkForItem(item) {
-    const url = withCurrentSessionId(String(item && item.urlBase ? item.urlBase : "").trim());
+    const rawUrl = withCurrentSessionId(String(item && item.urlBase ? item.urlBase : "").trim());
+    const url = typeof window.gemWithEmailBasicsHash === "function"
+      ? window.gemWithEmailBasicsHash(rawUrl)
+      : rawUrl;
     if (!url) {
       if (window.gemShowToast) window.gemShowToast("Missing campaign URL — cannot share.", { type: "error" });
       return false;
@@ -1580,7 +1608,7 @@ console.log("[Gem] recent-campaigns.js loaded");
     }
   }
 
-  function duplicateRecentCampaign(item, duplicateBtn, clickEvent) {
+  function duplicateRecentCampaign(item, duplicateBtn, _clickEvent) {
     if (duplicateBtn.disabled || duplicateBtn.dataset.gemDuplicateState === "busy") return;
 
     const campaignId = String(item && item.id ? item.id : "").trim();
@@ -1590,17 +1618,15 @@ console.log("[Gem] recent-campaigns.js loaded");
       return;
     }
 
-    const openInBackground = !!(clickEvent && (clickEvent.ctrlKey || clickEvent.metaKey));
-    const openInNewForegroundTab = !openInBackground && isCampaignPage();
+    if (typeof window.gemRunCampaignDuplicateWithDialog !== "function") {
+      if (window.gemShowToast) window.gemShowToast("Duplicate is unavailable on this page.", { type: "error" });
+      return;
+    }
+
     const sessionId = getCurrentSessionId();
     console.log("[Gem] duplicateRecentCampaign: campaignId =", campaignId, "| sessionId =", sessionId, "| pageUrl =", location.href);
 
-    duplicateBtn.disabled = true;
-    duplicateBtn.dataset.gemDuplicateState = "busy";
-    duplicateBtn.classList.add("gem-overflow-menu-item--duplicating");
-    duplicateBtn.setAttribute("aria-busy", "true");
     const spinner = duplicateBtn.querySelector(".gem-recent-campaign-duplicate-spinner");
-    if (spinner) spinner.hidden = false;
 
     function resetBtn() {
       duplicateBtn.disabled = false;
@@ -1610,57 +1636,18 @@ console.log("[Gem] recent-campaigns.js loaded");
       if (spinner) spinner.hidden = true;
     }
 
-    window.gemDuplicateCampaign(campaignId, sessionId).then((res) => {
-      if (!res || !res.ok || res.newCampaignId == null) {
-        resetBtn();
-        const reason = res && res.reason ? res.reason : "unknown";
-        console.warn("[Gem] Duplicate campaign failed:", reason, res);
-        if (window.gemShowToast) {
-          window.gemShowToast(
-            reason === "no_auth_token"
-              ? "Could not obtain auth token. Try refreshing the page."
-              : `Duplicate failed (${reason}).`,
-            { type: "error" }
-          );
-        }
-        return;
-      }
-
-      try {
-        const url = new URL("/campaignmanager.php", window.location.origin);
-        if (sessionId) url.searchParams.set("session_id", sessionId);
-        url.searchParams.set("action", "details");
-        url.searchParams.set("camp_id", String(res.newCampaignId));
-        const urlString = url.toString();
-
-        if (openInBackground) {
-          resetBtn();
-          closeRecentCampaignRowMenu();
-          try {
-            chrome.runtime.sendMessage({ action: "openInNewTab", url: urlString, active: false });
-          } catch (_) {
-            window.open(urlString, "_blank");
-          }
-          return;
-        }
-
-        if (openInNewForegroundTab) {
-          resetBtn();
-          closeRecentCampaignRowMenu();
-          try {
-            chrome.runtime.sendMessage({ action: "openInNewTab", url: urlString, active: true });
-          } catch (_) {
-            window.open(urlString, "_blank");
-          }
-          return;
-        }
-
-        // Success: keep spinner and disabled state, then navigate.
-        window.location.assign(urlString);
-      } catch (_) {
-        resetBtn();
-        if (window.gemShowToast) window.gemShowToast("Duplicate succeeded but navigation failed.", { type: "error" });
-      }
+    window.gemRunCampaignDuplicateWithDialog({
+      campaignId,
+      sessionId,
+      onBeforeStart: () => {
+        duplicateBtn.disabled = true;
+        duplicateBtn.dataset.gemDuplicateState = "busy";
+        duplicateBtn.classList.add("gem-overflow-menu-item--duplicating");
+        duplicateBtn.setAttribute("aria-busy", "true");
+        if (spinner) spinner.hidden = false;
+        closeRecentCampaignRowMenu();
+      },
+      onSettled: resetBtn,
     });
   }
 
@@ -1762,7 +1749,13 @@ console.log("[Gem] recent-campaigns.js loaded");
       const editContentItem = makeNavMenuItem("Edit Content");
       editContentItem.addEventListener("click", (e) => {
         e.stopPropagation();
-        openCampaignUrl(withCurrentSessionId(item.urlBase), e);
+        const contentUrl = withCurrentSessionId(item.urlBase);
+        openCampaignUrl(
+          typeof window.gemWithEmailBasicsHash === "function"
+            ? window.gemWithEmailBasicsHash(contentUrl)
+            : contentUrl,
+          e
+        );
       });
       menu.appendChild(editContentItem);
     }
@@ -2537,31 +2530,6 @@ console.log("[Gem] recent-campaigns.js loaded");
       : "CTRL+/";
   }
 
-  function buildLegacyRecentNavItem() {
-    const li = document.createElement("li");
-    li.className = "e-navigation__menu_list_item";
-    li.id = RECENT_NAV_ID;
-    li.innerHTML = `
-      <button type="button" class="e-navigation__action" aria-haspopup="true" aria-expanded="false" menu-item-id="recent_campaigns_new_main" tracking-id="recent_campaigns_new_main" aria-label="Gemma Campaigns">
-        <e-icon class="e-navigation__action_icon" color="inherit" icon="custom">
-          <div aria-hidden="true" class="e-icon-wrapper">
-            <div class="e-icon text-color-inherit gem-nav-custom-svg"></div>
-          </div>
-        </e-icon>
-        <span class="e-navigation__action_text">Gemma Campaigns</span>
-      </button>
-    `;
-    if (window.gemNavMenu) {
-      window.gemNavMenu.applyLegacyNavSvg(li, window.gemNavMenu.GEM_NAV_ICON_SVGS.recent);
-    }
-
-    const button = li.querySelector(".e-navigation__action");
-    button.addEventListener("click", () => {
-      toggleRecentPanel();
-    });
-    return li;
-  }
-
   function buildUi5RecentNavItem(navRoot) {
     const gem = window.gemNavMenu;
     const item = gem.buildUi5ActionItem(
@@ -2581,9 +2549,8 @@ console.log("[Gem] recent-campaigns.js loaded");
     return item;
   }
 
-  function buildRecentNavItem(flavor, navRoot) {
-    if (flavor === "ui5" && window.gemNavMenu) return buildUi5RecentNavItem(navRoot);
-    return buildLegacyRecentNavItem();
+  function buildRecentNavItem(navRoot) {
+    return buildUi5RecentNavItem(navRoot);
   }
 
   function createRecentPanel() {
@@ -2858,23 +2825,12 @@ console.log("[Gem] recent-campaigns.js loaded");
     });
   }
 
-  function insertRecentNavItem(host, flavor) {
+  function insertRecentNavItem(host) {
     if (!host || host.querySelector(`#${RECENT_NAV_ID}`)) return;
-    const recentItem = buildRecentNavItem(flavor || "legacy", host);
     const gem = window.gemNavMenu;
-    if (gem) {
-      gem.insertRecentRelative(host, recentItem, NOTES_NAV_ID, SETTINGS_NAV_ID, COMMANDS_NAV_ID);
-      return;
-    }
-    const commandsItem = host.querySelector(`#${COMMANDS_NAV_ID}`);
-    const notesItem = host.querySelector(`#${NOTES_NAV_ID}`);
-    const settingsItem = host.querySelector(`#${SETTINGS_NAV_ID}`);
-    const insertBefore = commandsItem || settingsItem;
-    if (insertBefore) {
-      host.insertBefore(recentItem, insertBefore);
-    } else {
-      host.appendChild(recentItem);
-    }
+    if (!gem) return;
+    const recentItem = buildRecentNavItem(host);
+    gem.insertRecentRelative(host, recentItem, NOTES_NAV_ID, SETTINGS_NAV_ID, COMMANDS_NAV_ID);
   }
 
   function buildRecentDisplayRow(entry, opts) {
@@ -2907,6 +2863,11 @@ console.log("[Gem] recent-campaigns.js loaded");
     }
 
     const openPrimary = (e) => {
+      if (shouldFocusAlreadyOpenTab(options.showSwitchToTab, e)) {
+        const openSibling = siblings.find((item) => getOpenMatchDetails(item).isOpen) || primary;
+        focusAlreadyOpenCampaignTab(openSibling);
+        return;
+      }
       openRecentCampaignFromPanel(primary, e);
     };
 
@@ -2995,6 +2956,10 @@ console.log("[Gem] recent-campaigns.js loaded");
       row.classList.add(DRAWER_PREVIEW_ACTIVE_ROW_CLASS);
     }
     const openCampaign = (e) => {
+      if (shouldFocusAlreadyOpenTab(options.showSwitchToTab, e)) {
+        focusAlreadyOpenCampaignTab(item);
+        return;
+      }
       openRecentCampaignFromPanel(item, e);
     };
 
@@ -3540,16 +3505,10 @@ console.log("[Gem] recent-campaigns.js loaded");
 
   function scanForNav(root = document) {
     const gem = window.gemNavMenu;
-    if (!gem) {
-      root.querySelectorAll("nav .e-navigation__menu_list").forEach((nav) => {
-        insertRecentNavItem(nav, "legacy");
-        renderRecentList();
-      });
-      return;
-    }
-    const { flavor, hosts } = gem.getNavHosts(root);
+    if (!gem) return;
+    const { hosts } = gem.getNavHosts(root);
     hosts.forEach((host) => {
-      insertRecentNavItem(host, flavor);
+      insertRecentNavItem(host);
       renderRecentList();
     });
   }
@@ -3559,13 +3518,8 @@ console.log("[Gem] recent-campaigns.js loaded");
       for (const mutation of mutations) {
         for (const node of mutation.addedNodes) {
           if (node.nodeType !== 1) continue;
-          if (node.matches && node.matches("nav .e-navigation__menu_list")) {
-            insertRecentNavItem(node, "legacy");
-            renderRecentList();
-            continue;
-          }
           if (node.matches && node.matches("ui5-side-navigation-ds-nav")) {
-            insertRecentNavItem(node, "ui5");
+            insertRecentNavItem(node);
             renderRecentList();
             continue;
           }
