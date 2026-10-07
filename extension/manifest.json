@@ -1,6 +1,6 @@
 {
   "name": "Gemma for Emarsys",
-  "version": "17.0.0",
+  "version": "17.1.0",
   "manifest_version": 3,
   "description": "Enhances the Emarsys email editor with a settings panel and more!",
   "permissions": ["storage", "tabs", "webNavigation"],
@@ -29,7 +29,14 @@
     {
       "matches": ["https://*.emarsys.net/*"],
       "exclude_matches": ["https://*.emarsys.net/*gemStripped=true*"],
-      "js": ["debug-logging-page-bridge.js"],
+      "js": [
+        "debug-logging-page-bridge.js",
+        "platform.js",
+        "gem-campaign-category-catalog.js",
+        "email-campaign-list-fetch-patch.js",
+        "email-campaign-list-category-filter-main.js",
+        "gservice-page-fetch-bridge.js"
+      ],
       "world": "MAIN",
       "all_frames": true,
       "run_at": "document_start"
@@ -54,9 +61,27 @@
       "run_at": "document_start"
     },
     {
-      "matches": ["https://*.emarsys.net/bootstrap.php?*r=emailCampaignList/index*"],
+      "matches": [
+        "https://*.emarsys.net/bootstrap.php?*r=emailCampaignList/index*",
+        "https://*.emarsys.net/bootstrap.php?*r=emailCampaignList%2Findex*"
+      ],
       "css": ["css--email-campaign-list.css"],
-      "js": ["debug-logging-gate.js", "platform.js", "gem-toast.js", "email-campaign-list.js"],
+      "js": [
+        "debug-logging-gate.js",
+        "platform.js",
+        "gem-toast.js",
+        "emarsys-auth.js",
+        "email-campaign-list.js"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["https://*.emarsys.net/campaignmanager.php?*action=details*"],
+      "js": [
+        "debug-logging-gate.js",
+        "gem-campaign-category-catalog.js",
+        "campaign-settings-category-harvest.js"
+      ],
       "run_at": "document_start"
     },
     {

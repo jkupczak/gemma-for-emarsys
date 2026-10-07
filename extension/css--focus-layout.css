@@ -663,11 +663,10 @@ html.gem-focus-layout cb-version-selector .e-select {
     background-position: calc(100% - 6px), 50% calc(100% + 1px) !important;
     font-size: 13px !important;
     color: var(--token-text-default) !important;
-    box-shadow: inset 0 0 0 1px var(--token-button-highlight-background);
     border-color: var(--token-button-highlight-background);
     border-radius: 5px;
     font-weight: normal !important;
-    height: 44px !important;
+    height: 32px !important;
 }
 
 html.gem-focus-layout cb-multilanguage-locale-selector e-icon.e-selectnew__icon {
@@ -681,7 +680,7 @@ html.gem-focus-layout vce-language-name {
 html.gem-focus-layout cb-multilanguage-locale-selector .e-selectnew {
     padding-right: 24px !important;
     padding-left: 12px !important;
-    height: 44px !important;
+    height: 32px !important;
     border-radius: 5px;
     color: var(--token-text-default) !important;
 }
@@ -832,6 +831,15 @@ html.gem-focus-layout vce-languages-selector.e-hidden {
     display: block !important;
 }
 
+html.gem-focus-layout vce-languages-selector.gem-language-selector--single {
+    opacity: 0.3;
+    transition: opacity 0.15s ease;
+}
+
+html.gem-focus-layout vce-languages-selector.gem-language-selector--single:hover {
+    opacity: 1;
+}
+
 html.gem-focus-layout cb-version-selector:not(:has(option:nth-child(2))) {
     display: none !important;
 }
@@ -884,7 +892,7 @@ html.gem-focus-layout main {
     content: "CAMPAIGN";
 }
 .gem-compact-email-tools-menu-column--collaborate::before {
-    content: "COLLABORATE";
+    content: "QA";
 }
 
 .gem-compact-email-tools-menu-wrap .gem-campaign-menu {

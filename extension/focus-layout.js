@@ -441,6 +441,23 @@ function isVisibleLanguageSelector(languagesSelector) {
   return !!(languagesSelector && languagesSelector.isConnected);
 }
 
+function countLanguageSelectorOptions(languagesSelector) {
+  if (!languagesSelector) return 0;
+  return Array.from(languagesSelector.querySelectorAll('e-select-option')).filter((opt) => {
+    const nameEl = opt.querySelector('vce-language-name');
+    return !!(nameEl && String(nameEl.textContent || '').trim());
+  }).length;
+}
+
+function syncLanguageSelectorDimState() {
+  const languagesSelector = document.querySelector('vce-languages-selector');
+  if (!languagesSelector) return;
+  languagesSelector.classList.toggle(
+    'gem-language-selector--single',
+    countLanguageSelectorOptions(languagesSelector) <= 1
+  );
+}
+
 function isVisibleVersionSelector(versionSelector) {
   if (!versionSelector || !versionSelector.isConnected) return false;
   const select = versionSelector.querySelector('select');
@@ -458,6 +475,7 @@ function setupLanguagesSelectorObserver(compactVersionsDiv) {
     bindLanguagesClassObserver();
     bindVersionOptionsObserver();
     ensureCompactSelectors(compactVersionsDiv, isFocusLayoutActive());
+    syncLanguageSelectorDimState();
   };
 
   const bindLanguagesClassObserver = () => {
@@ -470,7 +488,9 @@ function setupLanguagesSelectorObserver(compactVersionsDiv) {
     languagesObserver = new MutationObserver(refresh);
     languagesObserver.observe(languagesSelector, {
       attributes: true,
-      attributeFilter: ['class']
+      attributeFilter: ['class'],
+      childList: true,
+      subtree: true,
     });
   };
 

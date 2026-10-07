@@ -31,9 +31,10 @@ console.log('[Gem] command-palette.js loaded');
     { id: 'campaign:highlight-alt-text', label: 'Highlight ALT Text', sectionId: 'campaign-editor', sectionTitle: 'Campaign Editor' },
     { id: 'campaign:highlight-targeting', label: 'Highlight Visibility', sectionId: 'campaign-editor', sectionTitle: 'Campaign Editor' },
     { id: 'campaign:highlight-editables', label: 'Highlight Editables', sectionId: 'campaign-editor', sectionTitle: 'Campaign Editor' },
-    { id: 'campaign:send-a-test', label: 'Send a Test', sectionId: 'campaign-collaborate', sectionTitle: 'Collaborate' },
-    { id: 'campaign:share-link', label: 'Share Campaign Link', sectionId: 'campaign-collaborate', sectionTitle: 'Collaborate' },
-    { id: 'campaign:share-screenshot', label: 'Share Campaign Screenshot', sectionId: 'campaign-collaborate', sectionTitle: 'Collaborate' },
+    { id: 'campaign:send-a-test', label: 'Send a Test', sectionId: 'campaign-collaborate', sectionTitle: 'QA' },
+    { id: 'campaign:copy-campaign-name', label: 'Copy Campaign Name', sectionId: 'campaign-collaborate', sectionTitle: 'QA' },
+    { id: 'campaign:share-link', label: 'Copy shareable link', sectionId: 'campaign-collaborate', sectionTitle: 'QA' },
+    { id: 'campaign:share-screenshot', label: 'Share Campaign Screenshot', sectionId: 'campaign-collaborate', sectionTitle: 'QA' },
   ];
 
   const GEMMA_FUNCTION_DEFS = [

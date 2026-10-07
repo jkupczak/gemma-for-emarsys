@@ -253,6 +253,44 @@
     }
   }
 
+  function runDuplicateFromActivationModal(duplicateBtn) {
+    if (typeof window.gemRunCampaignDuplicateWithDialog !== 'function') {
+      if (window.gemShowToast) {
+        window.gemShowToast('Duplicate is unavailable on this page.', { type: 'error' });
+      }
+      return;
+    }
+
+    const campaignId = guard.getCampaignIdFromUrl();
+    if (!campaignId) {
+      if (window.gemShowToast) {
+        window.gemShowToast('Missing campaign ID — cannot duplicate.', { type: 'error' });
+      }
+      return;
+    }
+
+    const sessionId = guard.getSessionIdFromUrl();
+
+    function resetDuplicateBtn() {
+      if (!duplicateBtn) return;
+      duplicateBtn.disabled = false;
+      duplicateBtn.removeAttribute('aria-busy');
+    }
+
+    window.gemRunCampaignDuplicateWithDialog({
+      campaignId,
+      sessionId,
+      onBeforeStart: () => {
+        if (duplicateBtn) {
+          duplicateBtn.disabled = true;
+          duplicateBtn.setAttribute('aria-busy', 'true');
+        }
+      },
+      onSettled: resetDuplicateBtn,
+      onDialogClose: resetDuplicateBtn,
+    });
+  }
+
   function showActivationModal(state) {
     if (document.getElementById(ACTIVATION_MODAL_ID)) return;
     const detail = buildUnsavedDetail(state);
@@ -287,6 +325,7 @@
       tableHtml +
       '<div class="gem-stale-tab-modal__actions">' +
         '<button type="button" class="e-btn gem-stale-tab-modal__continue" data-action="tertiary">Continue in this tab — risky</button>' +
+        '<button type="button" class="e-btn" data-action="duplicate">Duplicate this campaign</button>' +
         '<button type="button" class="e-btn" data-action="secondary">Refresh this tab</button>' +
       '</div>';
 
@@ -304,6 +343,12 @@
       activationModalDismissed = true;
       removeModal(ACTIVATION_MODAL_ID);
     });
+    const duplicateBtn = modal.querySelector('[data-action="duplicate"]');
+    if (duplicateBtn) {
+      duplicateBtn.addEventListener('click', () => {
+        runDuplicateFromActivationModal(duplicateBtn);
+      });
+    }
     modal.querySelector('[data-action="secondary"]').addEventListener('click', () => {
       window.location.reload();
     });

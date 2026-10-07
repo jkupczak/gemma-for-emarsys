@@ -124,6 +124,109 @@
       });
     };
 
+    function isAllowedEmailCampaignListGserviceUrl(rawUrl) {
+      try {
+        const parsed = new URL(String(rawUrl || ""));
+        return (
+          parsed.protocol === "https:" &&
+          /^email-campaign-list\.gservice\.emarsys\.net$/i.test(parsed.hostname)
+        );
+      } catch (_) {
+        return false;
+      }
+    }
+
+    function parseGserviceHttpJsonResponse(res) {
+      return res.text().then(function (text) {
+        let data = null;
+        try {
+          data = text ? JSON.parse(text) : null;
+        } catch (_) {
+          data = text ? { _raw: text } : null;
+        }
+        return { ok: res.ok, status: res.status, data: data };
+      });
+    }
+
+    /**
+     * Content-script gservice fetch (same pattern as gemCallGserviceDuplicate).
+     * Extension host_permissions bypass page CORS; auth is Bearer-only (no cookies).
+     */
+    function gemFetchEmailCampaignListGserviceWithToken(url, token, method) {
+      const bareToken = String(token || "").trim().replace(/^Bearer\s+/i, "");
+      const targetUrl = String(url || "").trim();
+      if (!bareToken || !isAllowedEmailCampaignListGserviceUrl(targetUrl)) {
+        return Promise.resolve({ ok: false, reason: "missing_token_or_bad_url" });
+      }
+      const httpMethod = String(method || "GET").toUpperCase();
+      return fetch(targetUrl, {
+        method: httpMethod,
+        headers: {
+          authorization: "Bearer " + bareToken,
+          accept: "*/*",
+        },
+      })
+        .then(parseGserviceHttpJsonResponse)
+        .catch(function (err) {
+          return {
+            ok: false,
+            reason: "fetch_error",
+            error: err && err.message ? err.message : String(err),
+          };
+        });
+    }
+
+    function gemFetchEmailCampaignListGserviceViaBackground(url, token, method) {
+      return new Promise(function (resolve) {
+        if (typeof chrome === "undefined" || !chrome.runtime || !chrome.runtime.sendMessage) {
+          resolve({ ok: false, reason: "no_runtime" });
+          return;
+        }
+        chrome.runtime.sendMessage(
+          {
+            action: "gemGserviceAuthenticatedFetch",
+            url: url,
+            token: token,
+            method: method || "GET",
+          },
+          function (response) {
+            if (chrome.runtime.lastError) {
+              resolve({
+                ok: false,
+                reason: "message_error",
+                error: chrome.runtime.lastError.message,
+              });
+              return;
+            }
+            resolve(response || { ok: false, reason: "empty_response" });
+          }
+        );
+      });
+    }
+
+    /**
+     * GET email-campaign-list.gservice with session token (duplicate-style fetch).
+     */
+    window.gemFetchEmailCampaignListApi = function gemFetchEmailCampaignListApi(sessionId, url) {
+      const targetUrl = String(url || "").trim();
+      return window.gemFetchGserviceToken(sessionId, "email-campaign-list").then(function (token) {
+        if (!token) {
+          return { ok: false, reason: "no_auth_token" };
+        }
+        console.log("[Gem][Auth] gemFetchEmailCampaignListApi: GET via content script", targetUrl);
+        return gemFetchEmailCampaignListGserviceWithToken(targetUrl, token, "GET").then(function (res) {
+          if (res.reason !== "fetch_error") {
+            return res;
+          }
+          console.warn(
+            "[Gem][Auth] gemFetchEmailCampaignListApi: content-script fetch failed; trying background",
+            res.error
+          );
+          return gemFetchEmailCampaignListGserviceViaBackground(targetUrl, token, "GET");
+        });
+      });
+    };
+
     /**
      * Performs a gservice fetch from the page's main JS world so the request carries
      * the Emarsys page Origin (matches devtools / native Emarsys fetch behavior).
@@ -156,26 +259,24 @@
           finish(new Error("page context fetch timeout"), true);
         }, 20000);
 
-        const script = document.createElement("script");
-        script.textContent =
-          "(function(){var u=" +
-          JSON.stringify(url) +
-          ";var h=" +
-          JSON.stringify((options && options.headers) || {}) +
-          ";var m=" +
-          JSON.stringify((options && options.method) || "GET") +
-          ";fetch(u,{method:m,headers:h,credentials:'include'})" +
-          ".then(function(r){return r.text().then(function(t){var d=null;try{d=JSON.parse(t);}catch(e){}return{ok:r.ok,status:r.status,data:d};});})" +
-          ".then(function(r){window.postMessage({source:'gem-gservice-page-fetch',requestId:" +
-          JSON.stringify(requestId) +
-          ",ok:r.ok,status:r.status,data:r.data},'*');})" +
-          ".catch(function(e){window.postMessage({source:'gem-gservice-page-fetch',requestId:" +
-          JSON.stringify(requestId) +
-          ",ok:false,error:e&&e.message?e.message:String(e)},'*');});})();";
-        (document.documentElement || document.head || document.body).appendChild(script);
-        script.remove();
+        try {
+          window.postMessage(
+            {
+              source: "gem-gservice-fetch-request",
+              requestId: requestId,
+              url: url,
+              method: (options && options.method) || "GET",
+              headers: (options && options.headers) || {},
+            },
+            "*"
+          );
+        } catch (err) {
+          finish(err instanceof Error ? err : new Error(String(err)), true);
+        }
       });
     }
+
+    window.gemFetchGserviceFromPage = gemFetchGserviceFromPageContext;
 
     function parsePersonalizationGserviceListResponse(res, data) {
       if (!res.ok) {

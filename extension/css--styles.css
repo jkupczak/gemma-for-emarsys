@@ -1198,6 +1198,15 @@ vce-languages-selector.e-hidden {
     display: inline-block !important;
 }
 
+vce-languages-selector.gem-language-selector--single {
+    opacity: 0.3;
+    transition: opacity 0.15s ease;
+}
+
+vce-languages-selector.gem-language-selector--single:hover {
+    opacity: 1;
+}
+
 vce-languages-selector .e-selectnew[role="button"] {
     position: relative;
 }

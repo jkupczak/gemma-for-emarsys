@@ -110,9 +110,101 @@
     return `${withoutHash}#/email-basics`;
   }
 
+  const GEM_RELOGIN_NAV_HASH_KEY = 'gemReloginNavHashV1';
+
+  function reloginUrlQuerySignature(url) {
+    const params = [...url.searchParams.entries()]
+      .filter(([key]) => key !== 'session_id')
+      .sort(([a], [b]) => a.localeCompare(b));
+    return params.map(([key, value]) => `${key}=${value}`).join('&');
+  }
+
+  /** Remember SPA hash before Emarsys relogin redirect drops it from the address bar. */
+  function gemCaptureReloginNavHash() {
+    try {
+      const hash = String(window.location.hash || '').trim();
+      if (!hash) return;
+      const page = new URL(window.location.href);
+      sessionStorage.setItem(
+        GEM_RELOGIN_NAV_HASH_KEY,
+        JSON.stringify({
+          hash,
+          querySig: reloginUrlQuerySignature(page),
+          pathname: page.pathname,
+          ts: Date.now(),
+        })
+      );
+    } catch (_) {}
+  }
+
+  /** Reattach a preserved hash when Gemma navigates off the relogin interstitial. */
+  function gemApplyReloginNavHash(destUrl) {
+    const dest = String(destUrl || '').trim();
+    if (!dest) return dest;
+    const hashIdx = dest.indexOf('#');
+    if (hashIdx !== -1) return dest;
+
+    let hash = '';
+    try {
+      const raw = sessionStorage.getItem(GEM_RELOGIN_NAV_HASH_KEY);
+      if (raw) {
+        const stored = JSON.parse(raw);
+        const candidate = String(stored.hash || '').trim();
+        if (candidate.startsWith('#')) {
+          const destUrlObj = new URL(dest, window.location.origin);
+          if (
+            String(stored.pathname || '') === destUrlObj.pathname
+            && String(stored.querySig || '') === reloginUrlQuerySignature(destUrlObj)
+          ) {
+            hash = candidate;
+            sessionStorage.removeItem(GEM_RELOGIN_NAV_HASH_KEY);
+          }
+        }
+      }
+    } catch (_) {}
+
+    if (!hash) {
+      try {
+        const ref = String(document.referrer || '').trim();
+        if (ref) {
+          const refUrl = new URL(ref);
+          const destUrlObj = new URL(dest, window.location.origin);
+          if (
+            refUrl.hash
+            && refUrl.pathname === destUrlObj.pathname
+            && reloginUrlQuerySignature(refUrl) === reloginUrlQuerySignature(destUrlObj)
+          ) {
+            hash = refUrl.hash;
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (!hash) return dest;
+    const withHash = dest + hash;
+    return typeof gemHrefPreserveQuerySlashes === 'function'
+      ? gemHrefPreserveQuerySlashes(withHash)
+      : withHash;
+  }
+
+  gemCaptureReloginNavHash();
+
+  /** True when bootstrap.php route is emailCampaignList/index (handles encoded r=). */
+  function gemIsEmailCampaignListRoute(href) {
+    try {
+      const url = new URL(String(href != null ? href : window.location.href), window.location.href);
+      const route = decodeURIComponent(url.searchParams.get('r') || '').trim();
+      return route.toLowerCase() === 'emailcampaignlist/index';
+    } catch (_) {
+      return /emailcampaignlist/i.test(String(href != null ? href : window.location.href || ''));
+    }
+  }
+
   window.gemHrefPreserveQuerySlashes = gemHrefPreserveQuerySlashes;
   window.gemWithEmailBasicsHash = gemWithEmailBasicsHash;
+  window.gemApplyReloginNavHash = gemApplyReloginNavHash;
   window.gemIsGemStrippedCampaignUrl = gemIsGemStrippedCampaignUrl;
+  window.gemIsEmailCampaignListRoute = gemIsEmailCampaignListRoute;
 
   window.gemIsGemStrippedEmbedIframe = function gemIsGemStrippedEmbedIframe(iframe) {
     if (!iframe) return false;

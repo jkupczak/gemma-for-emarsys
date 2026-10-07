@@ -143,7 +143,13 @@ function normalizeReloginDestinationUrl(raw) {
   try {
     const url = new URL(value, window.location.origin);
     if (!isAllowedReloginDestinationUrl(url)) return '';
-    return url.toString();
+    let href = url.toString();
+    if (typeof window.gemApplyReloginNavHash === 'function') {
+      href = window.gemApplyReloginNavHash(href);
+    } else if (typeof window.gemHrefPreserveQuerySlashes === 'function') {
+      href = window.gemHrefPreserveQuerySlashes(href);
+    }
+    return href;
   } catch (_) {
     return '';
   }

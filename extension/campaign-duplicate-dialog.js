@@ -108,6 +108,10 @@
       hideDialog();
     });
 
+    overlay.querySelector('.gem-campaign-duplicate-dialog__open-link')?.addEventListener('click', () => {
+      hideDialog();
+    });
+
     return overlay;
   }
 

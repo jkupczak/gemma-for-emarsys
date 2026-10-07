@@ -202,6 +202,48 @@ function bgHrefPreserveQuerySlashes(href) {
 
 // --- Emarsys duplicate campaign ---
 
+function bgIsAllowedGserviceFetchUrl(rawUrl) {
+  try {
+    const parsed = new URL(String(rawUrl || ""));
+    return parsed.protocol === "https:" && /\.gservice\.emarsys\.net$/i.test(parsed.hostname);
+  } catch (_) {
+    return false;
+  }
+}
+
+async function gemGserviceAuthenticatedFetch(url, token, method) {
+  const targetUrl = String(url || "").trim();
+  const bareToken = String(token || "").trim().replace(/^Bearer\s+/i, "");
+  const httpMethod = String(method || "GET").toUpperCase();
+  if (!targetUrl || !bareToken || !bgIsAllowedGserviceFetchUrl(targetUrl)) {
+    return { ok: false, reason: "missing_url_token_or_disallowed_host" };
+  }
+  try {
+    const res = await fetch(targetUrl, {
+      method: httpMethod,
+      headers: {
+        authorization: `Bearer ${bareToken}`,
+        accept: "*/*",
+      },
+    });
+    let data = null;
+    const text = await res.text();
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch (_) {
+      data = text ? { _raw: text } : null;
+    }
+    return { ok: res.ok, status: res.status, data, via: "background" };
+  } catch (err) {
+    return {
+      ok: false,
+      reason: "fetch_error",
+      error: err && err.message ? err.message : String(err),
+      via: "background",
+    };
+  }
+}
+
 async function duplicateEmarsysCampaign(sourceCampaignId, token) {
   const id = String(sourceCampaignId || '').trim();
   const bareToken = String(token || '').trim().replace(/^Bearer\s+/i, '');
@@ -1460,6 +1502,22 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     duplicateEmarsysCampaign(campaignId, token)
       .then(sendResponse)
       .catch(() => sendResponse({ ok: false, reason: 'fetch_error' }));
+    return true;
+  }
+
+  if (action === 'gemGserviceAuthenticatedFetch') {
+    const url = String(msg.url || '').trim();
+    const token = String(msg.token || '').trim();
+    const method = String(msg.method || 'GET').trim();
+    gemGserviceAuthenticatedFetch(url, token, method)
+      .then(sendResponse)
+      .catch((err) =>
+        sendResponse({
+          ok: false,
+          reason: 'fetch_error',
+          error: err && err.message ? err.message : String(err),
+        })
+      );
     return true;
   }
 

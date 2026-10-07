@@ -79,7 +79,7 @@
             detail: { enabled: on },
           }));
         } catch (_) {}
-        console.error(
+        console.log(
           `[CampaignMenuDebug] ${on ? 'ON' : 'OFF'} — filter DevTools console by "CampaignMenuDebug"`
         );
         return on;
