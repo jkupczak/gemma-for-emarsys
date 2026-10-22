@@ -500,6 +500,12 @@ window.DEFAULT_HIGHLIGHT_TERMS = {};
       localKeys: []
     },
     {
+      id: "bookmarks",
+      label: "Gemma Bookmarks",
+      syncKeys: ["gemBookmarks"],
+      localKeys: []
+    },
+    {
       id: "favoriteImages",
       label: "Favorite Images",
       syncKeys: [

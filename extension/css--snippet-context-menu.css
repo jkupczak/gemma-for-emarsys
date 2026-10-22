@@ -15,7 +15,7 @@
   min-width: 280px;
   overflow: hidden;
   position: fixed;
-  width: 300px;
+  width: 320px;
   z-index: 100000;
 }
 
@@ -53,8 +53,8 @@
   font: inherit;
   gap: 8px;
   border-radius: 6px;
-  padding: 0px 11px;
-  font-size: 14px;
+  padding: 4px 11px;
+  font-size: 13px;
   text-align: left;
   width: 100%;
 }
@@ -94,15 +94,24 @@
 }
 
 .gem-snippet-ctx-row {
-  align-items: center;
+  align-items: stretch;
   display: flex;
-  gap: 4px;
   position: relative;
 }
 
 .gem-snippet-ctx-row .gem-snippet-ctx-item {
   flex: 1;
   min-width: 0;
+  width: 100%;
+}
+
+.gem-snippet-ctx-row:is(
+    :hover,
+    :focus-within,
+    :has(.gem-snippet-ctx-row-menu-trigger[aria-expanded="true"])
+  )
+  .gem-snippet-ctx-item {
+  padding-right: 34px;
 }
 
 .gem-snippet-ctx-row-name {
@@ -113,10 +122,43 @@
   overflow: hidden;
 }
 
+.gem-snippet-ctx-row-name--with-folder {
+  align-items: flex-start;
+}
+
+.gem-snippet-ctx-row-name--with-folder .gem-snippet-ctx-row-shortcut {
+  margin-top: 1px;
+}
+
+.gem-snippet-ctx-row-lead {
+  align-items: flex-start;
+  display: flex;
+  flex: 1;
+  gap: 4px;
+  min-width: 0;
+}
+
+.gem-snippet-ctx-row-text-block {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0px;
+  min-width: 0;
+}
+
 .gem-snippet-ctx-type-icon {
   align-items: center;
   display: flex;
   flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.gem-snippet-ctx-row-name:not(.gem-snippet-ctx-row-name--with-folder) .gem-snippet-ctx-row-lead {
+  align-items: center;
+}
+
+.gem-snippet-ctx-row-name:not(.gem-snippet-ctx-row-name--with-folder) .gem-snippet-ctx-type-icon {
+  margin-top: 0;
 }
 
 .gem-snippet-ctx-type-icon svg {
@@ -129,12 +171,34 @@
   fill: var(--token-box-default-text);
 }
 
+.gem-snippet-ctx-item:hover .gem-snippet-ctx-type-icon svg path,
+.gem-snippet-ctx-item.gem-snippet-ctx-item--focused .gem-snippet-ctx-type-icon svg path {
+  fill: #fff;
+}
+
 .gem-snippet-ctx-row-label {
   flex: 1;
+  line-height: 1.3;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  letter-spacing: -0.02em;
+}
+
+.gem-snippet-ctx-row-folder {
+  color: var(--token-text-faint);
+  font-size: 10px;
+  line-height: 1.3;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gem-snippet-ctx-item:hover .gem-snippet-ctx-row-folder,
+.gem-snippet-ctx-item.gem-snippet-ctx-item--focused .gem-snippet-ctx-row-folder {
+  color: #fff;
 }
 
 .gem-snippet-ctx-row-shortcut {
@@ -158,10 +222,15 @@
 
 
 .gem-snippet-ctx-row-menu-trigger {
-  flex-shrink: 0;
-  margin-right: 2px;
+  margin-right: 0;
   opacity: 0;
+  pointer-events: none;
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
   transition: opacity 0.15s;
+  z-index: 2;
 }
 
 .gem-snippet-ctx-row:hover .gem-snippet-ctx-row-menu-trigger,
@@ -169,12 +238,23 @@
 .gem-snippet-ctx-row-menu-trigger:focus-visible,
 .gem-snippet-ctx-row-menu-trigger[aria-expanded="true"] {
   opacity: 1;
+  pointer-events: auto;
 }
 
 .gem-snippet-ctx-empty {
   color: var(--token-font-muted, #667085);
   font-size: 12px;
   padding: 10px 12px 12px;
+}
+
+.gem-snippet-ctx-search-load-more {
+  box-sizing: border-box;
+  margin: 4px 8px 0;
+  width: calc(100% - 16px);
+}
+
+.gem-snippet-ctx-search-count {
+  padding-top: 4px;
 }
 
 .gem-snippet-ctx-insert-as {

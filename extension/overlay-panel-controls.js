@@ -1902,13 +1902,18 @@ function placeHeaderActionsAfterMenuTrigger(headerActionsDiv) {
   });
 }
 
-function setupFocusSaveSplitMenu(headerActionsDiv, saveButtonElement, finishButtonElement) {
-  const split = document.createElement('div');
-  split.className = 'gem-focus-save-split';
-
+/**
+ * Save button overflow menu (Copy shareable link, Copy campaign name, Duplicate).
+ * "Finish Editing" is included only when `finishButtonElement` is given (Focus Layout hides
+ * Emarsys's own Finish Editing button; Standard Layout keeps it visible).
+ * `anchorEl` (element, or function returning one) is what the menu aligns under; clicks inside
+ * it don't close the menu.
+ */
+function createSaveOverflowMenu({ anchorEl, moreButtonClass, finishButtonElement = null }) {
+  const getAnchor = () => (typeof anchorEl === 'function' ? anchorEl() : anchorEl) || moreButton;
   const moreButton = document.createElement('button');
   moreButton.type = 'button';
-  moreButton.className = 'gem-focus-save-split__more';
+  moreButton.className = moreButtonClass;
   moreButton.setAttribute('aria-haspopup', 'menu');
   moreButton.setAttribute('aria-expanded', 'false');
   moreButton.setAttribute('aria-label', 'More save options');
@@ -1932,7 +1937,7 @@ function setupFocusSaveSplitMenu(headerActionsDiv, saveButtonElement, finishButt
     return item;
   }
 
-  const finishItem = makeItem('Finish Editing');
+  const finishItem = finishButtonElement ? makeItem('Finish Editing') : null;
   const shareItem = makeItem('Copy shareable link');
   const copyCampaignNameItem = makeItem('Copy campaign name');
   const duplicateItem = makeItem('Duplicate');
@@ -1942,7 +1947,7 @@ function setupFocusSaveSplitMenu(headerActionsDiv, saveButtonElement, finishButt
   duplicateSpinner.hidden = true;
   duplicateItem.appendChild(duplicateSpinner);
 
-  menu.appendChild(finishItem);
+  if (finishItem) menu.appendChild(finishItem);
   menu.appendChild(shareItem);
   menu.appendChild(copyCampaignNameItem);
   menu.appendChild(duplicateItem);
@@ -1953,16 +1958,19 @@ function setupFocusSaveSplitMenu(headerActionsDiv, saveButtonElement, finishButt
   }
 
   function openMenu() {
-    const finishButton = finishButtonElement.querySelector('button');
-    finishItem.disabled = !!(finishButtonElement.hidden || !finishButton || finishButton.disabled);
+    if (finishItem) {
+      const finishButton = finishButtonElement.querySelector('button');
+      finishItem.disabled = !!(finishButtonElement.hidden || !finishButton || finishButton.disabled);
+    }
     menu.hidden = false;
     moreButton.setAttribute('aria-expanded', 'true');
     menu.style.visibility = 'hidden';
-    const splitRect = split.getBoundingClientRect();
+    const anchorRect = getAnchor().getBoundingClientRect();
+    const moreRect = moreButton.getBoundingClientRect();
     const menuRect = menu.getBoundingClientRect();
-    let left = splitRect.right - menuRect.width;
+    let left = moreRect.right - menuRect.width;
     left = Math.max(8, Math.min(left, window.innerWidth - menuRect.width - 8));
-    menu.style.top = `${Math.round(splitRect.bottom + 4)}px`;
+    menu.style.top = `${Math.round(anchorRect.bottom + 4)}px`;
     menu.style.left = `${Math.round(left)}px`;
     menu.style.visibility = '';
   }
@@ -1973,13 +1981,15 @@ function setupFocusSaveSplitMenu(headerActionsDiv, saveButtonElement, finishButt
     else closeMenu();
   });
 
-  finishItem.addEventListener('click', (e) => {
-    e.stopPropagation();
-    if (finishItem.disabled) return;
-    closeMenu();
-    const finishButton = finishButtonElement.querySelector('button');
-    if (finishButton) finishButton.click();
-  });
+  if (finishItem) {
+    finishItem.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (finishItem.disabled) return;
+      closeMenu();
+      const finishButton = finishButtonElement.querySelector('button');
+      if (finishButton) finishButton.click();
+    });
+  }
 
   shareItem.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -2000,17 +2010,65 @@ function setupFocusSaveSplitMenu(headerActionsDiv, saveButtonElement, finishButt
 
   document.addEventListener('click', (e) => {
     if (menu.hidden) return;
-    if (split.contains(e.target) || menu.contains(e.target)) return;
+    if (getAnchor().contains(e.target) || moreButton.contains(e.target) || menu.contains(e.target)) return;
     closeMenu();
   });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closeMenu();
   });
 
+  return { moreButton, menu, closeMenu };
+}
+
+function setupFocusSaveSplitMenu(headerActionsDiv, saveButtonElement, finishButtonElement) {
+  const split = document.createElement('div');
+  split.className = 'gem-focus-save-split';
+
+  const { moreButton, menu } = createSaveOverflowMenu({
+    anchorEl: split,
+    moreButtonClass: 'gem-focus-save-split__more',
+    finishButtonElement,
+  });
+
   headerActionsDiv.insertBefore(split, saveButtonElement);
   split.appendChild(saveButtonElement);
   split.appendChild(moreButton);
   split.appendChild(menu);
+}
+
+const STANDARD_SAVE_MORE_CLASS = 'gem-standard-save-more';
+
+/**
+ * Standard Layout: attach the overflow button to Emarsys's own Save button in cb-header.
+ * The native button isn't moved (Angular owns it); ours is inserted as its next sibling and
+ * re-attached if Emarsys re-renders the header.
+ */
+function initializeStandardSaveOverflowMenu() {
+  let standard = null;
+
+  function ensureAttached() {
+    const nativeSave = document.querySelector('cb-header cb-draft-save-button');
+    if (!nativeSave || !nativeSave.parentNode) return;
+    if (!standard) {
+      standard = createSaveOverflowMenu({
+        anchorEl: () => document.querySelector('cb-header cb-draft-save-button'),
+        moreButtonClass: `e-btn e-layout__action ${STANDARD_SAVE_MORE_CLASS}`,
+      });
+      standard.menu.classList.add('gem-standard-save-menu');
+      document.body.appendChild(standard.menu);
+    }
+    if (nativeSave.nextElementSibling !== standard.moreButton) {
+      standard.closeMenu();
+      nativeSave.insertAdjacentElement('afterend', standard.moreButton);
+    }
+  }
+
+  ensureAttached();
+  if (typeof gemDomWatchSubscribe === 'function') {
+    gemDomWatchSubscribe((mutations) => {
+      if (window.gemDomWatchHasStructuralChange(mutations)) ensureAttached();
+    });
+  }
 }
 
 function initializeCompactEmailTools() {
@@ -4845,7 +4903,8 @@ function initializeOverlayPanelControls() {
             keyword: (k && typeof k.keyword === 'string') ? k.keyword.trim() : '',
             mode: normalizeImageAltSwapMode(k && k.mode),
             matchRule: normalizeImageAltSwapMatchRule(k && k.matchRule),
-            initiateFrom: normalizeImageAltSwapInitiateFrom(k && k.initiateFrom)
+            initiateFrom: normalizeImageAltSwapInitiateFrom(k && k.initiateFrom),
+            locations: window.gemSwapLocations.normalize(k && k.locations)
           }))
           .filter((k) => !!k.keyword);
 
@@ -4902,7 +4961,7 @@ function initializeOverlayPanelControls() {
 
       loadSnippetsForImageAltSwap((snippets) => {
         const swappableSnippets = (snippets || []).filter((snippet) =>
-          normalizeImageAltSwapKeywordsFromSnippet(snippet).some((r) => r && r.keyword && r.initiateFrom !== 'toolbar' && r.initiateFrom !== 'panel')
+          normalizeImageAltSwapKeywordsFromSnippet(snippet).some((r) => r && r.keyword && r.initiateFrom !== 'toolbar' && r.initiateFrom !== 'panel' && window.gemSwapLocations.allows(r, 'alt'))
         );
 
         if (!swappableSnippets.length) {
@@ -4915,7 +4974,7 @@ function initializeOverlayPanelControls() {
 
         swappableSnippets.forEach((snippet) => {
           const rules = normalizeImageAltSwapKeywordsFromSnippet(snippet)
-            .filter((r) => r && r.keyword && r.initiateFrom !== 'toolbar' && r.initiateFrom !== 'panel');
+            .filter((r) => r && r.keyword && r.initiateFrom !== 'toolbar' && r.initiateFrom !== 'panel' && window.gemSwapLocations.allows(r, 'alt'));
 
           rules.forEach((rule) => {
             const regex = createImageAltSwapKeywordRegex(rule.keyword, rule.matchRule);
@@ -4923,7 +4982,8 @@ function initializeOverlayPanelControls() {
             const matches = modifiedText.match(regex);
             if (!matches || !matches.length) return;
             totalSwaps += matches.length;
-            modifiedText = modifiedText.replace(regex, (snippet && snippet.content) ? snippet.content : (snippet && snippet.name) ? snippet.name : '');
+            const replacement = window.gemSnippetVariants.contentFor(snippet, 'alt') || (snippet && snippet.name) || '';
+            modifiedText = modifiedText.replace(regex, () => replacement);
           });
         });
 
@@ -9194,6 +9254,7 @@ function initializeOverlayPanelControls() {
 
   // Initialize the compact email tools dropdown
   initializeCompactEmailTools();
+  initializeStandardSaveOverflowMenu();
 
   // Function to handle link editor modal focus
   function initializeLinkEditorFocus() {

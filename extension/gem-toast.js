@@ -5,7 +5,8 @@
     try {
       const type = opts.type || "info";
       const baseDurationMs = typeof opts.durationMs === "number" ? opts.durationMs : 2400;
-      const durationMs = baseDurationMs * 2;
+      const hasAction = !!(opts.action && opts.action.label && typeof opts.action.onClick === "function");
+      const durationMs = (hasAction ? baseDurationMs * 3 : baseDurationMs * 2);
 
       let container = document.getElementById("gem-toast-container");
       if (!container) {
@@ -50,14 +51,6 @@
               : "var(--token-blue-600, #2563eb)";
       toast.style.borderLeft = `4px solid ${accent}`;
 
-      toast.textContent = String(message || "");
-      container.appendChild(toast);
-
-      requestAnimationFrame(() => {
-        toast.style.opacity = "1";
-        toast.style.transform = "translateY(0)";
-      });
-
       let dismissTimer = null;
       let removeTimer = null;
 
@@ -72,6 +65,46 @@
         if (removeTimer) clearTimeout(removeTimer);
         dismissTimer = setTimeout(dismissToast, delayMs);
       };
+
+      const action = opts.action && typeof opts.action === "object" ? opts.action : null;
+      if (action && action.label && typeof action.onClick === "function") {
+        toast.style.display = "flex";
+        toast.style.alignItems = "center";
+        toast.style.gap = "10px";
+        toast.style.flexWrap = "wrap";
+        const msgSpan = document.createElement("span");
+        msgSpan.textContent = String(message || "");
+        msgSpan.style.flex = "1";
+        msgSpan.style.minWidth = "0";
+        const actionBtn = document.createElement("button");
+        actionBtn.type = "button";
+        actionBtn.className = "gem-toast-action";
+        actionBtn.textContent = String(action.label);
+        actionBtn.style.cursor = "pointer";
+        actionBtn.style.border = "none";
+        actionBtn.style.background = "transparent";
+        actionBtn.style.color = "var(--token-link-default-text, var(--token-primary-default, #2563eb))";
+        actionBtn.style.fontWeight = "600";
+        actionBtn.style.fontSize = "13px";
+        actionBtn.style.padding = "0";
+        actionBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          try {
+            action.onClick();
+          } catch (_) {}
+          dismissToast();
+        });
+        toast.appendChild(msgSpan);
+        toast.appendChild(actionBtn);
+      } else {
+        toast.textContent = String(message || "");
+      }
+      container.appendChild(toast);
+
+      requestAnimationFrame(() => {
+        toast.style.opacity = "1";
+        toast.style.transform = "translateY(0)";
+      });
 
       scheduleDismiss(durationMs);
 

@@ -1,4 +1,8 @@
+// The preheader textarea sizes itself with `field-sizing: content` (css--campaign.css).
+const AUTO_RESIZE_EXCLUDE_SELECTOR = 'cb-preheader textarea';
+
 function autoResizeTextarea(textarea) {
+  if (textarea.matches(AUTO_RESIZE_EXCLUDE_SELECTOR)) return;
   textarea.style.height = 'auto'; // reset height
   textarea.style.height = (textarea.scrollHeight + 30) + 'px'; // fit content
 }

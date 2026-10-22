@@ -12,7 +12,9 @@ console.log('[Gem] snippet-context-menu.js loaded');
   const LEGACY_REQUIRE_MOD_SETTING_KEY = 'gemSnippetContextMenuRequireMod';
   const PREVIEW_IFRAME_SELECTOR = 'iframe.e-contentblocks-preview__iframe-desktop';
   const MAX_RECENT = 10;
-  const MAX_SEARCH_RESULTS = 20;
+  const SEARCH_RESULTS_PAGE_SIZE = 25;
+  let searchResultsDisplayLimit = SEARCH_RESULTS_PAGE_SIZE;
+  let lastMenuSearchQuery = '';
 
   const GEMMA_TYPE_SVG =
     '<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#1f1f1f" aria-hidden="true"><path d="M480-80 120-436l200-244h320l200 244L480-80ZM183-680l-85-85 57-56 85 85-57 56Zm257-80v-120h80v120h-80Zm335 80-57-57 85-85 57 57-85 85ZM480-192l210-208H270l210 208ZM358-600l-99 120h442l-99-120H358Z"/></svg>';
@@ -1100,6 +1102,11 @@ console.log('[Gem] snippet-context-menu.js loaded');
     `;
 
     menuEl.querySelector('.gem-snippet-ctx-search').addEventListener('input', () => {
+      const q = (menuEl.querySelector('.gem-snippet-ctx-search').value || '').trim().toLowerCase();
+      if (q !== lastMenuSearchQuery) {
+        lastMenuSearchQuery = q;
+        searchResultsDisplayLimit = SEARCH_RESULTS_PAGE_SIZE;
+      }
       renderMenuLists();
     });
 
@@ -1293,7 +1300,7 @@ console.log('[Gem] snippet-context-menu.js loaded');
     const hay =
       item.kind === 'gemma'
         ? `${item.name || ''} ${item.category || ''}`.toLowerCase()
-        : String(item.name || '').toLowerCase();
+        : `${item.name || ''} ${item.persFolderLine || ''} ${item.token?.displayName || ''}`.toLowerCase();
     return hay.includes(q);
   }
 
@@ -1343,12 +1350,22 @@ console.log('[Gem] snippet-context-menu.js loaded');
           `<span class="gem-snippet-ctx-row-shortcut${n === 0 ? ' gem-snippet-ctx-row-shortcut--auto' : ''}" title="${n === 0 ? 'Most recently used' : `Quick-insert shortcut ${n}`}">${n}</span>`
       )
       .join('');
+    const folderLine =
+      item.kind === 'personalization' && item.persFolderLine
+        ? `<span class="gem-snippet-ctx-row-folder">${escapeHtml(item.persFolderLine)}</span>`
+        : '';
+    const nameRowClass = folderLine ? ' gem-snippet-ctx-row-name--with-folder' : '';
     return `
       <div class="gem-snippet-ctx-row${rowClass}" data-token-key="${escapeHtml(rowKey)}" data-token-kind="${kind}">
         <button type="button" class="gem-snippet-ctx-item" data-action="insert">
-          <span class="gem-snippet-ctx-row-name">
-            <span class="gem-snippet-ctx-type-icon">${typeIcon}</span>
-            <span class="gem-snippet-ctx-row-label">${escapeHtml(item.name || 'Untitled')}</span>
+          <span class="gem-snippet-ctx-row-name${nameRowClass}">
+            <span class="gem-snippet-ctx-row-lead">
+              <span class="gem-snippet-ctx-type-icon">${typeIcon}</span>
+              <span class="gem-snippet-ctx-row-text-block">
+                <span class="gem-snippet-ctx-row-label">${escapeHtml(item.name || 'Untitled')}</span>
+                ${folderLine}
+              </span>
+            </span>
             ${shortcutHtml}
           </span>
         </button>
@@ -1404,6 +1421,10 @@ console.log('[Gem] snippet-context-menu.js loaded');
   function renderMenuLists() {
     const listEl = menuEl.querySelector('.gem-snippet-ctx-list');
     const q = (menuEl.querySelector('.gem-snippet-ctx-search').value || '').trim().toLowerCase();
+    if (q !== lastMenuSearchQuery) {
+      lastMenuSearchQuery = q;
+      searchResultsDisplayLimit = SEARCH_RESULTS_PAGE_SIZE;
+    }
     rebuildMenuTokens();
 
     const shortcutByKey = buildShortcutBadgeMap();
@@ -1423,14 +1444,18 @@ console.log('[Gem] snippet-context-menu.js loaded');
 
     if (q) {
       const matches = menuTokens.filter((item) => tokenMatchesQuery(item, q)).sort(sortByName);
-      const capped = matches.slice(0, MAX_SEARCH_RESULTS);
+      const capped = matches.slice(0, searchResultsDisplayLimit);
       if (!capped.length) {
         html += `<div class="gem-snippet-ctx-empty">No tokens match your search.</div>`;
       } else {
         html += `<div class="gem-snippet-ctx-section-title">Results</div>`;
         html += capped.map((item) => renderTokenRow(item, rowOpts(item, { searchResult: true }))).join('');
-        if (matches.length > MAX_SEARCH_RESULTS) {
-          html += `<div class="gem-snippet-ctx-empty">Showing ${MAX_SEARCH_RESULTS} of ${matches.length} matches. Refine your search.</div>`;
+        if (matches.length > searchResultsDisplayLimit) {
+          html += `<button type="button" class="e-btn gem-snippet-ctx-search-load-more">Load more</button>`;
+          html += `<div class="gem-snippet-ctx-empty gem-snippet-ctx-search-count">Showing ${Math.min(
+            searchResultsDisplayLimit,
+            matches.length
+          )} of ${matches.length} matches.</div>`;
         }
       }
     } else if (!persTokensLoading || menuTokens.length) {
@@ -1490,6 +1515,15 @@ console.log('[Gem] snippet-context-menu.js loaded');
         });
       }
     });
+
+    const loadMoreBtn = listEl.querySelector('.gem-snippet-ctx-search-load-more');
+    if (loadMoreBtn) {
+      loadMoreBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        searchResultsDisplayLimit += SEARCH_RESULTS_PAGE_SIZE;
+        renderMenuLists();
+      });
+    }
 
     scheduleMenuPosition();
   }
@@ -1893,6 +1927,8 @@ console.log('[Gem] snippet-context-menu.js loaded');
     }
     applyInsertModeToMenu();
     menuEl.querySelector('.gem-snippet-ctx-search').value = '';
+    lastMenuSearchQuery = '';
+    searchResultsDisplayLimit = SEARCH_RESULTS_PAGE_SIZE;
 
     const clipboardSection = menuEl.querySelector('.gem-snippet-ctx-clipboard');
     if (clipboardSection) {

@@ -147,40 +147,17 @@ function saveSnippets(snippets, callback) {
 
 // Function to generate the full snippet HTML
 function generateSnippetHTML(name, content) {
-  function escapeHtmlAttribute(value) {
-    // Keep the attribute HTML-safe, but use percent-encoding for the most dangerous characters
-    // inside the snippet payload (per request): <, >, ", ', space, %, {, }.
-    //
-    // NOTE: We still HTML-escape '&' so the attribute remains valid HTML; otherwise entity parsing
-    // could mutate the payload before Emarsys reads it.
-    return String(value)
-      // IMPORTANT: encode '%' first so we don't accidentally re-encode the '%' we introduce below.
-      .replace(/%/g, '%25')
-      .replace(/&/g, '&amp;')
-      .replace(/ /g, '%20')
-      .replace(/\{/g, '%7B')
-      .replace(/\|/g, '%7C')
-      .replace(/\}/g, '%7D')
-      .replace(/\\/g, '%5C')
-      .replace(/\[/g, '%5B')
-      .replace(/\]/g, '%5D')
-      .replace(/</g, '%3C')
-      .replace(/>/g, '%3E')
-      .replace(/"/g, '%22');
+  if (window.gemCustEslToken && typeof window.gemCustEslToken.generateSnippetHTML === 'function') {
+    return window.gemCustEslToken.generateSnippetHTML(name, content);
   }
-
-  const tokenContent = JSON.stringify({ script: content });
-  // IMPORTANT:
-  // We do NOT percent-encode the snippet code anymore. Percent-encoding changes characters like '=' and others,
-  // which can invalidate ESL. Instead, we HTML-escape the JSON so it can live safely in an HTML attribute;
-  // when parsed/inserted, the browser will decode entities back to the original characters.
-  const encodedTokenContent = escapeHtmlAttribute(tokenContent);
-  // Use the exact token-template from the working sample
-  const encodedTokenTemplate = '%22%3C%25=%20script%20%25%3E%22';
-  // token-meta should be encoded as well
-  const encodedTokenMeta = '%7B%7D';
-
-  return `<span e-token="cust_esl" token-template="${encodedTokenTemplate}" token-content="${encodedTokenContent}" token-meta="${encodedTokenMeta}" class="cbNonEditable" contenteditable="false">${name}</span>`;
+  const encodedTokenContent = JSON.stringify({ script: content })
+    .replace(/%/g, '%25')
+    .replace(/ /g, '%20')
+    .replace(/\{/g, '%7B')
+    .replace(/\|/g, '%7C')
+    .replace(/\}/g, '%7D')
+    .replace(/"/g, '%22');
+  return `<span e-token="cust_esl" token-template="%22%3C%25=%20script%20%25%3E%22" token-content="${encodedTokenContent}" token-meta="%7B%7D" class="cbNonEditable" contenteditable="false">${name}</span>`;
 }
 
 function encodeBase64Utf8(str) {
@@ -851,7 +828,7 @@ function serializeRangeForBridge(range, doc) {
 
 const GEM_REPLACE_TARGET_ATTR = 'data-gem-replace-target';
 
-async function tryInsertViaIframeBridge(ctx, html, timeoutMs = 600) {
+async function tryInsertViaIframeBridge(ctx, html, timeoutMs = 600, bridgeOptions = {}) {
   const doc = ctx && ctx.doc;
   const element = ctx && ctx.element;
   if (!doc || !element || doc.defaultView === window) return false;
@@ -862,6 +839,7 @@ async function tryInsertViaIframeBridge(ctx, html, timeoutMs = 600) {
     elementId: element.id || null,
     html,
     caret: ctx.bridgeCaret || null,
+    custEslToken: bridgeOptions.custEslToken || null,
   };
 
   const caretResponse = await postMessageToSnippetBridge(
@@ -943,7 +921,8 @@ async function insertHtmlIntoContentEditable(ctx, html, options = {}) {
 
   const bridgeTimeoutMs = options.bridgeTimeoutMs || 2500;
   const placeCaretAfter = options.placeCaretAfter === true;
-  const insertHtml = placeCaretAfter ? appendContentEditableCaretMarker(html) : html;
+  const caretMarkerHtml = `<span ${GEM_CARET_MARKER_ATTR}="1">\u200b</span>`;
+  const insertHtml = placeCaretAfter ? `${String(html ?? '')}${caretMarkerHtml}` : html;
   const isIframeDoc = doc.defaultView && doc.defaultView !== window;
   let insertedViaTinyMCE = false;
 
@@ -955,7 +934,9 @@ async function insertHtmlIntoContentEditable(ctx, html, options = {}) {
   });
 
   if (isIframeDoc) {
-    insertedViaTinyMCE = await tryInsertViaIframeBridge(ctx, insertHtml, bridgeTimeoutMs);
+    insertedViaTinyMCE = await tryInsertViaIframeBridge(ctx, insertHtml, bridgeTimeoutMs, {
+      custEslToken: options.custEslToken || null,
+    });
     console.log(GEM_TR_LOG, 'insertHtmlIntoContentEditable: bridge insert ok =', insertedViaTinyMCE);
   }
 
@@ -970,7 +951,25 @@ async function insertHtmlIntoContentEditable(ctx, html, options = {}) {
 
     insertedViaTinyMCE = tryInsertContentEditableViaTinyMCE(doc, element, insertHtml, ctx);
     if (!insertedViaTinyMCE) {
-      insertSnippetAtCaret(element, insertHtml, doc, null, null, range, { notifyDirty: false });
+      if (options.custEslToken && window.gemCustEslToken && typeof window.gemCustEslToken.createSpan === 'function') {
+        const span = window.gemCustEslToken.createSpan(
+          doc,
+          options.custEslToken.name,
+          options.custEslToken.script != null ? options.custEslToken.script : ''
+        );
+        const fragment = doc.createDocumentFragment();
+        fragment.appendChild(span);
+        if (placeCaretAfter) {
+          const marker = doc.createElement('span');
+          marker.setAttribute(GEM_CARET_MARKER_ATTR, '1');
+          marker.appendChild(doc.createTextNode('\u200b'));
+          fragment.appendChild(marker);
+        }
+        range.deleteContents();
+        range.insertNode(fragment);
+      } else {
+        insertSnippetAtCaret(element, insertHtml, doc, null, null, range, { notifyDirty: false });
+      }
     }
   }
 
@@ -2700,6 +2699,21 @@ function insertIntoCodeMirror(ctx, text) {
   return false;
 }
 
+// Maps an insert target to a snippet variant location. Null means "use the default content".
+function gemSnippetInsertLocationForCtx(ctx) {
+  if (!ctx) return null;
+  if (ctx.type === 'contenteditable') return 'body';
+  const el = ctx.type === 'codemirror' ? ctx.cmEl : ctx.element;
+  if (!el || typeof el.closest !== 'function') return null;
+  if (el.closest('#subject-line-input')) return 'subject';
+  if (el.closest('cb-preheader')) return 'preheader';
+  if (el.closest('cb-conditional-editor')) return 'conditions';
+  if (el.matches && el.matches('input[placeholder="Image alternative text"]')) return 'alt';
+  // Other code editors (e.g. HTML blocks) edit the email body.
+  if (ctx.type === 'codemirror') return 'body';
+  return null;
+}
+
 async function gemInsertSnippetIntoTarget(ctx, snippet, options = {}) {
   if (!ctx || !snippet) return false;
   const mode = options.mode === 'plain' ? 'plain' : 'token';
@@ -2770,7 +2784,27 @@ async function gemInsertSnippetIntoTarget(ctx, snippet, options = {}) {
     return false;
   }
 
-  const content = snippet.content != null ? snippet.content : (snippet.name || '');
+  // Context-menu items wrap the stored snippet; raw-text inserts have no variants.
+  const variantSource = snippet.snippet || snippet;
+  const location = gemSnippetInsertLocationForCtx(ctx);
+  const slot =
+    snippet.content != null && window.gemSnippetSource
+      ? window.gemSnippetSource.slotForLocation(variantSource, location)
+      : null;
+  if (slot && slot.contentSource === 'personalization' && slot.persTokenId) {
+    const tokenRaw = window.gemSnippetSource.findPersTokenById(slot.persTokenId);
+    if (tokenRaw) {
+      return gemInsertSnippetIntoTarget(
+        ctx,
+        { kind: 'personalization', token: tokenRaw },
+        options
+      );
+    }
+    return false;
+  }
+  const content = snippet.content != null
+    ? window.gemSnippetVariants.contentFor(variantSource, location)
+    : (snippet.name || '');
 
   if (ctx.type === 'contenteditable') {
     const doc = ctx.doc;
@@ -2779,7 +2813,19 @@ async function gemInsertSnippetIntoTarget(ctx, snippet, options = {}) {
 
     if (mode === 'token') {
       const html = generateSnippetHTML(snippet.name, content);
-      return insertHtmlIntoContentEditable(ctx, html, { placeCaretAfter: true });
+      const custEslToken = window.gemCustEslToken
+        ? {
+            name: snippet.name,
+            script: content,
+            tokenContent: window.gemCustEslToken.buildTokenContentAttribute(content),
+            tokenTemplate: window.gemCustEslToken.TOKEN_TEMPLATE,
+            tokenMeta: window.gemCustEslToken.TOKEN_META,
+          }
+        : null;
+      return insertHtmlIntoContentEditable(ctx, html, {
+        placeCaretAfter: true,
+        custEslToken,
+      });
     }
 
     const escaped = String(content ?? '')
@@ -2813,6 +2859,46 @@ async function gemInsertSnippetIntoTarget(ctx, snippet, options = {}) {
   return false;
 }
 
+function buildGemSnippetPersPickerHtml(options = {}) {
+  const withMainIds = !!options.withMainIds;
+  const pickerId = withMainIds ? ' id="gem-snippet-pers-picker"' : '';
+  const valueId = withMainIds ? ' id="gem-snippet-pers-value"' : '';
+  const searchId = withMainIds ? ' id="gem-snippet-pers-search"' : '';
+  return `
+<div class="gem-snippet-pers-picker"${pickerId} data-gem-pers-selected="" data-gem-pers-custom-folder-id="" data-gem-pers-predefined-folder-id="">
+  <input type="hidden" class="gem-snippet-pers-value"${valueId} value="" />
+  <div class="gem-snippet-pers-picker-browse">
+    <div class="e-field gem-snippet-pers-search-field">
+      <div class="e-field__prefix" style="width: 100%;">
+        <span class="e-field__prefix__icon" aria-hidden="true">
+          <e-icon icon="search"><div aria-hidden="true" class="e-icon-wrapper"><div class="e-icon">&#xF16B;</div></div></e-icon>
+        </span>
+        <input type="search" class="e-input gem-snippet-pers-search"${searchId} placeholder="Search" autocomplete="off" aria-label="Search personalization tokens" />
+      </div>
+    </div>
+    <div class="gem-snippet-pers-section">
+      <h3 class="gem-snippet-pers-section-title">Predefined tokens</h3>
+      <table data-e-version="2" class="e-table e-table-hover e-table-bordered gem-snippet-pers-token-table">
+        <tbody class="gem-snippet-pers-predefined-body"></tbody>
+      </table>
+    </div>
+    <div class="gem-snippet-pers-section">
+      <h3 class="gem-snippet-pers-section-title">Custom tokens</h3>
+      <table data-e-version="2" class="e-table e-table-hover e-table-bordered gem-snippet-pers-token-table">
+        <tbody class="gem-snippet-pers-custom-body"></tbody>
+      </table>
+    </div>
+    <p class="gem-snippet-pers-empty" hidden>No tokens match your search.</p>
+  </div>
+  <div class="gem-snippet-pers-picker-selected" hidden>
+    <div class="gem-snippet-pers-selected-row">
+      <span class="e-label e-label-primary gem-snippet-pers-token-chip gem-snippet-pers-selected-label"></span>
+      <button type="button" class="e-btn e-btn-borderless e-btn-onlyicon gem-snippet-pers-clear-btn" aria-label="Clear personalization token selection">×</button>
+    </div>
+  </div>
+</div>`;
+}
+
 // Function to create the snippet modal HTML
 function createSnippetModalHTML(isEditing = false) {
   return `
@@ -2838,29 +2924,47 @@ function createSnippetModalHTML(isEditing = false) {
   </header>
   <div class="e-dialog__content" style="max-width: none;">
     <div>
-      <div class="e-field">
-        <label class="e-field__label e-field__label-inline" for="gem-snippet-category-input">Category</label>
-        <input class="e-input" id="gem-snippet-category-input" type="text" placeholder="Optional category">
+      <div class="gem-snippet-modal-two-col">
+        <div class="e-field gem-snippet-modal-stack">
+          <label class="e-field__label gem-snippet-modal-field-label" for="gem-snippet-category-input">Category</label>
+          <input class="e-input" id="gem-snippet-category-input" type="text" placeholder="Optional category">
+        </div>
+        <div class="e-field gem-snippet-modal-stack">
+          <label class="e-field__label gem-snippet-modal-field-label" for="gem-snippet-name-input">Name</label>
+          <input class="e-input" id="gem-snippet-name-input" type="text" placeholder="Enter snippet name (max 100 characters)" maxlength="100">
+        </div>
       </div>
-      <div class="e-field">
-        <label class="e-field__label e-field__label-inline" for="gem-snippet-name-input">Snippet name</label>
-        <input class="e-input" id="gem-snippet-name-input" type="text" placeholder="Enter snippet name (max 100 characters)" maxlength="100">
+      <div class="e-field gem-snippet-modal-stack">
+        <label class="e-field__label gem-snippet-modal-field-label" for="gem-snippet-description-input">Description</label>
+        <textarea class="e-input gem-scrollable gem-snippet-modal-textarea" id="gem-snippet-description-input" placeholder="Optional description (max 200 characters)" maxlength="200" rows="1"></textarea>
       </div>
-      <div class="e-field">
-        <label class="e-field__label e-field__label-inline">Code snippet</label>
-        <textarea class="e-input gem-scrollable" id="gem-snippet-code-input" placeholder="Enter your ESL code snippet" style="background-color:var(--token-input-default-background); font-family: var(--token-font-monospace, monospace); width: 100%; min-height: 200px; resize: vertical; padding: 10px 12px;"></textarea>
+      <div class="e-field gem-snippet-modal-stack gem-snippet-source-field" data-gem-snippet-source-root="main">
+        <label class="e-field__label gem-snippet-modal-field-label" for="gem-snippet-source-type">Content</label>
+        <select class="e-input gem-snippet-source-type" id="gem-snippet-source-type" aria-label="Snippet content type">
+          <option value="code">Custom code (ESL, HTML, CSS)</option>
+          <option value="personalization">Personalization token</option>
+        </select>
+        <div class="gem-snippet-source-code-wrap" id="gem-snippet-code-wrap">
+          <textarea class="e-input gem-scrollable gem-snippet-modal-textarea gem-snippet-modal-code-textarea" id="gem-snippet-code-input" placeholder="Enter your ESL, HTML, or CSS" aria-label="Custom code" rows="1"></textarea>
+        </div>
+        <div class="gem-snippet-source-pers-wrap" id="gem-snippet-pers-wrap" hidden>
+          ${buildGemSnippetPersPickerHtml({ withMainIds: true })}
+        </div>
       </div>
-      <div class="e-field">
-        <label class="e-field__label e-field__label-inline" for="gem-snippet-description-input">Description</label>
-        <textarea class="e-input gem-scrollable" id="gem-snippet-description-input" placeholder="Optional description (max 200 characters)" maxlength="200" style="background-color:var(--token-input-default-background); width: 100%; min-height: 100px; resize: vertical; padding: 10px 12px;"></textarea>
+      <div class="e-field gem-snippet-modal-stack">
+        <label class="e-field__label gem-snippet-modal-field-label" for="gem-add-snippet-variant-btn">Variants</label>
+        <div class="gem-snippet-modal-field-help">A variant replaces the primary content above in the locations you check, for inserts, quick-insert shortcuts and keyword swaps.</div>
+        <div id="gem-snippet-variants"></div>
+        <button class="e-btn" id="gem-add-snippet-variant-btn" type="button" style="width: 100%; margin-top: 8px;">+ Add a Variant</button>
       </div>
-      <div class="e-field">
-        <label class="e-field__label e-field__label-inline" for="gem-snippet-shortcut-select">Quick-insert shortcut</label>
+      <div class="e-field gem-snippet-modal-stack">
+        <label class="e-field__label gem-snippet-modal-field-label" for="gem-snippet-shortcut-select">Quick-insert shortcut</label>
+        <div class="gem-snippet-modal-field-help">Lets you insert this snippet from the Gemma Token menu by pressing this number.</div>
         <select class="e-input" id="gem-snippet-shortcut-select"><option value="0">Not assigned</option></select>
-        <div class="sub-label" style="font-size:12px; opacity:0.75; margin-top:4px;">Lets you insert this snippet from the Gemma Token menu by pressing this number.</div>
       </div>
-      <div style="margin-top: 6px;">
-        <div style="display:flex; gap:10px; align-items:flex-end; margin-bottom:4px;">
+      <div class="e-field gem-snippet-modal-stack" style="margin-top: 6px;">
+        <label class="e-field__label gem-snippet-modal-field-label" for="gem-add-swap-keyword-btn">Keyword swap</label>
+        <div id="gem-swap-keywords-header" style="display:none; gap:10px; align-items:flex-end; margin-bottom:4px;">
           <div style="width:100%;">Optional Keyword for Swapping</div>
           <div style="min-width:120px;">Swap Method</div>
            <div style="min-width:140px;">Initiate From</div>
@@ -3068,7 +3172,8 @@ function initializeSnippetsTab() {
           keyword: (k && typeof k.keyword === 'string') ? k.keyword.trim() : '',
           mode: normalizeSwapMode(k && k.mode),
           matchRule: normalizeSwapMatchRule(k && k.matchRule),
-          initiateFrom: normalizeSwapInitiateFrom(k && k.initiateFrom)
+          initiateFrom: normalizeSwapInitiateFrom(k && k.initiateFrom),
+          locations: window.gemSwapLocations.normalize(k && k.locations)
         }))
         .filter((k) => !!k.keyword);
 
@@ -3133,7 +3238,7 @@ function initializeSnippetsTab() {
         : '';
 
       const rows = list.map((snippet) => {
-        const fullSnippetHTML = generateSnippetHTML(snippet.name, snippet.content);
+        const fullSnippetHTML = gemSnippetDragHtmlForBody(snippet);
         const snippetNameLower = (snippet.name || '').toLowerCase();
         const snippetId = String(snippet.id || '');
         const snippetIdAttr = escapeHtmlText(snippetId);
@@ -3151,7 +3256,9 @@ function initializeSnippetsTab() {
         const isFav = !!snippet.favorite;
         const hasSwap = snippetHasAnySwapKeyword(snippet);
         const swapRules = normalizeSwapKeywordsFromSnippet(snippet);
-        const canRunFromPanel = swapRules.some((r) => r && r.keyword && r.initiateFrom !== 'toolbar');
+        const canRunFromPanel = swapRules.some((r) =>
+          r && r.keyword && r.initiateFrom !== 'toolbar' && window.gemSwapLocations.allows(r, 'body')
+        );
         const swapBtn = hasSwap
           ? `
     <e-tooltip width="200" content="Swap Keywords" permission="false">
@@ -3165,15 +3272,22 @@ function initializeSnippetsTab() {
     </e-tooltip>
           `.trim()
           : '';
+        const variants = window.gemSnippetVariants.normalize(snippet.variants);
+        const variantsBadge = variants.length
+          ? `<span class="gem-snippet-variants-badge" title="${escapeHtmlText(`Code variants for: ${variants.map((v) => v.locations.map((loc) => SWAP_LOCATION_LABELS[loc]).join(', ')).join(' | ')}`)}" style="margin-left: 6px; font-size: 10px; line-height: 16px; height: 16px; padding: 0 4px; border-radius: 4px; box-shadow: 0 0 0 1px; opacity: 0.6; white-space: nowrap;">${variants.length} variant${variants.length === 1 ? '' : 's'}</span>`
+          : '';
+        const persBadges = gemSnippetListPersBadgesHtml(snippet);
         return `
 <tr data-snippet-id="${snippetIdAttr}" data-snippet-name="${escapeHtmlText(snippetNameLower)}" data-gem-favorite="${isFav ? 'true' : 'false'}" data-gem-has-swap="${hasSwap ? 'true' : 'false'}">
   ${exportSelectCell}
   <td style="vertical-align:middle;padding:8px 2px 8px ${snippetExportSelectionState.active ? '4px' : '10px'}">
-    <div style="display:flex; align-items:center;">
+    <div style="display:flex; align-items:center; flex-wrap: wrap; gap: 4px;">
       ${favoriteStar}
       <vce-token name="${snippet.name}" data="${fullSnippetHTML.replace(/"/g, '&quot;')}">
         <span class="e-label e-label-primary" draggable="true" style="cursor: move;">${snippet.name}</span>
       </vce-token>
+      ${persBadges}
+      ${variantsBadge}
     </div>
   ${snippet.description ? `<div style="
         font-size: 11px;
@@ -3523,15 +3637,42 @@ function initializeSnippetsTab() {
     return `${base} ${i}`;
   }
 
+  // Imported JSON may claim a location twice; the first variant keeps it.
+  function dedupeVariantLocations(variants) {
+    const claimed = new Set();
+    return variants
+      .map((v) => {
+        const locations = v.locations.filter((loc) => !claimed.has(loc));
+        locations.forEach((loc) => claimed.add(loc));
+        return { ...v, locations };
+      })
+      .filter((v) => v.locations.length);
+  }
+
   function createSnippetsExportPayload(snippets) {
-    return (snippets || []).map((s) => ({
-      category: s.category || '',
-      name: s.name,
-      content: s.content,
-      description: s.description || '',
-      favorite: !!s.favorite,
-      swapKeywords: normalizeSwapKeywordsFromSnippet(s)
-    }));
+    return (snippets || []).map((s) => {
+      const root =
+        window.gemSnippetSource && typeof window.gemSnippetSource.normalizeRoot === 'function'
+          ? window.gemSnippetSource.normalizeRoot(s)
+          : { contentSource: 'code', content: s.content, persTokenId: '' };
+      const out = {
+        category: s.category || '',
+        name: s.name,
+        description: s.description || '',
+        favorite: !!s.favorite,
+        swapKeywords: normalizeSwapKeywordsFromSnippet(s),
+      };
+      if (root.contentSource === 'personalization') {
+        out.contentSource = 'personalization';
+        out.persTokenId = root.persTokenId;
+        out.content = '';
+      } else {
+        out.content = root.content;
+      }
+      const variants = window.gemSnippetVariants.normalize(s.variants);
+      if (variants.length) out.variants = variants;
+      return out;
+    });
   }
 
   function resetSnippetExportSelectionState() {
@@ -3985,6 +4126,8 @@ function initializeSnippetsTab() {
           const category = (item && typeof item.category === 'string') ? item.category.trim() : '';
           const name = (item && typeof item.name === 'string') ? item.name.trim() : '';
           const content = (item && typeof item.content === 'string') ? item.content.trim() : '';
+          const contentSource = item && item.contentSource === 'personalization' ? 'personalization' : 'code';
+          const persTokenId = item && item.persTokenId ? String(item.persTokenId).trim() : '';
           const description = (item && typeof item.description === 'string') ? item.description.trim() : '';
           const favorite = !!(item && item.favorite);
           let swapKeywords = [];
@@ -3993,28 +4136,43 @@ function initializeSnippetsTab() {
               .map((k) => ({
                 keyword: (k && typeof k.keyword === 'string') ? k.keyword.trim() : '',
                 mode: normalizeSwapMode(k && k.mode),
-                initiateFrom: normalizeSwapInitiateFrom(k && k.initiateFrom)
+                matchRule: normalizeSwapMatchRule(k && k.matchRule),
+                initiateFrom: normalizeSwapInitiateFrom(k && k.initiateFrom),
+                locations: window.gemSwapLocations.normalize(k && k.locations)
               }))
               .filter((k) => !!k.keyword);
           } else {
             // Backward-compatible import (legacy single keyword)
             const legacyKeyword = (item && typeof item.swapKeyword === 'string') ? item.swapKeyword.trim() : '';
             if (legacyKeyword) {
-              swapKeywords = [{ keyword: legacyKeyword, mode: normalizeSwapMode(item && item.swapMode), initiateFrom: 'anywhere' }];
+              swapKeywords = [{ keyword: legacyKeyword, mode: normalizeSwapMode(item && item.swapMode), matchRule: 'partial', initiateFrom: 'anywhere', locations: window.gemSwapLocations.normalize() }];
             }
           }
 
-          if (!name || !content) {
+          if (!name) {
+            invalid++;
+            return;
+          }
+          if (contentSource === 'personalization') {
+            if (!persTokenId) {
+              invalid++;
+              return;
+            }
+          } else if (!content) {
             invalid++;
             return;
           }
 
           // Allow duplicate snippet names. Only skip if the import contains an identical entry
           // (same name + same code) that already exists in storage.
-          const existingIdentical = updated.find(s =>
-            (s.name || '').toLowerCase() === name.toLowerCase() &&
-            ((s.content || '').trim() === content)
-          );
+          const existingIdentical = updated.find((s) => {
+            if ((s.name || '').toLowerCase() !== name.toLowerCase()) return false;
+            const sSource = s.contentSource === 'personalization' ? 'personalization' : 'code';
+            if (contentSource === 'personalization' || sSource === 'personalization') {
+              return sSource === contentSource && String(s.persTokenId || '').trim() === persTokenId;
+            }
+            return ((s.content || '').trim() === content);
+          });
           if (existingIdentical) {
             skipped++;
             return;
@@ -4044,11 +4202,14 @@ function initializeSnippetsTab() {
           updated.push({
             id: (window.gemGenerateSnippetId && window.gemGenerateSnippetId()) || `snippet-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             favorite,
-            category: category,
-            name: name,
-            content: content,
-            description: description,
-            swapKeywords
+            category,
+            name,
+            contentSource,
+            persTokenId: contentSource === 'personalization' ? persTokenId : '',
+            content: contentSource === 'personalization' ? '' : content,
+            description,
+            swapKeywords,
+            variants: dedupeVariantLocations(window.gemSnippetVariants.normalize(item && item.variants)),
           });
           existingNamesLower.add(name.toLowerCase());
           added++;
@@ -4405,42 +4566,16 @@ function initializeSnippetsTab() {
     });
   }
 
-  function escapeTokenContentForAttribute(value) {
-    // Must match generateSnippetHTML() encoding for token-content
-    return String(value)
-      .replace(/%/g, '%25')
-      .replace(/&/g, '&amp;')
-      .replace(/ /g, '%20')
-      .replace(/\{/g, '%7B')
-      .replace(/\|/g, '%7C')
-      .replace(/\}/g, '%7D')
-      .replace(/\\/g, '%5C')
-      .replace(/\[/g, '%5B')
-      .replace(/\]/g, '%5D')
-      .replace(/</g, '%3C')
-      .replace(/>/g, '%3E')
-      .replace(/"/g, '%22');
-  }
-
   function createEslTokenSpan(doc, name, script) {
-    const tokenContent = JSON.stringify({ script });
-    const encodedTokenContent = escapeTokenContentForAttribute(tokenContent);
-    const encodedTokenTemplate = '%22%3C%25=%20script%20%25%3E%22';
-    const encodedTokenMeta = '%7B%7D';
-
-    const span = doc.createElement('span');
-    span.setAttribute('e-token', 'cust_esl');
-    span.setAttribute('token-template', encodedTokenTemplate);
-    span.setAttribute('token-content', encodedTokenContent);
-    span.setAttribute('token-meta', encodedTokenMeta);
-    span.setAttribute('contenteditable', 'false');
-    span.className = 'cbNonEditable';
+    const span = window.gemCustEslToken && typeof window.gemCustEslToken.createSpan === 'function'
+      ? window.gemCustEslToken.createSpan(doc, name, script)
+      : null;
+    if (!span) return null;
     // Match the toolbar token styling for consistent visibility
     span.style.backgroundColor = '#6597cf';
     span.style.borderRadius = '.3em';
     span.style.boxShadow = '0 0 0 0.2em #6597cf';
     span.style.color = '#fff';
-    span.textContent = name;
     return span;
   }
 
@@ -4486,7 +4621,9 @@ function initializeSnippetsTab() {
     if (!doc) return;
 
     // Snippets Panel initiated: skip "Block Toolbar Only" rules
-    const rules = normalizeSwapKeywordsFromSnippet(snippet).filter((r) => r && r.keyword && r.initiateFrom !== 'toolbar');
+    const rules = normalizeSwapKeywordsFromSnippet(snippet).filter((r) =>
+      r && r.keyword && r.initiateFrom !== 'toolbar' && window.gemSwapLocations.allows(r, 'body')
+    );
     if (!rules.length) {
       window.gemShowToast && window.gemShowToast('No panel-eligible keyword swaps for this snippet.', { type: 'info' });
       return;
@@ -4560,26 +4697,13 @@ function initializeSnippetsTab() {
       });
     } catch (_) {}
     editables.forEach((editable) => {
-      const walker = doc.createTreeWalker(
-        editable,
-        NodeFilter.SHOW_TEXT,
-        {
-          acceptNode(node) {
-            if (!node.nodeValue) return NodeFilter.FILTER_REJECT;
-            if (isInsideExistingToken(node.parentNode)) return NodeFilter.FILTER_REJECT;
-            const text = node.nodeValue;
-            const hasAny = rules.some((r) => text.indexOf(r.keyword) !== -1);
-            return hasAny ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
-          }
-        }
-      );
+      if (isInsideExistingToken(editable)) return;
+      // Runs join text split across inline formatting tags (e.g. `(</span><b>Keyword)`).
+      const runs = window.gemTextIndex.collectTextRuns(editable, { tokens: 'skip' });
 
-      const nodes = [];
-      let n;
-      while ((n = walker.nextNode())) nodes.push(n);
-
-      nodes.forEach((textNode) => {
-        const text = textNode.nodeValue;
+      runs.forEach((run) => {
+        const text = run.text;
+        if (!rules.some((r) => text.indexOf(r.keyword) !== -1)) return;
         const matches = [];
 
         rules.forEach((rule) => {
@@ -4608,32 +4732,28 @@ function initializeSnippetsTab() {
         if (!matches.length) return;
         matches.sort((a, b) => (a.start - b.start) || ((b.end - b.start) - (a.end - a.start)));
 
-        const frag = doc.createDocumentFragment();
+        const accepted = [];
         let cursor = 0;
-        let replacedAny = false;
-
         matches.forEach((m) => {
           if (m.start < cursor) return;
-          if (m.start > cursor) frag.appendChild(doc.createTextNode(text.slice(cursor, m.start)));
-
-          const mode = normalizeSwapMode(m.rule.mode);
-          if (mode === 'token') {
-            frag.appendChild(createEslTokenSpan(doc, snippet.name || 'ESL snippet', snippet.content || ''));
-          } else {
-            frag.appendChild(doc.createTextNode(snippet.content || ''));
-          }
-
-          replacedAny = true;
-          swapCount += 1;
+          accepted.push(m);
           cursor = m.end;
         });
 
-        if (cursor < text.length) frag.appendChild(doc.createTextNode(text.slice(cursor)));
-
-        if (replacedAny && textNode.parentNode) {
-          textNode.parentNode.replaceChild(frag, textNode);
-          didChange = true;
-          touched.add(editable);
+        // Last to first so earlier offsets in the run stay valid.
+        for (let i = accepted.length - 1; i >= 0; i--) {
+          const m = accepted[i];
+          const mode = normalizeSwapMode(m.rule.mode);
+          const replacement =
+            typeof window.gemSnippetSource?.createBodySwapReplacement === 'function'
+              ? window.gemSnippetSource.createBodySwapReplacement(doc, snippet, 'body', mode)
+              : null;
+          if (!replacement) continue;
+          if (window.gemTextIndex.replaceRange(doc, run, m.start, m.end, replacement, { root: editable })) {
+            swapCount += 1;
+            didChange = true;
+            touched.add(editable);
+          }
         }
       });
 
@@ -4688,13 +4808,45 @@ function initializeSnippetsTab() {
   // Swap keyword rows UI (Gemma snippet modal)
   // ------------------------------------------------------------
 
-  function addSwapKeywordRowEl(rowsContainer, keyword = '', mode = 'token', matchRule = 'partial', initiateFrom = 'anywhere') {
+  const SWAP_LOCATION_LABELS = {
+    subject: 'Subject',
+    preheader: 'Preheader',
+    body: 'Body',
+    conditions: 'Conditions',
+    alt: 'Alt Text'
+  };
+
+  // Panel- and toolbar-initiated swaps only ever run in the email body.
+  function swapLocationsAvailableFor(initiateFrom) {
+    return normalizeSwapInitiateFrom(initiateFrom) === 'anywhere'
+      ? window.gemSwapLocations.ALL.slice()
+      : ['body'];
+  }
+
+  function syncSwapLocationCheckboxes(row) {
+    const initiateFrom = row.querySelector('.gem-swap-initiate-select')?.value;
+    const available = swapLocationsAvailableFor(initiateFrom);
+    row.querySelectorAll('.gem-swap-location-checkbox').forEach((checkbox) => {
+      const enabled = available.includes(checkbox.value);
+      checkbox.disabled = !enabled;
+      const label = checkbox.closest('label');
+      if (label) {
+        label.style.opacity = enabled ? '' : '0.45';
+        label.style.cursor = enabled ? 'pointer' : 'default';
+      }
+    });
+  }
+
+  function addSwapKeywordRowEl(rowsContainer, keyword = '', mode = 'token', matchRule = 'partial', initiateFrom = 'anywhere', locations) {
     const row = document.createElement('div');
     row.className = 'gem-swap-keyword-row';
-    row.style.display = 'flex';
-    row.style.gap = '10px';
-    row.style.alignItems = 'flex-start';
     row.style.marginBottom = '8px';
+
+    const controls = document.createElement('div');
+    controls.className = 'gem-swap-keyword-controls';
+    controls.style.display = 'flex';
+    controls.style.gap = '10px';
+    controls.style.alignItems = 'flex-start';
 
     const keywordField = document.createElement('div');
     keywordField.className = 'e-field';
@@ -4750,11 +4902,40 @@ function initializeSnippetsTab() {
     removeBtn.textContent = '×';
     removeWrap.appendChild(removeBtn);
 
-    row.appendChild(keywordField);
-    row.appendChild(modeField);
-    row.appendChild(matchField);
-    row.appendChild(initiateField);
-    row.appendChild(removeWrap);
+    controls.appendChild(keywordField);
+    controls.appendChild(modeField);
+    controls.appendChild(matchField);
+    controls.appendChild(initiateField);
+    controls.appendChild(removeWrap);
+
+    const locationsRow = document.createElement('div');
+    locationsRow.className = 'gem-swap-locations';
+    locationsRow.setAttribute('role', 'group');
+    locationsRow.setAttribute('aria-label', 'Allowed swap locations');
+    locationsRow.style.display = 'flex';
+    locationsRow.style.flexWrap = 'wrap';
+    locationsRow.style.gap = '4px 16px';
+    locationsRow.style.marginTop = '6px';
+    const checkedLocations = window.gemSwapLocations.normalize(locations);
+    window.gemSwapLocations.ALL.forEach((loc) => {
+      const label = document.createElement('label');
+      label.style.display = 'flex';
+      label.style.alignItems = 'center';
+      label.style.gap = '6px';
+      label.style.fontSize = '13px';
+      label.style.cursor = 'pointer';
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.className = 'gem-swap-location-checkbox';
+      checkbox.value = loc;
+      checkbox.checked = checkedLocations.includes(loc);
+      label.appendChild(checkbox);
+      label.appendChild(document.createTextNode(SWAP_LOCATION_LABELS[loc]));
+      locationsRow.appendChild(label);
+    });
+
+    row.appendChild(controls);
+    row.appendChild(locationsRow);
     rowsContainer.appendChild(row);
 
     const input = row.querySelector('.gem-swap-keyword-input');
@@ -4764,7 +4945,11 @@ function initializeSnippetsTab() {
     if (input) input.value = keyword || '';
     if (select) select.value = normalizeSwapMode(mode);
     if (matchSelect) matchSelect.value = normalizeSwapMatchRule(matchRule);
-    if (initiateSelect) initiateSelect.value = normalizeSwapInitiateFrom(initiateFrom);
+    if (initiateSelect) {
+      initiateSelect.value = normalizeSwapInitiateFrom(initiateFrom);
+      initiateSelect.addEventListener('change', () => syncSwapLocationCheckboxes(row));
+    }
+    syncSwapLocationCheckboxes(row);
   }
 
   function resetSwapKeywordRowsUI(rowsContainer, swapKeywords) {
@@ -4776,15 +4961,18 @@ function initializeSnippetsTab() {
         keyword: (k && typeof k.keyword === 'string') ? k.keyword.trim() : '',
         mode: normalizeSwapMode(k && k.mode),
         matchRule: normalizeSwapMatchRule(k && k.matchRule),
-        initiateFrom: normalizeSwapInitiateFrom(k && k.initiateFrom)
+        initiateFrom: normalizeSwapInitiateFrom(k && k.initiateFrom),
+        locations: window.gemSwapLocations.normalize(k && k.locations)
       }))
       .filter((k) => !!k.keyword);
 
-    if (cleaned.length === 0) {
-      addSwapKeywordRowEl(rowsContainer, '', 'token', 'partial', 'anywhere');
-    } else {
-      cleaned.forEach((k) => addSwapKeywordRowEl(rowsContainer, k.keyword, k.mode, k.matchRule, k.initiateFrom));
-    }
+    cleaned.forEach((k) => addSwapKeywordRowEl(rowsContainer, k.keyword, k.mode, k.matchRule, k.initiateFrom, k.locations));
+    syncSwapKeywordsHeader(rowsContainer);
+  }
+
+  function syncSwapKeywordsHeader(rowsContainer) {
+    const header = document.getElementById('gem-swap-keywords-header');
+    if (header) header.style.display = rowsContainer && rowsContainer.querySelector('.gem-swap-keyword-row') ? 'flex' : 'none';
   }
 
   function readSwapKeywordRowsUI(rowsContainer) {
@@ -4802,7 +4990,18 @@ function initializeSnippetsTab() {
       const mode = normalizeSwapMode(row.querySelector('.gem-swap-mode-select')?.value);
       const matchRule = normalizeSwapMatchRule(row.querySelector('.gem-swap-match-select')?.value);
       const initiateFrom = normalizeSwapInitiateFrom(row.querySelector('.gem-swap-initiate-select')?.value);
-      out.push({ keyword, mode, matchRule, initiateFrom });
+      const locations = window.gemSwapLocations.normalize(
+        Array.from(row.querySelectorAll('.gem-swap-location-checkbox:checked')).map((cb) => cb.value)
+      );
+      const available = swapLocationsAvailableFor(initiateFrom);
+      if (!locations.some((loc) => available.includes(loc))) {
+        return {
+          ok: false,
+          error: `Keyword "${keyword}" has no swap location selected. Check at least one of: ${available.map((loc) => SWAP_LOCATION_LABELS[loc]).join(', ')}.`,
+          focusEl: row.querySelector('.gem-swap-location-checkbox:not(:disabled)')
+        };
+      }
+      out.push({ keyword, mode, matchRule, initiateFrom, locations });
     }
 
     return { ok: true, swapKeywords: out };
@@ -4815,6 +5014,9 @@ function initializeSnippetsTab() {
     if (addBtn) {
       addBtn.addEventListener('click', () => {
         addSwapKeywordRowEl(rowsContainer, '', 'token', 'partial', 'anywhere');
+        syncSwapKeywordsHeader(rowsContainer);
+        const rows = rowsContainer.querySelectorAll('.gem-swap-keyword-row');
+        rows[rows.length - 1]?.querySelector('.gem-swap-keyword-input')?.focus();
       });
     }
 
@@ -4824,21 +5026,654 @@ function initializeSnippetsTab() {
       if (!btn) return;
       const row = btn.closest('.gem-swap-keyword-row');
       if (!row) return;
+      row.remove();
+      syncSwapKeywordsHeader(rowsContainer);
+    });
+  }
 
-      const allRows = Array.from(rowsContainer.querySelectorAll('.gem-swap-keyword-row'));
-      if (allRows.length <= 1) {
-        // Keep at least one row; just clear it
-        const input = row.querySelector('.gem-swap-keyword-input');
-        const select = row.querySelector('.gem-swap-mode-select');
-        const matchSelect = row.querySelector('.gem-swap-match-select');
-        const initiateSelect = row.querySelector('.gem-swap-initiate-select');
-        if (input) input.value = '';
-        if (select) select.value = 'token';
-        if (matchSelect) matchSelect.value = 'partial';
-        if (initiateSelect) initiateSelect.value = 'anywhere';
+  // ------------------------------------------------------------
+  // Snippet source type (custom code vs personalization token)
+  // ------------------------------------------------------------
+
+  let gemSnippetModalPersTokens = [];
+
+  function gemSnippetListPersBadgesHtml(snippet) {
+    const src = window.gemSnippetSource;
+    if (!src || typeof src.persTokenIds !== 'function') return '';
+    const ids = src.persTokenIds(snippet);
+    if (!ids.length) return '';
+    return ids
+      .map(
+        (id) =>
+          `<span class="gem-snippet-pers-badge" title="Personalization token">${escapeHtmlText(
+            src.persTokenDisplayName(id)
+          )}</span>`
+      )
+      .join('');
+  }
+
+  function gemSnippetDragHtmlForBody(snippet) {
+    const src = window.gemSnippetSource;
+    const slot = src ? src.slotForLocation(snippet, 'body') : { contentSource: 'code', content: snippet.content };
+    if (slot.contentSource === 'personalization' && slot.persTokenId) {
+      const token = src.findPersTokenById(slot.persTokenId);
+      if (token && typeof window.gemGeneratePersonalizationTokenHTML === 'function') {
+        return window.gemGeneratePersonalizationTokenHTML(token) || '';
+      }
+      return '';
+    }
+    return generateSnippetHTML(snippet.name, window.gemSnippetVariants.contentFor(snippet, 'body'));
+  }
+
+  function loadPersTokensForSnippetModal(callback) {
+    const finish = (tokens) => {
+      gemSnippetModalPersTokens = Array.isArray(tokens) ? tokens.slice() : [];
+      gemSnippetModalPersTokens.sort((a, b) =>
+        String(a.displayName || a.name || '').localeCompare(String(b.displayName || b.name || ''), undefined, {
+          sensitivity: 'base',
+        })
+      );
+      if (typeof callback === 'function') callback(gemSnippetModalPersTokens);
+    };
+    if (typeof window.gemEnsurePersonalizationTokensLoaded === 'function') {
+      window.gemEnsurePersonalizationTokensLoaded().then(finish).catch(() => finish([]));
+      return;
+    }
+    finish(window.gemGetPersonalizationSessionTokens ? window.gemGetPersonalizationSessionTokens() : []);
+  }
+
+  function filterPersTokensForSearch(query) {
+    const q = String(query || '').trim().toLowerCase();
+    if (!q) return gemSnippetModalPersTokens;
+    return gemSnippetModalPersTokens.filter((t) => {
+      let display = String(t.displayName || '').toLowerCase();
+      if (t.predefined && typeof window.gemBuildPredefinedPersDisplayName === 'function') {
+        display = String(window.gemBuildPredefinedPersDisplayName(t) || display).toLowerCase();
+      }
+      const name = String(t.name || '').toLowerCase();
+      const id = String(t._id || '').toLowerCase();
+      return display.includes(q) || name.includes(q) || id.includes(q);
+    });
+  }
+
+  function gemPersTokenDisplayLabel(token, { plainName = false } = {}) {
+    if (!token) return '';
+    if (plainName) return String(token.name || token._id || '').trim();
+    if (token.predefined && typeof window.gemBuildPredefinedPersDisplayName === 'function') {
+      return window.gemBuildPredefinedPersDisplayName(token) || String(token.name || token._id || '').trim();
+    }
+    return String(token.displayName || token.name || token._id || '').trim();
+  }
+
+  function gemPersFolderTableRowHtml(folder, folderKind) {
+    const kind = escapeHtmlText(String(folderKind || 'custom'));
+    const id = escapeHtmlText(String(folder.id || ''));
+    const label = escapeHtmlText(String(folder.name || folder.id || ''));
+    return `<tr class="e-table__action gem-snippet-pers-folder-row" data-gem-pers-folder-kind="${kind}" data-gem-pers-folder-id="${id}" role="button" tabindex="0">
+      <td>${label}</td>
+      <td class="text-align-right" style="vertical-align: middle;"><e-icon icon="move-right" size="small"><div aria-hidden="true" class="e-icon-wrapper"><div class="e-icon e-icon-small">&#xF139;</div></div></e-icon></td>
+    </tr>`;
+  }
+
+  function gemPersFolderBackRowHtml(folderName, folderKind) {
+    const kind = escapeHtmlText(String(folderKind || 'custom'));
+    const label = escapeHtmlText(folderName || (folderKind === 'predefined' ? 'Predefined tokens' : 'Custom tokens'));
+    return `<tr class="e-table__action gem-snippet-pers-folder-back-row" data-gem-pers-folder-kind="${kind}" role="button" tabindex="0">
+      <td colspan="2"><e-icon icon="move-left" size="small"><div aria-hidden="true" class="e-icon-wrapper"><div class="e-icon e-icon-small">&#xF138;</div></div></e-icon> ${label}</td>
+    </tr>`;
+  }
+
+  function gemPersTokenTableRowHtml(token, { plainName = false } = {}) {
+    const id = escapeHtmlText(String(token._id || ''));
+    const label = escapeHtmlText(gemPersTokenDisplayLabel(token, { plainName }) || id);
+    return `<tr class="e-table__action gem-snippet-pers-token-row" data-gem-pers-token-id="${id}" role="button" tabindex="0">
+      <td colspan="2"><span class="e-label e-label-primary gem-snippet-pers-token-chip">${label}</span></td>
+    </tr>`;
+  }
+
+  function gemClearPersPickerFolderNav(pickerEl) {
+    if (!pickerEl) return;
+    pickerEl.dataset.gemPersCustomFolderId = '';
+    pickerEl.dataset.gemPersPredefinedFolderId = '';
+  }
+
+  function gemSetPersPickerFolderNav(pickerEl, folderKind, folderId) {
+    if (!pickerEl) return;
+    if (folderKind === 'predefined') {
+      pickerEl.dataset.gemPersPredefinedFolderId = String(folderId || '');
+    } else {
+      pickerEl.dataset.gemPersCustomFolderId = String(folderId || '');
+    }
+  }
+
+  function gemClearPersPickerFolderNavKind(pickerEl, folderKind) {
+    if (!pickerEl) return;
+    if (folderKind === 'predefined') pickerEl.dataset.gemPersPredefinedFolderId = '';
+    else pickerEl.dataset.gemPersCustomFolderId = '';
+  }
+
+  function getGemSnippetPersPickerSelectedId(pickerEl) {
+    if (!pickerEl) return '';
+    const hidden = pickerEl.querySelector('.gem-snippet-pers-value');
+    return String(pickerEl.dataset.gemPersSelected || hidden?.value || '').trim();
+  }
+
+  function renderGemSnippetPersPickerBrowse(pickerEl) {
+    if (!pickerEl) return;
+    const searchInput = pickerEl.querySelector('.gem-snippet-pers-search');
+    const predefinedBody = pickerEl.querySelector('.gem-snippet-pers-predefined-body');
+    const customBody = pickerEl.querySelector('.gem-snippet-pers-custom-body');
+    const emptyEl = pickerEl.querySelector('.gem-snippet-pers-empty');
+    const persSections = pickerEl.querySelectorAll('.gem-snippet-pers-section');
+    const predefinedSection = persSections[0];
+    const customSection = persSections[1];
+    const predefinedTitle = predefinedSection ? predefinedSection.querySelector('.gem-snippet-pers-section-title') : null;
+    const customTitle = customSection ? customSection.querySelector('.gem-snippet-pers-section-title') : null;
+    const query = String(searchInput ? searchInput.value : '').trim();
+    const isSearch = !!query;
+    if (isSearch) {
+      gemClearPersPickerFolderNav(pickerEl);
+    }
+    const customFolderId = isSearch ? '' : String(pickerEl.dataset.gemPersCustomFolderId || '').trim();
+    const predefinedFolderId = isSearch ? '' : String(pickerEl.dataset.gemPersPredefinedFolderId || '').trim();
+    const list = filterPersTokensForSearch(query);
+    const predefined = list.filter((t) => t.predefined);
+    const custom = list.filter((t) => !t.predefined);
+    const listCustomFolders =
+      typeof window.gemListSortedPersUseCaseFolders === 'function'
+        ? window.gemListSortedPersUseCaseFolders()
+        : [];
+    const listPredefinedFolders =
+      typeof window.gemListPredefinedPersContactFolders === 'function'
+        ? window.gemListPredefinedPersContactFolders(gemSnippetModalPersTokens)
+        : [];
+    const tokenInFolder =
+      typeof window.gemCustomPersTokenInFolder === 'function'
+        ? (token, id) => window.gemCustomPersTokenInFolder(token, id)
+        : () => false;
+    const tokenInPredefinedCategory =
+      typeof window.gemPredefinedPersTokenInCategory === 'function'
+        ? (token, id) => window.gemPredefinedPersTokenInCategory(token, id)
+        : () => false;
+    const rootCustom =
+      typeof window.gemCustomPersRootTokens === 'function'
+        ? window.gemCustomPersRootTokens(gemSnippetModalPersTokens)
+        : custom.filter((t) => !Array.isArray(t.use_cases) || !t.use_cases.length);
+
+    if (predefinedBody) {
+      let predefinedHtml = '';
+      if (isSearch) {
+        predefinedHtml = predefined.length
+          ? predefined.map((t) => gemPersTokenTableRowHtml(t)).join('')
+          : `<tr><td colspan="2" class="gem-snippet-pers-section-empty">${gemSnippetModalPersTokens.length ? 'No predefined tokens match your search' : 'No personalization tokens loaded'}</td></tr>`;
+        if (predefinedTitle) predefinedTitle.textContent = 'Predefined tokens';
+      } else if (predefinedFolderId) {
+        const folderEntry = listPredefinedFolders.find((f) => String(f.id) === predefinedFolderId);
+        const folderName = folderEntry ? folderEntry.name : predefinedFolderId;
+        const inFolder = gemSnippetModalPersTokens.filter(
+          (t) => t.predefined && tokenInPredefinedCategory(t, predefinedFolderId)
+        );
+        inFolder.sort((a, b) =>
+          String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' })
+        );
+        predefinedHtml = gemPersFolderBackRowHtml(folderName, 'predefined');
+        predefinedHtml += inFolder.length
+          ? inFolder.map((t) => gemPersTokenTableRowHtml(t, { plainName: true })).join('')
+          : `<tr><td colspan="2" class="gem-snippet-pers-section-empty">No tokens in this folder</td></tr>`;
+        if (predefinedTitle) predefinedTitle.textContent = folderName;
+      } else {
+        predefinedHtml = listPredefinedFolders
+          .map((f) => gemPersFolderTableRowHtml(f, 'predefined'))
+          .join('');
+        if (!predefinedHtml) {
+          predefinedHtml = `<tr><td colspan="2" class="gem-snippet-pers-section-empty">${gemSnippetModalPersTokens.length ? 'No predefined tokens' : 'No personalization tokens loaded'}</td></tr>`;
+        }
+        if (predefinedTitle) predefinedTitle.textContent = 'Predefined tokens';
+      }
+      predefinedBody.innerHTML = predefinedHtml;
+    }
+    if (customBody) {
+      let customHtml = '';
+      if (isSearch) {
+        customHtml = custom.length
+          ? custom.map((t) => gemPersTokenTableRowHtml(t)).join('')
+          : `<tr><td colspan="2" class="gem-snippet-pers-section-empty">No custom tokens match your search</td></tr>`;
+        if (customTitle) customTitle.textContent = 'Custom tokens';
+      } else if (customFolderId) {
+        const folderEntry = listCustomFolders.find((f) => String(f.id) === customFolderId);
+        const folderName = folderEntry ? folderEntry.name : customFolderId;
+        const inFolder = gemSnippetModalPersTokens.filter(
+          (t) => !t.predefined && tokenInFolder(t, customFolderId)
+        );
+        inFolder.sort((a, b) =>
+          String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' })
+        );
+        customHtml = gemPersFolderBackRowHtml(folderName, 'custom');
+        customHtml += inFolder.length
+          ? inFolder.map((t) => gemPersTokenTableRowHtml(t, { plainName: true })).join('')
+          : `<tr><td colspan="2" class="gem-snippet-pers-section-empty">No tokens in this folder</td></tr>`;
+        if (customTitle) customTitle.textContent = folderName;
+      } else {
+        customHtml = listCustomFolders.map((f) => gemPersFolderTableRowHtml(f, 'custom')).join('');
+        const sortedRoot = rootCustom.slice().sort((a, b) =>
+          String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' })
+        );
+        customHtml += sortedRoot.map((t) => gemPersTokenTableRowHtml(t, { plainName: true })).join('');
+        if (!customHtml) {
+          customHtml = `<tr><td colspan="2" class="gem-snippet-pers-section-empty">${gemSnippetModalPersTokens.length ? 'No custom tokens' : ''}</td></tr>`;
+        }
+        if (customTitle) customTitle.textContent = 'Custom tokens';
+      }
+      customBody.innerHTML = customHtml;
+    }
+    if (predefinedSection) predefinedSection.hidden = !predefined.length && !gemSnippetModalPersTokens.some((t) => t.predefined);
+    if (customSection) {
+      const hasCustomCatalog = gemSnippetModalPersTokens.some((t) => !t.predefined);
+      customSection.hidden = isSearch ? !custom.length && !hasCustomCatalog : !hasCustomCatalog;
+    }
+    if (emptyEl) {
+      const showEmpty = isSearch && gemSnippetModalPersTokens.length > 0 && !list.length;
+      emptyEl.hidden = !showEmpty;
+    }
+  }
+
+  function updateGemSnippetPersPickerView(pickerEl) {
+    if (!pickerEl) return;
+    const selectedId = getGemSnippetPersPickerSelectedId(pickerEl);
+    const browse = pickerEl.querySelector('.gem-snippet-pers-picker-browse');
+    const selectedPanel = pickerEl.querySelector('.gem-snippet-pers-picker-selected');
+    const labelEl = pickerEl.querySelector('.gem-snippet-pers-selected-label');
+    const hidden = pickerEl.querySelector('.gem-snippet-pers-value');
+    if (selectedId) {
+      const token = gemSnippetModalPersTokens.find((t) => String(t._id) === selectedId);
+      if (labelEl) labelEl.textContent = gemPersTokenDisplayLabel(token) || selectedId;
+      if (hidden) hidden.value = selectedId;
+      pickerEl.dataset.gemPersSelected = selectedId;
+      if (browse) browse.hidden = true;
+      if (selectedPanel) selectedPanel.hidden = false;
+    } else {
+      if (hidden) hidden.value = '';
+      pickerEl.dataset.gemPersSelected = '';
+      if (browse) browse.hidden = false;
+      if (selectedPanel) selectedPanel.hidden = true;
+      renderGemSnippetPersPickerBrowse(pickerEl);
+    }
+  }
+
+  function setGemSnippetPersPickerSelection(pickerEl, tokenId, options = {}) {
+    if (!pickerEl) return;
+    const want = String(tokenId || '').trim();
+    pickerEl.dataset.gemPersSelected = want;
+    const hidden = pickerEl.querySelector('.gem-snippet-pers-value');
+    if (hidden) hidden.value = want;
+    updateGemSnippetPersPickerView(pickerEl);
+    if (options.focusSearch && !want) {
+      const searchInput = pickerEl.querySelector('.gem-snippet-pers-search');
+      if (searchInput) searchInput.focus();
+    }
+  }
+
+  function bindGemSnippetPersPicker(pickerEl) {
+    if (!pickerEl || pickerEl._gemPersPickerBound) return;
+    pickerEl._gemPersPickerBound = true;
+    pickerEl.addEventListener('input', (e) => {
+      if (e.target.matches('.gem-snippet-pers-search')) renderGemSnippetPersPickerBrowse(pickerEl);
+    });
+    pickerEl.addEventListener('click', (e) => {
+      const folderRow = e.target.closest('.gem-snippet-pers-folder-row');
+      if (folderRow && pickerEl.contains(folderRow)) {
+        const folderId = folderRow.getAttribute('data-gem-pers-folder-id');
+        const folderKind = folderRow.getAttribute('data-gem-pers-folder-kind') || 'custom';
+        if (folderId) {
+          gemSetPersPickerFolderNav(pickerEl, folderKind, folderId);
+          renderGemSnippetPersPickerBrowse(pickerEl);
+        }
         return;
       }
-      row.remove();
+      const backRow = e.target.closest('.gem-snippet-pers-folder-back-row');
+      if (backRow && pickerEl.contains(backRow)) {
+        const folderKind = backRow.getAttribute('data-gem-pers-folder-kind') || 'custom';
+        gemClearPersPickerFolderNavKind(pickerEl, folderKind);
+        renderGemSnippetPersPickerBrowse(pickerEl);
+        return;
+      }
+      const row = e.target.closest('.gem-snippet-pers-token-row');
+      if (row && pickerEl.contains(row)) {
+        const id = row.getAttribute('data-gem-pers-token-id');
+        if (id) setGemSnippetPersPickerSelection(pickerEl, id);
+        return;
+      }
+      if (e.target.closest('.gem-snippet-pers-clear-btn')) {
+        gemClearPersPickerFolderNav(pickerEl);
+        setGemSnippetPersPickerSelection(pickerEl, '', { focusSearch: true });
+      }
+    });
+    pickerEl.addEventListener('keydown', (e) => {
+      const folderRow = e.target.closest('.gem-snippet-pers-folder-row');
+      if (folderRow && (e.key === 'Enter' || e.key === ' ')) {
+        e.preventDefault();
+        const folderId = folderRow.getAttribute('data-gem-pers-folder-id');
+        const folderKind = folderRow.getAttribute('data-gem-pers-folder-kind') || 'custom';
+        if (folderId) {
+          gemSetPersPickerFolderNav(pickerEl, folderKind, folderId);
+          renderGemSnippetPersPickerBrowse(pickerEl);
+        }
+        return;
+      }
+      const backRow = e.target.closest('.gem-snippet-pers-folder-back-row');
+      if (backRow && (e.key === 'Enter' || e.key === ' ')) {
+        e.preventDefault();
+        const folderKind = backRow.getAttribute('data-gem-pers-folder-kind') || 'custom';
+        gemClearPersPickerFolderNavKind(pickerEl, folderKind);
+        renderGemSnippetPersPickerBrowse(pickerEl);
+        return;
+      }
+      const row = e.target.closest('.gem-snippet-pers-token-row');
+      if (row && (e.key === 'Enter' || e.key === ' ')) {
+        e.preventDefault();
+        const id = row.getAttribute('data-gem-pers-token-id');
+        if (id) setGemSnippetPersPickerSelection(pickerEl, id);
+      }
+    });
+  }
+
+  function refreshAllGemSnippetPersPickersInModal(modalRoot) {
+    const root = modalRoot || document.getElementById('gem-snippet-modal');
+    if (!root) return;
+    root.querySelectorAll('.gem-snippet-pers-picker').forEach((picker) => {
+      bindGemSnippetPersPicker(picker);
+      updateGemSnippetPersPickerView(picker);
+    });
+  }
+
+  function syncSnippetSourcePanels(rootEl) {
+    if (!rootEl) return;
+    const typeEl = rootEl.querySelector('.gem-snippet-source-type');
+    const isPers = typeEl && typeEl.value === 'personalization';
+    const codeWrap = rootEl.querySelector('.gem-snippet-source-code-wrap');
+    const persWrap = rootEl.querySelector('.gem-snippet-source-pers-wrap');
+    if (codeWrap) codeWrap.hidden = !!isPers;
+    if (persWrap) persWrap.hidden = !isPers;
+    refreshSnippetModalEslValidators();
+  }
+
+  function syncVariantSourcePanels(variantEl) {
+    if (!variantEl) return;
+    const typeEl = variantEl.querySelector('.gem-snippet-variant-source-type');
+    const isPers = typeEl && typeEl.value === 'personalization';
+    const codeWrap = variantEl.querySelector('.gem-snippet-variant-code-wrap');
+    const persWrap = variantEl.querySelector('.gem-snippet-variant-pers-wrap');
+    if (codeWrap) codeWrap.hidden = !!isPers;
+    if (persWrap) persWrap.hidden = !isPers;
+    refreshSnippetModalEslValidators();
+  }
+
+  function bindMainSnippetSourceHandlers(modalRoot) {
+    const root = modalRoot.querySelector('[data-gem-snippet-source-root="main"]');
+    if (!root || root._gemSnippetSourceBound) return;
+    root._gemSnippetSourceBound = true;
+    const typeEl = root.querySelector('.gem-snippet-source-type');
+    const pickerEl = root.querySelector('.gem-snippet-pers-picker');
+    if (typeEl) {
+      typeEl.addEventListener('change', () => syncSnippetSourcePanels(root));
+    }
+    bindGemSnippetPersPicker(pickerEl);
+    syncSnippetSourcePanels(root);
+  }
+
+  function bindVariantSourceHandlers(variantEl) {
+    if (!variantEl || variantEl._gemVariantSourceBound) return;
+    variantEl._gemVariantSourceBound = true;
+    const typeEl = variantEl.querySelector('.gem-snippet-variant-source-type');
+    const pickerEl = variantEl.querySelector('.gem-snippet-pers-picker');
+    if (typeEl) typeEl.addEventListener('change', () => syncVariantSourcePanels(variantEl));
+    bindGemSnippetPersPicker(pickerEl);
+    syncVariantSourcePanels(variantEl);
+  }
+
+  function readMainSnippetSourceFromUI() {
+    const typeEl = document.getElementById('gem-snippet-source-type');
+    const codeInput = document.getElementById('gem-snippet-code-input');
+    const pickerEl = document.getElementById('gem-snippet-pers-picker');
+    const contentSource = typeEl && typeEl.value === 'personalization' ? 'personalization' : 'code';
+    if (contentSource === 'personalization') {
+      const persTokenId = getGemSnippetPersPickerSelectedId(pickerEl);
+      const browse = pickerEl?.querySelector('.gem-snippet-pers-picker-browse');
+      const focusEl =
+        browse && !browse.hidden ? browse.querySelector('.gem-snippet-pers-search') || pickerEl : pickerEl;
+      return { contentSource, persTokenId, content: '', focusEl };
+    }
+    const content = (codeInput?.value || '').trim();
+    return { contentSource, persTokenId: '', content, focusEl: codeInput };
+  }
+
+  function applyMainSnippetSourceToUI(snippet) {
+    const typeEl = document.getElementById('gem-snippet-source-type');
+    const codeInput = document.getElementById('gem-snippet-code-input');
+    const pickerEl = document.getElementById('gem-snippet-pers-picker');
+    const root = document.querySelector('[data-gem-snippet-source-root="main"]');
+    const src = window.gemSnippetSource;
+    const normalized = src ? src.normalizeRoot(snippet) : { contentSource: 'code', content: snippet.content || '', persTokenId: '' };
+    if (typeEl) typeEl.value = normalized.contentSource === 'personalization' ? 'personalization' : 'code';
+    if (codeInput) codeInput.value = normalized.content || '';
+    setGemSnippetPersPickerSelection(pickerEl, normalized.persTokenId);
+    if (root) syncSnippetSourcePanels(root);
+  }
+
+  // ------------------------------------------------------------
+  // Code variants UI (Gemma snippet modal)
+  // ------------------------------------------------------------
+
+  // Each location belongs to at most one variant, so locations checked elsewhere are disabled.
+  function refreshSnippetModalEslValidators() {
+    const modal = document.getElementById('gem-snippet-modal');
+    if (modal && typeof window.gemMountSnippetModalEslValidators === 'function') {
+      window.gemMountSnippetModalEslValidators(modal);
+    }
+  }
+
+  function syncSnippetVariantsUI(variantsContainer) {
+    if (!variantsContainer) return;
+    const variants = Array.from(variantsContainer.querySelectorAll('.gem-snippet-variant'));
+    variants.forEach((variant) => {
+      const claimedElsewhere = new Set();
+      variants.forEach((other) => {
+        if (other === variant) return;
+        other.querySelectorAll('.gem-snippet-variant-location-checkbox:checked').forEach((cb) => claimedElsewhere.add(cb.value));
+      });
+      variant.querySelectorAll('.gem-snippet-variant-location-checkbox').forEach((checkbox) => {
+        const enabled = !claimedElsewhere.has(checkbox.value);
+        checkbox.disabled = !enabled;
+        const label = checkbox.closest('label');
+        if (label) {
+          label.style.opacity = enabled ? '' : '0.45';
+          label.style.cursor = enabled ? 'pointer' : 'default';
+          label.title = enabled ? '' : 'Used by another variant';
+        }
+      });
+    });
+  }
+
+  function addSnippetVariantEl(variantsContainer, variantData) {
+    const data =
+      variantData && typeof variantData === 'object'
+        ? variantData
+        : { content: String(variantData || ''), locations: [] };
+    const content = data.content || '';
+    const locations = Array.isArray(data.locations) ? data.locations : [];
+    const contentSource = data.contentSource === 'personalization' ? 'personalization' : 'code';
+    const persTokenId = String(data.persTokenId || '').trim();
+
+    const variant = document.createElement('div');
+    variant.className = 'gem-snippet-variant';
+    variant.style.border = '1px solid var(--token-border-default)';
+    variant.style.borderRadius = '4px';
+    variant.style.padding = '8px 10px 10px';
+    variant.style.marginBottom = '8px';
+
+    const topBar = document.createElement('div');
+    topBar.className = 'gem-snippet-variant-topbar';
+
+    const locationsRow = document.createElement('div');
+    locationsRow.className = 'gem-snippet-variant-locations';
+    locationsRow.setAttribute('role', 'group');
+    locationsRow.setAttribute('aria-label', 'Variant locations');
+    locationsRow.style.display = 'flex';
+    locationsRow.style.flexWrap = 'wrap';
+    locationsRow.style.gap = '4px 16px';
+    locationsRow.style.width = '100%';
+    const title = document.createElement('span');
+    title.textContent = 'Use in:';
+    title.style.fontSize = '13px';
+    title.style.fontWeight = '600';
+    locationsRow.appendChild(title);
+    window.gemSwapLocations.ALL.forEach((loc) => {
+      const label = document.createElement('label');
+      label.style.display = 'flex';
+      label.style.alignItems = 'center';
+      label.style.gap = '6px';
+      label.style.fontSize = '13px';
+      label.style.cursor = 'pointer';
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.className = 'gem-snippet-variant-location-checkbox';
+      checkbox.value = loc;
+      checkbox.checked = locations.includes(loc);
+      label.appendChild(checkbox);
+      label.appendChild(document.createTextNode(SWAP_LOCATION_LABELS[loc]));
+      locationsRow.appendChild(label);
+    });
+
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'e-btn e-btn-borderless e-btn-onlyicon gem-remove-snippet-variant-btn';
+    removeBtn.type = 'button';
+    removeBtn.title = 'Remove variant';
+    removeBtn.setAttribute('aria-label', 'Remove variant');
+    removeBtn.style.minWidth = 'unset';
+    removeBtn.style.padding = '0 6px';
+    removeBtn.textContent = '×';
+
+    const sourceLabel = document.createElement('span');
+    sourceLabel.className = 'e-field__label gem-snippet-modal-field-label gem-snippet-variant-content-label';
+    sourceLabel.textContent = 'Content';
+    topBar.appendChild(sourceLabel);
+    topBar.appendChild(removeBtn);
+
+    const sourceRow = document.createElement('div');
+    sourceRow.style.marginBottom = '8px';
+    const sourceType = document.createElement('select');
+    sourceType.className = 'e-input gem-snippet-variant-source-type';
+    sourceType.setAttribute('aria-label', 'Variant content type');
+    sourceType.innerHTML =
+      '<option value="code">Custom code (ESL, HTML, CSS)</option><option value="personalization">Personalization token</option>';
+    sourceType.value = contentSource === 'personalization' ? 'personalization' : 'code';
+    sourceRow.appendChild(sourceType);
+
+    const codeWrap = document.createElement('div');
+    codeWrap.className = 'gem-snippet-variant-code-wrap';
+    const code = document.createElement('textarea');
+    code.className = 'e-input gem-scrollable gem-snippet-variant-code gem-snippet-modal-textarea gem-snippet-modal-code-textarea';
+    code.placeholder = 'Enter the code to use in the checked locations';
+    code.setAttribute('aria-label', 'Variant code');
+    code.rows = 1;
+    code.value = content;
+    codeWrap.appendChild(code);
+
+    const persWrap = document.createElement('div');
+    persWrap.className = 'gem-snippet-variant-pers-wrap';
+    persWrap.hidden = true;
+    persWrap.innerHTML = buildGemSnippetPersPickerHtml();
+
+    variant.appendChild(topBar);
+    variant.appendChild(sourceRow);
+    variant.appendChild(codeWrap);
+    variant.appendChild(persWrap);
+    variant.appendChild(locationsRow);
+    variantsContainer.appendChild(variant);
+    const variantPicker = persWrap.querySelector('.gem-snippet-pers-picker');
+    setGemSnippetPersPickerSelection(variantPicker, persTokenId);
+    bindVariantSourceHandlers(variant);
+    syncVariantSourcePanels(variant);
+    syncSnippetVariantsUI(variantsContainer);
+    refreshSnippetModalEslValidators();
+    return variant;
+  }
+
+  function resetSnippetVariantsUI(variantsContainer, variants) {
+    if (!variantsContainer) return;
+    variantsContainer.innerHTML = '';
+    window.gemSnippetVariants.normalize(variants).forEach((v) => addSnippetVariantEl(variantsContainer, v));
+    syncSnippetVariantsUI(variantsContainer);
+    refreshSnippetModalEslValidators();
+  }
+
+  function readSnippetVariantsUI(variantsContainer) {
+    const out = [];
+    const claimed = new Set();
+    const variants = Array.from(variantsContainer?.querySelectorAll('.gem-snippet-variant') || []);
+    for (const variant of variants) {
+      const typeEl = variant.querySelector('.gem-snippet-variant-source-type');
+      const contentSource = typeEl && typeEl.value === 'personalization' ? 'personalization' : 'code';
+      const codeEl = variant.querySelector('.gem-snippet-variant-code');
+      const persPicker = variant.querySelector('.gem-snippet-pers-picker');
+      const content = contentSource === 'code' ? (codeEl?.value || '').trim() : '';
+      const persTokenId = contentSource === 'personalization' ? getGemSnippetPersPickerSelectedId(persPicker) : '';
+      const locations = window.gemSwapLocations.ALL.filter((loc) =>
+        !!variant.querySelector(`.gem-snippet-variant-location-checkbox[value="${loc}"]:checked`)
+      );
+      const hasPayload = contentSource === 'personalization' ? !!persTokenId : !!content;
+      if (!hasPayload && !locations.length) continue;
+      if (contentSource === 'code' && !content) {
+        return { ok: false, error: 'A variant has no code. Enter its code or remove the variant.', focusEl: codeEl };
+      }
+      if (contentSource === 'personalization' && !persTokenId) {
+        return {
+          ok: false,
+          error: 'A variant has no personalization token selected.',
+          focusEl: persPicker?.querySelector('.gem-snippet-pers-search') || persPicker
+        };
+      }
+      if (!locations.length) {
+        return {
+          ok: false,
+          error: 'A variant has no location selected. Check at least one location or remove the variant.',
+          focusEl: variant.querySelector('.gem-snippet-variant-location-checkbox:not(:disabled)')
+        };
+      }
+      const duplicate = locations.find((loc) => claimed.has(loc));
+      if (duplicate) {
+        return { ok: false, error: `${SWAP_LOCATION_LABELS[duplicate]} is checked on more than one variant.`, focusEl: codeEl || persSelect };
+      }
+      locations.forEach((loc) => claimed.add(loc));
+      out.push({ locations, contentSource, persTokenId, content });
+    }
+    return { ok: true, variants: out };
+  }
+
+  function bindSnippetVariantsHandlers(rootEl, variantsContainer, addBtn) {
+    if (!rootEl || !variantsContainer || rootEl._gemSnippetVariantsBound) return;
+    rootEl._gemSnippetVariantsBound = true;
+
+    if (addBtn) {
+      addBtn.addEventListener('click', () => {
+        addSnippetVariantEl(variantsContainer);
+        const variant = variantsContainer.querySelector('.gem-snippet-variant:last-child');
+        variant?.querySelector('.gem-snippet-variant-location-checkbox:not(:disabled)')?.focus();
+      });
+    }
+
+    variantsContainer.addEventListener('change', (e) => {
+      if (e.target.closest && e.target.closest('.gem-snippet-variant-location-checkbox')) {
+        syncSnippetVariantsUI(variantsContainer);
+      }
+    });
+
+    variantsContainer.addEventListener('click', (e) => {
+      const btn = e.target.closest && e.target.closest('.gem-remove-snippet-variant-btn');
+      if (!btn) return;
+      btn.closest('.gem-snippet-variant')?.remove();
+      syncSnippetVariantsUI(variantsContainer);
+      refreshSnippetModalEslValidators();
     });
   }
 
@@ -4899,75 +5734,82 @@ function initializeSnippetsTab() {
     const rootEl = document.getElementById('gem-snippet-modal');
     if (rootEl) rootEl.dataset.gemPendingSnippetId = pendingId;
 
+    function initSnippetModalForm(editingSnippet) {
+      const modalRoot = document.getElementById('gem-snippet-modal');
+      if (!modalRoot) return;
+      loadPersTokensForSnippetModal(() => {
+        refreshAllGemSnippetPersPickersInModal(modalRoot);
+        bindMainSnippetSourceHandlers(modalRoot);
+        const rowsContainer = document.getElementById('gem-swap-keywords-rows');
+        const addBtn = document.getElementById('gem-add-swap-keyword-btn');
+        const variantsContainer = document.getElementById('gem-snippet-variants');
+        const shortcutSelect = document.getElementById('gem-snippet-shortcut-select');
+        const categoryInput = document.getElementById('gem-snippet-category-input');
+        const nameInput = document.getElementById('gem-snippet-name-input');
+        const descInput = document.getElementById('gem-snippet-description-input');
+        const favBtn = document.getElementById('gem-modal-favorite-btn');
+
+        if (editingSnippet) {
+          if (categoryInput) categoryInput.value = editingSnippet.category || '';
+          if (nameInput) {
+            nameInput.value = editingSnippet.name;
+            nameInput.focus();
+            nameInput.select();
+          }
+          applyMainSnippetSourceToUI(editingSnippet);
+          if (descInput) descInput.value = editingSnippet.description || '';
+          if (rowsContainer) {
+            bindSwapKeywordRowsHandlers(modalRoot, rowsContainer, addBtn);
+            resetSwapKeywordRowsUI(rowsContainer, normalizeSwapKeywordsFromSnippet(editingSnippet));
+          }
+          if (variantsContainer) {
+            bindSnippetVariantsHandlers(modalRoot, variantsContainer, document.getElementById('gem-add-snippet-variant-btn'));
+            resetSnippetVariantsUI(variantsContainer, editingSnippet.variants);
+          }
+          if (favBtn) setGemModalFavoriteState(!!editingSnippet.favorite);
+          if (shortcutSelect) {
+            populateShortcutSelect(
+              shortcutSelect,
+              window.gemGemmaPrefixedId ? window.gemGemmaPrefixedId(snippetId) : `g:${snippetId}`
+            );
+          }
+        } else {
+          if (nameInput) {
+            nameInput.focus();
+            nameInput.select();
+          }
+          applyMainSnippetSourceToUI({ contentSource: 'code', content: '', persTokenId: '' });
+          if (rowsContainer) {
+            bindSwapKeywordRowsHandlers(modalRoot, rowsContainer, addBtn);
+            resetSwapKeywordRowsUI(rowsContainer, []);
+          }
+          if (variantsContainer) {
+            bindSnippetVariantsHandlers(modalRoot, variantsContainer, document.getElementById('gem-add-snippet-variant-btn'));
+          }
+          if (shortcutSelect) {
+            populateShortcutSelect(
+              shortcutSelect,
+              window.gemGemmaPrefixedId ? window.gemGemmaPrefixedId(pendingId) : `g:${pendingId}`
+            );
+          }
+          setGemModalFavoriteState(false);
+        }
+        refreshSnippetModalEslValidators();
+      });
+    }
+
     // Set up modal event handlers after a brief delay to ensure DOM is ready
     setTimeout(() => {
       setupModalEventHandlers(snippetId);
     }, 10);
 
-    // If editing, pre-populate the form
     if (snippetId) {
       getSnippets((snippets) => {
-        const snippet = snippets.find(s => s.id === snippetId);
-        if (snippet) {
-          setTimeout(() => {
-            const categoryInput = document.getElementById('gem-snippet-category-input');
-            const nameInput = document.getElementById('gem-snippet-name-input');
-            const codeInput = document.getElementById('gem-snippet-code-input');
-            const descInput = document.getElementById('gem-snippet-description-input');
-            const modalRoot = document.getElementById('gem-snippet-modal');
-            const rowsContainer = document.getElementById('gem-swap-keywords-rows');
-            const addBtn = document.getElementById('gem-add-swap-keyword-btn');
-            const favBtn = document.getElementById('gem-modal-favorite-btn');
-            const shortcutSelect = document.getElementById('gem-snippet-shortcut-select');
-
-            if (categoryInput) categoryInput.value = snippet.category || '';
-            if (nameInput) {
-              nameInput.value = snippet.name;
-              nameInput.focus();
-              nameInput.select();
-            }
-            if (codeInput) {
-              codeInput.value = snippet.content;
-            }
-            if (descInput) descInput.value = snippet.description || '';
-            if (modalRoot && rowsContainer) {
-              bindSwapKeywordRowsHandlers(modalRoot, rowsContainer, addBtn);
-              resetSwapKeywordRowsUI(rowsContainer, normalizeSwapKeywordsFromSnippet(snippet));
-            }
-            if (favBtn) setGemModalFavoriteState(!!snippet.favorite);
-            if (shortcutSelect) {
-              populateShortcutSelect(
-                shortcutSelect,
-                window.gemGemmaPrefixedId ? window.gemGemmaPrefixedId(snippetId) : `g:${snippetId}`
-              );
-            }
-          }, 100);
-        }
+        const snippet = snippets.find((s) => s.id === snippetId);
+        if (snippet) setTimeout(() => initSnippetModalForm(snippet), 50);
       });
     } else {
-      // Focus on name input for new snippets
-      setTimeout(() => {
-        const nameInput = document.getElementById('gem-snippet-name-input');
-        if (nameInput) {
-          nameInput.focus();
-          nameInput.select();
-        }
-        const modalRoot = document.getElementById('gem-snippet-modal');
-        const rowsContainer = document.getElementById('gem-swap-keywords-rows');
-        const addBtn = document.getElementById('gem-add-swap-keyword-btn');
-        const shortcutSelect = document.getElementById('gem-snippet-shortcut-select');
-        if (shortcutSelect) {
-          populateShortcutSelect(
-            shortcutSelect,
-            window.gemGemmaPrefixedId ? window.gemGemmaPrefixedId(pendingId) : `g:${pendingId}`
-          );
-        }
-        if (modalRoot && rowsContainer) {
-          bindSwapKeywordRowsHandlers(modalRoot, rowsContainer, addBtn);
-          resetSwapKeywordRowsUI(rowsContainer, []);
-        }
-        setGemModalFavoriteState(false);
-      }, 100);
+      setTimeout(() => initSnippetModalForm(null), 50);
     }
 
     console.log("[Gem] Snippet modal opened", snippetId ? `(editing ${snippetId})` : '(creating new)');
@@ -5070,14 +5912,14 @@ function initializeSnippetsTab() {
     const modalRoot = document.getElementById('gem-snippet-modal');
     const pendingId = modalRoot?.dataset?.gemPendingSnippetId || null;
 
-    if (!nameInput || !codeInput) {
+    if (!nameInput) {
       console.log("[Gem] Modal inputs not found");
       return;
     }
 
     const category = categoryInput ? categoryInput.value.trim() : '';
     const name = nameInput.value.trim();
-    const code = codeInput.value.trim();
+    const mainSource = readMainSnippetSourceFromUI();
     const description = descInput ? descInput.value.trim() : '';
     const favorite = getGemModalFavoriteState();
     const read = readSwapKeywordRowsUI(rowsContainer);
@@ -5087,6 +5929,13 @@ function initializeSnippetsTab() {
       return;
     }
     const swapKeywords = read.swapKeywords;
+    const readVariants = readSnippetVariantsUI(document.getElementById('gem-snippet-variants'));
+    if (!readVariants.ok) {
+      gemToast(readVariants.error, { type: 'error', durationMs: 3200 });
+      readVariants.focusEl && readVariants.focusEl.focus && readVariants.focusEl.focus();
+      return;
+    }
+    const variants = readVariants.variants;
 
     if (!name) {
       gemToast('Please enter a snippet name.', { type: 'warn', durationMs: 2200 });
@@ -5094,9 +5943,14 @@ function initializeSnippetsTab() {
       return;
     }
 
-    if (!code) {
+    if (mainSource.contentSource === 'code' && !mainSource.content) {
       gemToast('Please enter snippet code.', { type: 'warn', durationMs: 2200 });
-      codeInput.focus();
+      mainSource.focusEl && mainSource.focusEl.focus && mainSource.focusEl.focus();
+      return;
+    }
+    if (mainSource.contentSource === 'personalization' && !mainSource.persTokenId) {
+      gemToast('Please select a personalization token.', { type: 'warn', durationMs: 2200 });
+      mainSource.focusEl && mainSource.focusEl.focus && mainSource.focusEl.focus();
       return;
     }
 
@@ -5125,7 +5979,18 @@ function initializeSnippetsTab() {
         // Update existing snippet
         const updatedSnippets = snippets.map((snippet) => {
           if (snippet.id !== editingSnippetId) return snippet;
-          const next = { ...snippet, favorite, category: category, name: name, content: code, description: description, swapKeywords };
+          const next = {
+            ...snippet,
+            favorite,
+            category,
+            name,
+            contentSource: mainSource.contentSource,
+            persTokenId: mainSource.persTokenId,
+            content: mainSource.content,
+            description,
+            swapKeywords,
+            variants,
+          };
           // Clean up legacy fields if present
           delete next.swapKeyword;
           delete next.swapMode;
@@ -5150,11 +6015,14 @@ function initializeSnippetsTab() {
         const newSnippet = {
           id: pendingId || (window.gemGenerateSnippetId && window.gemGenerateSnippetId()) || `snippet-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           favorite,
-          category: category,
-          name: name,
-          content: code,
-          description: description,
-          swapKeywords
+          category,
+          name,
+          contentSource: mainSource.contentSource,
+          persTokenId: mainSource.persTokenId,
+          content: mainSource.content,
+          description,
+          swapKeywords,
+          variants,
         };
 
         // Add to existing snippets

@@ -1,12 +1,22 @@
- --------------------------------------------------------------------------------
-|                                                                                |
-|                                                                                |
-|                                                                                |
-|         PROMPTS IN PROGRESS                                                    |
-|                                                                                |
-|                                                                                |
-|                                                                                |
- --------------------------------------------------------------------------------
+----------------------------------------------------------------------------
+|                                                                          |
+|                                                                          |
+|                                                                          |
+|         PROMPTS IN PROGRESS                                              |
+|                                                                          |
+|                                                                          |
+|                                                                          |
+ ---------------------------------------------------------------------------
+
+Improve token insertion. Its inserting in the wrong spot sometimes.
+
+Gemma snippets needs to be updated because Conditional text can be inserted into both subject lines and the body. This presents a potential issue with our context-aware snippet insertion. Any suggestions?
+
+Improve Block Targeting – The Gemma Block Visibility panel currently does not list the Segment name if the Type = Segment. Was that something we were able to harvest and inject there?
+
+
+
+---
 
 resize handles need a new :after element that is 100% height and colored purple on hover
 

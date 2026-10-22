@@ -13,10 +13,11 @@ console.log("[Gem] recent-campaigns.js loaded");
   const SETTINGS_NAV_ID = "gem-nav-settings-item";
   const RECENT_PANEL_ID = "gem-recent-campaigns-panel";
   const RECENT_BACKDROP_ID = "gem-recent-campaigns-backdrop";
-  /** Must match notes.js — notes dispatches so we close before notes opens (Cmd+;). */
-  const GEM_CLOSE_RECENT_CAMPAIGNS_EVENT = "gem-close-recent-campaigns-panel";
-  /** Must match notes.js — we dispatch so notes closes before recent opens (Cmd+/). */
-  const GEM_CLOSE_NOTES_EVENT = "gem-close-notes-panel";
+  const panelEvents = () => window.gemPanelEvents || {};
+  function dispatchGemPanelClose(key) {
+    const name = panelEvents()[key];
+    if (name) document.dispatchEvent(new CustomEvent(name, { bubbles: true }));
+  }
   const MAX_RECENT = 200;
   const CAMPAIGN_ROUTE = "contentBlocks/campaign";
   const MIN_LAST_VIEWED_UPDATE_MS = 60 * 1000;
@@ -2630,6 +2631,8 @@ console.log("[Gem] recent-campaigns.js loaded");
   }
 
   function showRecentPanel() {
+    dispatchGemPanelClose("CLOSE_NOTES");
+    dispatchGemPanelClose("CLOSE_BOOKMARKS");
     if (!recentPanel || !recentBackdrop) createRecentPanel();
     if (!recentPanel || !recentBackdrop) return;
     loadUiState(() => {
@@ -2754,8 +2757,11 @@ console.log("[Gem] recent-campaigns.js loaded");
 
       const notesEl = document.getElementById("gem-notes-panel");
       const notesOpen = !!(notesEl && notesEl.dataset.gemPanelOpen === "1");
-      if (notesOpen) {
-        document.dispatchEvent(new CustomEvent(GEM_CLOSE_NOTES_EVENT, { bubbles: true }));
+      const bookmarksEl = document.getElementById("gem-bookmarks-panel");
+      const bookmarksOpen = !!(bookmarksEl && bookmarksEl.dataset.gemPanelOpen === "1");
+      if (notesOpen || bookmarksOpen) {
+        if (notesOpen) dispatchGemPanelClose("CLOSE_NOTES");
+        if (bookmarksOpen) dispatchGemPanelClose("CLOSE_BOOKMARKS");
         showRecentPanel();
       } else {
         toggleRecentPanel();
@@ -2820,9 +2826,12 @@ console.log("[Gem] recent-campaigns.js loaded");
       });
     });
 
-    document.addEventListener(GEM_CLOSE_RECENT_CAMPAIGNS_EVENT, () => {
-      hideRecentPanel();
-    });
+    const closeRecentEvent = panelEvents().CLOSE_RECENT_CAMPAIGNS;
+    if (closeRecentEvent) {
+      document.addEventListener(closeRecentEvent, () => {
+        hideRecentPanel();
+      });
+    }
   }
 
   function insertRecentNavItem(host) {
@@ -3674,6 +3683,8 @@ console.log("[Gem] recent-campaigns.js loaded");
     initCampaignTracking();
     setupRecentCampaignsPanelShortcuts();
   }
+
+  window.gemCanonicalCampaignUrlFromHref = canonicalCampaignUrlFromHref;
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", initRecentCampaignsFeature, { once: true });

@@ -56,12 +56,12 @@ html, body {
     position: fixed !important;
     z-index: 609 !important;
     bottom: 0 !important;
-    width: calc(100% - 72px) !important;
+    width: calc(100% - 64px) !important;
     border-radius: 0;
 }
 
 #email-campaign-list.gem-email-campaign-list-preview-open e-datagrid-wrapper .e-datagrid__footer {
-    width: calc(100% - 427px) !important;
+    width: calc(100% - 419px) !important;
 }
 
 #gem-campaign-list-preview-panel {
@@ -87,10 +87,15 @@ html, body {
 #gem-campaign-list-preview-panel.gem-campaign-list-preview-panel--open {
     display: flex;
     background: var(--token-neutral-100);
+    border-left: 1px solid var(--token-box-default-border);
 }
 
-#email-campaign-list.gem-email-campaign-list-preview-open main {
+#email-campaign-list.gem-email-campaign-list-preview-open > .e-layout-without_navigation {
     margin-right: 355px !important;
+}
+
+#email-campaign-list e-notification {
+    margin: 20px 20px 0 !important
 }
 
 .gem-campaign-list-preview-iframe-wrap {

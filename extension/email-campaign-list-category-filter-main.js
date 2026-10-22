@@ -16,7 +16,6 @@
   const LAUNCH_DATAGRID_ID = 'launch-monitoring-datagrid';
   const FILTER_PANEL = '.e-datagrid__advanced_filters';
   const LIST_ROOT_ID = 'email-campaign-list';
-  const MAX_LIST_RESULTS = 80;
 
   const filterBadgeState = { applying: false, nativeCount: 0 };
 
@@ -327,7 +326,6 @@
     if (q) {
       matches = names.filter((name) => normalizeQuery(name).includes(q));
     }
-    matches = matches.slice(0, MAX_LIST_RESULTS);
 
     list.innerHTML = '';
     if (!q) {

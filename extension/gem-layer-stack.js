@@ -18,6 +18,8 @@
       "#gem-settings-panel",
       "#gem-notes-panel",
       "#gem-notes-backdrop",
+      "#gem-bookmarks-panel",
+      "#gem-bookmarks-backdrop",
       ".gem-recent-campaigns-panel",
       ".gem-recent-campaigns-backdrop",
       "#gem-keyboard-shortcuts-modal",
@@ -54,6 +56,10 @@
         return el.dataset && el.dataset.gemPanelOpen === "1";
       }
 
+      if (id === "gem-bookmarks-panel" || id === "gem-bookmarks-backdrop") {
+        return el.dataset && el.dataset.gemPanelOpen === "1";
+      }
+
       if (cls && cls.contains("gem-recent-campaigns-panel")) {
         return cls.contains("gem-recent-campaigns-panel--open");
       }
@@ -81,6 +87,7 @@
         if (parseFloat(cs.opacity) === 0) {
           if (cls && cls.contains("gem-recent-campaigns-backdrop")) return false;
           if (id === "gem-notes-backdrop") return false;
+          if (id === "gem-bookmarks-backdrop") return false;
         }
         return cs.position === "fixed" || cs.position === "absolute" || cs.position === "sticky";
       } catch (_) {

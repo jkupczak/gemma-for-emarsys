@@ -92,20 +92,22 @@
     return String(token.meta?.preview || token.preview || '').trim();
   }
 
-  function decodeTokenContentAttribute(raw) {
+  // Values read from raw HTML still carry attribute entity escaping; DOM attribute values don't,
+  // and decoding them again would turn an ESL '&nbsp;' into a literal non-breaking space.
+  function decodeTokenContentAttribute(raw, fromRawHtml = false) {
     let value = String(raw || '').trim();
     if (!value) return null;
+
+    if (fromRawHtml && value.includes('&')) {
+      const el = document.createElement('textarea');
+      el.innerHTML = value;
+      value = el.value;
+    }
 
     if (value.includes('%')) {
       try {
         value = decodeURIComponent(value);
       } catch (_) {}
-    }
-
-    if (value.includes('&')) {
-      const el = document.createElement('textarea');
-      el.innerHTML = value;
-      value = el.value;
     }
 
     try {
@@ -135,7 +137,7 @@
       while ((match = re.exec(source)) !== null) {
         const tokenType = index === 0 ? match[1] : match[2];
         const contentRaw = index === 0 ? match[2] : match[1];
-        const parsed = decodeTokenContentAttribute(contentRaw);
+        const parsed = decodeTokenContentAttribute(contentRaw, true);
         if (!parsed || typeof parsed !== 'object') continue;
 
         let script = '';

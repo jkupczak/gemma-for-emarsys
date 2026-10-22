@@ -10,6 +10,7 @@ console.log('[Gem] personalization-tokens.js loaded');
 
   let sessionTokens = null;
   let sessionRdsPresetMap = null;
+  let sessionUseCaseMap = null;
   let sessionFetchPromise = null;
 
   function escapeHtmlAttribute(value) {
@@ -296,6 +297,118 @@ console.log('[Gem] personalization-tokens.js loaded');
       .join(' ');
   }
 
+  function buildUseCaseMap(results) {
+    const map = new Map();
+    if (!Array.isArray(results)) return map;
+    results.forEach((entry) => {
+      if (!entry || typeof entry !== 'object') return;
+      const id = String(entry._id || '').trim();
+      if (!id) return;
+      map.set(id, {
+        id,
+        name: String(entry.name || '').trim() || id,
+        description: entry.description != null ? String(entry.description) : '',
+      });
+    });
+    return map;
+  }
+
+  function useCaseFolderNames(token, useCaseMap) {
+    const map = useCaseMap || sessionUseCaseMap;
+    if (!map || !token || token.predefined) return [];
+    const ids = Array.isArray(token.use_cases) ? token.use_cases : [];
+    const names = [];
+    ids.forEach((rawId) => {
+      const id = String(rawId || '').trim();
+      if (!id) return;
+      const entry = map.get(id);
+      names.push(entry ? entry.name : id);
+    });
+    return names.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  }
+
+  function buildCustomPersDisplayName(token, useCaseMap) {
+    if (!token || token.predefined) return '';
+    const baseName = String(token.name || token._id || '').trim();
+    const folders = useCaseFolderNames(token, useCaseMap);
+    if (!folders.length) return baseName;
+    return `${folders.join(', ')} > ${baseName}`;
+  }
+
+  function applyCustomPersDisplayNames(tokens, useCaseMap) {
+    if (!Array.isArray(tokens)) return;
+    tokens.forEach((token) => {
+      if (!token || token.predefined) return;
+      const displayName = buildCustomPersDisplayName(token, useCaseMap);
+      if (displayName) token.displayName = displayName;
+    });
+  }
+
+  function listSortedUseCaseFolders(useCaseMap) {
+    const map = useCaseMap || sessionUseCaseMap;
+    if (!map) return [];
+    return Array.from(map.values()).sort((a, b) =>
+      String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' })
+    );
+  }
+
+  function customPersTokenInFolder(token, folderId) {
+    if (!token || token.predefined) return false;
+    const want = String(folderId || '').trim();
+    if (!want) return false;
+    const ids = Array.isArray(token.use_cases) ? token.use_cases : [];
+    return ids.some((id) => String(id) === want);
+  }
+
+  function customPersRootTokens(tokens) {
+    return (Array.isArray(tokens) ? tokens : []).filter(
+      (t) => t && !t.predefined && (!Array.isArray(t.use_cases) || !t.use_cases.length)
+    );
+  }
+
+  function listPredefinedPersContactFolders(tokens) {
+    const source = Array.isArray(tokens) ? tokens : sessionTokens || [];
+    const have = new Set();
+    source.forEach((t) => {
+      if (!t || !t.predefined) return;
+      const cat = String(t.contactCategory || '').trim().toLowerCase();
+      if (cat) have.add(cat);
+    });
+    return PREDEFINED_CONTACT_CATEGORIES.filter((c) => have.has(c)).map((c) => ({
+      id: c,
+      name: titleCaseCategory(c),
+    }));
+  }
+
+  function predefinedPersTokenInCategory(token, categoryKey) {
+    if (!token || !token.predefined) return false;
+    return (
+      String(token.contactCategory || '')
+        .trim()
+        .toLowerCase() === String(categoryKey || '').trim().toLowerCase()
+    );
+  }
+
+  function buildPredefinedPersDisplayName(token) {
+    if (!token || !token.predefined) return '';
+    const baseName = String(token.name || token._id || '').trim();
+    const cat = token.contactCategory ? titleCaseCategory(token.contactCategory) : '';
+    return cat ? `${cat} > ${baseName}` : baseName;
+  }
+
+  function persMenuTokenName(token) {
+    if (!token) return '';
+    return String(token.name || token._id || '').trim();
+  }
+
+  function persMenuFolderLine(token) {
+    if (!token) return '';
+    if (token.predefined) {
+      return token.contactCategory ? titleCaseCategory(token.contactCategory) : '';
+    }
+    return useCaseFolderNames(token, sessionUseCaseMap).join(', ');
+  }
+
   function normalizePredefinedContactField(categoryKey, field) {
     if (!field || typeof field !== 'object') return null;
     const fieldId = field.id;
@@ -563,12 +676,17 @@ console.log('[Gem] personalization-tokens.js loaded');
   function toMenuItem(token, pinnedIds) {
     const normalized = enrichTokenWithRdsPresets(token, getSessionRdsPresetMap());
     if (!normalized) return null;
+    if (!normalized.predefined && !normalized.displayName) {
+      const withFolder = buildCustomPersDisplayName(normalized, sessionUseCaseMap);
+      if (withFolder) normalized.displayName = withFolder;
+    }
     const id = normalized._id;
     return {
       kind: 'personalization',
       persOrigin: normalized.predefined ? 'predefined' : 'custom',
       id,
-      name: normalized.displayName || normalized.name,
+      name: persMenuTokenName(normalized),
+      persFolderLine: persMenuFolderLine(normalized),
       token: normalized,
       pinned: pinnedIds.has(id),
       content: buildPersonalizationPreview(normalized) || '',
@@ -589,6 +707,7 @@ console.log('[Gem] personalization-tokens.js loaded');
         console.warn('[Gem] Personalization tokens: missing session_id in URL');
       }
       sessionTokens = [];
+      sessionUseCaseMap = new Map();
       return Promise.resolve(sessionTokens);
     }
 
@@ -601,6 +720,7 @@ console.log('[Gem] personalization-tokens.js loaded');
             ')'
           );
           sessionTokens = [];
+          sessionUseCaseMap = new Map();
           sessionFetchPromise = null;
           return sessionTokens;
         }
@@ -622,11 +742,17 @@ console.log('[Gem] personalization-tokens.js loaded');
             ? window.gemFetchContactSourceList(customerId, sessionId, authToken)
             : Promise.resolve({ ok: false, sources: null });
 
+        const fetchUseCases =
+          typeof window.gemFetchPersonalizationUseCaseList === 'function'
+            ? window.gemFetchPersonalizationUseCaseList(customerId, sessionId, authToken)
+            : Promise.resolve({ ok: false, results: [] });
+
         return Promise.all([
           window.gemFetchPersonalizationTokenList(customerId, sessionId, authToken),
           fetchPresets,
           fetchContactSources,
-        ]).then(([tokenRes, presetRes, contactRes]) => {
+          fetchUseCases,
+        ]).then(([tokenRes, presetRes, contactRes, useCaseRes]) => {
           if (presetRes && presetRes.ok && Array.isArray(presetRes.results)) {
             sessionRdsPresetMap = buildRdsPresetMap(presetRes.results);
             console.log('[Gem] Personalization RDS presets: loaded', sessionRdsPresetMap.size, 'presets');
@@ -653,11 +779,22 @@ console.log('[Gem] personalization-tokens.js loaded');
             );
           }
 
+          if (useCaseRes && useCaseRes.ok && Array.isArray(useCaseRes.results)) {
+            sessionUseCaseMap = buildUseCaseMap(useCaseRes.results);
+            console.log('[Gem] Personalization use cases: loaded', sessionUseCaseMap.size, 'folders');
+          } else {
+            sessionUseCaseMap = new Map();
+            if (useCaseRes && useCaseRes.reason) {
+              console.warn('[Gem] Personalization use-case list fetch failed:', useCaseRes.reason, useCaseRes);
+            }
+          }
+
           let customTokens = [];
           if (tokenRes && tokenRes.ok && Array.isArray(tokenRes.results)) {
             customTokens = tokenRes.results
               .map((raw) => enrichTokenWithRdsPresets(normalizePersToken(raw), sessionRdsPresetMap))
               .filter(Boolean);
+            applyCustomPersDisplayNames(customTokens, sessionUseCaseMap);
             console.log('[Gem] Custom personalization tokens: loaded', customTokens.length, 'tokens');
           } else {
             console.warn('[Gem] Personalization token list fetch failed:', tokenRes?.reason || 'unknown', tokenRes);
@@ -678,6 +815,7 @@ console.log('[Gem] personalization-tokens.js loaded');
       .catch((err) => {
         console.warn('[Gem] Personalization token list fetch error:', err);
         sessionTokens = [];
+        sessionUseCaseMap = new Map();
         sessionFetchPromise = null;
         return sessionTokens;
       });
@@ -835,6 +973,16 @@ console.log('[Gem] personalization-tokens.js loaded');
   window.gemGetPersonalizationSessionTokens = function () {
     return sessionTokens ? sessionTokens.slice() : [];
   };
+  window.gemGetPersonalizationUseCaseMap = function () {
+    return sessionUseCaseMap ? new Map(sessionUseCaseMap) : new Map();
+  };
+  window.gemListSortedPersUseCaseFolders = listSortedUseCaseFolders;
+  window.gemCustomPersTokenInFolder = customPersTokenInFolder;
+  window.gemCustomPersRootTokens = customPersRootTokens;
+  window.gemBuildCustomPersDisplayName = buildCustomPersDisplayName;
+  window.gemListPredefinedPersContactFolders = listPredefinedPersContactFolders;
+  window.gemPredefinedPersTokenInCategory = predefinedPersTokenInCategory;
+  window.gemBuildPredefinedPersDisplayName = buildPredefinedPersDisplayName;
   window.gemBuildPersonalizationPreview = buildPersonalizationPreview;
   window.gemBuildPersonalizationCodeMirrorToken = buildPersonalizationCodeMirrorToken;
   window.gemGeneratePersonalizationTokenHTML = generatePersonalizationTokenHTML;
@@ -844,6 +992,11 @@ console.log('[Gem] personalization-tokens.js loaded');
   window.gemCacheRecentPersToken = cacheRecentPersToken;
   window.gemLoadRecentPersTokenCache = loadRecentPersTokenCache;
   window.gemPersPrefixedId = persPrefixedId;
+  window.gemFindPersTokenById = function gemFindPersTokenById(id) {
+    const tokenId = String(id || '').trim();
+    if (!tokenId || !sessionTokens) return null;
+    return sessionTokens.find((t) => t && String(t._id) === tokenId) || null;
+  };
   window.gemGemmaPrefixedId = gemmaPrefixedId;
   window.gemParseRecentEntryId = parseRecentEntryId;
   window.gemToPersMenuItem = toMenuItem;

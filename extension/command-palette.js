@@ -39,9 +39,11 @@ console.log('[Gem] command-palette.js loaded');
 
   const GEMMA_FUNCTION_DEFS = [
     { id: 'gemma:notes', label: 'Gemma Notes', sectionId: 'gemma-functions', sectionTitle: 'Gemma Functions' },
+    { id: 'gemma:bookmarks', label: 'Gemma Bookmarks', sectionId: 'gemma-functions', sectionTitle: 'Gemma Functions' },
     { id: 'gemma:recent-campaigns', label: 'Gemma Campaigns', sectionId: 'gemma-functions', sectionTitle: 'Gemma Functions' },
     { id: 'gemma:settings', label: 'Gemma Settings', sectionId: 'gemma-functions', sectionTitle: 'Gemma Functions' },
   ];
+  const BOOKMARKS_STORAGE_KEY = 'gemBookmarks';
 
   const PANEL_TABS = [
     { tabId: 'emailBasicsTab', label: 'Email Basics', sectionId: 'panels', sectionTitle: 'Campaign Panels' },
@@ -71,6 +73,7 @@ console.log('[Gem] command-palette.js loaded');
   let recentCampaignItems = [];
   let recentCampaignPinnedKeys = new Set();
   let otherRecentItems = [];
+  let bookmarkPaletteItems = [];
   let lastRenderedHtml = '';
   let refreshRenderScheduled = false;
   let openTabsFingerprint = '';
@@ -565,6 +568,58 @@ console.log('[Gem] command-palette.js loaded');
     );
   }
 
+  function applyBookmarkPaletteItems(raw) {
+    if (typeof window.gemGetBookmarkPaletteEntries === 'function') {
+      bookmarkPaletteItems = window.gemGetBookmarkPaletteEntries();
+      return;
+    }
+    const parse =
+      typeof window.gemParseBookmarksState === 'function'
+        ? window.gemParseBookmarksState
+        : (value) => ({ items: Array.isArray(value) ? value : (value && value.items) || [] });
+    const state = parse(raw);
+    bookmarkPaletteItems = (state.items || []).map((item) => ({
+      id: String(item.id || '').trim(),
+      title: String(item.title || item.href || '').trim(),
+      href: String(item.href || '').trim(),
+      pinned: !!item.pinned,
+    })).filter((item) => item.id && item.href);
+  }
+
+  function loadBookmarkPaletteCache(done) {
+    if (typeof window.gemGetBookmarkPaletteEntries === 'function') {
+      bookmarkPaletteItems = window.gemGetBookmarkPaletteEntries();
+      if (typeof done === 'function') done();
+      return;
+    }
+    chrome.storage.sync.get(BOOKMARKS_STORAGE_KEY, (result) => {
+      applyBookmarkPaletteItems(result[BOOKMARKS_STORAGE_KEY]);
+      if (typeof done === 'function') done();
+    });
+  }
+
+  function buildBookmarkCommands() {
+    return bookmarkPaletteItems.map((item) =>
+      makeCommand({
+        id: `bookmark:${item.id}`,
+        sectionId: 'gemma-bookmarks',
+        sectionTitle: 'Gemma Bookmarks',
+        label: item.title || item.href,
+        run: () => {
+          if (typeof window.gemNavigateBookmarkHref === 'function') {
+            window.gemNavigateBookmarkHref(item.href);
+          } else {
+            window.location.assign(
+              typeof window.gemWithCurrentSessionId === 'function'
+                ? window.gemWithCurrentSessionId(item.href)
+                : item.href
+            );
+          }
+        },
+      })
+    );
+  }
+
   function buildGemmaFunctionCommands() {
     return GEMMA_FUNCTION_DEFS.map((def) =>
       makeCommand({
@@ -575,6 +630,11 @@ console.log('[Gem] command-palette.js loaded');
         run: () => {
           if (def.id === 'gemma:notes' && typeof window.gemToggleNotesPanel === 'function') {
             window.gemToggleNotesPanel();
+          } else if (
+            def.id === 'gemma:bookmarks' &&
+            typeof window.gemToggleBookmarksPanel === 'function'
+          ) {
+            window.gemToggleBookmarksPanel();
           } else if (
             def.id === 'gemma:recent-campaigns' &&
             typeof window.gemToggleRecentCampaignsPanel === 'function'
@@ -595,7 +655,13 @@ console.log('[Gem] command-palette.js loaded');
       sectionId: tab.sectionId,
       sectionTitle: tab.sectionTitle,
     }));
-    return [...CAMPAIGN_OVERFLOW_DEFS, ...panelDefs, ...GEMMA_FUNCTION_DEFS].map((def) => ({
+    const bookmarkDefs = bookmarkPaletteItems.map((item) => ({
+      id: `bookmark:${item.id}`,
+      label: item.title || item.href,
+      sectionId: 'gemma-bookmarks',
+      sectionTitle: 'Gemma Bookmarks',
+    }));
+    return [...CAMPAIGN_OVERFLOW_DEFS, ...panelDefs, ...GEMMA_FUNCTION_DEFS, ...bookmarkDefs].map((def) => ({
       id: def.id,
       label: def.label,
       sectionId: def.sectionId,
@@ -695,6 +761,7 @@ console.log('[Gem] command-palette.js loaded');
       ...buildPanelCommands(),
       ...(isCampaignPage() ? [] : buildOpenCampaignCommands()),
       ...buildGemmaFunctionCommands(),
+      ...buildBookmarkCommands(),
       ...buildEmarsysNavCommands(),
     ];
     allCommands = commands;
@@ -1056,6 +1123,7 @@ console.log('[Gem] command-palette.js loaded');
   function init() {
     loadPinnedIds();
     loadRecentCampaignCaches();
+    loadBookmarkPaletteCache();
     fetchOpenCampaignTabs();
 
     bindPaletteShortcutToDoc(document);
@@ -1082,6 +1150,10 @@ console.log('[Gem] command-palette.js loaded');
           if (changes[shortcutStorageKey]) {
             refreshAndRenderIfOpen();
           }
+          if (changes[BOOKMARKS_STORAGE_KEY]) {
+            applyBookmarkPaletteItems(changes[BOOKMARKS_STORAGE_KEY].newValue);
+            refreshAndRenderIfOpen();
+          }
         }
         if (area === 'local') {
           if (changes[RECENT_STORAGE_KEY] || changes[OTHER_RECENT_STORAGE_KEY]) {
@@ -1093,6 +1165,10 @@ console.log('[Gem] command-palette.js loaded');
 
     window.addEventListener('gem-user-shortcuts-changed', () => {
       refreshAndRenderIfOpen();
+    });
+
+    window.addEventListener('gem-bookmarks-changed', () => {
+      loadBookmarkPaletteCache(refreshAndRenderIfOpen);
     });
   }
 
@@ -1106,6 +1182,9 @@ console.log('[Gem] command-palette.js loaded');
   window.gemGetAssignablePaletteCommands = getAssignablePaletteCommands;
   window.gemIsPaletteCommandAvailableOnPage = gemIsPaletteCommandAvailableOnPage;
   window.gemRunPaletteCommandById = gemRunPaletteCommandById;
+
+  window.gemStableEmarsysHref = stableNavHref;
+  window.gemWithCurrentSessionId = withCurrentSessionId;
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);

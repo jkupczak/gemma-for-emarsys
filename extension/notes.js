@@ -4,10 +4,11 @@ const GEM_NOTES_STORAGE_KEY = "gemNotes";
 const GEM_NOTES_NAV_ID = "gem-nav-notes-item";
 const GEM_NOTES_PANEL_ID = "gem-notes-panel";
 const GEM_NOTES_BACKDROP_ID = "gem-notes-backdrop";
-/** Dispatched so recent-campaigns.js can close before notes opens (Cmd+;). */
-const GEM_CLOSE_RECENT_CAMPAIGNS_EVENT = "gem-close-recent-campaigns-panel";
-/** Dispatched so notes.js can close before recent opens (Cmd+/). */
-const GEM_CLOSE_NOTES_EVENT = "gem-close-notes-panel";
+function dispatchGemPanelClose(key) {
+  const events = window.gemPanelEvents;
+  const name = events && events[key];
+  if (name) document.dispatchEvent(new CustomEvent(name, { bubbles: true }));
+}
 
 let notesPanel = null;
 let notesBackdrop = null;
@@ -236,6 +237,8 @@ function createNotesPanel() {
 }
 
 function showNotesPanel() {
+  dispatchGemPanelClose("CLOSE_RECENT_CAMPAIGNS");
+  dispatchGemPanelClose("CLOSE_BOOKMARKS");
   if (!notesPanel) createNotesPanel();
   notesPanel.dataset.gemPanelOpen = "1";
   // Keep backdrop in the layer stack scan (gemLayerIsParticipating checks gemPanelOpen),
@@ -329,8 +332,11 @@ function setupNotesPanelShortcuts() {
 
     const recentEl = document.getElementById("gem-recent-campaigns-panel");
     const recentOpen = !!(recentEl && recentEl.classList.contains("gem-recent-campaigns-panel--open"));
-    if (recentOpen) {
-      document.dispatchEvent(new CustomEvent(GEM_CLOSE_RECENT_CAMPAIGNS_EVENT, { bubbles: true }));
+    const bookmarksEl = document.getElementById("gem-bookmarks-panel");
+    const bookmarksOpen = !!(bookmarksEl && bookmarksEl.dataset.gemPanelOpen === "1");
+    if (recentOpen || bookmarksOpen) {
+      if (recentOpen) dispatchGemPanelClose("CLOSE_RECENT_CAMPAIGNS");
+      if (bookmarksOpen) dispatchGemPanelClose("CLOSE_BOOKMARKS");
       showNotesPanel();
     } else {
       toggleNotesPanel();
@@ -396,9 +402,12 @@ function setupNotesPanelShortcuts() {
     });
   });
 
-  document.addEventListener(GEM_CLOSE_NOTES_EVENT, () => {
-    hideNotesPanel();
-  });
+  const closeNotesEvent = window.gemPanelEvents && window.gemPanelEvents.CLOSE_NOTES;
+  if (closeNotesEvent) {
+    document.addEventListener(closeNotesEvent, () => {
+      hideNotesPanel();
+    });
+  }
 }
 
 // ── Init ────────────────────────────────────────────────────────────────

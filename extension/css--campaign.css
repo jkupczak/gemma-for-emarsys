@@ -205,7 +205,7 @@ gem-block-targeting .gem-bt-empty {
 .gem-resize-handle:before {
     content: "";
     display: block;
-    background: var(--token-box-default-border);
+    background: var(--token-box-strong-border);
     position: absolute;
     top: 0;
     bottom: 0;
@@ -1665,3 +1665,73 @@ vce-variables-editor .e-grid-vertical_center.e-grid {
     align-items: flex-start !important;
     padding-top: 6px !important;
 }
+
+/* Campaign variable text inputs are mirrored by a wrapping textarea (campaign-variable-wrap.js). */
+vce-variables-editor input[type="text"].variable-value[data-gem-variable-wrap] {
+    display: none !important;
+}
+
+vce-variables-editor textarea.gem-variable-wrap-textarea {
+    field-sizing: content;
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    height: auto !important;
+    min-height: 36px;
+    resize: none;
+    overflow: hidden;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+cb-preheader textarea.e-input-textarea {
+    field-sizing: content;
+    height: auto !important;
+    min-height: 72px;
+}
+
+html main cb-overlay-panel .e-contentblocks-overlay_panel-open {
+    background-color: rgb(from var(--token-box-default-background) r g b / 60%);
+    border-radius: 5px !important;
+    width: calc(100% - 24px);
+    height: calc(100% - 24px);
+    margin: auto;
+    overflow: hidden;
+    border: 1px solid var(--token-border-default) !important;
+}
+
+cb-block-level-variable .e-section {
+    background: var(--token-neutral-100) !important;
+}
+
+/* html main.e-layout__content:has(.e-contentblocks-overlay_panel-open) {
+    & .e-layout__section.e-contentblocks-navigation_section,
+    & .e-layout__section .e-verticalnav e-verticalnav-menu,
+    & .e-layout__section .e-verticalnav,
+    & .e-layout__section .e-verticalnav .e-verticalnav__content {
+        background: var(--token-neutral-100) !important;
+    }
+} */
+
+/* html main.e-layout__content .e-layout__section {
+    & .e-verticalnav e-verticalnav-menu,
+    & .e-verticalnav,
+    & .e-verticalnav .e-verticalnav__content,
+    & .gem-compact-email-tools,
+    & .gem-compact-email-versions-row {
+        filter: blur(0px);
+        transition: filter .3s ease-out, opacity .3s ease-out;
+        opacity: 1;
+    }
+}
+html main.e-layout__content:has(.e-contentblocks-overlay_panel-open) {
+    & .e-layout__section .e-verticalnav e-verticalnav-menu,
+    & .e-layout__section .e-verticalnav,
+    & .e-layout__section .e-verticalnav .e-verticalnav__content,
+    & .gem-compact-email-tools,
+    & .gem-compact-email-versions-row {
+        filter: blur(10px);
+        transition: filter 0.4s ease-in, opacity 0.4s ease-in;
+        opacity: .4;
+    }
+} */

@@ -293,6 +293,8 @@ console.log('[Gem] esl-validator.js loaded');
       this.getVisibilityRoot = config.getVisibilityRoot || function () { return config.host; };
       this.templateName = config.templateName || DEFAULT_TEMPLATE_NAME;
       this.debounceMs = typeof config.debounceMs === 'number' ? config.debounceMs : DEBOUNCE_MS;
+      this.onStateChange = typeof config.onStateChange === 'function' ? config.onStateChange : null;
+      this.lockSubmitOnWaiting = config.lockSubmitOnWaiting !== false;
 
       this.root = document.createElement('div');
       this.root.className = ROOT_CLASS;
@@ -596,7 +598,14 @@ console.log('[Gem] esl-validator.js loaded');
         this.root.removeAttribute('role');
         this.root.removeAttribute('tabindex');
       }
-      this.setSubmitLocked(state === 'waiting');
+      if (this.lockSubmitOnWaiting) {
+        this.setSubmitLocked(state === 'waiting');
+      }
+      if (this.onStateChange) {
+        try {
+          this.onStateChange(this.state, this);
+        } catch (_) {}
+      }
     }
 
     setSubmitLocked(locked) {
@@ -858,14 +867,36 @@ console.log('[Gem] esl-validator.js loaded');
     });
   }
 
-  function mountSnippetModal(modal) {
-    const codeInput = modal.querySelector('#gem-snippet-code-input');
-    if (!codeInput) return;
-    const field = codeInput.closest('.e-field') || codeInput.parentElement || codeInput;
+  function syncSnippetModalSubmitLock(modal) {
+    const ok = modal && modal.querySelector('#gem-modal-ok-btn');
+    if (!ok) return;
+    const registry = modal._gemEslSnippetFieldRegistry;
+    const waiting = registry && registry.some((entry) => entry.session && entry.session.state === 'waiting');
+    setButtonLocked(ok, !!waiting);
+  }
 
-    mountSession({
-      id: 'snippet-modal',
+  function mountSnippetModalCodeField(modal, codeInput, sessionId) {
+    if (!modal || !codeInput) return null;
+    const field =
+      codeInput.closest('.gem-snippet-variant') ||
+      codeInput.closest('.e-field') ||
+      codeInput.parentElement ||
+      codeInput;
+
+    if (!modal._gemEslSnippetFieldRegistry) {
+      modal._gemEslSnippetFieldRegistry = [];
+    }
+
+    let entry = modal._gemEslSnippetFieldRegistry.find((item) => item.input === codeInput);
+    if (!entry) {
+      entry = { input: codeInput, session: null };
+      modal._gemEslSnippetFieldRegistry.push(entry);
+    }
+
+    const session = mountSession({
+      id: sessionId,
       host: field,
+      lockSubmitOnWaiting: false,
       getVisibilityRoot: function () {
         return modal;
       },
@@ -876,11 +907,85 @@ console.log('[Gem] esl-validator.js loaded');
         return codeInput.value || '';
       },
       getSubmitButtons: function () {
-        const ok = modal.querySelector('#gem-modal-ok-btn');
-        return ok ? [ok] : [];
+        return [];
+      },
+      onStateChange: function () {
+        syncSnippetModalSubmitLock(modal);
       },
     });
+    entry.session = session;
+    syncSnippetModalSubmitLock(modal);
+    return session;
   }
+
+  function pruneSnippetModalCodeFields(modal) {
+    if (!modal || !Array.isArray(modal._gemEslSnippetFieldRegistry)) return;
+    const liveInputs = new Set();
+    const main = modal.querySelector('#gem-snippet-code-input');
+    if (main) liveInputs.add(main);
+    modal.querySelectorAll('.gem-snippet-variant-code').forEach((el) => liveInputs.add(el));
+
+    modal._gemEslSnippetFieldRegistry = modal._gemEslSnippetFieldRegistry.filter((entry) => {
+      if (!entry || !entry.input || !liveInputs.has(entry.input)) {
+        if (entry && entry.session && !entry.session.destroyed) {
+          entry.session.destroy();
+        }
+        return false;
+      }
+      return true;
+    });
+  }
+
+  function bindSnippetModalSubmitGuard(modal) {
+    if (!modal || modal._gemEslSnippetSubmitGuardBound) return;
+    modal._gemEslSnippetSubmitGuardBound = true;
+    modal.addEventListener(
+      'click',
+      (event) => {
+        const registry = modal._gemEslSnippetFieldRegistry;
+        const waiting =
+          registry && registry.some((entry) => entry.session && entry.session.state === 'waiting');
+        if (!waiting) return;
+        const ok = modal.querySelector('#gem-modal-ok-btn');
+        if (!ok) return;
+        const target =
+          event.target && event.target.closest
+            ? event.target.closest('button, .apply, [type="submit"], e-btn')
+            : null;
+        if (!target || (target !== ok && !ok.contains(target) && !target.contains(ok))) return;
+        event.preventDefault();
+        event.stopPropagation();
+      },
+      true
+    );
+  }
+
+  function snippetModalCodeInputShouldValidate(input) {
+    if (!input || !input.isConnected) return false;
+    const wrap = input.closest('.gem-snippet-source-code-wrap, .gem-snippet-variant-code-wrap');
+    if (wrap && wrap.hidden) return false;
+    return true;
+  }
+
+  function mountSnippetModal(modal) {
+    if (!modal) return;
+    const codeInput = modal.querySelector('#gem-snippet-code-input');
+
+    bindSnippetModalSubmitGuard(modal);
+    pruneSnippetModalCodeFields(modal);
+    if (codeInput && snippetModalCodeInputShouldValidate(codeInput)) {
+      mountSnippetModalCodeField(modal, codeInput, 'snippet-modal-main');
+    }
+
+    modal.querySelectorAll('.gem-snippet-variant-code').forEach((variantInput, index) => {
+      if (!snippetModalCodeInputShouldValidate(variantInput)) return;
+      mountSnippetModalCodeField(modal, variantInput, 'snippet-modal-variant-' + index);
+    });
+
+    syncSnippetModalSubmitLock(modal);
+  }
+
+  window.gemMountSnippetModalEslValidators = mountSnippetModal;
 
   function mountSubjectTokenModal(modal) {
     const codeInput = modal.querySelector('#gem-subject-line-token-code');

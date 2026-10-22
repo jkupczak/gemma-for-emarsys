@@ -1427,6 +1427,38 @@
     return false;
   }
 
+  function insertCustEslTokenSpanAtSelection(editor, token, placeCaretAfter) {
+    const doc = editor.getDoc && editor.getDoc();
+    if (!doc || !editor.selection) return false;
+
+    const span = doc.createElement('span');
+    span.setAttribute('e-token', 'cust_esl');
+    span.setAttribute('token-template', token.tokenTemplate || '%22%3C%25=%20script%20%25%3E%22');
+    span.setAttribute('token-content', token.tokenContent || '');
+    span.setAttribute('token-meta', token.tokenMeta || '%7B%7D');
+    span.setAttribute('contenteditable', 'false');
+    span.className = 'cbNonEditable';
+    span.textContent = token.name != null ? String(token.name) : '';
+
+    const rng = editor.selection.getRng();
+    rng.deleteContents();
+    rng.insertNode(span);
+
+    if (placeCaretAfter) {
+      const marker = doc.createElement('span');
+      marker.setAttribute(GEM_CARET_MARKER_ATTR, '1');
+      marker.appendChild(doc.createTextNode('\u200b'));
+      rng.setStartAfter(span);
+      rng.collapse(true);
+      rng.insertNode(marker);
+    }
+
+    if (typeof editor.nodeChanged === 'function') {
+      editor.nodeChanged();
+    }
+    return true;
+  }
+
   function handleInsert(event, data) {
     let ok = false;
     let error = null;
@@ -1445,7 +1477,12 @@
       } catch (_) {}
 
       const html = data.html != null ? String(data.html) : '';
+      const custEslToken = data.custEslToken && data.custEslToken.tokenContent ? data.custEslToken : null;
+      const placeCaretAfter = html.includes(GEM_CARET_MARKER_ATTR);
       const insert = () => {
+        if (custEslToken && insertCustEslTokenSpanAtSelection(editor, custEslToken, placeCaretAfter)) {
+          return;
+        }
         if (typeof editor.execCommand === 'function') {
           editor.execCommand('mceInsertContent', false, html);
         } else if (typeof editor.insertContent === 'function') {

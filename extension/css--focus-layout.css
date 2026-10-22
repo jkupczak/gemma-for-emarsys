@@ -408,7 +408,7 @@ html.gem-focus-layout .gem-focus-save-split gem-cb-draft-save-button button:hove
     filter: brightness(1.06);
 }
 
-html.gem-focus-layout .gem-focus-save-menu {
+.gem-focus-save-menu {
     position: fixed;
     z-index: 2147483647;
     min-width: 180px;
@@ -420,11 +420,11 @@ html.gem-focus-layout .gem-focus-save-menu {
     box-sizing: border-box;
 }
 
-html.gem-focus-layout .gem-focus-save-menu[hidden] {
+.gem-focus-save-menu[hidden] {
     display: none !important;
 }
 
-html.gem-focus-layout .gem-focus-save-menu__item {
+.gem-focus-save-menu__item {
     width: 100%;
     border: 0;
     background: transparent;
@@ -440,13 +440,46 @@ html.gem-focus-layout .gem-focus-save-menu__item {
     gap: 8px;
 }
 
-html.gem-focus-layout .gem-focus-save-menu__item:hover:not(:disabled) {
+.gem-focus-save-menu__item:hover:not(:disabled) {
     background: var(--token-neutral-50, rgba(0, 0, 0, 0.04));
 }
 
-html.gem-focus-layout .gem-focus-save-menu__item:disabled {
+.gem-focus-save-menu__item:disabled {
     opacity: 0.45;
     cursor: default;
+}
+
+.gem-focus-save-menu .gem-recent-campaign-duplicate-spinner[hidden] {
+    display: none !important;
+}
+
+/* Standard Layout: overflow chevron attached to Emarsys's native Save button */
+html.gem-focus-layout .gem-standard-save-more,
+html.gem-focus-layout .gem-standard-save-menu {
+    display: none !important;
+}
+
+html:not(.gem-focus-layout) cb-header cb-draft-save-button:has(+ .gem-standard-save-more) {
+    margin-right: 0 !important;
+}
+
+html:not(.gem-focus-layout) cb-header cb-draft-save-button:has(+ .gem-standard-save-more) button.e-btn {
+    border-top-right-radius: 0 !important;
+    border-bottom-right-radius: 0 !important;
+}
+
+.gem-standard-save-more.e-btn {
+    min-width: 0 !important;
+    width: 32px;
+    padding: 0 !important;
+    margin-left: 0 !important;
+    border-left-width: 0 !important;
+    border-top-left-radius: 0 !important;
+    border-bottom-left-radius: 0 !important;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
 }
 
 html.gem-focus-layout gem-cb-save-button {
@@ -646,15 +679,28 @@ html.gem-focus-layout .gem-iframe-wrapper {
     border-radius: 5px !important;
 }
 html.gem-focus-layout\:full .gem-iframe-wrapper {
-    border-radius: 0 !important;
+    border-radius: 4px !important;
     border-top: none !important;
     border-right: none !important;
     border-bottom: none !important;
     height: 100% !important;
 }
 
+html.gem-focus-layout cb-campaign-preview {
+    border-right: 1px solid var(--token-border-default) !important;
+    & cb-content-preview {
+        padding:8px;
+       & .e-contentblocks-preview {
+            border-radius: 4px;
+            overflow: hidden;
+       }
+    }
+}
+
 html.gem-focus-layout #gem-mobile-frame {
     margin: 0 !important;
+    padding:8px;
+    background: var(--token-box-default-background);
 }
 
 html.gem-focus-layout cb-version-selector .e-select {
@@ -952,12 +998,14 @@ html.gem-focus-layout .gem-compact-email-tools-menu-wrap .gem-campaign-menu-trig
 
 html.gem-focus-layout\:full .gem-resize-handle:before {
     opacity: 1;
-    background: var(--token-border-default);
 }
 html.gem-focus-layout\:full .gem-resize-handle:hover:before {
     background: var(--token-primary-500);
 }
 
+html.gem-focus-layout cb-campaign-preview > .e-section .e-section__header {
+    padding: 14px 14px 14px 10px;
+}
 
 html.gem-focus-layout #gem-frame-handle {
     left: -18px;
@@ -966,7 +1014,7 @@ html.gem-focus-layout #gem-frame-handle {
     z-index: 9;
 }
     html.gem-focus-layout\:full #gem-frame-handle {
-        left: -9px;
+        left: -10px;
         right: unset;
         width: 19px;
     }

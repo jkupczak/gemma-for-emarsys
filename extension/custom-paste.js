@@ -144,7 +144,77 @@
     }
   }
 
-  function sanitizeHTML(html) {
+  /** True when paste would land inside an existing link (nested <a> is invalid HTML). */
+  function isRangeInsideExistingAnchor(range, rootBody) {
+    if (!range || !rootBody) return false;
+
+    // Emarsys often wraps the whole editable field in an outer <a> (banner CTA) while
+    // TinyMCE's body is an inner span — the outer link is an ancestor of rootBody, not of it.
+    try {
+      if (rootBody.closest && rootBody.closest("a")) return true;
+    } catch (_) {}
+
+    let el = range.startContainer;
+    if (el.nodeType === Node.TEXT_NODE) el = el.parentElement;
+    else if (el.nodeType !== Node.ELEMENT_NODE) el = el.parentElement;
+
+    const doc = rootBody.ownerDocument;
+    const stop = doc && doc.documentElement ? doc.documentElement : null;
+
+    while (el) {
+      if (el.nodeType === Node.ELEMENT_NODE && el.tagName === "A") return true;
+      if (el === stop) break;
+      el = el.parentElement;
+    }
+    return false;
+  }
+
+  function isRangeWithinBody(range, body) {
+    if (!range || !body) return false;
+    try {
+      return body.contains(range.startContainer) && body.contains(range.endContainer);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  const PASTE_BIN_SELECTOR = "#mcepastebin";
+
+  function isRangeInPasteBin(range) {
+    if (!range) return false;
+    let el = range.startContainer;
+    if (el && el.nodeType !== Node.ELEMENT_NODE) el = el.parentElement;
+    return !!(el && el.closest && el.closest(PASTE_BIN_SELECTOR));
+  }
+
+  /** A caret/selection we can paste into: inside this editor's body and not TinyMCE's paste bin. */
+  function isUsablePasteRange(range, body) {
+    return isRangeWithinBody(range, body) && !isRangeInPasteBin(range);
+  }
+
+  function resolvePasteRange(doc, body, savedRange) {
+    // TinyMCE's paste plugin moves the selection into a hidden paste bin at the end of the
+    // body on Ctrl/Cmd+V keydown, so the live selection is only trusted outside that bin.
+    try {
+      const sel = doc.getSelection();
+      if (sel && sel.rangeCount) {
+        const live = sel.getRangeAt(0);
+        if (isUsablePasteRange(live, body)) return live.cloneRange();
+      }
+    } catch (_) {}
+
+    try {
+      if (savedRange && isUsablePasteRange(savedRange, body)) return savedRange.cloneRange();
+    } catch (_) {}
+
+    return null;
+  }
+
+  function sanitizeHTML(html, options) {
+    const opts = options || {};
+    const allowAnchor =
+      opts.allowAnchor !== undefined ? !!opts.allowAnchor : !!config.allowAnchor;
+
     html = trimClipboardContentEdges(html);
     html = html.replace(/<meta[^>]+>/gi, "");
   
@@ -180,7 +250,7 @@
     if (config.allowSuperscript) {
       allowedTags.add("SUP");
     }
-    if (config.allowAnchor) {
+    if (allowAnchor) {
       allowedTags.add("A");
     }
   
@@ -350,10 +420,42 @@
     let savedRange = null;
 
     function saveCaret() {
+      try {
+        const sel = doc.getSelection();
+        if (!sel || !sel.rangeCount) return;
+        const range = sel.getRangeAt(0);
+        if (isUsablePasteRange(range, body)) savedRange = range.cloneRange();
+      } catch (_) {}
+    }
+
+    function removePasteBins() {
+      try {
+        body.querySelectorAll(PASTE_BIN_SELECTOR).forEach((n) => n.remove());
+      } catch (_) {}
+    }
+
+    function applyPasteRangeToEditor(range) {
       const sel = doc.getSelection();
-      if (sel && sel.rangeCount) {
-        savedRange = sel.getRangeAt(0).cloneRange();
+      if (sel) {
+        sel.removeAllRanges();
+        sel.addRange(range);
       }
+      ed.selection.setRng(range);
+    }
+
+    function insertSanitizedAtRange(range, cleaned) {
+      try {
+        // mceInsertContent does not reliably replace a non-collapsed range here; delete explicitly.
+        if (!range.collapsed) {
+          range.deleteContents();
+          range.collapse(true);
+        }
+        applyPasteRangeToEditor(range);
+      } catch (err) {
+        console.warn("[Gem][CustomPaste] Could not apply paste range; inserting at current caret", err);
+      }
+      ed.execCommand("mceInsertContent", false, cleaned);
+      ed.nodeChanged();
     }
 
     function handlePaste(event) {
@@ -363,35 +465,47 @@
       if (!html) return;
       html = trimClipboardContentEdges(html);
 
-      event.preventDefault();
-      event.stopImmediatePropagation();
-
-      if (!savedRange) {
-        console.warn("[Gem][CustomPaste] No caret saved for", ed.id);
+      // Capture selection before we cancel native paste (browser may collapse it afterward).
+      const pasteRange = resolvePasteRange(doc, body, savedRange);
+      if (!pasteRange) {
+        console.warn("[Gem][CustomPaste] No caret inside editor for", ed.id, "— using native paste");
         return;
       }
 
-      const cleaned = sanitizeHTML(html);
+      let cleaned;
+      try {
+        const insideExistingLink = isRangeInsideExistingAnchor(pasteRange, body);
+        const allowAnchorInPaste = config.allowAnchor && !insideExistingLink;
+        if (insideExistingLink && config.allowAnchor) {
+          console.log("[Gem][CustomPaste] Paste inside existing link — stripping pasted anchors");
+        }
+        cleaned = sanitizeHTML(html, { allowAnchor: allowAnchorInPaste });
+      } catch (err) {
+        console.warn("[Gem][CustomPaste] Sanitize failed — using native paste", err);
+        return;
+      }
 
-      const sel = doc.getSelection();
-      sel.removeAllRanges();
-      sel.addRange(savedRange);
+      event.preventDefault();
+      event.stopImmediatePropagation();
 
-      ed.selection.setRng(savedRange);
-
-      ed.execCommand("mceInsertContent", false, cleaned);
-      ed.nodeChanged();
+      // We stop TinyMCE's paste handler, so it never cleans up its paste bin.
+      removePasteBins();
+      insertSanitizedAtRange(pasteRange, cleaned);
     }
 
-    body.addEventListener("mouseup", saveCaret);
-    body.addEventListener("keyup", saveCaret);
+    // Document-level capture so the caret is saved on Ctrl/Cmd+V keydown before TinyMCE's
+    // paste plugin moves the selection into its paste bin.
+    doc.addEventListener("keydown", saveCaret, true);
+    doc.addEventListener("keyup", saveCaret, true);
+    doc.addEventListener("mouseup", saveCaret, true);
     body.addEventListener("focus", saveCaret);
     body.addEventListener("paste", handlePaste, true);
 
     activePatches.set(ed.id, {
       destroy() {
-        body.removeEventListener("mouseup", saveCaret);
-        body.removeEventListener("keyup", saveCaret);
+        doc.removeEventListener("keydown", saveCaret, true);
+        doc.removeEventListener("keyup", saveCaret, true);
+        doc.removeEventListener("mouseup", saveCaret, true);
         body.removeEventListener("focus", saveCaret);
         body.removeEventListener("paste", handlePaste, true);
       }

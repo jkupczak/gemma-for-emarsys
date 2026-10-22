@@ -119,21 +119,98 @@
     return params.map(([key, value]) => `${key}=${value}`).join('&');
   }
 
+  function normalizeReloginPathname(pathname) {
+    return String(pathname || '').replace(/\/{2,}/g, '/');
+  }
+
+  function isReloginRouteUrl(url) {
+    try {
+      const route = decodeURIComponent(url.searchParams.get('r') || '').trim();
+      return route.toLowerCase() === 'customer/login/relogin';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function hrefWithoutHash(url) {
+    const href = String(url && url.href ? url.href : url || '');
+    const idx = href.indexOf('#');
+    return idx === -1 ? href : href.slice(0, idx);
+  }
+
+  function isTopFrame() {
+    try {
+      return window.top === window;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /** The page the relogin interstitial will continue to, from its `uri=` param. */
+  function reloginTargetUrl(page) {
+    try {
+      const uri = page.searchParams.get('uri');
+      return uri ? new URL(uri, page.origin) : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  const RELOGIN_HASH_MAX_AGE_MS = 10 * 60 * 1000;
+
+  function storedReloginTargetMatches(stored, url) {
+    if (!stored || !stored.relogin || !stored.targetQuerySig || !url) return false;
+    return (
+      normalizeReloginPathname(stored.targetPathname) === normalizeReloginPathname(url.pathname)
+      && stored.targetQuerySig === reloginUrlQuerySignature(url)
+    );
+  }
+
   /** Remember SPA hash before Emarsys relogin redirect drops it from the address bar. */
   function gemCaptureReloginNavHash() {
     try {
+      if (!isTopFrame()) return;
       const hash = String(window.location.hash || '').trim();
       if (!hash) return;
       const page = new URL(window.location.href);
+      const relogin = isReloginRouteUrl(page);
+      const target = relogin ? reloginTargetUrl(page) : null;
       sessionStorage.setItem(
         GEM_RELOGIN_NAV_HASH_KEY,
         JSON.stringify({
           hash,
           querySig: reloginUrlQuerySignature(page),
-          pathname: page.pathname,
+          pathname: normalizeReloginPathname(page.pathname),
+          // An expired-session link is server-redirected straight to the relogin page, and the
+          // browser carries the original fragment onto it. That hash belongs to the destination.
+          relogin,
+          reloginHref: relogin ? hrefWithoutHash(page) : '',
+          targetPathname: target ? normalizeReloginPathname(target.pathname) : '',
+          targetQuerySig: target ? reloginUrlQuerySignature(target) : '',
           ts: Date.now(),
         })
       );
+    } catch (_) {}
+  }
+
+  /**
+   * On the page the relogin continued to, put the saved hash back before Emarsys's SPA boots.
+   * Covers redirects Gemma doesn't perform (Emarsys's own continue, or the button-click fallback).
+   */
+  function gemRestoreReloginNavHashOnLanding() {
+    try {
+      if (!isTopFrame()) return;
+      if (String(window.location.hash || '').length > 1) return;
+      const raw = sessionStorage.getItem(GEM_RELOGIN_NAV_HASH_KEY);
+      if (!raw) return;
+      const stored = JSON.parse(raw);
+      const hash = String(stored.hash || '').trim();
+      if (!hash.startsWith('#')) return;
+      if (!(Date.now() - Number(stored.ts || 0) <= RELOGIN_HASH_MAX_AGE_MS)) return;
+      const here = new URL(window.location.href);
+      if (isReloginRouteUrl(here) || !storedReloginTargetMatches(stored, here)) return;
+      sessionStorage.removeItem(GEM_RELOGIN_NAV_HASH_KEY);
+      history.replaceState(history.state, '', hrefWithoutHash(here) + hash);
     } catch (_) {}
   }
 
@@ -145,40 +222,37 @@
     if (hashIdx !== -1) return dest;
 
     let hash = '';
+    let here = null;
+    try {
+      here = new URL(window.location.href);
+      if (isReloginRouteUrl(here) && String(here.hash || '').startsWith('#')) {
+        hash = here.hash;
+      }
+    } catch (_) {}
+
     try {
       const raw = sessionStorage.getItem(GEM_RELOGIN_NAV_HASH_KEY);
       if (raw) {
         const stored = JSON.parse(raw);
         const candidate = String(stored.hash || '').trim();
-        if (candidate.startsWith('#')) {
+        if (!hash && candidate.startsWith('#')) {
           const destUrlObj = new URL(dest, window.location.origin);
+          const capturedOnThisReloginPage =
+            !!stored.relogin && !!here && stored.reloginHref === hrefWithoutHash(here);
+          const capturedOnDestinationPage =
+            normalizeReloginPathname(stored.pathname) === normalizeReloginPathname(destUrlObj.pathname)
+            && String(stored.querySig || '') === reloginUrlQuerySignature(destUrlObj);
           if (
-            String(stored.pathname || '') === destUrlObj.pathname
-            && String(stored.querySig || '') === reloginUrlQuerySignature(destUrlObj)
+            capturedOnThisReloginPage
+            || capturedOnDestinationPage
+            || storedReloginTargetMatches(stored, destUrlObj)
           ) {
             hash = candidate;
-            sessionStorage.removeItem(GEM_RELOGIN_NAV_HASH_KEY);
           }
         }
+        if (hash) sessionStorage.removeItem(GEM_RELOGIN_NAV_HASH_KEY);
       }
     } catch (_) {}
-
-    if (!hash) {
-      try {
-        const ref = String(document.referrer || '').trim();
-        if (ref) {
-          const refUrl = new URL(ref);
-          const destUrlObj = new URL(dest, window.location.origin);
-          if (
-            refUrl.hash
-            && refUrl.pathname === destUrlObj.pathname
-            && reloginUrlQuerySignature(refUrl) === reloginUrlQuerySignature(destUrlObj)
-          ) {
-            hash = refUrl.hash;
-          }
-        }
-      } catch (_) {}
-    }
 
     if (!hash) return dest;
     const withHash = dest + hash;
@@ -187,6 +261,7 @@
       : withHash;
   }
 
+  gemRestoreReloginNavHashOnLanding();
   gemCaptureReloginNavHash();
 
   /** True when bootstrap.php route is emailCampaignList/index (handles encoded r=). */

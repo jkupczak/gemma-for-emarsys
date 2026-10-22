@@ -48,6 +48,11 @@ console.log("[Gem] storage-measurement.js loaded");
       match: (key) => key === "gemNotes",
     },
     {
+      name: "Gemma Bookmarks",
+      color: "var(--token-sapphire-400)",
+      match: (key) => key === "gemBookmarks",
+    },
+    {
       name: "Favorite Images",
       color: "var(--token-ruby-400)",
       match: (key) => key === "fm" || /^f\d+$/.test(key),

@@ -138,7 +138,9 @@ function gemNormalizeSwapKeywordsFromSnippet(snippet) {
       .map((k) => ({
         keyword: (k && typeof k.keyword === 'string') ? k.keyword.trim() : '',
         mode: gemNormalizeSwapMode(k && k.mode),
-        initiateFrom: gemNormalizeSwapInitiateFrom(k && k.initiateFrom)
+        matchRule: (k && k.matchRule === 'whole') ? 'whole' : 'partial',
+        initiateFrom: gemNormalizeSwapInitiateFrom(k && k.initiateFrom),
+        locations: window.gemSwapLocations.normalize(k && k.locations)
       }))
       .filter((k) => !!k.keyword);
     const seen = new Set();
@@ -595,11 +597,13 @@ function applyTextSwapForBlock(eBlockId) {
         if (!k.keyword) return;
         // Block Toolbar initiated: skip "Snippets Panel Only" rules
         if (k.initiateFrom === 'panel') return;
+        if (!window.gemSwapLocations.allows(k, 'body')) return;
         if (seenKeyword.has(k.keyword)) return;
         seenKeyword.add(k.keyword);
         rules.push({
           keyword: k.keyword,
           mode: k.mode,
+          matchRule: k.matchRule,
           snippet: s
         });
       });
@@ -652,32 +656,17 @@ function applyTextSwapForBlock(eBlockId) {
         if (!editable || processedEditables.has(editable)) return;
         processedEditables.add(editable);
 
-        const walker = doc.createTreeWalker(
-          editable,
-          NodeFilter.SHOW_TEXT,
-          {
-            acceptNode(node) {
-              if (!node.nodeValue) return NodeFilter.FILTER_REJECT;
-              const text = node.nodeValue;
-              const hasAny = rules.some((r) => {
-                return text.indexOf(r.keyword) !== -1;
-              });
-              if (!hasAny) return NodeFilter.FILTER_REJECT;
-              if (isInsideExistingToken(node.parentNode)) return NodeFilter.FILTER_REJECT;
-              return NodeFilter.FILTER_ACCEPT;
-            }
-          }
-        );
+        if (isInsideExistingToken(editable)) return;
+        // Runs join text split across inline formatting tags (e.g. `(</span><b>Keyword)`).
+        const runs = window.gemTextIndex.collectTextRuns(editable, { tokens: 'skip' });
 
-        const nodes = [];
-        let n;
-        while ((n = walker.nextNode())) nodes.push(n);
+        runs.forEach((run) => {
+          const text = run.text;
+          if (!rules.some((r) => text.indexOf(r.keyword) !== -1)) return;
 
-        nodes.forEach((textNode) => {
-          const text = textNode.nodeValue;
-
-          const frag = doc.createDocumentFragment();
           const matches = [];
+
+          const isWordChar = (ch) => !!ch && /\w/.test(ch);
 
           // Collect all matches for all rules
           rules.forEach((rule) => {
@@ -687,6 +676,13 @@ function applyTextSwapForBlock(eBlockId) {
             while (true) {
               const idx = hay.indexOf(needle, from);
               if (idx === -1) break;
+              if (rule.matchRule === 'whole') {
+                const endIdx = idx + needle.length;
+                if (isWordChar(hay[idx - 1]) || isWordChar(hay[endIdx])) {
+                  from = endIdx;
+                  continue;
+                }
+              }
               matches.push({
                 start: idx,
                 end: idx + rule.keyword.length,
@@ -701,41 +697,39 @@ function applyTextSwapForBlock(eBlockId) {
           // Sort by start asc, then longest match first to resolve overlaps
           matches.sort((a, b) => (a.start - b.start) || ((b.end - b.start) - (a.end - a.start)));
 
+          const accepted = [];
           let cursor = 0;
           matches.forEach((m) => {
             if (m.start < cursor) return; // overlap, skip
-            const { rule } = m;
-            const snippet = rule.snippet;
-            if (!snippet || typeof snippet.content !== 'string') return;
-
-            // text before
-            if (m.start > cursor) {
-              frag.appendChild(doc.createTextNode(text.slice(cursor, m.start)));
-            }
-
-            if (rule.mode === 'token') {
-              frag.appendChild(createEslTokenSpan(doc, snippet.name || GEM_ESL_TOKEN_NAME, snippet.content));
-            } else {
-              frag.appendChild(doc.createTextNode(snippet.content));
-            }
-
-            didChange = true;
-            swapCount += 1;
-            touchedEditables.add(editable);
+            const snippet = m.rule.snippet;
+            if (!snippet) return;
+            const slot = window.gemSnippetSource
+              ? window.gemSnippetSource.slotForLocation(snippet, 'body')
+              : { contentSource: 'code', content: String(snippet.content || '') };
+            if (slot.contentSource === 'code' && typeof snippet.content !== 'string' && !slot.content) return;
+            if (slot.contentSource === 'personalization' && !slot.persTokenId) return;
+            accepted.push(m);
             cursor = m.end;
           });
 
-          // trailing text
-          if (cursor < text.length) {
-            frag.appendChild(doc.createTextNode(text.slice(cursor)));
-          }
-
-          if (didChange && textNode.parentNode) {
-            textNode.parentNode.replaceChild(frag, textNode);
+          // Last to first so earlier offsets in the run stay valid.
+          for (let i = accepted.length - 1; i >= 0; i--) {
+            const { rule, start, end } = accepted[i];
+            const snippet = rule.snippet;
+            const replacement =
+              typeof window.gemSnippetSource?.createBodySwapReplacement === 'function'
+                ? window.gemSnippetSource.createBodySwapReplacement(doc, snippet, 'body', rule.mode)
+                : null;
+            if (!replacement) continue;
+            if (window.gemTextIndex.replaceRange(doc, run, start, end, replacement, { root: editable })) {
+              didChange = true;
+              swapCount += 1;
+              touchedEditables.add(editable);
+            }
           }
         });
 
-        if (didChange) {
+        if (touchedEditables.has(editable)) {
           editable.dispatchEvent(new Event('input', { bubbles: true }));
           editable.dispatchEvent(new Event('change', { bubbles: true }));
         }
@@ -761,34 +755,27 @@ function applyTextSwapForBlock(eBlockId) {
   });
 }
 
-function escapeTokenContentForAttribute(value) {
-  // Must match snippets-tab.js "escapeHtmlAttribute" behavior used for token-content.
-  return String(value)
+function createEslTokenSpan(doc, name, script) {
+  if (window.gemCustEslToken && typeof window.gemCustEslToken.createSpan === 'function') {
+    const span = window.gemCustEslToken.createSpan(doc, name, script);
+    span.style.backgroundColor = '#6597cf';
+    span.style.borderRadius = '.3em';
+    span.style.boxShadow = '0 0 0 0.2em #6597cf';
+    span.style.color = '#fff';
+    return span;
+  }
+  const encodedTokenContent = JSON.stringify({ script })
     .replace(/%/g, '%25')
-    .replace(/&/g, '&amp;')
     .replace(/ /g, '%20')
     .replace(/\{/g, '%7B')
     .replace(/\|/g, '%7C')
     .replace(/\}/g, '%7D')
-    .replace(/\\/g, '%5C')
-    .replace(/\[/g, '%5B')
-    .replace(/\]/g, '%5D')
-    .replace(/</g, '%3C')
-    .replace(/>/g, '%3E')
     .replace(/"/g, '%22');
-}
-
-function createEslTokenSpan(doc, name, script) {
-  const tokenContent = JSON.stringify({ script });
-  const encodedTokenContent = escapeTokenContentForAttribute(tokenContent);
-  const encodedTokenTemplate = '%22%3C%25=%20script%20%25%3E%22';
-  const encodedTokenMeta = '%7B%7D';
-
   const span = doc.createElement('span');
   span.setAttribute('e-token', 'cust_esl');
-  span.setAttribute('token-template', encodedTokenTemplate);
+  span.setAttribute('token-template', '%22%3C%25=%20script%20%25%3E%22');
   span.setAttribute('token-content', encodedTokenContent);
-  span.setAttribute('token-meta', encodedTokenMeta);
+  span.setAttribute('token-meta', '%7B%7D');
   span.setAttribute('contenteditable', 'false');
   span.className = 'cbNonEditable';
   span.style.backgroundColor = '#6597cf';

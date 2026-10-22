@@ -92,7 +92,7 @@ function initializeKeywordSwap() {
       console.log("[Gem][KeywordSwap] Retrieved snippets for preheader swap:", snippets.length);
       const swappableSnippets = snippets.filter((snippet) => {
         const rules = normalizeSwapKeywordsFromSnippet(snippet);
-        const hasRules = rules.some((r) => r && r.keyword && r.initiateFrom !== 'toolbar' && r.initiateFrom !== 'panel');
+        const hasRules = rules.some((r) => swapRuleRunsIn(r, 'preheader'));
         console.log(`[Gem][KeywordSwap] Snippet "${snippet.name}" has swappable rules:`, hasRules, rules);
         return hasRules;
       });
@@ -104,44 +104,21 @@ function initializeKeywordSwap() {
         return;
       }
 
-      let totalSwaps = 0;
-      let modifiedText = textContent;
-
-      // Process each snippet's swap rules
+      // Preheader is a plain textarea, so swaps insert the snippet's ESL content (not a token).
+      const swapRules = [];
       swappableSnippets.forEach((snippet) => {
-        const rules = normalizeSwapKeywordsFromSnippet(snippet).filter((r) => r && r.keyword && r.initiateFrom !== 'toolbar' && r.initiateFrom !== 'panel');
-
-        rules.forEach((rule) => {
-          const { keyword, mode, matchRule } = rule;
-          console.log(`[Gem][KeywordSwap] Processing keyword "${keyword}" with mode "${mode}" and matchRule "${matchRule}"`);
-
-          // Generate the replacement content (HTML token for contenteditable, plain text for textarea)
-          const isTextareaContext = true; // We're always in textarea context for preheader
-          let replacementContent;
-          if (isTextareaContext) {
-            // For textarea, use plain text (the snippet's ESL content)
-            replacementContent = snippet.content || snippet.name;
-          } else {
-            // For contenteditable, use HTML token
-            replacementContent = generateSnippetHTML(snippet, {
-              keywordSwapMode: mode,
-              keywordSwapKeyword: keyword
+        normalizeSwapKeywordsFromSnippet(snippet)
+          .filter((r) => swapRuleRunsIn(r, 'preheader'))
+          .forEach((rule) => {
+            swapRules.push({
+              keyword: rule.keyword,
+              matchRule: rule.matchRule,
+              replacement: window.gemSnippetVariants.contentFor(snippet, 'preheader') || snippet.name,
             });
-          }
-
-          // Match Rules control whether we use word boundaries (\b) or not.
-          const regex = createKeywordRegex(keyword, matchRule);
-          console.log(`[Gem][KeywordSwap] Testing regex: ${regex} against: "${modifiedText}"`);
-          const matches = modifiedText.match(regex);
-          if (matches) {
-            console.log(`[Gem][KeywordSwap] Found ${matches.length} matches for "${keyword}":`, matches);
-            totalSwaps += matches.length;
-            modifiedText = modifiedText.replace(regex, replacementContent);
-          } else {
-            console.log(`[Gem][KeywordSwap] No matches found for "${keyword}"`);
-          }
-        });
+          });
       });
+
+      const { text: modifiedText, count: totalSwaps } = replaceKeywordsInOnePass(textContent, swapRules);
 
       console.log(`[Gem][KeywordSwap] Total swaps performed: ${totalSwaps}`);
 
@@ -172,6 +149,12 @@ function initializeKeywordSwap() {
   }
 
   // Utility functions for keyword swapping
+
+  // Subject, preheader and conditional inputs only take "Anywhere" rules; Panel/Toolbar are body-only.
+  function swapRuleRunsIn(rule, location) {
+    return !!(rule && rule.keyword && rule.initiateFrom === 'anywhere' && window.gemSwapLocations.allows(rule, location));
+  }
+
   function normalizeSwapKeywordsFromSnippet(snippet) {
     if (!snippet) return [];
 
@@ -182,7 +165,8 @@ function initializeKeywordSwap() {
           keyword: (k && typeof k.keyword === 'string') ? k.keyword.trim() : '',
           mode: normalizeSwapMode(k && k.mode),
           matchRule: normalizeSwapMatchRule(k && k.matchRule),
-          initiateFrom: normalizeSwapInitiateFrom(k && k.initiateFrom)
+          initiateFrom: normalizeSwapInitiateFrom(k && k.initiateFrom),
+          locations: window.gemSwapLocations.normalize(k && k.locations)
         }))
         .filter((k) => !!k.keyword);
 
@@ -234,6 +218,47 @@ function initializeKeywordSwap() {
       : new RegExp(escapedKeyword, 'g');
   }
 
+  /**
+   * Apply every rule against the original text in one pass. Inserted snippet content is never
+   * re-scanned, so a later keyword (e.g. `hello`) can't match inside an earlier replacement.
+   * Overlaps go to the earliest match, then the longest, then the earlier rule.
+   * @param {string} text
+   * @param {{ keyword: string, matchRule: string, replacement: string }[]} rules
+   * @returns {{ text: string, count: number }}
+   */
+  function replaceKeywordsInOnePass(text, rules) {
+    const source = String(text ?? '');
+    const candidates = [];
+    rules.forEach((rule, priority) => {
+      if (!rule || !rule.keyword || !rule.replacement) return;
+      const regex = createKeywordRegex(rule.keyword, rule.matchRule);
+      let m;
+      while ((m = regex.exec(source)) !== null) {
+        if (!m[0].length) {
+          regex.lastIndex += 1;
+          continue;
+        }
+        candidates.push({ start: m.index, end: m.index + m[0].length, priority, replacement: rule.replacement });
+      }
+    });
+    if (!candidates.length) return { text: source, count: 0 };
+
+    candidates.sort((a, b) =>
+      a.start - b.start || (b.end - b.start) - (a.end - a.start) || a.priority - b.priority
+    );
+    let out = '';
+    let cursor = 0;
+    let count = 0;
+    candidates.forEach((c) => {
+      if (c.start < cursor) return;
+      out += source.slice(cursor, c.start) + c.replacement;
+      cursor = c.end;
+      count += 1;
+    });
+    out += source.slice(cursor);
+    return { text: out, count };
+  }
+
   const CM_TOKEN_BLOCK_RE =
     /\{# (?:pers-token:1|cond-token:1) [^#]+ #\}[\s\S]*?\{# (?:pers-token:1|cond-token:1) #\}/g;
 
@@ -257,12 +282,26 @@ function initializeKeywordSwap() {
     return segments;
   }
 
-  function buildKeywordSwapReplacement(snippet, mode) {
+  function buildKeywordSwapReplacement(snippet, mode, location = 'subject') {
+    const slot = window.gemSnippetSource?.slotForLocation(snippet, location);
+    if (slot && slot.contentSource === 'personalization') {
+      const token = window.gemSnippetSource.findPersTokenById(slot.persTokenId);
+      if (!token) return '';
+      const preview =
+        typeof window.gemBuildPersonalizationPreview === 'function'
+          ? window.gemBuildPersonalizationPreview(token)
+          : '';
+      if (mode === 'token' && typeof window.gemBuildPersonalizationCodeMirrorToken === 'function') {
+        return window.gemBuildPersonalizationCodeMirrorToken(token) || preview;
+      }
+      return preview;
+    }
+    const content = window.gemSnippetVariants.contentFor(snippet, location);
     if (mode === 'token' && typeof window.gemBuildGemmaCodeMirrorToken === 'function') {
-      const token = window.gemBuildGemmaCodeMirrorToken(snippet.name, snippet.content);
+      const token = window.gemBuildGemmaCodeMirrorToken(snippet.name, content);
       if (token) return token;
     }
-    return String(snippet.content || '');
+    return content;
   }
 
   function collectSubjectLineSwapRules(snippets) {
@@ -270,7 +309,7 @@ function initializeKeywordSwap() {
     const seenKeyword = new Set();
     (Array.isArray(snippets) ? snippets : []).forEach((snippet) => {
       normalizeSwapKeywordsFromSnippet(snippet).forEach((rule) => {
-        if (!rule.keyword || rule.initiateFrom === 'panel') return;
+        if (!swapRuleRunsIn(rule, 'subject')) return;
         if (seenKeyword.has(rule.keyword)) return;
         seenKeyword.add(rule.keyword);
         rules.push({
@@ -287,20 +326,17 @@ function initializeKeywordSwap() {
 
   function applyKeywordSwapsOutsideTokens(html, rules) {
     const segments = splitPersonalizableHtmlSegments(html);
+    const resolvedRules = rules.map((rule) => ({
+      keyword: rule.keyword,
+      matchRule: rule.matchRule,
+      replacement: buildKeywordSwapReplacement(rule.snippet, rule.mode),
+    }));
     let totalSwaps = 0;
     const next = segments.map((segment) => {
       if (segment.type !== 'text') return segment.text;
-      let text = segment.text;
-      rules.forEach((rule) => {
-        const replacement = buildKeywordSwapReplacement(rule.snippet, rule.mode);
-        if (!replacement) return;
-        const regex = createKeywordRegex(rule.keyword, rule.matchRule);
-        text = text.replace(regex, () => {
-          totalSwaps += 1;
-          return replacement;
-        });
-      });
-      return text;
+      const result = replaceKeywordsInOnePass(segment.text, resolvedRules);
+      totalSwaps += result.count;
+      return result.text;
     });
     return { text: next.join(''), totalSwaps };
   }
@@ -314,72 +350,14 @@ function initializeKeywordSwap() {
   }
 
   function generateSnippetHTML(snippet, options = {}) {
-    const { keywordSwapMode, keywordSwapKeyword } = options;
-
-    // This is a simplified version - we need the full token generation logic
-    const tokenName = snippet.name;
-    const fullSnippetHTML = snippet.content || '';
-
-    // Create a token that represents the snippet insertion
-    const tokenTemplate = `{{snippet:${snippet.id}}}`;
-    const tokenContent = fullSnippetHTML;
-    const tokenMeta = JSON.stringify({
-      id: snippet.id,
-      name: snippet.name,
-      keywordSwap: keywordSwapKeyword ? {
-        keyword: keywordSwapKeyword,
-        mode: keywordSwapMode
-      } : null
-    });
-
-    // Encode for HTML attributes
-    const encodedTokenTemplate = tokenTemplate
-      .replace(/%/g, '%25')
-      .replace(/&/g, '&amp;')
-      .replace(/ /g, '%20')
-      .replace(/\{/g, '%7B')
-      .replace(/\|/g, '%7C')
-      .replace(/\}/g, '%7D')
-      .replace(/\\/g, '%5C')
-      .replace(/\[/g, '%5B')
-      .replace(/\]/g, '%5D')
-      .replace(/"/g, '%22')
-      .replace(/'/g, '%27')
-      .replace(/</g, '%3C')
-      .replace(/>/g, '%3E');
-
-    const encodedTokenContent = tokenContent
-      .replace(/%/g, '%25')
-      .replace(/&/g, '&amp;')
-      .replace(/ /g, '%20')
-      .replace(/\{/g, '%7B')
-      .replace(/\|/g, '%7C')
-      .replace(/\}/g, '%7D')
-      .replace(/\\/g, '%5C')
-      .replace(/\[/g, '%5B')
-      .replace(/\]/g, '%5D')
-      .replace(/"/g, '%22')
-      .replace(/'/g, '%27')
-      .replace(/</g, '%3C')
-      .replace(/>/g, '%3E');
-
-    const encodedTokenMeta = tokenMeta
-      .replace(/%/g, '%25')
-      .replace(/&/g, '&amp;')
-      .replace(/ /g, '%20')
-      .replace(/\{/g, '%7B')
-      .replace(/\|/g, '%7C')
-      .replace(/\}/g, '%7D')
-      .replace(/\\/g, '%5C')
-      .replace(/\[/g, '%5B')
-      .replace(/\]/g, '%5D')
-      .replace(/"/g, '%22')
-      .replace(/'/g, '%27')
-      .replace(/</g, '%3C')
-      .replace(/>/g, '%3E');
-
-    // Return the token HTML that will be inserted
-    return `<span e-token="cust_esl" token-template="${encodedTokenTemplate}" token-content="${encodedTokenContent}" token-meta="${encodedTokenMeta}" class="cbNonEditable" contenteditable="false">${tokenName}</span>`;
+    const content = snippet.content || '';
+    if (typeof window.gemGenerateSnippetHTML === 'function') {
+      return window.gemGenerateSnippetHTML(snippet.name, content);
+    }
+    if (window.gemCustEslToken && typeof window.gemCustEslToken.generateSnippetHTML === 'function') {
+      return window.gemCustEslToken.generateSnippetHTML(snippet.name, content);
+    }
+    return `<span e-token="cust_esl" class="cbNonEditable" contenteditable="false">${snippet.name}</span>`;
   }
 
   // ------------------------------------------------------------
@@ -489,10 +467,9 @@ function initializeKeywordSwap() {
       console.log("[Gem][KeywordSwap] Retrieved snippets:", snippets.length);
 
       // Find snippets with keyword swap rules (excluding panel-only keywords)
-      const swappableSnippets = snippets.filter(snippet => {
-        if (!snippet.swapKeywords || !Array.isArray(snippet.swapKeywords)) return false;
-        return snippet.swapKeywords.some(rule => rule.keyword && rule.keyword.trim() && rule.initiateFrom !== 'panel');
-      });
+      const swappableSnippets = snippets.filter(snippet =>
+        normalizeSwapKeywordsFromSnippet(snippet).some(rule => swapRuleRunsIn(rule, 'conditions'))
+      );
 
       console.log("[Gem][KeywordSwap] Swappable snippets found:", swappableSnippets.length);
 
@@ -501,40 +478,20 @@ function initializeKeywordSwap() {
         return;
       }
 
-      let modifiedText = textContent;
-      let totalSwaps = 0;
-
-      // Process each swappable snippet
+      // Conditional inputs are plain text fields, so swaps insert the snippet's ESL content.
+      const swapRules = [];
       swappableSnippets.forEach(snippet => {
-        snippet.swapKeywords.forEach(rule => {
-          if (!rule.keyword || !rule.keyword.trim() || rule.initiateFrom === 'panel') return;
-
-          const keyword = rule.keyword.trim();
-          const mode = normalizeSwapMode(rule.swapMode || 'exact');
-          const regex = createKeywordRegex(keyword, mode);
-
-          console.log(`[Gem][KeywordSwap] Testing snippet "${snippet.name}" keyword "${keyword}" mode "${mode}" regex:`, regex.source);
-
-          // For conditional inputs, always use plain text content
-          const replacementContent = snippet.content || '';
-
-          if (replacementContent) {
-            console.log(`[Gem][KeywordSwap] Before replacement - text: "${modifiedText}", looking for: "${keyword}"`);
-            const beforeText = modifiedText;
-            modifiedText = modifiedText.replace(regex, replacementContent);
-            const swaps = (beforeText.match(regex) || []).length - (modifiedText.match(regex) || []).length;
-            if (swaps > 0) {
-              totalSwaps += swaps;
-              console.log(`[Gem][KeywordSwap] Replaced ${swaps} occurrence(s) of "${keyword}" with "${replacementContent}"`);
-              console.log(`[Gem][KeywordSwap] After replacement - text: "${modifiedText}"`);
-            } else {
-              console.log(`[Gem][KeywordSwap] No matches found for "${keyword}" in text`);
-            }
-          } else {
-            console.log(`[Gem][KeywordSwap] No replacement content for snippet "${snippet.name}"`);
-          }
+        normalizeSwapKeywordsFromSnippet(snippet).forEach(rule => {
+          if (!swapRuleRunsIn(rule, 'conditions')) return;
+          swapRules.push({
+            keyword: rule.keyword,
+            matchRule: rule.matchRule,
+            replacement: window.gemSnippetVariants.contentFor(snippet, 'conditions'),
+          });
         });
       });
+
+      const { text: modifiedText, count: totalSwaps } = replaceKeywordsInOnePass(textContent, swapRules);
 
       console.log(`[Gem][KeywordSwap] Total swaps performed: ${totalSwaps}`);
 

@@ -392,6 +392,37 @@ function createHighlightBox(doc, rect, color, offsetX, offsetY, position) {
   return box;
 }
 
+/**
+ * A match split across inline elements yields one client rect per fragment. Join rects that
+ * share a line and touch so the match draws as one box per line instead of side-by-side boxes.
+ */
+function mergeLineRects(rectList) {
+  const rects = Array.from(rectList)
+    .filter((r) => r.width && r.height)
+    .map((r) => ({ left: r.left, top: r.top, right: r.right, bottom: r.bottom }))
+    .sort((a, b) => a.top - b.top || a.left - b.left);
+
+  const merged = [];
+  for (const r of rects) {
+    const last = merged[merged.length - 1];
+    const sameLine =
+      last &&
+      Math.min(last.bottom, r.bottom) - Math.max(last.top, r.top) >
+        0.5 * Math.min(last.bottom - last.top, r.bottom - r.top);
+    // Small tolerance for sub-pixel gaps between adjacent inline boxes.
+    const touching = last && r.left <= last.right + 2;
+    if (sameLine && touching) {
+      last.left = Math.min(last.left, r.left);
+      last.right = Math.max(last.right, r.right);
+      last.top = Math.min(last.top, r.top);
+      last.bottom = Math.max(last.bottom, r.bottom);
+    } else {
+      merged.push(r);
+    }
+  }
+  return merged.map((r) => ({ ...r, width: r.right - r.left, height: r.bottom - r.top }));
+}
+
 function createLocalHighlightBox(doc, rect, color) {
   const box = doc.createElement("div");
   box.className = "gem-text-highlight";
@@ -1155,39 +1186,25 @@ function highlightMatchesInIframe(iframe) {
   const scrollX = win.scrollX || 0;
   const scrollY = win.scrollY || 0;
 
-  // Walk visible text nodes
-  const walker = doc.createTreeWalker(
-    doc.body,
-    NodeFilter.SHOW_TEXT,
-    {
-      acceptNode(node) {
-        if (!node.nodeValue || !node.nodeValue.trim()) {
-          return NodeFilter.FILTER_REJECT;
-        }
-        if (isInsideGemOverlay(node)) {
-          return NodeFilter.FILTER_REJECT;
-        }
-        return NodeFilter.FILTER_ACCEPT;
-      }
-    }
-  );
+  // Runs join text split across inline formatting tags; token text stays matchable on its own.
+  const runs = window.gemTextIndex.collectTextRuns(doc.body, {
+    tokens: "isolate",
+    skipElement: (el) => isGemElement(el)
+  });
 
-  let textNode;
-  while ((textNode = walker.nextNode())) {
-    const raw = textNode.nodeValue;
+  for (const run of runs) {
+    const raw = run.text;
+    if (!raw.trim()) continue;
     const maxLen = raw.length;
 
     forEachHighlightMatch(raw, (startIndex, matchLength, color) => {
       const endIndex = Math.min(startIndex + matchLength, maxLen);
       if (endIndex <= startIndex) return;
 
-      const range = doc.createRange();
-      range.setStart(textNode, startIndex);
-      range.setEnd(textNode, endIndex);
+      const range = window.gemTextIndex.createRange(doc, run, startIndex, endIndex);
+      if (!range) return;
 
-      const rects = range.getClientRects();
-      for (const rect of rects) {
-        if (!rect.width || !rect.height) continue;
+      for (const rect of mergeLineRects(range.getClientRects())) {
         container.appendChild(createHighlightBox(doc, rect, color, scrollX, scrollY, "absolute"));
       }
 

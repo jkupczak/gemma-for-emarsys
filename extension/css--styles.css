@@ -123,9 +123,9 @@ e-float-container .e-dialog__container:has(.cp-contact_preview_section_container
 /* ------------------------------------------------------------------------------------------------ */
 vce-variables-editor .e-field { display: flex }
 vce-variables-editor .e-field > div:first-child { 
-    min-width: 40%;
-    width: 40%;
-    max-width: 40%;
+    min-width: 160px;
+    width: 160px;
+    max-width: 160px;
 
     & .text-overflow {
         text-overflow: unset !important;
@@ -999,6 +999,161 @@ main {
 /* ------------------------------------------------------------------------------------------------ */
 /* Snippets */
 /* ------------------------------------------------------------------------------------------------ */
+
+.gem-snippet-pers-badge {
+    display: inline-flex;
+    align-items: center;
+    max-width: 180px;
+    padding: 0 6px;
+    font-size: 10px;
+    line-height: 16px;
+    height: 16px;
+    border-radius: 4px;
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--token-primary-default, #5b738b) 45%, transparent);
+    background: color-mix(in srgb, var(--token-primary-default, #5b738b) 12%, transparent);
+    color: var(--token-box-default-text, #333);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: middle;
+}
+
+#gem-snippet-modal .gem-snippet-modal-stack > .e-field__label,
+#gem-snippet-modal .gem-snippet-modal-field-label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+#gem-snippet-modal .gem-snippet-modal-field-help {
+    display: block;
+    font-size: 12px;
+    line-height: 1.35;
+    opacity: 0.75;
+    margin: 0 0 8px;
+}
+
+#gem-snippet-modal .gem-snippet-modal-two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0 16px;
+    align-items: start;
+}
+
+#gem-snippet-modal textarea.gem-snippet-modal-textarea {
+    field-sizing: content;
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    height: auto !important;
+    min-height: 0;
+    resize: none;
+    overflow: hidden;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    background-color: var(--token-input-default-background);
+    padding: 10px 12px;
+}
+
+#gem-snippet-modal textarea.gem-snippet-modal-code-textarea {
+    font-family: var(--token-font-monospace, monospace);
+}
+
+#gem-snippet-modal .gem-snippet-source-code-wrap textarea.gem-snippet-modal-code-textarea {
+    margin-top: 8px;
+}
+
+.gem-snippet-source-pers-wrap,
+.gem-snippet-variant-pers-wrap {
+    margin-top: 8px;
+}
+
+.gem-snippet-variant .gem-snippet-variant-locations {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--token-border-default, #d8dde2);
+}
+
+.gem-snippet-variant-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 6px;
+}
+
+.gem-snippet-variant-topbar .gem-snippet-variant-content-label {
+    margin-bottom: 0;
+    flex: 1;
+}
+
+.gem-snippet-pers-section-title {
+    margin: 16px 0 8px;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.gem-snippet-pers-section-empty {
+    font-size: 13px;
+    opacity: 0.75;
+    padding: 8px 10px;
+}
+
+.gem-snippet-pers-empty {
+    margin: 12px 0 0;
+    font-size: 13px;
+    opacity: 0.75;
+}
+
+.gem-snippet-pers-selected-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 10px;
+    border: 1px solid var(--token-border-default, #d8dde2);
+    border-radius: 4px;
+    margin-top: 8px;
+}
+
+.gem-snippet-pers-selected-row .gem-snippet-pers-clear-btn {
+    flex-shrink: 0;
+    min-width: unset;
+}
+
+.gem-snippet-variant-pers-wrap .gem-snippet-pers-token-table {
+    font-size: 13px;
+}
+
+.gem-snippet-pers-picker .gem-snippet-pers-token-row td {
+    padding: 8px 10px;
+    vertical-align: middle;
+}
+
+.gem-snippet-pers-picker .gem-snippet-pers-token-chip {
+    max-width: 100%;
+    box-sizing: border-box;
+    border: 1px solid var(--token-tableCell-default-border);
+    line-height: 1.35;
+    cursor: pointer;
+    background: transparent;
+    border-radius: 6px;
+    display: inline-flex;
+    color: var(--token-text-default);
+}
+
+.gem-snippet-pers-picker .gem-snippet-pers-folder-row td {
+    font-weight: 400;
+}
+
+.gem-snippet-pers-picker .gem-snippet-pers-folder-row:hover td,
+.gem-snippet-pers-picker .gem-snippet-pers-folder-back-row:hover td {
+    background: var(--token-table-hover-background, rgba(0, 0, 0, 0.04));
+}
+
+.gem-snippet-pers-picker .gem-snippet-pers-token-row:hover .gem-snippet-pers-token-chip {
+    filter: brightness(0.97);
+}
 
 gem-snippets .gem-snippets-category-title .gem-snippets-category-rename {
     opacity: 0;

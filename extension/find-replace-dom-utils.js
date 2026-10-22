@@ -264,61 +264,33 @@ console.log('[Gem] find-replace-dom-utils.js loaded');
     return frag;
   }
 
-  function createSearchableTextWalkerFilter() {
-    return {
-      acceptNode(node) {
-        if (!node.nodeValue) return NodeFilter.FILTER_REJECT;
-        if (isInsideExistingToken(node.parentNode)) return NodeFilter.FILTER_REJECT;
-        return NodeFilter.FILTER_ACCEPT;
-      },
-    };
-  }
-
-  function findTextNodeAtCharacterOffset(root, charOffset) {
-    if (!root || charOffset < 0) return null;
-    let walked = 0;
-    const walker = root.ownerDocument.createTreeWalker(
-      root,
-      NodeFilter.SHOW_TEXT,
-      createSearchableTextWalkerFilter()
-    );
-    let node;
-    while ((node = walker.nextNode())) {
-      const len = node.nodeValue.length;
-      if (charOffset < walked + len) {
-        return { node, offsetInNode: charOffset - walked };
-      }
-      walked += len;
-    }
-    return null;
+  /** Text runs for an editable root: joined across inline formatting tags, tokens excluded. */
+  function collectSearchableTextRuns(root) {
+    if (isInsideExistingToken(root)) return [];
+    return window.gemTextIndex.collectTextRuns(root, { tokens: 'skip' });
   }
 
   function collectTextMatchJobsInRoot(root, matcher) {
     const jobs = [];
     if (!root || !matcher?.regex) return jobs;
 
-    let globalOffset = 0;
-    const walker = root.ownerDocument.createTreeWalker(
-      root,
-      NodeFilter.SHOW_TEXT,
-      createSearchableTextWalkerFilter()
-    );
-    let textNode;
-    while ((textNode = walker.nextNode())) {
-      const text = textNode.nodeValue;
+    collectSearchableTextRuns(root).forEach((run) => {
       const regex = freshRegex(matcher);
       let match;
-      while ((match = regex.exec(text)) !== null) {
-        jobs.push({
-          globalOffset: globalOffset + match.index,
-          length: match[0].length,
-          match: match[0],
-          captures: match.slice(1),
-        });
-        if (match[0] === '') regex.lastIndex += 1;
+      while ((match = regex.exec(run.text)) !== null) {
+        if (match[0] !== '') {
+          jobs.push({
+            run,
+            start: match.index,
+            length: match[0].length,
+            match: match[0],
+            captures: match.slice(1),
+          });
+        } else {
+          regex.lastIndex += 1;
+        }
       }
-      globalOffset += text.length;
-    }
+    });
     return jobs;
   }
 
@@ -326,33 +298,34 @@ console.log('[Gem] find-replace-dom-utils.js loaded');
     const jobs = collectTextMatchJobsInRoot(root, matcher);
     if (!jobs.length) return { count: 0, changes: [] };
 
-    jobs.sort((a, b) => b.globalOffset - a.globalOffset);
+    // Last to first (jobs are in document order) so earlier run offsets stay valid.
+    jobs.reverse();
 
     const doc = root.ownerDocument;
     let count = 0;
     const changes = [];
 
     jobs.forEach((job) => {
-      const located = findTextNodeAtCharacterOffset(root, job.globalOffset);
-      if (!located) return;
-
       const expanded = expandReplacement(replacement, job.match, job.captures);
-      const snippet = makeSnippet(
-        located.node.nodeValue,
-        located.offsetInNode,
-        job.length
-      );
+      const snippet = makeSnippet(job.run.text, job.start, job.length);
 
       const sanitized = looksLikeHtml(expanded) ? sanitizeAllowlistedHtml(expanded) : null;
       const useHtml = !!(sanitized && sanitized.hasElements);
+      const node = useHtml
+        ? createFragmentFromSanitizedHtml(doc, sanitized.html)
+        : doc.createTextNode(expanded);
 
-      const range = doc.createRange();
-      range.setStart(located.node, located.offsetInNode);
-      range.setEnd(located.node, located.offsetInNode + job.length);
-      range.deleteContents();
+      const replaced = window.gemTextIndex.replaceRange(
+        doc,
+        job.run,
+        job.start,
+        job.start + job.length,
+        node,
+        { root }
+      );
+      if (!replaced) return;
 
       if (useHtml) {
-        range.insertNode(createFragmentFromSanitizedHtml(doc, sanitized.html));
         changes.unshift({
           context,
           before: snippet.before + snippet.match + snippet.after,
@@ -360,7 +333,6 @@ console.log('[Gem] find-replace-dom-utils.js loaded');
           matchText: job.match,
         });
       } else {
-        range.insertNode(doc.createTextNode(expanded));
         changes.unshift({
           context,
           before: snippet.before + snippet.match + snippet.after,
@@ -1429,22 +1401,10 @@ console.log('[Gem] find-replace-dom-utils.js loaded');
         return;
       }
 
-      const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-        acceptNode(node) {
-          if (!node.nodeValue) return NodeFilter.FILTER_REJECT;
-          if (isInsideExistingToken(node.parentNode)) return NodeFilter.FILTER_REJECT;
-          const regex = freshRegex(matcher);
-          return regex.test(node.nodeValue) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
-        },
-      });
-
-      const nodes = [];
-      let n;
-      while ((n = walker.nextNode())) nodes.push(n);
-
-      nodes.forEach((textNode) => {
+      collectSearchableTextRuns(root).forEach((run) => {
+        if (!freshRegex(matcher).test(run.text)) return;
         if (hasReplacement && simulateOnly) {
-          const result = replaceInString(textNode.nodeValue, matcher, replacement);
+          const result = replaceInString(run.text, matcher, replacement);
           if (result.count > 0) {
             count += result.count;
             if (collectChanges) {
@@ -1452,11 +1412,11 @@ console.log('[Gem] find-replace-dom-utils.js loaded');
             }
           }
         } else {
-          const nodeCount = countMatchesInString(textNode.nodeValue, matcher);
-          count += nodeCount;
-          if (nodeCount > 0 && locations.length < maxLocations) {
+          const runCount = countMatchesInString(run.text, matcher);
+          count += runCount;
+          if (runCount > 0 && locations.length < maxLocations) {
             locations.push(
-              ...findMatchesInString(textNode.nodeValue, matcher, {
+              ...findMatchesInString(run.text, matcher, {
                 max: maxLocations - locations.length,
                 context,
               })

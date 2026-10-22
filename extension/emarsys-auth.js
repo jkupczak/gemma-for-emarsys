@@ -405,6 +405,28 @@
       );
     };
 
+    /**
+     * Fetches personalization token folder groupings (use cases) from the personalization-editor gservice.
+     *
+     * @param {string|number} customerId
+     * @param {string} sessionId
+     * @param {string} [existingToken] - Optional JWT already fetched for personalization-editor.
+     * @returns {Promise<{ok: boolean, results?: object[], reason?: string}>}
+     */
+    window.gemFetchPersonalizationUseCaseList = function gemFetchPersonalizationUseCaseList(
+      customerId,
+      sessionId,
+      existingToken
+    ) {
+      return gemFetchPersonalizationEditorList(
+        customerId,
+        sessionId,
+        existingToken,
+        "use-case/list",
+        "use-case/list"
+      );
+    };
+
     function parseContactSourcesResponse(res, data) {
       if (!res.ok) {
         return { ok: false, reason: "api_error", status: res.status, data: data };
